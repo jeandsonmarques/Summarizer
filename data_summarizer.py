@@ -71,7 +71,7 @@ from .browser_integration import (
 )
 from .model_view import ModelCanvasScene, ModelCanvasView, ModelManager
 from .cloud_session import cloud_session
-from .report_view import ReportPanel
+from .report_view import ReportsWidget
 
 PROTECTED_COLUMNS_DEFAULT = {"__feature_id", "__geometry_wkb", "__target_feature_id"}
 
@@ -336,7 +336,7 @@ class PowerBISummarizerDialog(QDialog):
         except Exception:
             pass
 
-        self.report_panel = None
+        self.reports_widget = None
         try:
             layout = self.ui.pageRelatorios.layout()
             if layout is None:
@@ -344,33 +344,17 @@ class PowerBISummarizerDialog(QDialog):
                 layout.setContentsMargins(0, 0, 0, 0)
                 layout.setSpacing(0)
 
-            canvas_container = getattr(self.ui, "reportCanvasContainer", None)
-            sidebar_container = getattr(self.ui, "reportSidebarContainer", None)
-            for widget in [canvas_container, sidebar_container]:
+            while layout.count():
+                item = layout.takeAt(0)
+                widget = item.widget()
                 if widget is not None:
-                    try:
-                        layout.removeWidget(widget)
-                    except Exception:
-                        pass
+                    widget.deleteLater()
 
-            mm = None
-            if hasattr(self, "model_manager"):
-                mm = getattr(self, "model_manager", None)
-            if mm is None and hasattr(self, "model_view"):
-                view = self.model_view
-                mm = getattr(view, "model_manager", None) or getattr(view, "manager", None)
-
-            panel = ReportPanel(
-                plugin=self,
-                model_manager=mm,
-                parent=self.ui.pageRelatorios,
-                canvas_container=canvas_container,
-                sidebar_container=sidebar_container,
-            )
-            layout.addWidget(panel)
-            self.report_panel = panel
+            widget = ReportsWidget(plugin=self, parent=self.ui.pageRelatorios)
+            layout.addWidget(widget)
+            self.reports_widget = widget
         except Exception:
-            self.report_panel = None
+            self.reports_widget = None
 
         self.integration_panel = None
         self.integration_scroll = None
@@ -591,11 +575,6 @@ class PowerBISummarizerDialog(QDialog):
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageRelatorios)
         except Exception:
             pass
-        if self.report_panel is not None:
-            try:
-                self.report_panel.refresh_from_model()
-            except Exception:
-                pass
 
     def open_get_data_dialog(self):
         dialog = GetDataDialog(self, self)
@@ -641,8 +620,8 @@ class PowerBISummarizerDialog(QDialog):
             except Exception:
                 pass
             try:
-                if self.report_panel is not None:
-                    self.report_panel.refresh_from_model()
+                if self.reports_widget is not None:
+                    self.reports_widget.refresh_from_model()
             except Exception:
                 pass
 

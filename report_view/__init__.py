@@ -1,3 +1,3 @@
-from .report_panel import ReportPanel
+from .reports_widget import ReportsWidget
 
-__all__ = ["ReportPanel"]
+__all__ = ["ReportsWidget"]

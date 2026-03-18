@@ -232,18 +232,9 @@ class Ui_PowerBISummarizerDialog(object):
         self.stackedWidget.addWidget(self.pageResultados)
 
         self.pageRelatorios = QWidget()
-        relatorios_layout = QHBoxLayout(self.pageRelatorios)
+        relatorios_layout = QVBoxLayout(self.pageRelatorios)
         relatorios_layout.setContentsMargins(0, 0, 0, 0)
-        relatorios_layout.setSpacing(6)
-
-        self.reportCanvasContainer = QWidget(self.pageRelatorios)
-        self.reportCanvasContainer.setObjectName("reportCanvasContainer")
-        self.reportCanvasContainer.setMinimumWidth(680)
-        relatorios_layout.addWidget(self.reportCanvasContainer, 3)
-
-        self.reportSidebarContainer = QWidget(self.pageRelatorios)
-        self.reportSidebarContainer.setObjectName("reportSidebarContainer")
-        relatorios_layout.addWidget(self.reportSidebarContainer, 1)
+        relatorios_layout.setSpacing(0)
 
         self.stackedWidget.addWidget(self.pageRelatorios)
 
