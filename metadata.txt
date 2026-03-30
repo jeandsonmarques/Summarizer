@@ -1,10 +1,10 @@
 [general]
-name=PowerBISummarizer
+name=Power BI Summarizer
 qgisMinimumVersion=3.34
-description=Resumo de dados e integração com Power BI
-version=1.0
+description=Data summarization and integration with Power BI
+version=1.0.0
 author=Jeandson Marques
 email=jeandsonnunes@icloud.com
-about=Plugin para sumarizar dados e exportar para Power BI
+about=Plugin to summarize data and export to Power BI
 category=Analysis
 icon=resources/icon.svg
