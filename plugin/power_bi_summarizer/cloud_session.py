@@ -26,7 +26,7 @@ _HERE = os.path.dirname(__file__)
 _CLOUD_SAMPLES_DIR = os.path.join(_HERE, "resources", "cloud_samples")
 REQUEST_TIMEOUT = 15
 ACTIVE_CONNECTION_KEY = "PowerBISummarizer/cloud/active_connection"
-ADMIN_EMAIL = "admin@demo.dev"
+ADMIN_EMAIL = "admin@demo.dev"  # Demo/mock mode helper only.
 AUTHCFG_SETTINGS_KEY = "PowerBISummarizer/cloud/authcfg_id"
 TOKEN_REFRESH_THRESHOLD = 300  # seconds
 
@@ -238,7 +238,7 @@ class PowerBICloudSession(QObject):
 
     def _default_config(self) -> Dict:
         return {
-            "base_url": sanitize_base_url("https://cloud.powerbisummarizer.dev/api/v1"),
+            "base_url": "",
             "login_endpoint": "/login",
             "layers_endpoint": sanitize_layers_endpoint("layers"),
             "hosting_ready": False,

@@ -1,10 +1,26 @@
 [general]
-name=PowerBISummarizer
+; Replace the placeholder URLs below before uploading to the official QGIS repository.
+name=Power BI Summarizer
 qgisMinimumVersion=3.34
-description=Resumo de dados e integração com Power BI
-version=1.0
+qgisMaximumVersion=3.99
+description=Summarize QGIS layers and prepare Power BI-ready outputs.
+about=Power BI Summarizer helps analysts explore project layers, build summaries,
+    prepare dashboard-ready tables, and export results for downstream reporting.
+    Core workflows run locally inside QGIS.
+    Optional cloud workflows require a separately deployed backend service,
+    reachable API endpoints, and a user account configured by the deployment owner.
+    Optional AI-assisted interpretation features may also require extra local or remote services.
+version=1.0.0
 author=Jeandson Marques
-email=plugin@example.com
-about=Plugin para sumarizar dados e exportar para Power BI
-category=Analysis
-icon=resources/icon.svg
+email=jeandsonnunes@icloud.com
+repository=<PUBLIC_REPOSITORY_URL>
+homepage=<README_OR_PROJECT_PAGE_URL>
+tracker=<ISSUES_URL>
+changelog=1.0.0 - Repository reorganized for future QGIS publication.
+    Added packaging boundaries, publication metadata and baseline documentation.
+tags=power bi, reporting, dashboard, summary, postgis, cloud
+icon=resources/icon.png
+experimental=True
+deprecated=False
+hasProcessingProvider=False
+plugin_dependencies=

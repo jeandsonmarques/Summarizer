@@ -1,18 +1,31 @@
 import json
+import sys
+from pathlib import Path
 
-from .operation_planner import OperationPlanner
-from .dictionary_service import build_dictionary_service
-from .ollama_fallback_service import OllamaFallbackService
-from .query_preprocessor import QueryPreprocessor
-from .conversation_state import ActiveQueryState, ConversationState
-from .context_merge_engine import ContextMergeEngine
-from .field_role_resolver import FieldRoleResolver
-from .followup_resolver import FollowupResolver
-from .result_models import FieldSchema, LayerSchema, MetricSpec, ProjectSchema, QueryPlan, QueryResult
-from .schema_context_builder import SchemaContextBuilder
-from .schema_linker_service import SchemaLinkerService
-from .text_utils import normalize_text
-from .report_context_memory import ReportContextMemory
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from plugin.power_bi_summarizer.report_view.context_merge_engine import ContextMergeEngine
+from plugin.power_bi_summarizer.report_view.conversation_state import ActiveQueryState, ConversationState
+from plugin.power_bi_summarizer.report_view.dictionary_service import build_dictionary_service
+from plugin.power_bi_summarizer.report_view.field_role_resolver import FieldRoleResolver
+from plugin.power_bi_summarizer.report_view.followup_resolver import FollowupResolver
+from plugin.power_bi_summarizer.report_view.ollama_fallback_service import OllamaFallbackService
+from plugin.power_bi_summarizer.report_view.operation_planner import OperationPlanner
+from plugin.power_bi_summarizer.report_view.query_preprocessor import QueryPreprocessor
+from plugin.power_bi_summarizer.report_view.report_context_memory import ReportContextMemory
+from plugin.power_bi_summarizer.report_view.result_models import (
+    FieldSchema,
+    LayerSchema,
+    MetricSpec,
+    ProjectSchema,
+    QueryPlan,
+    QueryResult,
+)
+from plugin.power_bi_summarizer.report_view.schema_context_builder import SchemaContextBuilder
+from plugin.power_bi_summarizer.report_view.schema_linker_service import SchemaLinkerService
+from plugin.power_bi_summarizer.report_view.text_utils import normalize_text
 
 
 def _field(

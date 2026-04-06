@@ -377,7 +377,7 @@ class PowerBICloudDialog(SlimDialogBase):
             QMessageBox.warning(
                 self,
                 "Sessao invalida",
-                "Voce precisa estar logado como admin@demo.dev para criar usuarios.",
+                "Voce precisa estar autenticado com uma conta administradora do Cloud para criar usuarios.",
             )
             return
 
@@ -414,7 +414,7 @@ class PowerBICloudDialog(SlimDialogBase):
             QMessageBox.warning(
                 self,
                 "Sem permissao",
-                "Sessao expirada ou sem permissao. Faca login novamente como admin@demo.dev.",
+                "Sessao expirada ou sem permissao. Faca login novamente com uma conta administradora do Cloud.",
             )
             return
 

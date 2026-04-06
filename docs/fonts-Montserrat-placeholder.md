@@ -1,11 +1,5 @@
+# Montserrat Font Note
 
-As fontes Montserrat não estão inclusas neste pacote.
-Para obter a aparência idêntica em qualquer máquina, baixe os arquivos TTF no Google Fonts
-(https://fonts.google.com/specimen/Montserrat) e coloque-os nesta pasta:
+The plugin does not bundle Montserrat font files.
 
-resources/fonts/Montserrat/
-  - Montserrat-Regular.ttf
-  - Montserrat-Medium.ttf
-  - Montserrat-SemiBold.ttf
-
-Se preferir, instale Montserrat no sistema operacional (será usado como fallback).
+The UI falls back to common system fonts when Montserrat is not installed. If you want pixel-perfect parity with the original mockups during development, install Montserrat locally on the operating system instead of bundling placeholder font files in the plugin package.
