@@ -40,7 +40,7 @@ class Ui_PowerBISummarizerDialog(object):
         header_layout.setSpacing(10)
 
         self.logo_label = QLabel()
-        logo_icon = svg_icon("Power-BI.svg")
+        logo_icon = svg_icon("PowerPages.svg")
         if not logo_icon.isNull():
             self.logo_label.setPixmap(logo_icon.pixmap(QSize(40, 40)))
         header_layout.addWidget(self.logo_label, 0, Qt.AlignLeft | Qt.AlignVCenter)

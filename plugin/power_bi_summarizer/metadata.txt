@@ -20,7 +20,7 @@ changelog=0.1.0 - Initial publication hardening pass for future QGIS upload.
     Reworked packaging boundaries, publication metadata, cloud safety notes and client network handling.
 category=Database
 tags=power bi, reporting, analytics, dashboard, database, postgis, cloud
-icon=resources/icon.png
+icon=resources/icon.svg
 experimental=True
 deprecated=False
 hasProcessingProvider=False

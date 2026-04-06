@@ -38,7 +38,7 @@ SUPPORTED_DRIVERS = {
 }
 
 
-ROOT_ICON = svg_icon("Power-BI.svg")
+ROOT_ICON = svg_icon("PowerPages.svg")
 CONNECTION_ICON = ROOT_ICON
 TABLE_ICON = svg_icon("Table.svg")
 OFFLINE_ICON = QgsApplication.getThemeIcon("/mIconDisconnected.svg")

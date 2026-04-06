@@ -124,7 +124,7 @@ class PowerBISummarizer:
         return QCoreApplication.translate("PowerBISummarizer", message)
 
     def initGui(self):
-        plugin_icon = svg_icon("Power-BI.svg")
+        plugin_icon = svg_icon("PowerPages.svg")
         self.action = QAction(
             plugin_icon,
             self.tr("Power BI Summarizer"),
@@ -241,7 +241,7 @@ class PowerBISummarizerDialog(QDialog):
         self.external_df = None
         self.external_last_path_key = "PowerBISummarizer/external/lastPath"
 
-        self.setWindowIcon(svg_icon("Power-BI.svg"))
+        self.setWindowIcon(svg_icon("PowerPages.svg"))
 
         context = palette_context()
         base_font = QFont(context.get("font_family", "Segoe UI"))

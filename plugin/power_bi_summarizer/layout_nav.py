@@ -87,7 +87,7 @@ class SidebarController:
         self.export_button.setIconSize(QSize(20, 20))
         self.export_button.setProperty("navIcon", "true")
         self.export_button.setProperty("active", False)
-        export_icon_path = os.path.join(os.path.dirname(__file__), "resources", "icons", "PowerPages.svg")
+        export_icon_path = os.path.join(os.path.dirname(__file__), "resources", "icons", "icon_export.svg")
         if os.path.exists(export_icon_path):
             self.export_button.setIcon(QIcon(export_icon_path))
         layout.addWidget(self.export_button, 0, Qt.AlignBottom)

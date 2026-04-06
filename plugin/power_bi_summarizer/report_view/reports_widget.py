@@ -46,6 +46,7 @@ EXAMPLE_QUERIES = [
 
 PREVIEW_ROWS = 6
 MAX_TABLE_ROWS = 50
+REPORTS_FONT_SCALE = 1.2
 
 
 REPORTS_STYLE_TEMPLATE = Template(
@@ -275,6 +276,9 @@ REPORTS_STYLE_TEMPLATE = Template(
 
 
 def _reports_style_context() -> Dict[str, str]:
+    def _scaled_font(value: int) -> str:
+        return str(int(round(float(value) * REPORTS_FONT_SCALE)))
+
     return {
         "surface": COLORS.get("color_surface", "#FFFFFF"),
         "surface_hover": "#F8FAFC",
@@ -293,13 +297,13 @@ def _reports_style_context() -> Dict[str, str]:
             "font_ui_stack",
             '"Segoe UI Variable Text", "Segoe UI", Arial, sans-serif',
         ),
-        "font_page_title_px": str(TYPOGRAPHY.get("font_page_title_px", 24)),
-        "font_section_title_px": str(TYPOGRAPHY.get("font_section_title_px", 16)),
-        "font_body_px": str(TYPOGRAPHY.get("font_body_px", 13)),
-        "font_secondary_px": str(TYPOGRAPHY.get("font_secondary_px", 12)),
-        "font_caption_px": str(TYPOGRAPHY.get("font_caption_px", 11)),
-        "font_button_px": str(TYPOGRAPHY.get("font_button_px", 13)),
-        "font_chip_px": str(TYPOGRAPHY.get("font_chip_px", 12)),
+        "font_page_title_px": _scaled_font(TYPOGRAPHY.get("font_page_title_px", 24)),
+        "font_section_title_px": _scaled_font(TYPOGRAPHY.get("font_section_title_px", 16)),
+        "font_body_px": _scaled_font(TYPOGRAPHY.get("font_body_px", 13)),
+        "font_secondary_px": _scaled_font(TYPOGRAPHY.get("font_secondary_px", 12)),
+        "font_caption_px": _scaled_font(TYPOGRAPHY.get("font_caption_px", 11)),
+        "font_button_px": _scaled_font(TYPOGRAPHY.get("font_button_px", 13)),
+        "font_chip_px": _scaled_font(TYPOGRAPHY.get("font_chip_px", 12)),
         "font_weight_regular": str(TYPOGRAPHY.get("font_weight_regular", 400)),
         "font_weight_medium": str(TYPOGRAPHY.get("font_weight_medium", 500)),
         "font_weight_semibold": str(TYPOGRAPHY.get("font_weight_semibold", 600)),
