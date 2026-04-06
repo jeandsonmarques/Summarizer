@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
-from qgis.PyQt.QtCore import QObject, QSettings, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QObject, QSettings, pyqtSignal
 from qgis.PyQt.QtWidgets import QAction, QMessageBox, QWidget, QDialog
 
 from qgis.core import (
@@ -25,8 +25,8 @@ from qgis.core import (
 from qgis.gui import QgsGui
 
 from .cloud_session import cloud_session
-from .cloud_dialogs import open_cloud_dialog
 from .quick_connect_dialogs import PostgresQuickConnectDialog
+from .utils.plugin_logging import log_info, log_warning
 from .utils.resources import svg_icon
 SAVED_CONNECTIONS_KEY = "PowerBISummarizer/integration/saved_connections"
 SUPPORTED_DRIVERS = {
@@ -271,11 +271,11 @@ class PowerBIRootItem(QgsDataCollectionItem):
         saved = [conn for conn in connection_registry.saved_connections() if conn.get("fingerprint") != payload["fingerprint"]]
         saved.insert(0, payload)
         connection_registry.replace_saved_connections(saved, persist=True)
-        print("[PowerBI Summarizer] Conexao PostgreSQL adicionada via Navegador.")
+        log_info("Conexao PostgreSQL adicionada via Navegador.")
         QMessageBox.information(
             parent,
             "PowerBI Summarizer",
-            f"Conexao '{payload.get('name')}' salva. Expanda o nó novamente para ver as tabelas.",
+            f"Conexao '{payload.get('name')}' salva. Expanda o no novamente para ver as tabelas.",
         )
 
 
@@ -295,7 +295,7 @@ class PowerBICloudRootItem(QgsDataCollectionItem):
         cloud_session.layersChanged.connect(self.refresh)
         global _CLOUD_NODE_LOGGED
         if not _CLOUD_NODE_LOGGED:
-            print("[PowerBI Cloud] Nó do Navegador carregado.")
+            log_info("No PowerBI Cloud carregado no Navegador.")
             _CLOUD_NODE_LOGGED = True
 
     def createChildren(self) -> List[QgsDataItem]:
@@ -382,10 +382,7 @@ class PowerBICloudLayerItem(QgsLayerItem):
         path = f"{parent.path()}/{layer_id}"
         raw_source = self.meta.get("source") or ""
         provider = (self.meta.get("provider") or "ogr").lower()
-        provider_raw = (self.meta.get("provider_raw") or provider).lower()
         source = raw_source
-        if provider_raw == "gpkg":
-            print(f"[PowerBI Cloud] Layer item using source (repr): {source!r}")
         provider = self.meta.get("provider") or "ogr"
         layer_type = Qgis.BrowserLayerType.Vector
         super().__init__(parent, name, path, source, layer_type, provider)
@@ -451,11 +448,7 @@ class PowerBICloudLayerItem(QgsLayerItem):
         try:
             cloud_session.delete_cloud_layer(layer_id)
         except Exception as exc:
-            QgsMessageLog.logMessage(
-                f"PowerBI Cloud falha ao excluir camada {layer_name}: {exc}",
-                "PowerBI Summarizer",
-                Qgis.Warning,
-            )
+            log_warning(f"PowerBI Cloud falha ao excluir camada {layer_name}: {exc}")
             QMessageBox.warning(None, "PowerBI Cloud", f"Falha ao excluir camada:\n{exc}")
             return
         parent_item = self.parent()
@@ -742,11 +735,7 @@ def reload_cloud_catalog(force_remote_only: Optional[bool] = None) -> None:
     try:
         cloud_session.reload_cloud_layers(force_remote_only=force_remote)
     except Exception as exc:
-        QgsMessageLog.logMessage(
-            f"PowerBI Cloud falhou ao recarregar catalogo: {exc}",
-            "PowerBI Summarizer",
-            Qgis.Warning,
-        )
+        log_warning(f"PowerBI Cloud falhou ao recarregar catalogo: {exc}")
     _refresh_browser_model()
 
 

@@ -26,6 +26,27 @@ def _json_loads(payload: Any, fallback):
         return fallback
 
 
+QUERY_HISTORY_MUTABLE_COLUMNS = {
+    "user_id",
+    "session_id",
+    "raw_query",
+    "normalized_query",
+    "intent",
+    "metric",
+    "entity",
+    "filters_json",
+    "hypotheses_json",
+    "chosen_hypothesis_json",
+    "confidence",
+    "execution_payload_json",
+    "execution_result_summary",
+    "success_flag",
+    "error_message",
+    "duration_ms",
+    "source_context_json",
+}
+
+
 class IQueryMemoryRepository(ABC):
     @abstractmethod
     def create(self, record: QueryHistoryRecord) -> QueryHistoryRecord:
@@ -131,6 +152,8 @@ class QueryMemoryRepository(IQueryMemoryRepository):
             return
         encoded = {}
         for key, value in changes.items():
+            if key not in QUERY_HISTORY_MUTABLE_COLUMNS:
+                continue
             if key in {"filters_json", "hypotheses_json", "chosen_hypothesis_json", "execution_payload_json", "source_context_json"}:
                 encoded[key] = _json_dumps(value)
             elif key == "success_flag":
@@ -141,11 +164,14 @@ class QueryMemoryRepository(IQueryMemoryRepository):
                 encoded[key] = float(value or 0.0)
             else:
                 encoded[key] = value
+        if not encoded:
+            return
         columns = ", ".join(f"{column} = ?" for column in encoded.keys())
         values = list(encoded.values()) + [int(query_history_id)]
         with self.store.connection() as connection:
+            # Dynamic columns are restricted to QUERY_HISTORY_MUTABLE_COLUMNS above.
             connection.execute(
-                f"UPDATE query_history SET {columns} WHERE id = ?",
+                f"UPDATE query_history SET {columns} WHERE id = ?",  # nosec B608
                 values,
             )
 

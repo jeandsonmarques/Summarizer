@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -36,7 +34,8 @@ class PostgresQuickConnectDialog(SlimDialogBase):
 
         info = QLabel(
             "Informe os parametros da instancia PostgreSQL. A conexao sera salva localmente "
-            "no registro do plugin e exibida imediatamente no Navegador.",
+            "no registro do plugin e exibida imediatamente no Navegador. "
+            "Salve a senha apenas se confiar nesta estacao de trabalho.",
             self,
         )
         info.setWordWrap(True)
@@ -77,7 +76,7 @@ class PostgresQuickConnectDialog(SlimDialogBase):
         layout.addLayout(form)
 
         self.save_password_cb = QCheckBox("Salvar senha junto com a conexao", self)
-        self.save_password_cb.setChecked(True)
+        self.save_password_cb.setChecked(False)
         layout.addWidget(self.save_password_cb)
 
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)

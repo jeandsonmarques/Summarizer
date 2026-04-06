@@ -5,16 +5,24 @@ import os
 import re
 from time import perf_counter, time
 from typing import Any, Dict, Optional, Sequence
-from urllib.request import Request, urlopen
-
 try:
     from qgis.PyQt.QtCore import QSettings
 except Exception:  # pragma: no cover - smoke tests can run without QGIS
     QSettings = None
 
-from .report_logging import log_info, log_warning
-from .result_models import ChartSpec, FilterSpec, InterpretationResult, MetricSpec, ProjectSchema, QueryPlan
-from .text_utils import normalize_text
+try:
+    from ..utils.networking import NetworkError, request_json
+except ImportError:  # pragma: no cover - supports running report_view as a top-level package
+    from utils.networking import NetworkError, request_json
+
+try:
+    from .report_logging import log_info, log_warning
+    from .result_models import ChartSpec, FilterSpec, InterpretationResult, MetricSpec, ProjectSchema, QueryPlan
+    from .text_utils import normalize_text
+except ImportError:  # pragma: no cover - supports running report_view as a top-level package
+    from report_logging import log_info, log_warning
+    from result_models import ChartSpec, FilterSpec, InterpretationResult, MetricSpec, ProjectSchema, QueryPlan
+    from text_utils import normalize_text
 
 
 DEFAULT_OLLAMA_URL = os.getenv("POWERBISUMMARIZER_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
@@ -23,6 +31,7 @@ DEFAULT_OLLAMA_THRESHOLD = float(os.getenv("POWERBISUMMARIZER_OLLAMA_THRESHOLD",
 DEFAULT_OLLAMA_TIMEOUT_S = float(os.getenv("POWERBISUMMARIZER_OLLAMA_TIMEOUT_S", "1.6") or 1.6)
 
 ENABLE_OLLAMA_KEY = "PowerBISummarizer/reports/enable_ollama"
+OLLAMA_URL_KEY = "PowerBISummarizer/reports/ollama_url"
 OLLAMA_MODEL_KEY = "PowerBISummarizer/reports/ollama_model"
 OLLAMA_THRESHOLD_KEY = "PowerBISummarizer/reports/ollama_threshold"
 
@@ -358,6 +367,13 @@ class OllamaFallbackService:
             ),
             default=True,
         )
+        ollama_url = str(
+            self._settings_value(
+                OLLAMA_URL_KEY,
+                os.getenv("POWERBISUMMARIZER_OLLAMA_URL", DEFAULT_OLLAMA_URL),
+            )
+            or DEFAULT_OLLAMA_URL
+        ).strip().rstrip("/")
         ollama_model = str(
             self._settings_value(
                 OLLAMA_MODEL_KEY,
@@ -374,14 +390,15 @@ class OllamaFallbackService:
         )
         return {
             "enable_ollama": enable_ollama,
+            "ollama_url": ollama_url or DEFAULT_OLLAMA_URL,
             "ollama_model": ollama_model or DEFAULT_OLLAMA_MODEL,
             "ollama_threshold": min(max(float(ollama_threshold), 0.0), 1.0),
             "ollama_timeout_s": self.timeout_s,
-            "ollama_url": self.base_url,
         }
 
     def is_available(self, force_refresh: bool = False) -> bool:
         config = self.load_config()
+        self.base_url = str(config.get("ollama_url") or self.base_url).rstrip("/")
         if not config["enable_ollama"]:
             return False
         now = time()
@@ -431,6 +448,7 @@ class OllamaFallbackService:
 
     def call_ollama(self, prompt: str) -> Optional[Dict[str, Any]]:
         config = self.load_config()
+        self.base_url = str(config.get("ollama_url") or self.base_url).rstrip("/")
         if not self.is_available():
             return None
 
@@ -751,24 +769,29 @@ class OllamaFallbackService:
         return plan
 
     def _http_get_json(self, url: str) -> Dict[str, Any]:
-        request = Request(url, headers={"Accept": "application/json"}, method="GET")
-        with urlopen(request, timeout=self.timeout_s) as response:
-            payload = response.read().decode("utf-8", errors="replace")
-        return json.loads(payload or "{}")
+        try:
+            response = request_json(
+                "GET",
+                url,
+                headers={"Accept": "application/json"},
+                timeout_s=self.timeout_s,
+            )
+        except NetworkError as exc:
+            raise RuntimeError(str(exc)) from exc
+        return response.json(default={}) or {}
 
     def _http_post_json(self, url: str, body: Dict[str, Any]) -> Dict[str, Any]:
-        request = Request(
-            url,
-            data=json.dumps(body).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
-        with urlopen(request, timeout=self.timeout_s) as response:
-            payload = response.read().decode("utf-8", errors="replace")
-        return json.loads(payload or "{}")
+        try:
+            response = request_json(
+                "POST",
+                url,
+                payload=body,
+                headers={"Accept": "application/json"},
+                timeout_s=self.timeout_s,
+            )
+        except NetworkError as exc:
+            raise RuntimeError(str(exc)) from exc
+        return response.json(default={}) or {}
 
     def _settings_value(self, key: str, default: Any) -> Any:
         if self.settings is None:

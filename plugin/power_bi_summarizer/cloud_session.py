@@ -7,26 +7,24 @@ import os
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
-
 from qgis.PyQt.QtCore import QObject, QDateTime, QSettings, Qt, pyqtSignal
 from qgis.core import Qgis, QgsApplication, QgsAuthMethodConfig, QgsDataSourceUri, QgsMessageLog
 
-try:  # pragma: no cover - QGIS ships requests by default
-    import requests
-    from requests import RequestException
-except ImportError:  # pragma: no cover - fallback when requests isn't available
-    requests = None  # type: ignore
-
-    class RequestException(Exception):
-        """Fallback exception used when requests is missing."""
-        pass
+from .utils.networking import (
+    NetworkError,
+    append_query_params,
+    redact_url,
+    request_json,
+    post_multipart,
+)
+from .utils.plugin_logging import log_info, log_warning
 
 
 _HERE = os.path.dirname(__file__)
 _CLOUD_SAMPLES_DIR = os.path.join(_HERE, "resources", "cloud_samples")
 REQUEST_TIMEOUT = 15
 ACTIVE_CONNECTION_KEY = "PowerBISummarizer/cloud/active_connection"
-ADMIN_EMAIL = "admin@demo.dev"  # Demo/mock mode helper only.
+MOCK_ADMIN_EMAIL = (os.getenv("POWERBISUMMARIZER_MOCK_ADMIN_EMAIL", "") or "").strip().lower()
 AUTHCFG_SETTINGS_KEY = "PowerBISummarizer/cloud/authcfg_id"
 TOKEN_REFRESH_THRESHOLD = 300  # seconds
 
@@ -124,7 +122,7 @@ def build_gpkg_vsicurl_path(
         raise ValueError("ID da camada invalido para download GPKG.")
     download_url = f"{clean_base_url.rstrip('/')}/{clean_endpoint}/{identifier}/download-gpkg"
     if token:
-        download_url = f"{download_url}?token={token}"
+        download_url = append_query_params(download_url, {"token": token})
     vsicurl_path = f"/vsicurl/{download_url}"
     return download_url, vsicurl_path
 
@@ -415,7 +413,7 @@ class PowerBICloudSession(QObject):
             with open(path, "r", encoding="utf-8") as handler:
                 payload = json.load(handler)
         except Exception as exc:
-            print(f"[PowerBI Cloud] Falha ao carregar mock_layers.json: {exc}")
+            log_warning(f"Falha ao carregar mock_layers.json: {exc}")
             payload = {}
         connections = payload.get("connections") if isinstance(payload, dict) else None
         if not isinstance(connections, list):
@@ -433,13 +431,13 @@ class PowerBICloudSession(QObject):
             {
                 "id": "mock_corporativo",
                 "name": "Painel corporativo (mock)",
-                "description": "Coleção de camadas locais para testes.",
+                "description": "Colecao de camadas locais para testes.",
                 "status": "online",
                 "layers": [
                     CloudLayer(
                         id="clientes_sp",
                         name="Clientes SP (mock)",
-                        description="Clientes georreferenciados em São Paulo.",
+                        description="Clientes georreferenciados em Sao Paulo.",
                         source=clientes,
                         geometry="Point",
                         tags=["clientes", "mock"],
@@ -494,9 +492,9 @@ class PowerBICloudSession(QObject):
         return connections[0] if connections else None
 
     def _build_postgis_source(self, conn: Optional[Dict], layer_payload: Dict) -> Optional[str]:
-        """Monta a string de conexão PostGIS a partir da conexão salva."""
+        """Monta a string de conexao PostGIS a partir da conexao salva."""
         if not conn:
-            print("[PowerBI Cloud] Nenhuma conexão ativa configurada para PostGIS.")
+            log_warning("Nenhuma conexao ativa configurada para PostGIS.")
             return None
 
         uri = QgsDataSourceUri()
@@ -548,20 +546,17 @@ class PowerBICloudSession(QObject):
         payload: Optional[Dict] = None,
         headers: Optional[Dict[str, str]] = None,
     ) -> Any:
-        if requests is None:
-            raise RuntimeError("O modulo 'requests' nao esta disponivel no ambiente do QGIS.")
         url = self._build_url(endpoint or "")
         try:
-            response = requests.request(
+            response = request_json(
                 method.upper(),
                 url,
-                json=payload,
+                payload=payload,
                 headers=headers or {},
-                timeout=REQUEST_TIMEOUT,
+                timeout_s=REQUEST_TIMEOUT,
             )
-            response.raise_for_status()
-        except RequestException as exc:
-            raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({url}): {exc}") from exc
+        except NetworkError as exc:
+            raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({redact_url(url)}): {exc}") from exc
         try:
             return response.json()
         except ValueError as exc:
@@ -569,15 +564,20 @@ class PowerBICloudSession(QObject):
 
     def _fetch_profile(self, token: str, token_type: str) -> Dict:
         """Fetches /me to enrich session with role/id info. Best effort; ignores failures."""
-        if requests is None:
-            return {}
         prefix = "Bearer" if (token_type or "").lower() == "bearer" else (token_type or "Bearer").capitalize()
         headers = {"Authorization": f"{prefix} {token}"}
         url = self._build_url("/me")
         try:
-            response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-            data = response.json()
+            response = request_json(
+                "GET",
+                url,
+                headers=headers,
+                raise_for_status=False,
+                timeout_s=REQUEST_TIMEOUT,
+            )
+            if response.status_code < 200 or response.status_code >= 300:
+                return {}
+            data = response.json(default={})
             return data if isinstance(data, dict) else {}
         except Exception:
             return {}
@@ -623,7 +623,7 @@ class PowerBICloudSession(QObject):
         seed = f"{username}:{uuid.uuid4().hex}"
         token = hashlib.sha256(seed.encode("utf-8")).hexdigest()
         issued = QDateTime.currentDateTime().toString(Qt.ISODate)
-        role = "admin" if username.strip().lower() == ADMIN_EMAIL else "user"
+        role = "admin" if MOCK_ADMIN_EMAIL and username.strip().lower() == MOCK_ADMIN_EMAIL else "user"
         session = {
             "username": username,
             "token": token[:48],
@@ -646,22 +646,23 @@ class PowerBICloudSession(QObject):
 
     def create_cloud_user(self, *, email: str, password: str) -> Tuple[int, Dict]:
         """Dispara POST /api/v1/admin/create-user reaproveitando a configuracao atual."""
-        if requests is None:
-            raise RuntimeError("O modulo 'requests' nao esta disponivel no ambiente do QGIS.")
         # Chamada direta para /api/v1/admin/create-user usando o token atual.
         url = self._build_url("/admin/create-user")
         headers = dict(self._auth_headers())
-        headers.setdefault("Content-Type", "application/json")
         payload = {"email": email, "password": password}
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
-        except RequestException as exc:
-            raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({url}): {exc}") from exc
-        try:
-            data = response.json()
-        except ValueError:
-            data = {}
-        return response.status_code, data
+            response = request_json(
+                "POST",
+                url,
+                payload=payload,
+                headers=headers,
+                raise_for_status=False,
+                timeout_s=REQUEST_TIMEOUT,
+            )
+        except NetworkError as exc:
+            raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({redact_url(url)}): {exc}") from exc
+        data = response.json(default={})
+        return response.status_code, data if isinstance(data, dict) else {}
 
     def upload_layer_gpkg(
         self,
@@ -673,11 +674,8 @@ class PowerBICloudSession(QObject):
         group_name: Optional[str] = None,
     ) -> Tuple[int, Dict]:
         """Envia um GPKG real para /api/v1/admin/upload-layer-gpkg usando o token atual."""
-        if requests is None:
-            raise RuntimeError("O modulo 'requests' nao esta disponivel no ambiente do QGIS.")
         url = self._build_url("/admin/upload-layer-gpkg")
         headers = dict(self._auth_headers())
-        headers.pop("Content-Type", None)  # requests define boundary para multipart
 
         data: Dict[str, str] = {
             "name": name,
@@ -692,23 +690,23 @@ class PowerBICloudSession(QObject):
         )
 
         with open(file_path, "rb") as handler:
-            files = {"file": (os.path.basename(file_path), handler, "application/octet-stream")}
             try:
-                response = requests.post(
+                response = post_multipart(
                     url,
-                    data=data,
-                    files=files,
+                    fields=data,
+                    file_field="file",
+                    file_name=os.path.basename(file_path),
+                    file_bytes=handler.read(),
+                    file_content_type="application/octet-stream",
                     headers=headers,
-                    timeout=REQUEST_TIMEOUT,
+                    raise_for_status=False,
+                    timeout_s=REQUEST_TIMEOUT,
                 )
-            except RequestException as exc:
-                raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({url}): {exc}") from exc
+            except NetworkError as exc:
+                raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({redact_url(url)}): {exc}") from exc
 
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = {}
-        return response.status_code, payload
+        payload = response.json(default={})
+        return response.status_code, payload if isinstance(payload, dict) else {}
 
     def _should_use_remote_layers(self) -> bool:
         if not self.hosting_ready():
@@ -753,36 +751,23 @@ class PowerBICloudSession(QObject):
             if raw_provider == "gpkg":
                 download_url, vsicurl_path = build_gpkg_vsicurl_path(base_url, layers_endpoint, layer_id, token)
                 QgsMessageLog.logMessage(
-                    f"PowerBI Cloud GPKG URL: {download_url}",
-                    "PowerBI Summarizer",
-                    Qgis.Info,
-                )
-                QgsMessageLog.logMessage(
-                    f"PowerBI Cloud VSICURL path: {vsicurl_path}",
-                    "PowerBI Summarizer",
-                    Qgis.Info,
-                )
-                QgsMessageLog.logMessage(
-                    f"PowerBI Cloud FINAL SOURCE (repr): {vsicurl_path!r}",
+                    f"PowerBI Cloud GPKG endpoint configurado: {redact_url(download_url)}",
                     "PowerBI Summarizer",
                     Qgis.Info,
                 )
                 # GDAL suporta HTTP via /vsicurl
                 source = vsicurl_path
                 provider_key = "ogr"
-                print(f"[PowerBI Cloud] Camada {name} (GPKG) URL: {download_url}")
             elif raw_provider in ("postgres", "postgis"):
                 source = self._build_postgis_source(conn_meta, {**item, "schema": schema_name, "name": name})
                 provider_key = "postgres"
                 tags.append("postgis")
-                if source and conn_meta:
-                    print(f"[PowerBI Cloud] Camada {name} (PostGIS) usando {conn_meta.get('host','')}")
             else:
                 source = item.get("uri") or item.get("source") or ""
                 provider_key = item.get("provider") or "ogr"
 
             if not source:
-                print(f"[PowerBI Cloud] Ignorando camada {name}: origem nao resolvida (provider={raw_provider}).")
+                log_warning(f"Ignorando camada {name}: origem nao resolvida (provider={raw_provider}).")
                 continue
 
             layer = CloudLayer(
@@ -822,8 +807,6 @@ class PowerBICloudSession(QObject):
 
     # ------------------------------------------------------------------ Public API
     def delete_cloud_layer(self, layer_id: Any) -> Dict:
-        if requests is None:
-            raise RuntimeError("O modulo 'requests' nao esta disponivel no ambiente do QGIS.")
         if not self._should_use_remote_layers():
             raise RuntimeError("Exclusao remota disponivel apenas quando conectado ao Cloud real.")
         identifier = str(layer_id).strip()
@@ -849,7 +832,7 @@ class PowerBICloudSession(QObject):
         if role == "admin" or self._session.get("is_admin") is True:
             return True
         username = (self._session.get("username") or "").strip().lower()
-        return username == ADMIN_EMAIL
+        return bool(MOCK_ADMIN_EMAIL) and username == MOCK_ADMIN_EMAIL
 
     def session(self) -> Dict:
         return dict(self._session)
@@ -887,9 +870,9 @@ class PowerBICloudSession(QObject):
         self._apply_session(session)
         mode = self._session.get("mode") or "mock"
         if mode == "remote":
-            print(f"[PowerBI Cloud] Sessao remota autenticada para {username}.")
+            log_info(f"Sessao remota autenticada para {username}.")
         else:
-            print(f"[PowerBI Cloud] Sessao mock autenticada para {username}.")
+            log_info(f"Sessao mock autenticada para {username}.")
         return dict(self._session)
 
     def logout(self):
@@ -899,7 +882,7 @@ class PowerBICloudSession(QObject):
         self._session = {}
         self._persist_session()
         self._clear_connections(notify=True)
-        print(f"[PowerBI Cloud] Sessao encerrada para {username}.")
+        log_info(f"Sessao encerrada para {username}.")
         self.sessionChanged.emit({})
 
     def update_config(
@@ -937,7 +920,7 @@ class PowerBICloudSession(QObject):
             should_clear_catalog = bool(hosting_ready)
         if updated:
             self._persist_config()
-            print("[PowerBI Cloud] Configurações atualizadas.")
+            log_info("Configuracoes do Cloud atualizadas.")
             self.configChanged.emit(dict(self._config))
             if should_clear_catalog:
                 self._clear_connections(notify=True)
@@ -952,21 +935,21 @@ class PowerBICloudSession(QObject):
             try:
                 if self._should_use_remote_layers():
                     self._connections = self._fetch_remote_layers()
-                    print("[PowerBI Cloud] Catalogo remoto atualizado.")
+                    log_info("Catalogo remoto atualizado.")
                 elif force_remote:
                     self._connections = []
-                    print("[PowerBI Cloud] Hospedagem ativa: aguardando catalogo remoto.")
+                    log_info("Hospedagem ativa: aguardando catalogo remoto.")
                 else:
                     self._connections = self._load_mock_connections()
-                    print("[PowerBI Cloud] Catalogo mock atualizado.")
+                    log_info("Catalogo mock atualizado.")
             except Exception as exc:  # pragma: no cover - runtime safeguard
                 if force_remote:
-                    print(
-                        f"[PowerBI Cloud] Falha ao atualizar catalogo remoto: {exc}. Mantendo catalogo vazio (somente real)."
+                    log_warning(
+                        f"Falha ao atualizar catalogo remoto: {exc}. Mantendo catalogo vazio (somente real)."
                     )
                     self._connections = []
                 else:
-                    print(f"[PowerBI Cloud] Falha ao atualizar catalogo remoto: {exc}. Voltando ao mock.")
+                    log_warning(f"Falha ao atualizar catalogo remoto: {exc}. Voltando ao mock.")
                     self._connections = self._load_mock_connections()
             self.layersChanged.emit(self.cloud_connections())
         finally:
@@ -989,7 +972,7 @@ class PowerBICloudSession(QObject):
             text = f"Cloud conectado como {username}"
             level = "online"
         else:
-            text = f"Modo demo ativo ({username})"
+            text = f"Modo mock ativo ({username})"
             level = "sync"
         return {"text": text, "level": level, "issued": issued}
 

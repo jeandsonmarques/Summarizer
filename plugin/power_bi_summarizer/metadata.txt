@@ -10,15 +10,16 @@ about=Power BI Summarizer helps analysts explore project layers, build summaries
     Optional cloud workflows require a separately deployed backend service,
     reachable API endpoints, and a user account configured by the deployment owner.
     Optional AI-assisted interpretation features may also require extra local or remote services.
-version=1.0.0
+version=0.1.0
 author=Jeandson Marques
 email=jeandsonnunes@icloud.com
 repository=<PUBLIC_REPOSITORY_URL>
 homepage=<README_OR_PROJECT_PAGE_URL>
 tracker=<ISSUES_URL>
-changelog=1.0.0 - Repository reorganized for future QGIS publication.
-    Added packaging boundaries, publication metadata and baseline documentation.
-tags=power bi, reporting, dashboard, summary, postgis, cloud
+changelog=0.1.0 - Initial publication hardening pass for future QGIS upload.
+    Reworked packaging boundaries, publication metadata, cloud safety notes and client network handling.
+category=Database
+tags=power bi, reporting, analytics, dashboard, database, postgis, cloud
 icon=resources/icon.png
 experimental=True
 deprecated=False

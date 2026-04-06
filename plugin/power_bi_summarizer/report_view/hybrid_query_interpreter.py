@@ -11,6 +11,7 @@ from .report_context_memory import ReportContextMemory
 from .report_logging import log_info
 from .result_models import (
     CandidateInterpretation,
+    ChartSpec,
     CompositeOperandSpec,
     CompositeSpec,
     FilterSpec,

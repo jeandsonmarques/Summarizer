@@ -1,10 +1,10 @@
 # Power BI Summarizer
 
-Power BI Summarizer is a QGIS plugin for summarizing project layers, preparing reporting-ready tables, and supporting Power BI-oriented analysis workflows from inside QGIS.
+Power BI Summarizer is a QGIS plugin for summarizing QGIS layers, preparing reporting-ready tables, and supporting Power BI-oriented analysis workflows from inside QGIS.
 
 ## Overview
 
-The plugin combines local QGIS data exploration, report-style summaries, dashboard helpers, export utilities, and optional cloud connectivity in a single client package. It is designed so the QGIS plugin remains installable on its own while cloud infrastructure is deployed separately.
+The plugin combines local QGIS data exploration, report-style summaries, dashboard helpers, export utilities, and optional cloud connectivity in a single client package. The QGIS plugin is installable on its own, while the backend service used by cloud workflows is deployed separately and is not bundled in the plugin ZIP.
 
 ## Features
 
@@ -12,7 +12,7 @@ The plugin combines local QGIS data exploration, report-style summaries, dashboa
 - Build dashboard-oriented views and chart widgets inside QGIS.
 - Export datasets and derived outputs for downstream Power BI workflows.
 - Connect to optional cloud catalogs and remote layer delivery endpoints.
-- Support optional AI-assisted question interpretation for report generation.
+- Support optional AI-assisted interpretation for report generation.
 
 ## Installation
 
@@ -38,20 +38,44 @@ The generated archive will be written to `dist/`.
 2. Open `Power BI Summarizer` from the Plugins menu.
 3. Select project layers or imported datasets.
 4. Generate summaries, pivoted views, charts, or exportable outputs.
-5. Optionally configure cloud settings if you want remote catalog features.
+5. Configure cloud settings only if you need remote catalog workflows.
+
+## What works locally
+
+These workflows are available with the plugin alone:
+
+- summarize local QGIS layers
+- build pivoted or report-style views
+- export local results to supported output formats
+- use browser integration with local or saved database connections
+- use the sample mock catalog for non-production cloud UI testing
 
 ## Cloud features
 
-Some workflows depend on a separately deployed backend service and are not bundled in the plugin package.
+Cloud functionality is optional and is not required for the plugin to load or for local summarization workflows to work.
 
-Cloud features may require:
+The plugin includes:
 
-- a reachable HTTPS API endpoint
-- a deployment-specific account
-- deployment-specific permissions for upload or administration
-- additional backend storage or database configuration
+- a cloud client UI
+- session management
+- endpoint configuration
+- optional browser integration with remote layers
 
-If cloud features are not configured, the local plugin can still be used for local summarization workflows.
+The plugin does not include:
+
+- the `cloud-api/` backend
+- hosted storage
+- user provisioning outside the backend API
+- account recovery, hosting, or infrastructure operations
+
+Real cloud workflows require all of the following:
+
+- a separately deployed backend service
+- a reachable HTTP or HTTPS base URL
+- valid user credentials for that deployment
+- any required backend storage or database configuration
+
+If no backend is configured, the plugin still works for local summarization and can fall back to the sample mock catalog for non-production cloud screens.
 
 ## External dependencies
 
@@ -63,17 +87,18 @@ If cloud features are not configured, the local plugin can still be used for loc
 ### Optional Python or service dependencies
 
 - `pandas` for table-oriented processing used by several UI and reporting flows
-- `requests` for current cloud HTTP communication
+- the QGIS network stack for cloud HTTP communication inside QGIS
 - `langchain-openai` plus an OpenAI API key for optional LangChain-based interpretation
 - a local Ollama service for optional local fallback interpretation
 
-Optional dependencies are not required for the core plugin UI to load, but related features will remain unavailable until configured.
+Optional dependencies are not required for the core plugin UI to load, but related features remain unavailable until configured.
 
 ## Limitations
 
-- The plugin is currently scoped to QGIS 3 and is not yet declared ready for QGIS 4 / Qt6.
+- The plugin is currently scoped to QGIS 3 and is not yet declared ready for QGIS 4 or Qt6.
 - Cloud features depend on an external backend that must be deployed and operated separately.
-- Some network calls currently use Python HTTP libraries instead of `QgsNetworkAccessManager`; this should be revisited before public publication.
+- Remote GPKG access currently relies on a tokenized download URL for GDAL `/vsicurl/` access. This should be reviewed again before public publication.
+- Saved database connection passwords should be reviewed carefully before public publication. Prefer QGIS authentication storage when possible.
 - Optional AI features depend on services that may introduce cost, latency, network, or policy requirements.
 
 ## Support and issues

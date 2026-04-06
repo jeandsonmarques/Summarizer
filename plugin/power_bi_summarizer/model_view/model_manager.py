@@ -43,6 +43,7 @@ from .model_canvas_scene import ModelCanvasScene
 from .model_canvas_view import ModelCanvasView
 from .relationship_item import RelationshipItem
 from .table_card_item import TableCardItem
+from ..utils.plugin_logging import log_info
 
 
 class ModelManager:
@@ -606,8 +607,7 @@ class ModelManager:
     # ----------------------------------------------------------- Simple join (nivel 2)
     def _log(self, message: str):
         try:
-            QgsMessageLog.logMessage(message, "PowerBI Summarizer", level=Qgis.Info)
-            print(f"[PowerBI Summarizer] {message}")
+            log_info(message)
         except Exception:
             pass
 

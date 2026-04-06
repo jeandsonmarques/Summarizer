@@ -114,7 +114,7 @@ class PowerBICloudDialog(SlimDialogBase):
         session_layout.addWidget(self.session_detail, 4, 0, 1, 2)
 
         sync_layout = QHBoxLayout()
-        sync_layout.addWidget(QLabel("Ultima sincronizacao mock:", session_tab))
+        sync_layout.addWidget(QLabel("Ultima sincronizacao do catalogo:", session_tab))
         self.last_sync_label = QLabel("-", session_tab)
         sync_layout.addWidget(self.last_sync_label)
         sync_layout.addStretch(1)
@@ -288,7 +288,7 @@ class PowerBICloudDialog(SlimDialogBase):
             else:
                 message = (
                     f"Sessao mock ativa para {username}.\n"
-                    "Ative 'Hospedagem ativa' quando o deploy estiver pronto para usar o banco remoto."
+                    "Ative 'Hospedagem ativa' quando o backend estiver disponivel para usar o catalogo remoto."
                 )
             QMessageBox.information(
                 self,
@@ -654,7 +654,7 @@ class PowerBICloudDialog(SlimDialogBase):
                     session_details.append(f"Token expira em {self._format_timestamp(expires_at)}.")
                 session_details.append("Conectado ao banco remoto configurado.")
             else:
-                session_details.append("Modo demonstracao usando camadas mock.")
+                session_details.append("Modo mock usando catalogo local de exemplo.")
         else:
             session_details.append("Status: aguardando login.")
         self.session_detail.setText("\n".join(session_details))

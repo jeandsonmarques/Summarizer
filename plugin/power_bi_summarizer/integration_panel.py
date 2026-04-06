@@ -728,6 +728,9 @@ class IntegrationPanel(QWidget):
             or f"{connection.get('database', 'powerbi')}_{connection.get('user', '').strip() or 'user'}"
         )
         base = f"{prefix}/{conn_name}"
+        password = connection.get("password", "")
+        save_password = bool(password)
+        save_username = bool(connection.get("user", ""))
         settings = QSettings()
         settings.setValue(f"{prefix}/selected", conn_name)
         settings.setValue(f"{base}/service", connection.get("service", ""))
@@ -735,15 +738,18 @@ class IntegrationPanel(QWidget):
         settings.setValue(f"{base}/port", connection.get("port") or 0)
         settings.setValue(f"{base}/database", connection.get("database", ""))
         settings.setValue(f"{base}/username", connection.get("user", ""))
-        settings.setValue(f"{base}/password", connection.get("password", ""))
+        if save_password:
+            settings.setValue(f"{base}/password", password)
+        else:
+            settings.remove(f"{base}/password")
         settings.setValue(f"{base}/authcfg", connection.get("authcfg", ""))
         settings.setValue(f"{base}/sslmode", connection.get("sslmode", "SslDisable"))
         settings.setValue(f"{base}/publicOnly", False)
         settings.setValue(f"{base}/geometryColumnsOnly", False)
         settings.setValue(f"{base}/dontResolveType", False)
         settings.setValue(f"{base}/allowGeometrylessTables", True)
-        settings.setValue(f"{base}/saveUsername", True)
-        settings.setValue(f"{base}/savePassword", True)
+        settings.setValue(f"{base}/saveUsername", save_username)
+        settings.setValue(f"{base}/savePassword", save_password)
         settings.setValue(f"{base}/estimatedMetadata", False)
         settings.setValue(f"{base}/projectsInDatabase", False)
         settings.setValue(f"{base}/metadataInDatabase", False)
@@ -1767,6 +1773,34 @@ class DatabaseImportDialog(SlimDialogBase):
         while query.next():
             self.tables_combo.addItem(query.value(0))
 
+    def _quote_table_name(self, table_name: str, driver: str) -> Optional[str]:
+        value = str(table_name or "").strip()
+        if not value:
+            return None
+        available = {
+            str(self.tables_combo.itemText(index) or "").strip()
+            for index in range(self.tables_combo.count())
+        }
+        if value not in available:
+            return None
+        parts = [part.strip() for part in value.split(".") if part.strip()]
+        if len(parts) not in (1, 2):
+            return None
+        if driver == "PostgreSQL":
+            quoted_parts = []
+            for part in parts:
+                quoted_parts.append('"{}"'.format(part.replace('"', '""')))
+            return ".".join(quoted_parts)
+        return ".".join(f'[{part.replace("]", "]]")}]' for part in parts)
+
+    def _build_select_sql(self, quoted_table: str, driver: str, preview: bool) -> str:
+        if not preview:
+            # Table identifiers are selected from metadata and quoted per driver.
+            return f"SELECT * FROM {quoted_table}"  # nosec B608
+        if driver == "PostgreSQL":
+            return f"SELECT * FROM {quoted_table} LIMIT 120"  # nosec B608
+        return f"SELECT TOP 120 * FROM {quoted_table}"  # nosec B608
+
     def _retrieve(self, preview: bool):
         params = self._params()
         ok, db_or_error = self._create_connection(params)
@@ -1783,9 +1817,11 @@ class DatabaseImportDialog(SlimDialogBase):
                 QMessageBox.information(self, "Importar", "Selecione uma tabela.")
                 return
 
-            sql = f"SELECT * FROM {table}"
-            if preview:
-                sql += " LIMIT 120"
+            quoted_table = self._quote_table_name(table, params["driver"])
+            if not quoted_table:
+                QMessageBox.warning(self, "Importar", "Selecione uma tabela valida carregada da conexao.")
+                return
+            sql = self._build_select_sql(quoted_table, params["driver"], preview)
 
             query = QSqlQuery(db)
             if not query.exec_(sql):

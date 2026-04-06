@@ -1,7 +1,6 @@
 ﻿import base64
 import os
 import re
-import traceback
 from datetime import datetime
 from typing import Dict, Optional, List
 from string import Template
@@ -72,6 +71,7 @@ from .browser_integration import (
 from .model_view import ModelCanvasScene, ModelCanvasView, ModelManager
 from .cloud_session import cloud_session
 from .report_view import ReportsWidget
+from .utils.plugin_logging import log_error
 
 PROTECTED_COLUMNS_DEFAULT = {"__feature_id", "__geometry_wkb", "__target_feature_id"}
 
@@ -156,8 +156,7 @@ class PowerBISummarizer:
             self._browser_provider = None
             message = f"Falha ao registrar nó PowerBI Summarizer no Navegador: {exc}"
             QgsMessageLog.logMessage(message, "PowerBISummarizer", Qgis.Critical)
-            print(message)
-            traceback.print_exc()
+            log_error(message)
 
     def unload(self):
         for action in self.actions:

@@ -23,7 +23,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .report_view.visuals import PowerBIVisualWidget, VisualDefinition
-from .palette import COLORS, TYPOGRAPHY, MISC
+from .palette import COLORS, TYPOGRAPHY
 
 CHART_COLOR_SEQUENCE = [
     COLORS["color_primary"],

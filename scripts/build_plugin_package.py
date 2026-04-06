@@ -27,16 +27,24 @@ EXCLUDED_DIR_NAMES = {
 }
 
 EXCLUDED_FILE_NAMES = {
+    ".DS_Store",
+    ".env",
     "relatorios_debug.log",
     "relatorios_memory.sqlite3",
     "relatorios_memory.sqlite3-shm",
     "relatorios_memory.sqlite3-wal",
+    "Thumbs.db",
     "_tmp_orig.txt",
 }
 
 EXCLUDED_SUFFIXES = {
+    ".bak",
+    ".log",
     ".pyc",
     ".pyo",
+    ".sqlite",
+    ".sqlite3",
+    ".tmp",
 }
 
 
@@ -55,6 +63,8 @@ def validate_plugin_dir(plugin_dir: Path) -> None:
 
 def should_include(path: Path) -> bool:
     if any(part in EXCLUDED_DIR_NAMES for part in path.parts):
+        return False
+    if any(part.startswith(".") for part in path.parts):
         return False
     if path.name in EXCLUDED_FILE_NAMES:
         return False
