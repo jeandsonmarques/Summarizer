@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from math import log, sqrt
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from .domain_packs import ProjectPack, aliases_for_target, project_pack_signature
 from .query_preprocessor import PreprocessedQuestion, QueryPreprocessor
 from .result_models import FieldSchema, FilterSpec, LayerSchema, ProjectSchema, ProjectSchemaContext
 from .text_utils import normalize_compact, normalize_text, tokenize_text
@@ -95,11 +96,13 @@ class SchemaLinkerService:
         max_layer_candidates: int = 6,
         max_field_candidates: int = 10,
         max_value_candidates: int = 12,
+        project_pack: Optional[ProjectPack] = None,
     ):
         self.max_layer_candidates = max(3, int(max_layer_candidates))
         self.max_field_candidates = max(4, int(max_field_candidates))
         self.max_value_candidates = max(6, int(max_value_candidates))
-        self.preprocessor = QueryPreprocessor()
+        self.project_pack = project_pack
+        self.preprocessor = QueryPreprocessor(project_pack=project_pack)
         self._index_cache: Dict[Tuple, _SchemaIndex] = {}
 
     def clear_cache(self):
@@ -467,7 +470,7 @@ class SchemaLinkerService:
         schema: ProjectSchema,
         schema_context: ProjectSchemaContext,
     ) -> _SchemaIndex:
-        signature = self._schema_signature(schema)
+        signature = (self._schema_signature(schema), project_pack_signature(self.project_pack))
         if signature not in self._index_cache:
             self._index_cache[signature] = self._build_index(schema, schema_context)
         return self._index_cache[signature]
@@ -484,12 +487,14 @@ class SchemaLinkerService:
 
         for layer in schema.layers:
             context_layer = schema_context.layer_by_id(layer.layer_id)
+            layer_aliases = self._project_layer_aliases(layer.name)
             layer_text = normalize_text(
                 " ".join(
                     filter(
                         None,
                         [
                             layer.name,
+                            " ".join(layer_aliases),
                             layer.geometry_type,
                             layer.search_text,
                             getattr(context_layer, "summary_text", ""),
@@ -512,6 +517,7 @@ class SchemaLinkerService:
 
             for field in layer.fields:
                 field_roles = tuple(self._field_roles(layer, context_layer, field))
+                field_aliases = self._project_field_aliases(field.name)
                 field_text = normalize_text(
                     " ".join(
                         filter(
@@ -521,6 +527,7 @@ class SchemaLinkerService:
                                 layer.geometry_type,
                                 field.name,
                                 field.label,
+                                " ".join(field_aliases),
                                 field.search_text,
                                 " ".join(field_roles),
                             ],
@@ -550,6 +557,7 @@ class SchemaLinkerService:
                         continue
                     values.append(normalized_value)
                 for value in values:
+                    value_aliases = self._project_value_aliases(value)
                     value_text = normalize_text(
                         " ".join(
                             filter(
@@ -559,6 +567,7 @@ class SchemaLinkerService:
                                     field.name,
                                     field.label,
                                     value,
+                                    " ".join(value_aliases),
                                     " ".join(field_roles),
                                 ],
                             )
@@ -596,6 +605,21 @@ class SchemaLinkerService:
             field_docs=field_docs,
             value_docs=value_docs,
         )
+
+    def _project_layer_aliases(self, layer_name: str) -> Tuple[str, ...]:
+        if self.project_pack is None:
+            return ()
+        return aliases_for_target(self.project_pack.layer_aliases, layer_name)
+
+    def _project_field_aliases(self, field_name: str) -> Tuple[str, ...]:
+        if self.project_pack is None:
+            return ()
+        return aliases_for_target(self.project_pack.field_aliases, field_name)
+
+    def _project_value_aliases(self, value: str) -> Tuple[str, ...]:
+        if self.project_pack is None:
+            return ()
+        return aliases_for_target(self.project_pack.value_aliases, value)
 
     def _schema_signature(self, schema: ProjectSchema) -> Tuple:
         return tuple(

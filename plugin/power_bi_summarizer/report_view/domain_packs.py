@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 
+from .text_utils import normalize_text
+
 
 def _tuple(values: Sequence[str]) -> Tuple[str, ...]:
     return tuple(str(value).strip() for value in values if str(value).strip())
@@ -18,6 +20,10 @@ def _merge_unique(base: Sequence[str], extra: Sequence[str]) -> Tuple[str, ...]:
         if item not in merged:
             merged.append(item)
     return tuple(merged)
+
+
+def _normalized(value: str) -> str:
+    return normalize_text(str(value or "").strip())
 
 
 @dataclass(frozen=True)
@@ -80,6 +86,82 @@ def build_canonical_terms(
     for key, values in (project_pack.canonical_terms or {}).items():
         merged[key] = _merge_unique(merged.get(key, ()), values)
     return merged
+
+
+def build_project_alias_lookup(
+    alias_map: Optional[Mapping[str, Sequence[str]]],
+    include_targets: bool = False,
+) -> Dict[str, str]:
+    lookup: Dict[str, str] = {}
+    for target, aliases in (alias_map or {}).items():
+        target_text = str(target).strip()
+        target_key = _normalized(target_text)
+        if include_targets and target_key:
+            lookup.setdefault(target_key, target_text)
+        for alias in aliases or ():
+            alias_text = str(alias).strip()
+            alias_key = _normalized(alias_text)
+            if alias_key:
+                lookup[alias_key] = target_text
+    return lookup
+
+
+def aliases_for_target(
+    alias_map: Optional[Mapping[str, Sequence[str]]],
+    target: str,
+) -> Tuple[str, ...]:
+    target_key = _normalized(target)
+    if not target_key:
+        return ()
+    for candidate, aliases in (alias_map or {}).items():
+        if _normalized(candidate) == target_key:
+            return _tuple(aliases or ())
+    return ()
+
+
+def collect_project_terms(project_pack: Optional[ProjectPack]) -> Tuple[str, ...]:
+    if project_pack is None:
+        return ()
+    terms = []
+    for mapping in (
+        project_pack.layer_aliases,
+        project_pack.field_aliases,
+        project_pack.value_aliases,
+    ):
+        for target, aliases in (mapping or {}).items():
+            for alias in aliases or ():
+                alias_text = str(alias).strip()
+                if alias_text:
+                    terms.append(alias_text)
+    return _merge_unique((), terms)
+
+
+def project_pack_signature(project_pack: Optional[ProjectPack]) -> Tuple:
+    if project_pack is None:
+        return ()
+
+    def _mapping_signature(values: Mapping[str, Sequence[str]]) -> Tuple:
+        items = []
+        for key, aliases in (values or {}).items():
+            key_norm = _normalized(key)
+            if not key_norm:
+                continue
+            alias_signature = tuple(
+                sorted(
+                    alias_norm
+                    for alias_norm in (_normalized(alias) for alias in aliases or ())
+                    if alias_norm
+                )
+            )
+            items.append((key_norm, alias_signature))
+        return tuple(sorted(items))
+
+    return (
+        _mapping_signature(project_pack.canonical_terms),
+        _mapping_signature(project_pack.layer_aliases),
+        _mapping_signature(project_pack.field_aliases),
+        _mapping_signature(project_pack.value_aliases),
+    )
 
 
 SANITATION_DOMAIN_PACK = DomainPack(

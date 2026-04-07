@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from qgis.PyQt.QtCore import QVariant
 from qgis.core import QgsFeatureRequest, QgsProject, QgsVectorLayer, QgsWkbTypes
 
+from .domain_packs import ProjectPack, aliases_for_target, project_pack_signature
 from .field_role_resolver import FieldRoleResolver
 from .report_logging import log_info
 from .result_models import FieldSchema, FilterSpec, LayerSchema, ProjectSchema
@@ -146,11 +147,13 @@ class LayerSchemaService:
         top_values_limit: int = 6,
         profile_field_limit: int = 8,
         feature_scan_limit: int = 60,
+        project_pack: Optional[ProjectPack] = None,
     ):
         self.profile_feature_limit = max(40, int(profile_feature_limit))
         self.top_values_limit = max(3, int(top_values_limit))
         self.profile_field_limit = max(3, int(profile_field_limit))
         self.feature_scan_limit = max(30, int(feature_scan_limit))
+        self.project_pack = project_pack
         self._cache: Dict[Tuple, ProjectSchema] = {}
         self.role_resolver = FieldRoleResolver()
 
@@ -166,7 +169,7 @@ class LayerSchemaService:
         started_at = perf_counter()
         structure_key = self._build_cache_key()
         selected_layer_ids = tuple(sorted(str(layer_id) for layer_id in (layer_ids or []) if layer_id))
-        cache_key = (include_profiles, structure_key, selected_layer_ids)
+        cache_key = (include_profiles, structure_key, selected_layer_ids, project_pack_signature(self.project_pack))
         if not force_refresh and cache_key in self._cache:
             log_info(
                 "[Relatorios] schema "
@@ -616,12 +619,14 @@ class LayerSchemaService:
     def _build_layer_schema(self, layer: QgsVectorLayer, include_profiles: bool = False) -> LayerSchema:
         fields: List[FieldSchema] = []
         geometry_type = self._geometry_type(layer)
-        layer_name_norm = normalize_text(layer.name())
+        layer_aliases = self._project_layer_aliases(layer.name())
+        layer_name_norm = normalize_text(" ".join([layer.name(), *layer_aliases]))
         profiles = self._collect_field_profiles(layer) if include_profiles else {}
         qgs_fields = layer.fields()
         for index, field in enumerate(qgs_fields):
             alias = layer.attributeAlias(index) or ""
-            field_name_norm = normalize_text(" ".join([field.name(), alias]))
+            field_aliases = self._project_field_aliases(field.name())
+            field_name_norm = normalize_text(" ".join([field.name(), alias, *field_aliases]))
             field_kind = self._field_kind(field)
             sample_values = list(profiles.get(field.name(), {}).get("sample_values", []))
             top_values = list(profiles.get(field.name(), {}).get("top_values", []))
@@ -670,11 +675,11 @@ class LayerSchemaService:
             profile_tokens = []
             if getattr(field_schema, "is_filter_candidate", False) or getattr(field_schema, "is_location_candidate", False):
                 profile_tokens = list(getattr(field_schema, "top_values", []) or [])[:3] + list(field_schema.sample_values or [])[:2]
-            search_parts = [field_schema.name, field_schema.alias] + field_schema.semantic_roles + profile_tokens
+            search_parts = [field_schema.name, field_schema.alias, *field_aliases] + field_schema.semantic_roles + profile_tokens
             field_schema.search_text = normalize_text(" ".join(part for part in search_parts if part))
             fields.append(field_schema)
 
-        search_terms = [layer.name(), self._geometry_type(layer)]
+        search_terms = [layer.name(), self._geometry_type(layer), *layer_aliases]
         for field in fields:
             search_terms.extend([field.name, field.alias])
 
@@ -691,10 +696,12 @@ class LayerSchemaService:
         profiles: Dict[str, Dict[str, List[str]]] = {}
         candidate_fields = []
         geometry_type = self._geometry_type(layer)
-        layer_name_norm = normalize_text(layer.name())
+        layer_aliases = self._project_layer_aliases(layer.name())
+        layer_name_norm = normalize_text(" ".join([layer.name(), *layer_aliases]))
         for index, field in enumerate(layer.fields()):
             alias = layer.attributeAlias(index) or ""
-            field_name_norm = normalize_text(" ".join([field.name(), alias]))
+            field_aliases = self._project_field_aliases(field.name())
+            field_name_norm = normalize_text(" ".join([field.name(), alias, *field_aliases]))
             field_kind = self._field_kind(field)
             is_location_candidate = self._is_location_candidate(
                 field_name_norm,
@@ -753,6 +760,16 @@ class LayerSchemaService:
                 "sample_values": samples[field_name][: self.top_values_limit],
             }
         return profiles
+
+    def _project_layer_aliases(self, layer_name: str) -> Tuple[str, ...]:
+        if self.project_pack is None:
+            return ()
+        return aliases_for_target(self.project_pack.layer_aliases, layer_name)
+
+    def _project_field_aliases(self, field_name: str) -> Tuple[str, ...]:
+        if self.project_pack is None:
+            return ()
+        return aliases_for_target(self.project_pack.field_aliases, field_name)
 
     def _build_cache_key(self) -> Tuple:
         items = []

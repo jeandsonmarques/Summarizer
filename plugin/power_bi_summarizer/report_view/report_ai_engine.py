@@ -7,6 +7,7 @@ from .chart_factory import ChartFactory
 from .context_merge_engine import ContextMergeEngine
 from .conversation_memory_service import ConversationMemoryService
 from .conversation_state import ConversationState
+from .domain_packs import ProjectPack
 from .dictionary_service import DictionaryService
 from .followup_resolver import FollowupResolver
 from .hybrid_query_interpreter import HybridQueryInterpreter
@@ -55,14 +56,16 @@ class ReportAIEngine:
         followup_resolver: Optional[FollowupResolver] = None,
         context_merge_engine: Optional[ContextMergeEngine] = None,
         ollama_fallback_service: Optional[OllamaFallbackService] = None,
+        project_pack: Optional[ProjectPack] = None,
         session_id: str = "",
     ):
-        self.schema_service = schema_service or LayerSchemaService()
-        self.query_interpreter = query_interpreter or HybridQueryInterpreter()
+        self.project_pack = project_pack
+        self.schema_service = schema_service or LayerSchemaService(project_pack=project_pack)
+        self.query_interpreter = query_interpreter or HybridQueryInterpreter(project_pack=project_pack)
         self.report_executor = report_executor or ReportExecutor()
         self.chart_factory = chart_factory or ChartFactory()
         self.dictionary_service = dictionary_service or DictionaryService().loadDictionary()
-        self.schema_linker_service = schema_linker_service or SchemaLinkerService()
+        self.schema_linker_service = schema_linker_service or SchemaLinkerService(project_pack=project_pack)
         self.context_memory = context_memory or ReportContextMemory()
         self.query_memory_service = query_memory_service
         self.conversation_memory_service = conversation_memory_service
@@ -72,7 +75,7 @@ class ReportAIEngine:
         self.session_id = session_id or ""
         self.interface_mode = "auto"
         self.schema_context_builder = SchemaContextBuilder()
-        self.operation_planner = OperationPlanner()
+        self.operation_planner = OperationPlanner(project_pack=project_pack)
         self._schema_context_cache: Dict[tuple, ProjectSchemaContext] = {}
 
     def refresh(self):

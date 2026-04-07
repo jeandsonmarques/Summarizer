@@ -3,7 +3,14 @@ from dataclasses import dataclass, field
 from difflib import get_close_matches
 from typing import Dict, List, Optional
 
-from .domain_packs import DEFAULT_DOMAIN_PACK, DomainPack, ProjectPack, build_canonical_terms
+from .domain_packs import (
+    DEFAULT_DOMAIN_PACK,
+    DomainPack,
+    ProjectPack,
+    build_canonical_terms,
+    build_project_alias_lookup,
+    collect_project_terms,
+)
 from .text_utils import normalize_text
 
 
@@ -106,8 +113,18 @@ class QueryPreprocessor:
         self.rewrite_templates = dict(self.domain_pack.rewrite_templates or {})
         self.ratio_descriptor_overrides = dict(self.domain_pack.ratio_descriptor_overrides or {})
         self.entity_label_suffixes = dict(self.domain_pack.entity_label_suffixes or {})
+        self.project_value_alias_lookup = build_project_alias_lookup(
+            project_pack.value_aliases if project_pack is not None else {},
+        )
+        self.project_terms = tuple(
+            normalize_text(term)
+            for term in collect_project_terms(project_pack)
+            if normalize_text(term)
+        )
         self._vocabulary = sorted(
-            {term for values in self.canonical_terms.values() for term in values} | set(self.canonical_terms.keys())
+            {term for values in self.canonical_terms.values() for term in values}
+            | set(self.canonical_terms.keys())
+            | set(self.project_terms)
         )
 
     def _template_text(self, key: str, default: str) -> str:
@@ -134,10 +151,23 @@ class QueryPreprocessor:
                 return True
         return False
 
+    def _apply_project_value_aliases(self, text: str) -> str:
+        if not self.project_value_alias_lookup:
+            return text
+        updated = f" {text.strip()} "
+        for alias_key in sorted(self.project_value_alias_lookup.keys(), key=len, reverse=True):
+            target_text = normalize_text(self.project_value_alias_lookup.get(alias_key, ""))
+            if not alias_key or not target_text or alias_key == target_text:
+                continue
+            pattern = rf"(?<![a-z0-9_]){re.escape(alias_key)}(?![a-z0-9_])"
+            updated = re.sub(pattern, target_text, updated)
+        return re.sub(r"\s+", " ", updated).strip()
+
     def preprocess(self, question: str) -> PreprocessedQuestion:
         normalized = normalize_text(question)
         excel_mode = self._excel_mode(normalized)
         corrected = self._apply_replacements(normalized)
+        corrected = self._apply_project_value_aliases(corrected)
         corrected, fuzzy = self._apply_fuzzy_corrections(corrected)
         rewritten = self._rewrite_question(corrected)
         tokens = [token for token in corrected.split() if token]
