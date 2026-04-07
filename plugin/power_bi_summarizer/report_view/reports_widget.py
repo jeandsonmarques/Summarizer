@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import Dict, List, Optional
 
 from qgis.PyQt.QtCore import QTimer, QSize, Qt, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QIcon, QMovie, QTextOption
+from qgis.PyQt.QtGui import QColor, QFontMetrics, QIcon, QMovie, QTextOption
 from qgis.PyQt.QtWidgets import (
     QAction,
     QApplication,
@@ -59,7 +59,7 @@ REPORTS_STYLE_TEMPLATE = Template(
     """
     QWidget#reportsRoot,
     QWidget#reportsWorkspace {
-        background: ${page_bg};
+        background: transparent;
     }
     QWidget#chatColumn,
     QWidget#conversationViewportHost,
@@ -117,17 +117,25 @@ REPORTS_STYLE_TEMPLATE = Template(
         background: transparent;
         border: none;
     }
-    QLabel#visualPanelBadge,
-    QLabel#assistantBadge {
+    QLabel#visualPanelBadge {
         color: ${text_muted};
         font-size: ${font_caption_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QLabel#visualPanelTitle,
-    QLabel#assistantSummary {
+    QLabel#assistantBadge {
+        color: ${text_muted};
+        font-size: ${font_caption_px}px;
+        font-weight: ${font_weight_regular};
+    }
+    QLabel#visualPanelTitle {
         color: ${text_primary};
         font-size: ${font_section_title_px}px;
         font-weight: ${font_weight_semibold};
+    }
+    QLabel#assistantSummary {
+        color: ${text_primary};
+        font-size: ${font_section_title_px}px;
+        font-weight: ${font_weight_regular};
     }
     QLabel#visualPanelSummary,
     QLabel#assistantText,
@@ -185,7 +193,6 @@ REPORTS_STYLE_TEMPLATE = Template(
         border: none;
     }
     QPushButton#visualPanelButton,
-    QPushButton#clearChatButton,
     QPushButton[optionButton="true"] {
         background: ${surface};
         border: 1px solid ${border_soft};
@@ -194,7 +201,17 @@ REPORTS_STYLE_TEMPLATE = Template(
         padding: 0 12px;
         border-radius: 14px;
         font-size: ${font_button_px}px;
-        font-weight: ${font_weight_medium};
+        font-weight: ${font_weight_regular};
+    }
+    QPushButton#clearChatButton {
+        background: ${surface};
+        border: 1px solid ${border_soft};
+        color: ${text_primary};
+        min-height: 30px;
+        padding: 0 12px;
+        border-radius: 14px;
+        font-size: ${font_button_px}px;
+        font-weight: ${font_weight_semibold};
     }
     QPushButton[actionButton="true"] {
         background: rgba(255, 255, 255, 0.92);
@@ -203,7 +220,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         min-height: 29px;
         padding: 0 11px;
         border-radius: 14px;
-        font-size: ${font_secondary_px}px;
+        font-size: ${font_button_px}px;
         font-weight: ${font_weight_regular};
     }
     QPushButton#visualPanelButton:hover,
@@ -237,12 +254,12 @@ REPORTS_STYLE_TEMPLATE = Template(
     }
     QLabel#emptyTitle {
         color: ${text_primary};
-        font-size: 32px;
-        font-weight: ${font_weight_semibold};
+        font-size: 30px;
+        font-weight: ${font_weight_regular};
     }
     QLabel#emptySubtitle {
         color: ${text_muted};
-        font-size: 15px;
+        font-size: 14px;
         font-weight: ${font_weight_regular};
     }
     QPushButton[chip="true"],
@@ -484,7 +501,7 @@ class EmptyConversationWidget(QFrame):
         self.setObjectName("emptyConversation")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.setMinimumHeight(236)
+        self.setMinimumHeight(252)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -493,12 +510,12 @@ class EmptyConversationWidget(QFrame):
 
         self.content = QWidget(self)
         self.content.setObjectName("emptyContent")
-        self.content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.content.setMaximumWidth(680)
         self.content.setMinimumWidth(420)
         content_layout = QVBoxLayout(self.content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(10)
+        content_layout.setSpacing(12)
         layout.addWidget(self.content, 0, Qt.AlignHCenter)
         layout.addStretch(1)
 
@@ -511,7 +528,7 @@ class EmptyConversationWidget(QFrame):
         if os.path.exists(logo_path):
             self.icon_movie = QMovie(logo_path)
             if self.icon_movie.isValid():
-                self.icon_movie.setScaledSize(QSize(86, 86))
+                self.icon_movie.setScaledSize(QSize(90, 90))
                 self.icon_label.setMovie(self.icon_movie)
                 self.icon_movie.start()
                 icon_added = True
@@ -519,7 +536,7 @@ class EmptyConversationWidget(QFrame):
         if not icon_added:
             icon = _reports_icon("report_chat.svg")
             if not icon.isNull():
-                self.icon_label.setPixmap(icon.pixmap(QSize(56, 56)))
+                self.icon_label.setPixmap(icon.pixmap(QSize(64, 64)))
                 icon_added = True
 
         if icon_added:
@@ -529,15 +546,19 @@ class EmptyConversationWidget(QFrame):
         self.title_label.setObjectName("emptyTitle")
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setWordWrap(True)
+        self.title_label.setStyleSheet("font-size: 30px; font-weight: 400; color: #0F172A;")
         content_layout.addWidget(self.title_label)
 
         self.subtitle_label = QLabel(
-            "Faça uma pergunta para analisar camadas, banco ou cloud.",
+            "Faça perguntas sobre suas camadas e gere gráficos automaticamente",
             self.content,
         )
         self.subtitle_label.setObjectName("emptySubtitle")
         self.subtitle_label.setAlignment(Qt.AlignCenter)
         self.subtitle_label.setWordWrap(True)
+        self.subtitle_label.setText("Faça perguntas sobre suas camadas e gere gráficos automaticamente")
+        self.subtitle_label.setStyleSheet("font-size: 14px; font-weight: 400; color: #64748B;")
+        self.subtitle_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         content_layout.addWidget(self.subtitle_label, 0, Qt.AlignHCenter)
 
         self._sync_text_widths()
@@ -547,11 +568,22 @@ class EmptyConversationWidget(QFrame):
         self._sync_text_widths()
 
     def _sync_text_widths(self):
-        available = max(320, self.width() - 48)
-        content_width = min(680, available)
+        available = max(480, self.width() - 120)
+        content_width = min(760, available)
         self.content.setFixedWidth(content_width)
         self.title_label.setMaximumWidth(content_width)
-        self.subtitle_label.setMaximumWidth(max(320, content_width - 24))
+        subtitle_width = max(360, content_width - 40)
+        self.subtitle_label.setFixedWidth(subtitle_width)
+        subtitle_metrics = QFontMetrics(self.subtitle_label.font())
+        subtitle_rect = subtitle_metrics.boundingRect(
+            0,
+            0,
+            subtitle_width,
+            200,
+            Qt.TextWordWrap | Qt.AlignCenter,
+            self.subtitle_label.text(),
+        )
+        self.subtitle_label.setFixedHeight(max(24, subtitle_rect.height() + 6))
 
 
 class UserMessageWidget(QWidget):
@@ -1414,13 +1446,16 @@ class ReportsWidget(QWidget):
         self.history_scroll.setObjectName("conversationScroll")
         self.history_scroll.setWidgetResizable(True)
         self.history_scroll.setFrameShape(QScrollArea.NoFrame)
+        self.history_scroll.setAutoFillBackground(False)
         self.history_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.history_scroll.viewport().setObjectName("conversationViewportHost")
         self.history_scroll.viewport().setAttribute(Qt.WA_StyledBackground, True)
+        self.history_scroll.viewport().setAutoFillBackground(False)
 
         self.history_viewport = QWidget(self.history_scroll)
         self.history_viewport.setObjectName("conversationViewport")
         self.history_viewport.setAttribute(Qt.WA_StyledBackground, True)
+        self.history_viewport.setAutoFillBackground(False)
         self.history_viewport.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.history_layout = QVBoxLayout(self.history_viewport)
         self.history_layout.setContentsMargins(0, 8, 0, 8)
