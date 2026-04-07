@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from .domain_packs import DEFAULT_DOMAIN_PACK
 from .query_preprocessor import PreprocessedQuestion, QueryPreprocessor
 from .report_context_memory import ReportContextMemory
 from .result_models import CandidateInterpretation, InterpretationResult, ProjectSchemaContext, QueryPlan
@@ -15,18 +16,13 @@ from .schema_linker_service import (
 from .text_utils import contains_hint_tokens, normalize_text, tokenize_text
 
 
-MATERIAL_VALUES = ("pvc", "pead", "pba", "fofo", "ferro", "aco", "fibrocimento")
-SERVICE_VALUES = ("agua", "esgoto", "drenagem", "pluvial", "sanitario")
-STATUS_VALUES = {
-    "ativo": ("ativo", "ativa", "ativos", "ativas"),
-    "inativo": ("inativo", "inativa", "inativos", "inativas"),
-    "cancelado": ("cancelado", "cancelada", "cancelados", "canceladas"),
-    "suspenso": ("suspenso", "suspensa", "suspensos", "suspensas"),
-}
-WATER_TERMS = ("agua", "abastecimento")
-SEWER_TERMS = ("esgoto", "esgotos", "sanitario", "sanitaria", "sewer", "coletor", "coletores")
-NETWORK_TERMS = ("rede", "redes", "adutora", "adutoras", "ramal", "ramais", "tubulacao", "tubulacoes", "trecho", "trechos")
-CONNECTION_TERMS = ("ligacao", "ligacoes", "cliente", "clientes", "economia", "economias", "usuario", "usuarios", "unidade", "unidades")
+MATERIAL_VALUES = DEFAULT_DOMAIN_PACK.material_terms
+SERVICE_VALUES = DEFAULT_DOMAIN_PACK.service_terms
+STATUS_VALUES = DEFAULT_DOMAIN_PACK.status_terms
+WATER_TERMS = DEFAULT_DOMAIN_PACK.water_terms
+SEWER_TERMS = DEFAULT_DOMAIN_PACK.sewer_terms
+NETWORK_TERMS = DEFAULT_DOMAIN_PACK.network_terms
+CONNECTION_TERMS = DEFAULT_DOMAIN_PACK.connection_terms
 LENGTH_TERMS = ("extensao", "comprimento", "metragem", "metro", "metros", "tamanho")
 COUNT_TERMS = ("quantidade", "quantos", "quantas", "numero", "número", "total")
 LOCATION_INTRO_PATTERNS = (
@@ -37,32 +33,9 @@ LOCATION_INTRO_PATTERNS = (
     r"\bno bairro\s+([a-z0-9_ ]{2,50})",
 )
 FOLLOW_UP_PREFIXES = ("agora", "e ", "e de", "so", "somente", "apenas", "usa", "mostra", "troca", "mantem")
-GROUP_HINTS = {
-    "municipio": ("municipio", "cidade"),
-    "bairro": ("bairro", "setor"),
-    "localidade": ("localidade", "comunidade", "povoado"),
-}
-SUBJECT_HINTS = {
-    "rede": ("rede", "adutora", "ramal", "tubulacao", "trecho"),
-    "ligacao": ("ligacao", "ligacoes", "ponto", "pontos"),
-    "lote": ("lote", "lotes", "parcela", "parcelas"),
-}
-LOCATION_REJECT_TOKENS = {
-    "adutora",
-    "bairro",
-    "cidade",
-    "diametro",
-    "dn",
-    "extensao",
-    "ligacoes",
-    "ligacao",
-    "material",
-    "municipio",
-    "por",
-    "quantidade",
-    "rede",
-    "trecho",
-}
+GROUP_HINTS = DEFAULT_DOMAIN_PACK.group_hints
+SUBJECT_HINTS = DEFAULT_DOMAIN_PACK.subject_hints
+LOCATION_REJECT_TOKENS = set(DEFAULT_DOMAIN_PACK.location_reject_tokens)
 
 
 @dataclass

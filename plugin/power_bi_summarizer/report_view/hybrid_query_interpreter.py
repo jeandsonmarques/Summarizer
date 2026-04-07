@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from .domain_packs import DEFAULT_DOMAIN_PACK
 from .langchain_query_interpreter import LangChainQueryInterpreter
 from .layer_schema_service import LayerSchemaService
 from .query_preprocessor import PreprocessedQuestion, QueryPreprocessor
@@ -73,56 +74,15 @@ STOP_TERMS = {
     "top",
 }
 
-LENGTH_TERMS = (
-    "extensao",
-    "comprimento",
-    "metragem",
-    "metro",
-    "metros",
-    "quilometro",
-    "quilometros",
-    "km",
-)
+LENGTH_TERMS = DEFAULT_DOMAIN_PACK.length_terms
 
-MATERIAL_TERMS = ("pvc", "pead", "pba", "fofo", "ferro", "aco", "fibrocimento")
-SERVICE_TERMS = ("agua", "esgoto", "drenagem", "pluvial", "sanitario")
-STATUS_TERMS = {
-    "ativo": ("ativo", "ativa", "ativos", "ativas"),
-    "inativo": ("inativo", "inativa", "inativos", "inativas"),
-    "cancelado": ("cancelado", "cancelada", "cancelados", "canceladas"),
-    "suspenso": ("suspenso", "suspensa", "suspensos", "suspensas"),
-}
+MATERIAL_TERMS = DEFAULT_DOMAIN_PACK.material_terms
+SERVICE_TERMS = DEFAULT_DOMAIN_PACK.service_terms
+STATUS_TERMS = DEFAULT_DOMAIN_PACK.status_terms
 
-LOCATION_TERMS = (
-    "municipio",
-    "cidade",
-    "bairro",
-    "localidade",
-    "setor",
-    "distrito",
-    "comunidade",
-    "logradouro",
-    "povoado",
-)
+LOCATION_TERMS = DEFAULT_DOMAIN_PACK.location_terms
 
-ENGINEERING_LAYER_HINTS = {
-    "line": ("rede", "redes", "trecho", "trechos", "tubulacao", "tubulacoes", "adutora", "adutoras", "ramal", "ramais"),
-    "point": (
-        "ponto",
-        "pontos",
-        "hidrante",
-        "hidrantes",
-        "valvula",
-        "valvulas",
-        "ligacao",
-        "ligacoes",
-        "cliente",
-        "clientes",
-        "economia",
-        "economias",
-    ),
-    "polygon": ("bairro", "bairros", "municipio", "municipios", "cidade", "cidades", "setor", "setores", "localidade", "localidades"),
-}
+ENGINEERING_LAYER_HINTS = DEFAULT_DOMAIN_PACK.engineering_layer_hints
 
 FOLLOW_UP_PREFIXES = ("agora", "mostra", "usa", "so ", "somente", "apenas", "mantem", "troca")
 FOLLOW_UP_EXACT_PATTERNS = (
@@ -137,62 +97,7 @@ LOCATION_QUALIFIER_PATTERNS = (
     r"\barea\s+urbana\s+(?:de|do|da|dos|das)\s+(.+)$",
     r"\barea\s+rural\s+(?:de|do|da|dos|das)\s+(.+)$",
 )
-LOCATION_REJECT_TOKENS = {
-    "adutora",
-    "adutoras",
-    "area",
-    "bairro",
-    "barra",
-    "bitola",
-    "cidade",
-    "cidades",
-    "com",
-    "comprimento",
-    "diametro",
-    "dn",
-    "essa",
-    "esse",
-    "isso",
-    "isto",
-    "extensao",
-    "grafico",
-    "linha",
-    "mais",
-    "maior",
-    "material",
-    "media",
-    "menor",
-    "menos",
-    "metragem",
-    "metro",
-    "metros",
-    "mm",
-    "municipio",
-    "municipios",
-    "pizza",
-    "por",
-    "possui",
-    "quantidade",
-    "quantos",
-    "quantas",
-    "que",
-    "qual",
-    "quais",
-    "ramal",
-    "ramais",
-    "rede",
-    "redes",
-    "setor",
-    "agua",
-    "esgoto",
-    "camada",
-    "tem",
-    "top",
-    "trecho",
-    "trechos",
-    "tubulacao",
-    "usa",
-}
+LOCATION_REJECT_TOKENS = set(DEFAULT_DOMAIN_PACK.location_reject_tokens)
 
 
 @dataclass

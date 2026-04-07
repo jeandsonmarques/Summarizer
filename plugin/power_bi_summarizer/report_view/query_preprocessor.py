@@ -3,51 +3,11 @@ from dataclasses import dataclass, field
 from difflib import get_close_matches
 from typing import Dict, List, Optional
 
+from .domain_packs import DEFAULT_DOMAIN_PACK, DomainPack, ProjectPack, build_canonical_terms
 from .text_utils import normalize_text
 
 
-CANONICAL_TERMS = {
-    "quantidade": ["qtd", "qtde", "quant", "quantidade", "contagem", "quantos", "quantas"],
-    "extensao": ["ext", "extensao", "comprimento", "comp", "metragem", "metros", "metro", "mts", "mt"],
-    "area": ["area"],
-    "media": ["media"],
-    "total": ["total", "somatorio", "soma"],
-    "contagem_excel": ["contse", "cont se", "cont.ses", "contses", "countif", "countifs", "count if", "count ifs"],
-    "soma_excel": ["somase", "soma se", "somases", "sumif", "sumifs", "sum if", "sum ifs"],
-    "media_excel": ["mediase", "media se", "mediases", "averageif", "averageifs", "average if", "average ifs"],
-    "maximo": ["maximo", "maior", "ate qual", "qual o maior", "qual a maior"],
-    "minimo": ["minimo", "menor", "qual o menor", "qual a menor"],
-    "municipio": ["municipio", "mun", "munic", "cidade", "cid"],
-    "bairro": ["bairro", "bairr", "setor"],
-    "localidade": ["localidade", "local", "comunidade", "povoado"],
-    "rede": ["rede", "red", "tubulacao", "tub", "ramal", "adutora"],
-    "trecho": ["trecho", "trechos", "segmento", "segmentos"],
-    "diametro": ["dn", "diam", "diametro", "bitola"],
-    "material": ["material", "mat", "classe", "tipo"],
-    "status": [
-        "status",
-        "situacao",
-        "sit",
-        "ativo",
-        "ativa",
-        "ativos",
-        "ativas",
-        "inativo",
-        "inativa",
-        "inativos",
-        "inativas",
-        "cancelado",
-        "cancelada",
-        "cancelados",
-        "canceladas",
-        "suspenso",
-        "suspensa",
-    ],
-    "pizza": ["pizza", "setores"],
-    "barra": ["barra", "barras", "coluna", "colunas"],
-    "linha": ["linha", "linhas"],
-    "top": ["top", "maior", "menor", "mais", "menos"],
-}
+CANONICAL_TERMS = DEFAULT_DOMAIN_PACK.canonical_terms
 
 RANKING_TERMS = ("maior", "menor", "mais", "menos")
 COMPARISON_TERMS = ("compar", "versus", "vs", "entre")
@@ -83,69 +43,17 @@ RATIO_DENOMINATOR_TERMS = (
     "imovel",
     "imoveis",
 )
-GROUP_LIKE_TERMS = ("municipio", "cidade", "bairro", "localidade", "setor", "distrito", "comunidade", "povoado", "material", "diametro", "dn", "tipo", "classe")
+GROUP_LIKE_TERMS = DEFAULT_DOMAIN_PACK.group_like_terms
 FOLLOW_UP_TERMS = ("agora", "so", "somente", "apenas", "usa", "mostra")
 LOCATION_PREFIXES = ("municipio", "cidade", "bairro", "localidade", "setor", "distrito", "comunidade", "povoado")
-SERVICE_TERMS = ("agua", "esgoto", "drenagem", "pluvial", "sanitario")
+SERVICE_TERMS = DEFAULT_DOMAIN_PACK.service_terms
 LOCATION_QUALIFIER_PATTERNS = (
     r"\bzona\s+urbana\s+(?:de|do|da|dos|das)\s+(.+)$",
     r"\bzona\s+rural\s+(?:de|do|da|dos|das)\s+(.+)$",
     r"\barea\s+urbana\s+(?:de|do|da|dos|das)\s+(.+)$",
     r"\barea\s+rural\s+(?:de|do|da|dos|das)\s+(.+)$",
 )
-LOCATION_STOP_WORDS = {
-    "adutora",
-    "adutoras",
-    "area",
-    "bairro",
-    "barra",
-    "bitola",
-    "cidade",
-    "cidades",
-    "com",
-    "comprimento",
-    "diametro",
-    "dn",
-    "essa",
-    "esse",
-    "isso",
-    "isto",
-    "extensao",
-    "grafico",
-    "linha",
-    "mais",
-    "maior",
-    "material",
-    "media",
-    "menor",
-    "menos",
-    "metragem",
-    "metro",
-    "metros",
-    "mm",
-    "municipio",
-    "municipios",
-    "pizza",
-    "por",
-    "possui",
-    "quantidade",
-    "quantos",
-    "quantas",
-    "que",
-    "qual",
-    "quais",
-    "ramal",
-    "ramais",
-    "rede",
-    "redes",
-    "setor",
-    "tem",
-    "top",
-    "trecho",
-    "trechos",
-    "tubulacao",
-    "usa",
-}
+LOCATION_STOP_WORDS = set(DEFAULT_DOMAIN_PACK.location_stop_words)
 
 REPLACEMENTS = (
     (r"\bcont\.?ses?\b", "quantidade"),
@@ -206,9 +114,22 @@ class PreprocessedQuestion:
 
 
 class QueryPreprocessor:
-    def __init__(self):
+    def __init__(
+        self,
+        domain_pack: Optional[DomainPack] = None,
+        project_pack: Optional[ProjectPack] = None,
+    ):
+        self.domain_pack = domain_pack or DEFAULT_DOMAIN_PACK
+        self.project_pack = project_pack
+        self.canonical_terms = build_canonical_terms(self.domain_pack, project_pack)
+        self.service_terms = tuple(self.domain_pack.service_terms or ())
+        self.material_terms = tuple(self.domain_pack.material_terms or ())
+        self.diameter_terms = tuple(self.domain_pack.diameter_terms or ())
+        self.subject_hints = dict(self.domain_pack.subject_hints or {})
+        self.group_hints = dict(self.domain_pack.group_hints or {})
+        self.location_stop_words = set(self.domain_pack.location_stop_words or ())
         self._vocabulary = sorted(
-            {term for values in CANONICAL_TERMS.values() for term in values} | set(CANONICAL_TERMS.keys())
+            {term for values in self.canonical_terms.values() for term in values} | set(self.canonical_terms.keys())
         )
 
     def preprocess(self, question: str) -> PreprocessedQuestion:
@@ -420,7 +341,8 @@ class QueryPreprocessor:
         count = 0
         if re.search(r"\bdn\s+\d{2,4}\b", text) or re.search(r"\b\d{2,4}\s*mm\b", text):
             count += 1
-        if any(token in text for token in ("pvc", "pead", "material")):
+        material_aliases = set(self.material_terms) | set(self.canonical_terms.get("material", ()))
+        if any(token in text for token in material_aliases):
             count += 1
         if self._extract_status_value(text):
             count += 1
@@ -451,23 +373,20 @@ class QueryPreprocessor:
         return "count"
 
     def _subject_hint(self, text: str) -> str:
-        if any(token in text for token in ("rede", "tubulacao", "ramal", "adutora")):
+        if any(token in text for token in self.subject_hints.get("rede", ())):
             return "rede"
         if "trecho" in text:
             return "trecho"
-        if any(token in text for token in ("ligacao", "ligacoes")):
+        if any(token in text for token in self.subject_hints.get("ligacao", ())):
             return "ligacao"
         if any(token in text for token in ("ponto", "pontos", "hidrante", "hidrantes")):
             return "ponto"
         return ""
 
     def _group_hint(self, text: str) -> str:
-        if any(token in text for token in ("municipio", "cidade")):
-            return "municipio"
-        if "bairro" in text:
-            return "bairro"
-        if "localidade" in text:
-            return "localidade"
+        for canonical, aliases in self.group_hints.items():
+            if any(token in text for token in aliases):
+                return canonical
         return ""
 
     def _group_phrase(self, text: str) -> str:
@@ -484,9 +403,9 @@ class QueryPreprocessor:
 
     def _attribute_hint(self, text: str) -> str:
         normalized = normalize_text(text)
-        if any(token in normalized for token in ("dn", "diametro", "bitola")):
+        if any(token in normalized for token in self.diameter_terms):
             return "diameter"
-        if any(token in normalized for token in ("material", "classe", "tipo")):
+        if any(token in normalized for token in self.canonical_terms.get("material", ())):
             return "material"
         return ""
 
@@ -527,7 +446,7 @@ class QueryPreprocessor:
         mm_match = re.search(r"\b(\d{2,4})\s*mm\b", text)
         if mm_match and not dn_match:
             parts.append(f"com dn {mm_match.group(1)}")
-        for material in ("pvc", "pead"):
+        for material in self.material_terms:
             if re.search(rf"\b{material}\b", text):
                 parts.append(f"com material {material}")
         service_value = self._extract_service_value(text)
@@ -543,7 +462,7 @@ class QueryPreprocessor:
 
     def _extract_service_value(self, text: str) -> str:
         normalized = normalize_text(text)
-        for service_term in SERVICE_TERMS:
+        for service_term in self.service_terms:
             if re.search(rf"\b{re.escape(service_term)}\b", normalized):
                 return service_term
         return ""
@@ -715,7 +634,7 @@ class QueryPreprocessor:
             return False
         if any(token.isdigit() for token in tokens):
             return False
-        if any(token in LOCATION_STOP_WORDS for token in tokens):
+        if any(token in self.location_stop_words for token in tokens):
             return False
         if tokens[0] in {"de", "do", "da", "em", "no", "na", "por"}:
             return False
