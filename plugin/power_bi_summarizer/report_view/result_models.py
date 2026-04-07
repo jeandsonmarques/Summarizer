@@ -275,6 +275,7 @@ class ResultRow:
     value: float
     percent: Optional[float] = None
     raw_category: Any = None
+    feature_ids: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -285,6 +286,11 @@ class ChartPayload:
     values: List[float]
     value_label: str = "Valor"
     truncated: bool = False
+    selection_layer_id: Optional[str] = None
+    selection_layer_name: str = ""
+    category_field: str = ""
+    raw_categories: List[Any] = field(default_factory=list)
+    category_feature_ids: List[List[int]] = field(default_factory=list)
 
 
 @dataclass

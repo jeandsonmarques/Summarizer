@@ -239,6 +239,7 @@ class _DirectAggregateJob(ReportExecutionJob):
         self.boundary_context = boundary_context
         self.totals = defaultdict(float)
         self.counts = defaultdict(int)
+        self.feature_ids = defaultdict(set)
         self.filtered_records = 0
         self.target_matches = 0
         self.boundary_filtered_out = 0
@@ -278,7 +279,15 @@ class _DirectAggregateJob(ReportExecutionJob):
                     contributing_count=self.filtered_records,
                     boundary_filtered_out=self.boundary_filtered_out,
                 )
-                self._complete(self.executor._build_result(self.plan, self.totals, self.counts, self.filtered_records))
+                self._complete(
+                    self.executor._build_result(
+                        self.plan,
+                        self.totals,
+                        self.counts,
+                        self.filtered_records,
+                        feature_ids_by_category=self.feature_ids,
+                    )
+                )
                 return
 
             self.processed += 1
@@ -313,6 +322,7 @@ class _DirectAggregateJob(ReportExecutionJob):
 
             self.totals[category_value] += float(value)
             self.counts[category_value] += 1
+            self.feature_ids[category_value].add(int(feature.id()))
             self.filtered_records += 1
 
 
@@ -356,6 +366,7 @@ class _SpatialAggregateJob(ReportExecutionJob):
         self.total_estimate = self.boundary_total + self.source_total
         self.totals = defaultdict(float)
         self.counts = defaultdict(int)
+        self.feature_ids = defaultdict(set)
         self.filtered_records = 0
         self.distance_area = self.executor._distance_area(self.source_layer)
 
@@ -404,7 +415,15 @@ class _SpatialAggregateJob(ReportExecutionJob):
             try:
                 source_feature = next(self.source_iterator)
             except StopIteration:
-                self._complete(self.executor._build_result(self.plan, self.totals, self.counts, self.filtered_records))
+                self._complete(
+                    self.executor._build_result(
+                        self.plan,
+                        self.totals,
+                        self.counts,
+                        self.filtered_records,
+                        feature_ids_by_category=self.feature_ids,
+                    )
+                )
                 return
 
             self.processed += 1
@@ -450,6 +469,7 @@ class _SpatialAggregateJob(ReportExecutionJob):
 
                 self.totals[category_value] += float(value)
                 self.counts[category_value] += 1
+                self.feature_ids[category_value].add(int(source_feature.id()))
                 matched = True
 
             if matched:
@@ -1177,6 +1197,7 @@ class ReportExecutor:
 
         totals = defaultdict(float)
         counts = defaultdict(int)
+        feature_ids = defaultdict(set)
         processed = 0
         target_matches = 0
         boundary_filtered_out = 0
@@ -1215,6 +1236,7 @@ class ReportExecutor:
 
             totals[category_value] += float(value)
             counts[category_value] += 1
+            feature_ids[category_value].add(int(feature.id()))
             processed += 1
 
         if not totals:
@@ -1238,7 +1260,13 @@ class ReportExecutor:
             contributing_count=processed,
             boundary_filtered_out=boundary_filtered_out,
         )
-        return self._build_result(plan, totals, counts, processed)
+        return self._build_result(
+            plan,
+            totals,
+            counts,
+            processed,
+            feature_ids_by_category=feature_ids,
+        )
 
     def _execute_spatial(self, plan: QueryPlan) -> QueryResult:
         source_layer = self._get_layer(plan.source_layer_id)
@@ -1289,6 +1317,7 @@ class ReportExecutor:
 
         totals = defaultdict(float)
         counts = defaultdict(int)
+        feature_ids = defaultdict(set)
         processed = 0
         distance_area = self._distance_area(source_layer)
 
@@ -1335,21 +1364,43 @@ class ReportExecutor:
 
                 totals[category_value] += float(value)
                 counts[category_value] += 1
+                feature_ids[category_value].add(int(source_feature.id()))
                 matched = True
 
             if matched:
                 processed += 1
 
-        return self._build_result(plan, totals, counts, processed)
+        return self._build_result(
+            plan,
+            totals,
+            counts,
+            processed,
+            feature_ids_by_category=feature_ids,
+        )
 
-    def _build_result(self, plan: QueryPlan, totals, counts, processed: int) -> QueryResult:
+    def _build_result(
+        self,
+        plan: QueryPlan,
+        totals,
+        counts,
+        processed: int,
+        feature_ids_by_category=None,
+    ) -> QueryResult:
         rows = []
+        feature_ids_by_category = feature_ids_by_category or {}
         for category, total in totals.items():
             value = float(total)
             if plan.metric.operation == "avg":
                 divider = max(1, counts.get(category, 0))
                 value = value / divider
-            rows.append(ResultRow(category=str(category), value=float(value), raw_category=category))
+            rows.append(
+                ResultRow(
+                    category=str(category),
+                    value=float(value),
+                    raw_category=category,
+                    feature_ids=sorted(int(fid) for fid in feature_ids_by_category.get(category, []) if fid is not None),
+                )
+            )
 
         if not rows:
             return QueryResult(ok=False, message="Não encontrei dados compatíveis com essa pergunta.", plan=plan)
