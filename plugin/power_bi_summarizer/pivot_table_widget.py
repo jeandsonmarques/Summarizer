@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
-from qgis.PyQt.QtCore import Qt, QSortFilterProxyModel, QRegExp, QVariant, QMimeData, QSize
+from qgis.PyQt.QtCore import QRegExp, QMimeData, QSettings, QSize, Qt, QSortFilterProxyModel, QVariant
 from qgis.PyQt.QtGui import QFont, QStandardItem, QStandardItemModel
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
@@ -106,6 +106,8 @@ class _PivotFilterProxy(QSortFilterProxyModel):
 
 
 _PIVOT_FIELD_MIME = "application/x-powerbisummarizer-pivot-field"
+_SIDEBAR_COLLAPSED_KEY = "PowerBISummarizer/pivot/sidebarCollapsed"
+_SIDEBAR_WIDTH_KEY = "PowerBISummarizer/pivot/sidebarWidth"
 
 
 class _PivotFieldSourceListWidget(QListWidget):
@@ -306,6 +308,8 @@ class PivotTableWidget(QWidget):
         self._pivot_data_column_offset = 0
         self._row_header_depth = 1
         self._last_active_area = "row"
+        self._sidebar_collapsed = False
+        self._sidebar_last_width = 340
         self._field_specs_by_key: Dict[str, PivotFieldSpec] = {}
         self.pivot_engine = PivotEngine(iface=iface, logger=QgsMessageLog)
         self.pivot_selection_bridge = PivotSelectionBridge(iface)
@@ -315,6 +319,8 @@ class PivotTableWidget(QWidget):
         self._configure_compact_sizing()
         self._apply_styles()
         self._apply_theming_tokens()
+        self._load_sidebar_state()
+        self._apply_sidebar_visibility(not self._sidebar_collapsed, persist=False)
 
     def minimumSizeHint(self):
         return QSize(720, 360)
@@ -362,6 +368,13 @@ class PivotTableWidget(QWidget):
         self.export_btn.clicked.connect(self._export_pivot_table)
         toolbar.addWidget(self.export_btn)
 
+        self.sidebar_toggle_btn = QPushButton("Ocultar construtor")
+        self.sidebar_toggle_btn.setFixedHeight(26)
+        self.sidebar_toggle_btn.setCheckable(True)
+        self.sidebar_toggle_btn.setProperty("variant", "secondary")
+        self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
+        toolbar.addWidget(self.sidebar_toggle_btn)
+
         left_layout.addLayout(toolbar)
 
         self.meta_label = QLabel("")
@@ -399,7 +412,7 @@ class PivotTableWidget(QWidget):
         # -- Right (field list) ------------------------------------------
         self.side_panel = QFrame()
         self.side_panel.setObjectName("fieldPanel")
-        self.side_panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.side_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.side_panel.setMinimumSize(0, 0)
         right_layout = QVBoxLayout(self.side_panel)
         right_layout.setContentsMargins(8, 8, 8, 8)
@@ -472,27 +485,29 @@ class PivotTableWidget(QWidget):
         axes_row = QHBoxLayout()
         axes_row.setSpacing(8)
 
-        row_card = QFrame()
-        row_card.setObjectName("pivotAreaCard")
-        row_layout = QVBoxLayout(row_card)
+        self.row_area_card = QFrame()
+        self.row_area_card.setObjectName("pivotAreaCard")
+        row_layout = QVBoxLayout(self.row_area_card)
         row_layout.setContentsMargins(8, 8, 8, 8)
         row_layout.setSpacing(6)
-        row_title = QLabel("Linhas")
-        row_title.setObjectName("pivotAreaTitle")
+        self.row_area_title = QLabel("Linhas")
+        self.row_area_title.setObjectName("pivotAreaTitle")
+        row_title = self.row_area_title
         row_layout.addWidget(row_title)
         row_layout.addWidget(self.row_fields_list)
-        axes_row.addWidget(row_card, 1)
+        axes_row.addWidget(self.row_area_card, 1)
 
-        col_card = QFrame()
-        col_card.setObjectName("pivotAreaCard")
-        col_layout = QVBoxLayout(col_card)
+        self.column_area_card = QFrame()
+        self.column_area_card.setObjectName("pivotAreaCard")
+        col_layout = QVBoxLayout(self.column_area_card)
         col_layout.setContentsMargins(8, 8, 8, 8)
         col_layout.setSpacing(6)
-        col_title = QLabel("Colunas")
-        col_title.setObjectName("pivotAreaTitle")
+        self.column_area_title = QLabel("Colunas")
+        self.column_area_title.setObjectName("pivotAreaTitle")
+        col_title = self.column_area_title
         col_layout.addWidget(col_title)
         col_layout.addWidget(self.column_fields_list)
-        axes_row.addWidget(col_card, 1)
+        axes_row.addWidget(self.column_area_card, 1)
 
         areas_layout.addLayout(axes_row)
 
@@ -548,7 +563,7 @@ class PivotTableWidget(QWidget):
         self.main_splitter.setStretchFactor(0, 5)
         self.main_splitter.setStretchFactor(1, 2)
         self.main_splitter.setSizes([840, 340])
-        self.side_panel.setFixedWidth(340)
+        self.side_panel.setMaximumWidth(420)
         areas_card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
     def _configure_compact_sizing(self):
@@ -565,6 +580,57 @@ class PivotTableWidget(QWidget):
                 widget.setMinimumHeight(0)
             except Exception:
                 pass
+
+    def _load_sidebar_state(self):
+        settings = QSettings()
+        collapsed = settings.value(_SIDEBAR_COLLAPSED_KEY, False, type=bool)
+        width = settings.value(_SIDEBAR_WIDTH_KEY, 340, type=int)
+        try:
+            width = int(width)
+        except Exception:
+            width = 340
+        self._sidebar_collapsed = bool(collapsed)
+        self._sidebar_last_width = max(260, width)
+
+    def _persist_sidebar_state(self):
+        settings = QSettings()
+        settings.setValue(_SIDEBAR_COLLAPSED_KEY, self._sidebar_collapsed)
+        if not self._sidebar_collapsed and self.main_splitter is not None:
+            sizes = self.main_splitter.sizes()
+            if len(sizes) >= 2 and sizes[1] > 0:
+                self._sidebar_last_width = max(260, sizes[1])
+        settings.setValue(_SIDEBAR_WIDTH_KEY, int(self._sidebar_last_width))
+
+    def _toggle_sidebar(self, checked: bool):
+        self._apply_sidebar_visibility(not checked, persist=True)
+
+    def _apply_sidebar_visibility(self, visible: bool, persist: bool = True):
+        self._sidebar_collapsed = not visible
+        if hasattr(self, "sidebar_toggle_btn"):
+            self.sidebar_toggle_btn.blockSignals(True)
+            self.sidebar_toggle_btn.setChecked(not visible)
+            self.sidebar_toggle_btn.setText("Mostrar construtor" if not visible else "Ocultar construtor")
+            self.sidebar_toggle_btn.blockSignals(False)
+
+        if hasattr(self, "side_panel"):
+            self.side_panel.setVisible(visible)
+            self.side_panel.setMaximumWidth(420 if visible else 0)
+
+        if hasattr(self, "main_splitter"):
+            if visible:
+                sidebar_width = max(260, int(self._sidebar_last_width or 340))
+                self.main_splitter.setSizes([max(1, self.main_splitter.width() - sidebar_width), sidebar_width])
+                self.main_splitter.widget(1).show()
+            else:
+                sizes = self.main_splitter.sizes()
+                if len(sizes) >= 2 and sizes[1] > 0:
+                    self._sidebar_last_width = max(260, sizes[1])
+                self.main_splitter.setSizes([max(1, self.main_splitter.width()), 0])
+                self.main_splitter.widget(1).hide()
+
+        if persist:
+            self._persist_sidebar_state()
+        self._refresh_active_area_styles()
 
     def _apply_styles(self):
         self.setStyleSheet(
@@ -634,6 +700,10 @@ class PivotTableWidget(QWidget):
                 border-radius: 10px;
                 background-color: #ffffff;
             }
+            QFrame#pivotAreaCard[activeArea="true"] {
+                border: 1px solid #153C8A;
+                background-color: #f3f7ff;
+            }
             QLabel#fieldPanelTitle {
                 font-size: 11pt;
                 font-weight: 700;
@@ -643,6 +713,10 @@ class PivotTableWidget(QWidget):
                 font-size: 10pt;
                 font-weight: 700;
                 color: #1d2a4b;
+            }
+            QLabel#pivotAreaTitle[activeArea="true"] {
+                color: #153C8A;
+                font-weight: 700;
             }
             QLabel#fieldPanelHint {
                 color: #5f6f8d;
@@ -1133,6 +1207,22 @@ class PivotTableWidget(QWidget):
     def _set_last_active_area(self, area: str):
         if area in {"filter", "row", "column"}:
             self._last_active_area = area
+            self._refresh_active_area_styles()
+
+    def _refresh_active_area_styles(self):
+        active = self._last_active_area
+        for card, title, area in (
+            (getattr(self, "row_area_card", None), getattr(self, "row_area_title", None), "row"),
+            (getattr(self, "column_area_card", None), getattr(self, "column_area_title", None), "column"),
+        ):
+            if card is None or title is None:
+                continue
+            card.setProperty("activeArea", active == area)
+            title.setProperty("activeArea", active == area)
+            card.style().unpolish(card)
+            card.style().polish(card)
+            title.style().unpolish(title)
+            title.style().polish(title)
 
     def _placeholder_item(self) -> QListWidgetItem:
         item = QListWidgetItem("Nenhum campo")
