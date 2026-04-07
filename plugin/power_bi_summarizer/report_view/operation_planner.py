@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .domain_packs import DEFAULT_DOMAIN_PACK, DomainPack, ProjectPack
 from .query_preprocessor import PreprocessedQuestion, QueryPreprocessor
 from .report_context_memory import ReportContextMemory
+from .report_logging import log_info
 from .result_models import CandidateInterpretation, InterpretationResult, ProjectSchemaContext, QueryPlan
 from .schema_linker_service import (
     SchemaLinkFieldCandidate,
@@ -109,6 +110,12 @@ class OperationPlanner:
             extracted_filters,
             likely_layers,
             context_memory,
+        )
+        log_info(
+            "[Relatorios][debug][planner] "
+            f"question='{question}' corrected='{preprocessed.corrected_text}' "
+            f"extracted_filters={extracted_filters} "
+            f"explicit_locations={self._explicit_location_values_from_filters(extracted_filters)}"
         )
         return PlanningBrief(
             original_question=question,
@@ -777,6 +784,13 @@ class OperationPlanner:
             if any(normalize_text(filter_item["value"]) == normalize_text(spec.value) for spec in plan.filters):
                 score += 0.08
 
+        explicit_locations = self._explicit_location_values(brief)
+        if explicit_locations:
+            if self._plan_has_resolved_explicit_location(plan, explicit_locations, schema_context):
+                score += 0.14
+            else:
+                score -= 0.28
+
         if brief.follow_up and context_memory is not None and context_memory.last_plan() is not None:
             last_plan = context_memory.last_plan()
             if last_plan is not None and any(
@@ -893,3 +907,55 @@ class OperationPlanner:
             if item not in unique:
                 unique.append(item)
         return "; ".join(unique)
+
+    def _explicit_location_values(self, brief: PlanningBrief) -> List[str]:
+        return self._explicit_location_values_from_filters(brief.extracted_filters)
+
+    def _explicit_location_values_from_filters(self, filters: Sequence[Dict[str, str]]) -> List[str]:
+        values: List[str] = []
+        for item in filters or []:
+            if str(item.get("kind") or "").lower() != "location":
+                continue
+            value = normalize_text(item.get("value") or item.get("source_text") or "")
+            if value and value not in values:
+                values.append(value)
+        return values
+
+    def _plan_has_resolved_explicit_location(
+        self,
+        plan: QueryPlan,
+        explicit_locations: Sequence[str],
+        schema_context: ProjectSchemaContext,
+    ) -> bool:
+        normalized_locations = {normalize_text(value) for value in explicit_locations if normalize_text(value)}
+        if not normalized_locations:
+            return True
+
+        layer_context_by_role = {
+            "target": schema_context.layer_by_id(plan.target_layer_id),
+            "source": schema_context.layer_by_id(plan.source_layer_id),
+            "boundary": schema_context.layer_by_id(plan.boundary_layer_id),
+        }
+
+        for filter_spec in plan.filters or []:
+            filter_value = normalize_text(filter_spec.value or "")
+            if filter_value not in normalized_locations:
+                continue
+            if (filter_spec.layer_role or "target") == "boundary":
+                return True
+            filter_field = normalize_text(filter_spec.field or "")
+            if any(token in filter_field for token in self.domain_pack.location_field_hints or ()):
+                return True
+            layer_context = layer_context_by_role.get(filter_spec.layer_role or "target")
+            if layer_context is None:
+                continue
+            location_field_names = {
+                normalize_text(field_name)
+                for field_name in (
+                    list(layer_context.location_field_names or [])
+                    + list(layer_context.categorical_field_names or [])
+                )
+            }
+            if filter_field in location_field_names:
+                return True
+        return False

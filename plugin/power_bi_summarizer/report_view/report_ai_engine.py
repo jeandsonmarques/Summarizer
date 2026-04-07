@@ -1,5 +1,6 @@
 import traceback
 from dataclasses import dataclass, field
+import inspect
 from time import perf_counter
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -20,6 +21,7 @@ from .report_logging import log_error, log_info, log_warning
 from .result_models import InterpretationResult, ProjectSchemaContext, QueryPlan, QueryResult
 from .schema_context_builder import SchemaContextBuilder
 from .schema_linker_service import SchemaLinkResult, SchemaLinkerService
+from .text_utils import normalize_text
 
 
 @dataclass
@@ -69,7 +71,7 @@ class ReportAIEngine:
         self.context_memory = context_memory or ReportContextMemory()
         self.query_memory_service = query_memory_service
         self.conversation_memory_service = conversation_memory_service
-        self.followup_resolver = followup_resolver or FollowupResolver()
+        self.followup_resolver = followup_resolver or FollowupResolver(project_pack=project_pack)
         self.context_merge_engine = context_merge_engine or ContextMergeEngine()
         self.ollama_fallback_service = ollama_fallback_service or OllamaFallbackService()
         self.session_id = session_id or ""
@@ -101,6 +103,11 @@ class ReportAIEngine:
         started_at = perf_counter()
         interface_mode = str(self.interface_mode or "auto").strip().lower()
         use_deep_validation = interface_mode == "analytic"
+        log_info(
+            "[Relatorios][debug][engine] "
+            f"runtime_engine_file='{__file__}' engine_class_file='{inspect.getsourcefile(self.__class__) or ''}' "
+            f"question='{question}' interface_mode='{interface_mode}'"
+        )
         normalized_question = question
         if self.dictionary_service is not None:
             self._emit_status(status_callback, "Normalizando termos tecnicos...")
@@ -224,6 +231,14 @@ class ReportAIEngine:
                 schema_level=schema_level,
                 force=interface_mode == "ollama",
             )
+        interpretation = self._enforce_explicit_location_guard(interpretation, brief, active_context)
+        log_info(
+            "[Relatorios][debug][engine] "
+            f"pre_execution question='{question}' final_status='{interpretation.status}' "
+            f"needs_confirmation={bool(interpretation.needs_confirmation)} "
+            f"has_plan={bool(interpretation.plan is not None)} "
+            f"message='{interpretation.message or interpretation.clarification_question or ''}'"
+        )
         if interpretation.plan is not None:
             interpretation.plan.original_question = question
             trace = dict(interpretation.plan.planning_trace or {})
@@ -570,6 +585,122 @@ class ReportAIEngine:
                 f"question='{question}' error={exc}\n{traceback.format_exc()}"
             )
             return interpretation
+
+    def _enforce_explicit_location_guard(
+        self,
+        interpretation: InterpretationResult,
+        brief: PlanningBrief,
+        schema_context: ProjectSchemaContext,
+    ) -> InterpretationResult:
+        explicit_locations = self._explicit_location_values(brief)
+        log_info(
+            "[Relatorios][debug][guard] "
+            f"called=True explicit_locations={explicit_locations} "
+            f"has_interpretation={bool(interpretation is not None)} "
+            f"has_plan={bool(getattr(interpretation, 'plan', None) is not None)}"
+        )
+        if not explicit_locations or interpretation is None:
+            log_info(
+                "[Relatorios][debug][guard] "
+                f"released=True reason='no_explicit_location_or_no_interpretation' explicit_locations={explicit_locations}"
+            )
+            return interpretation
+
+        resolved_location = False
+        if interpretation.plan is not None:
+            resolved_location = self._plan_has_resolved_explicit_location(
+                interpretation.plan,
+                explicit_locations,
+                schema_context,
+            )
+        log_info(
+            "[Relatorios][debug][guard] "
+            f"resolved_location={resolved_location} explicit_locations={explicit_locations} "
+            f"plan_filters={[(item.field, item.value, item.layer_role) for item in (interpretation.plan.filters or [])] if interpretation.plan is not None else []}"
+        )
+
+        if interpretation.plan is not None and resolved_location:
+            trace = dict(interpretation.plan.planning_trace or {})
+            trace["explicit_location_guard"] = {
+                "status": "applied",
+                "locations": explicit_locations,
+            }
+            interpretation.plan.planning_trace = trace
+            log_info("[Relatorios][debug][guard] released=True reason='explicit_location_resolved'")
+            return interpretation
+
+        location_text = ", ".join(value.title() for value in explicit_locations[:3])
+        message = (
+            f"Entendi o local {location_text}, mas ainda nao consegui aplicar esse filtro geografico com seguranca. "
+            "Prefiro confirmar antes de executar para nao trazer a contagem geral sem o local pedido."
+        )
+
+        interpretation.status = "confirm" if interpretation.plan is not None else "unsupported"
+        interpretation.needs_confirmation = interpretation.plan is not None
+        interpretation.clarification_question = message if interpretation.plan is not None else ""
+        interpretation.message = message
+        interpretation.confidence = min(float(interpretation.confidence or 0.0), 0.74) if interpretation.plan is not None else float(interpretation.confidence or 0.0)
+        if interpretation.plan is not None:
+            trace = dict(interpretation.plan.planning_trace or {})
+            trace["explicit_location_guard"] = {
+                "status": "blocked",
+                "locations": explicit_locations,
+            }
+            interpretation.plan.planning_trace = trace
+        log_info(
+            "[Relatorios][debug][guard] "
+            f"released=False blocked=True final_status='{interpretation.status}' explicit_locations={explicit_locations}"
+        )
+        return interpretation
+
+    def _explicit_location_values(self, brief: PlanningBrief) -> List[str]:
+        values: List[str] = []
+        for item in brief.extracted_filters or []:
+            if str(item.get("kind") or "").lower() != "location":
+                continue
+            value = normalize_text(item.get("value") or item.get("source_text") or "")
+            if value and value not in values:
+                values.append(value)
+        return values
+
+    def _plan_has_resolved_explicit_location(
+        self,
+        plan: QueryPlan,
+        explicit_locations: Sequence[str],
+        schema_context: ProjectSchemaContext,
+    ) -> bool:
+        normalized_locations = {normalize_text(value) for value in explicit_locations if normalize_text(value)}
+        if not normalized_locations:
+            return True
+
+        layer_context_by_role = {
+            "target": schema_context.layer_by_id(plan.target_layer_id),
+            "source": schema_context.layer_by_id(plan.source_layer_id),
+            "boundary": schema_context.layer_by_id(plan.boundary_layer_id),
+        }
+
+        for filter_spec in plan.filters or []:
+            filter_value = normalize_text(filter_spec.value or "")
+            if filter_value not in normalized_locations:
+                continue
+            if (filter_spec.layer_role or "target") == "boundary":
+                return True
+            filter_field = normalize_text(filter_spec.field or "")
+            if any(token in filter_field for token in ("municipio", "cidade", "bairro", "localidade", "setor", "distrito", "comunidade", "povoado")):
+                return True
+            layer_context = layer_context_by_role.get(filter_spec.layer_role or "target")
+            if layer_context is None:
+                continue
+            location_field_names = {
+                normalize_text(field_name)
+                for field_name in (
+                    list(layer_context.location_field_names or [])
+                    + list(layer_context.categorical_field_names or [])
+                )
+            }
+            if filter_field in location_field_names:
+                return True
+        return False
 
     def _resolve_conversation_context(self, question: str, normalized_question: str) -> ConversationContextPayload:
         if self.conversation_memory_service is None or not self.session_id:

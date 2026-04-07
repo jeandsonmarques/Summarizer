@@ -120,7 +120,7 @@ class HybridQueryInterpreter:
         self.local_interpreter = QueryInterpreter()
         self.langchain_interpreter = LangChainQueryInterpreter()
         self.preprocessor = QueryPreprocessor(self.domain_pack, project_pack)
-        self.schema_linker = SchemaLinkerService()
+        self.schema_linker = SchemaLinkerService(project_pack=project_pack)
         self.entity_label_suffixes = dict(self.domain_pack.entity_label_suffixes or {})
         self.derived_intent_labels = dict(self.domain_pack.derived_intent_labels or {})
         self.ratio_messages = dict(self.domain_pack.ratio_messages or {})

@@ -4,6 +4,7 @@ import re
 from typing import Any, Dict, Optional
 
 from .conversation_state import ConversationState
+from .domain_packs import ProjectPack
 from .query_preprocessor import (
     LOCATION_PREFIXES,
     LOCATION_QUALIFIER_PATTERNS,
@@ -37,8 +38,9 @@ ENTITY_RESET_TERMS = ("ligacao", "ligacoes", "rede", "redes", "lote", "lotes", "
 
 
 class FollowupResolver:
-    def __init__(self):
-        self.preprocessor = QueryPreprocessor()
+    def __init__(self, project_pack: Optional[ProjectPack] = None):
+        self.project_pack = project_pack
+        self.preprocessor = QueryPreprocessor(project_pack=project_pack)
 
     def is_followup(self, query: str, conversation_state: Optional[ConversationState] = None) -> bool:
         if conversation_state is None or conversation_state.active_query is None:

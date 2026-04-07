@@ -1,4 +1,5 @@
 from copy import deepcopy
+import inspect
 import os
 import uuid
 import traceback
@@ -1873,6 +1874,29 @@ class ReportsWidget(QWidget):
         self._start_run(question, response_widget, overrides=overrides, reuse_history=True)
 
     def _execute_plan_choice(self, question: str, plan: QueryPlan, response_widget: AssistantMessageWidget):
+        trace = dict(getattr(plan, "planning_trace", {}) or {})
+        explicit_guard = dict(trace.get("explicit_location_guard") or {})
+        if str(explicit_guard.get("status") or "").lower() == "blocked":
+            locations = [
+                str(item).strip()
+                for item in (explicit_guard.get("locations") or [])
+                if str(item).strip()
+            ]
+            location_text = ", ".join(loc.title() for loc in locations[:3])
+            message = (
+                f"A interpretacao continua sem aplicar com seguranca o local {location_text}. "
+                "Por isso, este plano nao sera executado ate a localizacao ser resolvida."
+            ).strip()
+            log_info(
+                "[Relatorios][debug][ui] "
+                f"execution_blocked=True reason='explicit_location_guard_blocked_on_confirm' "
+                f"question='{question}' locations={locations}"
+            )
+            response_widget.show_message(message)
+            self._show_visual_empty("A consulta foi bloqueada porque o local pedido ainda nao foi resolvido.")
+            self._finish_ui_after_run()
+            return
+
         self._safe_register_explicit_feedback(
             response_widget,
             feedback_type="accepted_plan",
@@ -1979,6 +2003,11 @@ class ReportsWidget(QWidget):
         memory_handle = getattr(response_widget, "memory_handle", None)
         execution_started = False
         try:
+            log_info(
+                "[Relatorios][debug][ui] "
+                f"runtime_widget_file='{__file__}' widget_class_file='{inspect.getsourcefile(self.__class__) or ''}' "
+                f"engine_created={bool(self.ai_engine is not None)} question='{question}' overrides={overrides}"
+            )
             self._push_loading_status(response_widget, "Pensando na sua pergunta...")
             engine_payload = self._ensure_ai_engine().interpret_question(
                 question=question,
@@ -1987,6 +2016,13 @@ class ReportsWidget(QWidget):
                 status_callback=lambda message: self._push_loading_status(response_widget, message),
             )
             interpretation = engine_payload.interpretation
+            log_info(
+                "[Relatorios][debug][ui] "
+                f"post_interpretation question='{question}' status='{interpretation.status}' "
+                f"needs_confirmation={bool(interpretation.needs_confirmation)} "
+                f"has_plan={bool(interpretation.plan is not None)} "
+                f"message='{interpretation.message or interpretation.clarification_question or ''}'"
+            )
 
             if interpretation.status == "confirm" and interpretation.plan is not None:
                 response_widget.show_confirmation(
@@ -1994,6 +2030,10 @@ class ReportsWidget(QWidget):
                     interpretation.clarification_question or interpretation.message or "Confirme a interpretação antes de executar.",
                     interpretation.plan,
                     interpretation.candidate_interpretations,
+                )
+                log_info(
+                    "[Relatorios][debug][ui] "
+                    f"execution_blocked=True reason='confirm_with_plan' question='{question}'"
                 )
                 self._show_visual_empty("Confirme a interpretação para gerar o painel visual.")
                 return
@@ -2005,12 +2045,20 @@ class ReportsWidget(QWidget):
                         interpretation.message or "Encontrei algumas interpretações possíveis.",
                         interpretation.candidate_interpretations,
                     )
+                    log_info(
+                        "[Relatorios][debug][ui] "
+                        f"execution_blocked=True reason='ambiguous_plan_choices' question='{question}'"
+                    )
                     self._show_visual_empty("Escolha uma interpretação para atualizar o painel visual.")
                     return
                 response_widget.show_ambiguity(
                     question,
                     interpretation.message,
                     interpretation.options,
+                )
+                log_info(
+                    "[Relatorios][debug][ui] "
+                    f"execution_blocked=True reason='ambiguous_without_plan' question='{question}'"
                 )
                 self._show_visual_empty("Ainda não houve um resultado visual para esta pergunta.")
                 return
@@ -2031,12 +2079,21 @@ class ReportsWidget(QWidget):
                     detail=interpretation.message or interpretation.status or "interpretação sem plano",
                     interpretation=interpretation,
                 )
+                log_info(
+                    "[Relatorios][debug][ui] "
+                    f"execution_blocked=True reason='non_ok_or_no_plan' question='{question}' status='{interpretation.status}'"
+                )
                 return
 
             response_widget.set_execution_context(
                 question,
                 interpretation.plan,
                 interpretation.candidate_interpretations,
+            )
+            log_info(
+                "[Relatorios][debug][ui] "
+                f"execution_blocked=False reason='status_ok' question='{question}' "
+                f"plan_intent='{interpretation.plan.intent}' filters={[(item.field, item.value, item.layer_role) for item in interpretation.plan.filters]}"
             )
             self._push_loading_status(response_widget, "Plano entendido. Executando a consulta...")
             execution_started = True
