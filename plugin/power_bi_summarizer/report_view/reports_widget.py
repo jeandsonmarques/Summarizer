@@ -1782,6 +1782,7 @@ class ReportsWidget(QWidget):
             return None
 
     def _build_effective_question(self, question: str) -> str:
+        return str(question or "").strip()
         hints = []
         if self.context_source == "postgres":
             hints.append("Priorize as camadas e conexões PostgreSQL abertas no projeto.")

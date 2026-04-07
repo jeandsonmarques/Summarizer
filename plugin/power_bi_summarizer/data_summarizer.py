@@ -283,7 +283,7 @@ class PowerBISummarizerDialog(QDialog):
         # Prepare widgets for the Results view
         try:
             layout = self.ui.results_body_layout
-            self.pivot_widget = PivotTableWidget(self.ui.results_body)
+            self.pivot_widget = PivotTableWidget(iface=self.iface, parent=self.ui.results_body)
             layout.addWidget(self.pivot_widget)
             try:
                 self.pivot_widget.set_auto_update_checkbox(self.ui.auto_update_check)
@@ -666,10 +666,12 @@ class PowerBISummarizerDialog(QDialog):
 
         metadata = {
             "layer_name": descriptor.get("display_name", "Dados externos"),
+            "layer_id": descriptor.get("layer_id", ""),
             "field_name": numeric_columns[0] if numeric_columns else "-",
             "timestamp": descriptor.get("timestamp", datetime.now().isoformat()),
             "total_features": len(df),
             "source": descriptor.get("connector"),
+            "filter_expression": descriptor.get("filter_expression", ""),
         }
 
         return {
@@ -1130,9 +1132,11 @@ class PowerBISummarizerDialog(QDialog):
             "percentiles": {},
             "metadata": {
                 "layer_name": layer.name(),
+                "layer_id": layer.id(),
                 "field_name": field_name,
                 "timestamp": datetime.now().isoformat(),
                 "total_features": layer.featureCount(),
+                "filter_expression": expression if filter_field and filter_value else "",
             },
             "filter_description": filter_description,
         }
@@ -1265,6 +1269,40 @@ class PowerBISummarizerDialog(QDialog):
     def update_charts_preview(self, summary_data):
         if not hasattr(self.ui, "chart_preview_text"):
             return
+        pivot_widget = getattr(self, "pivot_widget", None)
+        if pivot_widget is not None and hasattr(pivot_widget, "get_current_pivot_result"):
+            try:
+                pivot_result = pivot_widget.get_current_pivot_result()
+            except Exception:
+                pivot_result = None
+            if pivot_result is not None:
+                metadata = dict(getattr(pivot_result, "metadata", {}) or {})
+                grouped_data = {}
+                totals_source = pivot_result.row_totals or pivot_result.column_totals or {}
+                grand_total = float(pivot_result.grand_total or 0.0)
+                for key, value in totals_source.items():
+                    if value is None:
+                        continue
+                    label = " / ".join(str(item) for item in (key or ()) if item not in (None, ""))
+                    label = label or "Total"
+                    numeric_value = float(value)
+                    grouped_data[label] = {
+                        "sum": numeric_value,
+                        "percentage": (numeric_value / grand_total * 100) if grand_total else 0.0,
+                    }
+                summary_data = dict(summary_data or {})
+                summary_data["grouped_data"] = grouped_data
+                basic_stats = dict(summary_data.get("basic_stats") or {})
+                basic_stats["total"] = grand_total
+                summary_data["basic_stats"] = basic_stats
+                merged_metadata = dict(summary_data.get("metadata") or {})
+                merged_metadata.update(
+                    {
+                        "layer_name": metadata.get("layer_name", merged_metadata.get("layer_name", "-")),
+                        "field_name": metadata.get("value_field", merged_metadata.get("field_name", "-")),
+                    }
+                )
+                summary_data["metadata"] = merged_metadata
         grouped = summary_data.get("grouped_data") or {}
         layer_name = summary_data.get("metadata", {}).get("layer_name", "-")
         field_name = summary_data.get("metadata", {}).get("field_name", "-")
@@ -2044,6 +2082,9 @@ class PowerBISummarizerDialog(QDialog):
             return
 
         try:
+            pivot_result = None
+            if hasattr(pivot_widget, "get_current_pivot_result"):
+                pivot_result = pivot_widget.get_current_pivot_result()
             pivot_df = pivot_widget.get_visible_pivot_dataframe()
             metadata = pivot_widget.get_summary_metadata()
             config = pivot_widget.get_current_configuration()
@@ -2055,7 +2096,10 @@ class PowerBISummarizerDialog(QDialog):
             )
             return
 
-        self.dashboard_widget.set_pivot_data(pivot_df, metadata, config)
+        if pivot_result is not None and hasattr(self.dashboard_widget, "set_pivot_result"):
+            self.dashboard_widget.set_pivot_result(pivot_result)
+        else:
+            self.dashboard_widget.set_pivot_data(pivot_df, metadata, config)
         self.dashboard_widget.show()
         self.dashboard_widget.raise_()
 

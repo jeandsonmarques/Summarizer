@@ -119,6 +119,7 @@ class ReportAIEngine:
                 )
         conversation_context = self._resolve_conversation_context(question, normalized_question)
         effective_question = conversation_context.effective_question or normalized_question
+        effective_question = self._strip_ui_context_suffix(effective_question)
         if conversation_context.is_followup:
             self._emit_status(status_callback, "Aproveitando o contexto anterior...")
         self._emit_status(status_callback, "Lendo as camadas abertas...")
@@ -701,6 +702,13 @@ class ReportAIEngine:
             if filter_field in location_field_names:
                 return True
         return False
+
+    def _strip_ui_context_suffix(self, question: str) -> str:
+        text = str(question or "").strip()
+        marker = "\n\nContexto adicional:"
+        if marker in text:
+            return text.split(marker, 1)[0].strip()
+        return text
 
     def _resolve_conversation_context(self, question: str, normalized_question: str) -> ConversationContextPayload:
         if self.conversation_memory_service is None or not self.session_id:

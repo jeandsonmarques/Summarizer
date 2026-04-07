@@ -23,7 +23,7 @@ from .result_models import (
     QueryPlan,
 )
 from .schema_linker_service import SchemaLinkResult, SchemaLinkerService
-from .text_utils import normalize_text
+from .text_utils import contains_hint_tokens, normalize_text
 
 
 STOP_TERMS = {
@@ -2034,7 +2034,12 @@ class HybridQueryInterpreter:
         schema_service: Optional[LayerSchemaService],
         deep_validation: bool,
     ):
-        location_candidates = [item for item in unresolved_filters if str(item.get("kind") or "").lower() == "location"]
+        location_candidates = self._boundary_location_candidates(
+            layer_schema=layer_schema,
+            filters=filters,
+            recognized_filters=recognized_filters,
+            unresolved_filters=unresolved_filters,
+        )
         if not location_candidates or schema_service is None:
             return list(filters), list(recognized_filters), list(unresolved_filters), None
         if self._has_direct_target_location_filter(layer_schema, filters, recognized_filters):
@@ -2047,16 +2052,26 @@ class HybridQueryInterpreter:
         for candidate_layer in schema.layers:
             if candidate_layer.layer_id == layer_schema.layer_id or candidate_layer.geometry_type != "polygon":
                 continue
+            candidate_location_fields = [
+                field.name
+                for field in candidate_layer.fields
+                if getattr(field, "is_location_candidate", False)
+            ]
+            allow_boundary_scan = bool(candidate_location_fields) and int(candidate_layer.feature_count or 0) <= 20000
             boundary_filters, boundary_recognized = schema_service.match_query_filters(
                 candidate_layer,
                 location_candidates,
-                allow_feature_scan=deep_validation and candidate_layer.feature_count <= 500,
+                allow_feature_scan=allow_boundary_scan or (deep_validation and candidate_layer.feature_count <= 500),
             )
             if not boundary_recognized:
                 continue
             boundary_unresolved = self._find_unresolved_filters(location_candidates, boundary_recognized)
-            score = len(boundary_recognized) * 10 - len(boundary_unresolved)
-            score += self._score_terms(candidate_layer.search_text, ("municipio", "cidade", "bairro", "localidade"))
+            score = self._score_boundary_layer_for_location(
+                candidate_layer=candidate_layer,
+                boundary_filters=boundary_filters,
+                boundary_recognized=boundary_recognized,
+                boundary_unresolved=boundary_unresolved,
+            )
             if best_boundary is None or score > best_boundary[0]:
                 best_boundary = (score, candidate_layer)
                 best_filters = [
@@ -2097,6 +2112,95 @@ class HybridQueryInterpreter:
             remaining_unresolved,
             best_boundary[1],
         )
+
+    def _boundary_location_candidates(
+        self,
+        layer_schema: LayerSchema,
+        filters: Sequence[FilterSpec],
+        recognized_filters: Sequence[Dict],
+        unresolved_filters: Sequence[Dict],
+    ) -> List[Dict]:
+        candidates: List[Dict] = []
+        seen = set()
+        for item in unresolved_filters or []:
+            if str(item.get("kind") or "").lower() != "location":
+                continue
+            key = normalize_text(item.get("source_text") or item.get("text") or item.get("value") or "")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            candidates.append(dict(item))
+
+        if self._has_direct_target_location_filter(layer_schema, filters, recognized_filters):
+            return candidates
+
+        for item in recognized_filters or []:
+            if str(item.get("kind") or "").lower() != "location":
+                continue
+            if str(item.get("layer_role") or "target").lower() != "target":
+                continue
+            key = normalize_text(item.get("source_text") or item.get("text") or item.get("value") or "")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            candidates.append(
+                {
+                    "kind": "location",
+                    "text": item.get("source_text") or item.get("value") or "",
+                    "source_text": item.get("source_text") or item.get("value") or "",
+                    "value": item.get("value") or item.get("source_text") or "",
+                }
+            )
+        return candidates
+
+    def _score_boundary_layer_for_location(
+        self,
+        candidate_layer: LayerSchema,
+        boundary_filters: Sequence[FilterSpec],
+        boundary_recognized: Sequence[Dict],
+        boundary_unresolved: Sequence[Dict],
+    ) -> float:
+        location_field_names = [
+            field.name
+            for field in candidate_layer.fields
+            if getattr(field, "is_location_candidate", False)
+        ]
+        categorical_field_names = [
+            field.name
+            for field in candidate_layer.fields
+            if getattr(field, "is_filter_candidate", False) and field.kind in {"text", "integer"}
+        ]
+        layer_text = normalize_text(
+            " ".join(
+                [
+                    candidate_layer.name,
+                    candidate_layer.search_text,
+                    " ".join(location_field_names),
+                    " ".join(categorical_field_names),
+                ]
+            )
+        )
+        score = len(boundary_recognized) * 10 - len(boundary_unresolved)
+        score += self._score_terms(
+            layer_text,
+            ("municipio", "cidade", "bairro", "localidade", "distrito", "setor", "comunidade", "povoado"),
+        )
+        if location_field_names:
+            score += 4
+        if any(
+            contains_hint_tokens(field_name, ("municipio", "cidade", "bairro", "localidade"))
+            for field_name in location_field_names
+        ):
+            score += 5
+        if any((item.layer_role or "boundary") == "boundary" for item in boundary_filters):
+            score += 2
+        if any(
+            str(item.get("match_mode") or "").lower() in {"profile", "scan", "semantic"}
+            and contains_hint_tokens(item.get("field") or "", ("municipio", "cidade", "bairro", "localidade", "nome"))
+            for item in boundary_recognized
+        ):
+            score += 3
+        return float(score)
 
     def _resolve_metric(
         self,

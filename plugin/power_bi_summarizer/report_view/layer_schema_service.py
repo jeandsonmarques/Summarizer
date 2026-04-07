@@ -874,9 +874,11 @@ class LayerSchemaService:
         if layer.fields().indexFromName(field_schema.name) < 0:
             return None
 
+        candidate_kind = str(candidate.get("kind") or "").lower()
         target_text = normalize_text(candidate.get("text") or candidate.get("source_text") or "")
         compact_target = normalize_compact(candidate.get("text") or candidate.get("source_text") or "")
         numeric_target = candidate.get("numeric_value")
+        is_location_lookup = candidate_kind == "location" and getattr(field_schema, "is_location_candidate", False)
 
         profile_match = self._match_candidate_in_profile_values(
             field_schema,
@@ -891,7 +893,8 @@ class LayerSchemaService:
 
         request = QgsFeatureRequest()
         request.setSubsetOfAttributes([field_schema.name], layer.fields())
-        request.setLimit(self.feature_scan_limit)
+        if not is_location_lookup:
+            request.setLimit(self.feature_scan_limit)
         if hasattr(request, "setNoGeometry"):
             request.setNoGeometry(True)
         best = None

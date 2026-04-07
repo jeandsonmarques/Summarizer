@@ -23,6 +23,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .report_view.visuals import PowerBIVisualWidget, VisualDefinition
+from .report_view.pivot.pivot_formatters import PivotFormatter
 from .palette import COLORS, TYPOGRAPHY
 
 CHART_COLOR_SEQUENCE = [
@@ -129,7 +130,7 @@ class DashboardWidget(QWidget):
 
         self.current_df: pd.DataFrame = pd.DataFrame()
         self.current_metadata: Dict[str, str] = {}
-        self.current_config: Dict[str, Optional[str]] = {}
+        self.current_config: Dict[str, object] = {}
 
         self._build_ui()
         self._apply_styles()
@@ -364,6 +365,56 @@ class DashboardWidget(QWidget):
         self.current_metadata = metadata
         self.current_config = config
         self._render_current_data()
+
+    def set_pivot_result(self, result):
+        if result is None:
+            self.set_pivot_data(pd.DataFrame(), {}, {})
+            return
+
+        metadata = dict(getattr(result, "metadata", {}) or {})
+        row_fields = list(metadata.get("row_fields") or [])
+        row_depth = max(len(row_fields), max((len(key) for key in result.row_headers), default=0), 1)
+        headers = []
+        for index in range(row_depth):
+            if index < len(row_fields):
+                headers.append(str(row_fields[index]))
+            elif row_depth == 1:
+                headers.append("Linha")
+            else:
+                headers.append(f"Linha {index + 1}")
+
+        records = []
+        for row_index, row_key in enumerate(result.row_headers or [()]):
+            record = {}
+            row_values = list(row_key)
+            while len(row_values) < row_depth:
+                row_values.append("")
+            for header, value in zip(headers, row_values[:row_depth]):
+                record[header] = "" if value is None else str(value)
+            for column_index, column_key in enumerate(result.column_headers or [()]):
+                column_label = PivotFormatter.format_header_tuple(column_key)
+                cell = result.matrix[row_index][column_index] if row_index < len(result.matrix) and column_index < len(result.matrix[row_index]) else None
+                record[column_label] = getattr(cell, "raw_value", None)
+            if result.row_totals:
+                record["Total"] = result.row_totals.get(row_key)
+            records.append(record)
+
+        df = pd.DataFrame(records)
+        config = {
+            "aggregation": metadata.get("aggregation"),
+            "aggregation_label": metadata.get("aggregation"),
+            "value_field": metadata.get("value_field"),
+            "value_label": metadata.get("value_field"),
+            "row_field": row_fields[0] if row_fields else None,
+            "row_label": " / ".join(row_fields) if row_fields else None,
+            "row_fields": row_fields,
+            "column_field": (metadata.get("column_fields") or [None])[0],
+            "column_label": " / ".join(metadata.get("column_fields") or []) if metadata.get("column_fields") else None,
+            "column_fields": list(metadata.get("column_fields") or []),
+            "filter_field": None,
+            "filter_label": None,
+        }
+        self.set_pivot_data(df, metadata, config)
 
     # ------------------------------------------------------------------ Slots / actions
     def _refresh_current(self):
