@@ -1,11 +1,12 @@
 ﻿from functools import partial
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
-from qgis.PyQt.QtCore import QRegExp, QMimeData, QSettings, QSize, Qt, QSortFilterProxyModel, QVariant
+from qgis.PyQt.QtCore import QEvent, QItemSelection, QItemSelectionModel, QMimeData, QRegExp, QSettings, QSize, QTimer, Qt, QSortFilterProxyModel, QVariant
 from qgis.PyQt.QtGui import QFont, QStandardItem, QStandardItemModel
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
@@ -393,11 +394,13 @@ class PivotTableWidget(QWidget):
         self.table_view.setMinimumSize(0, 0)
         self.table_view.setSizeAdjustPolicy(QAbstractScrollArea.AdjustIgnored)
         self.table_view.setSortingEnabled(True)
-        self.table_view.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_view.setSelectionBehavior(QAbstractItemView.SelectItems)
         self.table_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table_view.horizontalHeader().setStretchLastSection(True)
         self.table_view.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.table_view.clicked.connect(self._handle_table_cell_clicked)
+        self.table_view.installEventFilter(self)
+        self.table_view.viewport().installEventFilter(self)
         self.table_view.verticalHeader().sectionClicked.connect(self._handle_row_header_clicked)
         self.table_view.horizontalHeader().sectionClicked.connect(self._handle_column_header_clicked)
         left_layout.addWidget(self.table_view, stretch=1)
@@ -406,6 +409,18 @@ class PivotTableWidget(QWidget):
         self.status_label.setObjectName("statusLabel")
         self.status_label.setProperty("role", "helper")
         left_layout.addWidget(self.status_label)
+
+        self.selection_summary_bar = QFrame()
+        self.selection_summary_bar.setObjectName("selectionSummaryBar")
+        selection_layout = QHBoxLayout(self.selection_summary_bar)
+        selection_layout.setContentsMargins(10, 6, 10, 6)
+        selection_layout.setSpacing(8)
+        self.selection_summary_label = QLabel("Selecione celulas para ver soma e contagem.")
+        self.selection_summary_label.setObjectName("selectionSummaryLabel")
+        self.selection_summary_label.setProperty("role", "helper")
+        selection_layout.addWidget(self.selection_summary_label)
+        selection_layout.addStretch(1)
+        left_layout.addWidget(self.selection_summary_bar)
 
         self.main_splitter.addWidget(self.table_container)
 
@@ -700,6 +715,10 @@ class PivotTableWidget(QWidget):
                 border-radius: 10px;
                 background-color: #ffffff;
             }
+            QFrame#selectionSummaryBar {
+                border-top: 1px solid #d7e1f2;
+                background-color: #fbfcff;
+            }
             QFrame#pivotAreaCard[activeArea="true"] {
                 border: 1px solid #153C8A;
                 background-color: #f3f7ff;
@@ -720,6 +739,10 @@ class PivotTableWidget(QWidget):
             }
             QLabel#fieldPanelHint {
                 color: #5f6f8d;
+                font-size: 9pt;
+            }
+            QLabel#selectionSummaryLabel {
+                color: #394a67;
                 font-size: 9pt;
             }
             """
@@ -820,10 +843,14 @@ class PivotTableWidget(QWidget):
                 self._set_last_active_area("row")
 
         if self.numeric_candidates:
-            value_candidate = self.numeric_candidates[0]
-            idx = self.value_field_combo.findText(value_candidate)
-            if idx != -1:
-                self.value_field_combo.setCurrentIndex(idx)
+            value_candidate = next(
+                (candidate for candidate in self.numeric_candidates if not self._is_identifier_like_field(candidate)),
+                None,
+            )
+            if value_candidate is not None:
+                idx = self.value_field_combo.findText(value_candidate)
+                if idx != -1:
+                    self.value_field_combo.setCurrentIndex(idx)
 
     # ------------------------------------------------------------------ Filters & refresh
     def refresh(self):
@@ -971,8 +998,10 @@ class PivotTableWidget(QWidget):
             self.table_model = new_model
             self.proxy_model.setSourceModel(self.table_model)
             self.table_view.setModel(self.proxy_model)
+            self._connect_selection_summary()
             self.proxy_model.invalidate()
             self._update_status_label()
+            self._update_selection_summary()
             QgsMessageLog.logMessage(
                 "PivotTableWidget: model rebuilt (empty)",
                 "PowerBISummarizer",
@@ -1005,10 +1034,13 @@ class PivotTableWidget(QWidget):
                     text = str(value)
                 item = QStandardItem(text)
                 item.setEditable(False)
+                item.setData(None if pd.isna(value) else value, Qt.UserRole + 3)
                 font = QFont(base_font)
                 if column_index == total_column_index:
                     font.setBold(True)
                 item.setFont(font)
+                if column_index < self._pivot_data_column_offset:
+                    item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
                 if isinstance(value, (float, np.floating, int, np.integer)):
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 else:
@@ -1033,9 +1065,11 @@ class PivotTableWidget(QWidget):
         self.table_model = new_model
         self.proxy_model.setSourceModel(self.table_model)
         self.table_view.setModel(self.proxy_model)
+        self._connect_selection_summary()
         self.proxy_model.invalidate()
         self.table_view.resizeColumnsToContents()
         self._update_status_label()
+        self._update_selection_summary()
         QgsMessageLog.logMessage(
             f"PivotTableWidget: model rebuilt with {self.table_model.rowCount()} rows",
             "PowerBISummarizer",
@@ -1135,26 +1169,13 @@ class PivotTableWidget(QWidget):
     def _handle_table_cell_clicked(self, proxy_index):
         if not proxy_index.isValid():
             return
-        source_index = self.proxy_model.mapToSource(proxy_index)
-        if not source_index.isValid():
-            return
-        item = self.table_model.item(source_index.row(), source_index.column())
-        if item is None:
-            return
-        payload = item.data(Qt.UserRole)
-        if payload is None or self._current_layer is None:
-            return
-        if isinstance(payload, str):
-            feature_ids = [int(part) for part in payload.split(",") if part.strip().isdigit()]
-        elif isinstance(payload, (list, tuple)):
-            feature_ids = [int(part) for part in payload if str(part).strip().isdigit()]
-        else:
-            feature_ids = []
-        self.pivot_selection_bridge.select_feature_ids(self._current_layer, feature_ids)
+        self._safe_sync_selection_to_map()
+        self._schedule_selection_feedback_refresh()
 
     def _handle_row_header_clicked(self, proxy_row: int):
         if self._current_pivot_result is None or self._current_layer is None:
             return
+        self._select_proxy_row_data_cells(proxy_row)
         proxy_index = self.proxy_model.index(proxy_row, 0)
         if not proxy_index.isValid():
             return
@@ -1163,6 +1184,7 @@ class PivotTableWidget(QWidget):
         if source_row < 0 or source_row >= len(self._current_pivot_result.matrix):
             return
         self.pivot_selection_bridge.select_row(self._current_layer, self._current_pivot_result.matrix[source_row])
+        self._schedule_selection_feedback_refresh()
 
     def _handle_column_header_clicked(self, proxy_column: int):
         if self._current_pivot_result is None or self._current_layer is None:
@@ -1170,6 +1192,7 @@ class PivotTableWidget(QWidget):
         source_column = proxy_column
         if source_column < self._pivot_data_column_offset:
             return
+        self._select_proxy_column_data_cells(proxy_column)
         matrix_column = source_column - self._pivot_data_column_offset
         if matrix_column < 0 or matrix_column >= len(self._display_column_keys):
             return
@@ -1178,6 +1201,38 @@ class PivotTableWidget(QWidget):
             if matrix_column < len(row_cells):
                 column_cells.append(row_cells[matrix_column])
         self.pivot_selection_bridge.select_column(self._current_layer, column_cells)
+        self._schedule_selection_feedback_refresh()
+
+    def _select_proxy_row_data_cells(self, proxy_row: int):
+        selection_model = self.table_view.selectionModel()
+        if selection_model is None:
+            return
+        last_column = self.proxy_model.columnCount() - 1
+        first_data_column = self._pivot_data_column_offset
+        if proxy_row < 0 or last_column < first_data_column:
+            return
+        start = self.proxy_model.index(proxy_row, first_data_column)
+        end = self.proxy_model.index(proxy_row, last_column)
+        if not start.isValid() or not end.isValid():
+            return
+        selection = QItemSelection(start, end)
+        selection_model.select(selection, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Select)
+        self.table_view.setCurrentIndex(start)
+
+    def _select_proxy_column_data_cells(self, proxy_column: int):
+        selection_model = self.table_view.selectionModel()
+        if selection_model is None:
+            return
+        row_count = self.proxy_model.rowCount()
+        if row_count <= 0 or proxy_column < self._pivot_data_column_offset:
+            return
+        start = self.proxy_model.index(0, proxy_column)
+        end = self.proxy_model.index(row_count - 1, proxy_column)
+        if not start.isValid() or not end.isValid():
+            return
+        selection = QItemSelection(start, end)
+        selection_model.select(selection, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Select)
+        self.table_view.setCurrentIndex(start)
 
     def _update_status_label(self):
         total = self.table_model.rowCount()
@@ -1190,6 +1245,207 @@ class PivotTableWidget(QWidget):
         if column_labels:
             parts.append(f"Colunas: {' / '.join(column_labels)}")
         self.status_label.setText(" | ".join(parts))
+
+    def _connect_selection_summary(self):
+        try:
+            selection_model = self.table_view.selectionModel()
+        except Exception:
+            selection_model = None
+        if selection_model is None:
+            return
+        try:
+            selection_model.selectionChanged.disconnect(self._on_table_selection_changed)
+        except Exception:
+            pass
+        selection_model.selectionChanged.connect(self._on_table_selection_changed)
+
+    def _on_table_selection_changed(self, selected, deselected):
+        self._schedule_selection_feedback_refresh()
+
+    def eventFilter(self, watched, event):
+        if watched in {getattr(self, "table_view", None), getattr(getattr(self, "table_view", None), "viewport", lambda: None)()}:
+            if event is not None and event.type() in {
+                QEvent.MouseButtonRelease,
+                QEvent.KeyRelease,
+                QEvent.FocusIn,
+                QEvent.FocusOut,
+            }:
+                self._schedule_selection_feedback_refresh()
+        return super().eventFilter(watched, event)
+
+    def _schedule_selection_feedback_refresh(self):
+        QTimer.singleShot(0, self._refresh_selection_feedback)
+
+    def _refresh_selection_feedback(self):
+        try:
+            self._update_selection_summary()
+        except Exception as exc:
+            QgsMessageLog.logMessage(
+                f"PivotTableWidget: falha ao atualizar resumo de selecao: {exc}",
+                "PowerBISummarizer",
+                Qgis.Warning,
+            )
+            if hasattr(self, "selection_summary_label"):
+                self.selection_summary_label.setText("Nao foi possivel calcular a selecao atual.")
+
+    def _safe_sync_selection_to_map(self):
+        try:
+            self._sync_selection_to_map()
+        except Exception as exc:
+            QgsMessageLog.logMessage(
+                f"PivotTableWidget: falha ao sincronizar selecao no mapa: {exc}",
+                "PowerBISummarizer",
+                Qgis.Warning,
+            )
+
+    def _sync_selection_to_map(self):
+        if self._current_layer is None:
+            return
+        selection_model = self.table_view.selectionModel()
+        if selection_model is None:
+            return
+
+        feature_ids: List[int] = []
+        seen = set()
+        for proxy_index in selection_model.selectedIndexes():
+            if not proxy_index.isValid():
+                continue
+            source_index = self.proxy_model.mapToSource(proxy_index)
+            if not source_index.isValid():
+                continue
+            if source_index.column() < self._pivot_data_column_offset:
+                continue
+            raw_ids = self._feature_ids_for_proxy_index(proxy_index, source_index)
+            for fid in raw_ids:
+                if fid in seen:
+                    continue
+                seen.add(fid)
+                feature_ids.append(fid)
+        self.pivot_selection_bridge.select_feature_ids(self._current_layer, feature_ids)
+
+    def _update_selection_summary(self):
+        if not hasattr(self, "selection_summary_label"):
+            return
+        selection_model = self.table_view.selectionModel()
+        if selection_model is None:
+            self.selection_summary_label.setText("Selecione celulas para ver soma e contagem.")
+            return
+
+        indexes = list(selection_model.selectedIndexes() or [])
+        if not indexes:
+            self.selection_summary_label.setText("Selecione celulas para ver soma e contagem.")
+            return
+
+        numeric_values: List[float] = []
+        selected_count = 0
+        numeric_count = 0
+        for proxy_index in indexes:
+            try:
+                if not proxy_index.isValid():
+                    continue
+                if proxy_index.column() < self._pivot_data_column_offset:
+                    continue
+                selected_count += 1
+                numeric_value = self._coerce_numeric_summary_value(proxy_index.data(Qt.DisplayRole))
+                if numeric_value is not None:
+                    numeric_values.append(numeric_value)
+                    numeric_count += 1
+            except Exception:
+                continue
+
+        if selected_count == 0:
+            self.selection_summary_label.setText("Selecione celulas para ver soma e contagem.")
+            return
+
+        if numeric_values:
+            total_sum = float(sum(numeric_values))
+            sum_text = f"Soma: {self._format_selection_number(total_sum)}"
+        else:
+            sum_text = "Soma: -"
+        self.selection_summary_label.setText(
+            f"Selecionadas: {selected_count} celula(s) | {sum_text} | Numericas: {numeric_count}"
+        )
+
+    def _format_selection_number(self, value: float) -> str:
+        try:
+            numeric = float(value)
+        except Exception:
+            return "-"
+        if abs(numeric - round(numeric)) < 1e-9:
+            return f"{int(round(numeric)):,}"
+        return f"{numeric:,.2f}"
+
+    def _coerce_numeric_summary_value(self, value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float, np.integer, np.floating)) and not pd.isna(value):
+            return float(value)
+        text = str(value).strip()
+        if not text:
+            return None
+        text = text.replace(" ", "")
+        if re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+            try:
+                return float(text)
+            except Exception:
+                return None
+        if re.fullmatch(r"-?(?:\d{1,3}(?:,\d{3})+)(?:\.\d+)?", text):
+            try:
+                return float(text.replace(",", ""))
+            except Exception:
+                return None
+        if re.fullmatch(r"-?(?:\d{1,3}(?:\.\d{3})+)(?:,\d+)?", text):
+            try:
+                return float(text.replace(".", "").replace(",", "."))
+            except Exception:
+                return None
+        if "," in text and "." in text:
+            cleaned = text.replace(".", "").replace(",", ".") if text.rfind(",") > text.rfind(".") else text.replace(",", "")
+            try:
+                return float(cleaned)
+            except Exception:
+                return None
+        if "," in text:
+            cleaned = text.replace(",", ".") if (text.count(",") == 1 and len(text.split(",")[-1]) <= 2) else text.replace(",", "")
+            try:
+                return float(cleaned)
+            except Exception:
+                return None
+        if "." in text:
+            if text.count(".") == 1 and len(text.split(".")[-1]) <= 2:
+                try:
+                    return float(text)
+                except Exception:
+                    return None
+            try:
+                return float(text.replace(".", ""))
+            except Exception:
+                return None
+        try:
+            return float(text)
+        except Exception:
+            return None
+
+    def _feature_ids_for_proxy_index(self, proxy_index, source_index=None) -> List[int]:
+        payload = proxy_index.data(Qt.UserRole)
+        if isinstance(payload, str) and payload.strip():
+            ids = [int(part) for part in payload.split(",") if part.strip().isdigit()]
+            if ids:
+                return ids
+        if isinstance(payload, (list, tuple)):
+            ids = [int(part) for part in payload if str(part).strip().isdigit()]
+            if ids:
+                return ids
+        if source_index is not None and self._current_pivot_result is not None:
+            row_index = source_index.row()
+            column_index = source_index.column() - self._pivot_data_column_offset
+            if row_index >= 0 and column_index >= 0 and row_index < len(self._current_pivot_result.matrix):
+                row_cells = self._current_pivot_result.matrix[row_index]
+                if column_index < len(row_cells):
+                    cell = row_cells[column_index]
+                    feature_ids = getattr(cell, "feature_ids", []) or []
+                    return [int(fid) for fid in feature_ids if str(fid).strip().isdigit() or isinstance(fid, int)]
+        return []
 
     def _apply_theming_tokens(self):
         try:
@@ -1474,6 +1730,8 @@ class PivotTableWidget(QWidget):
             if spec is not None:
                 return spec
         for candidate in self.numeric_candidates:
+            if self._is_identifier_like_field(candidate):
+                continue
             for index in range(self.value_field_combo.count()):
                 if self.value_field_combo.itemText(index) == candidate:
                     spec = self._field_spec_from_key(self.value_field_combo.itemData(index))
@@ -1696,6 +1954,10 @@ class PivotTableWidget(QWidget):
             if self._is_numeric_column(df[column]):
                 result.append(column)
         return result
+
+    def _is_identifier_like_field(self, field_name: str) -> bool:
+        normalized = (field_name or "").strip().lower()
+        return normalized in {"fid", "id", "gid", "objectid", "object_id", "ogc_fid"}
 
     def _is_numeric_column(self, series: pd.Series) -> bool:
         if ptypes.is_numeric_dtype(series):
