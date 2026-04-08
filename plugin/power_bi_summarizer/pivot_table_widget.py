@@ -312,6 +312,7 @@ class PivotTableWidget(QWidget):
         self._sidebar_collapsed = False
         self._sidebar_last_width = 340
         self._field_specs_by_key: Dict[str, PivotFieldSpec] = {}
+        self._saved_configurations: Dict[str, Dict[str, Any]] = {}
         self.pivot_engine = PivotEngine(iface=iface, logger=QgsMessageLog)
         self.pivot_selection_bridge = PivotSelectionBridge(iface)
         self.pivot_export_service = PivotExportService()
@@ -752,6 +753,10 @@ class PivotTableWidget(QWidget):
     def set_summary_data(self, summary_data: Dict):
         self._block_updates = True
         try:
+            previous_key = self._configuration_key_from_metadata(self._current_metadata)
+            if previous_key:
+                self._store_current_configuration(previous_key)
+
             metadata = summary_data.get("metadata", {}) or {}
             raw = summary_data.get("raw_data") or {}
             columns = raw.get("columns") or []
@@ -770,6 +775,7 @@ class PivotTableWidget(QWidget):
 
             self._update_meta_label(metadata, summary_data.get("filter_description"))
             self._populate_field_panel(df)
+            self._restore_saved_configuration_for_metadata(metadata)
         finally:
             self._block_updates = False
 
@@ -851,6 +857,96 @@ class PivotTableWidget(QWidget):
                 idx = self.value_field_combo.findText(value_candidate)
                 if idx != -1:
                     self.value_field_combo.setCurrentIndex(idx)
+
+    def _configuration_key_from_metadata(self, metadata: Optional[Dict[str, Any]]) -> str:
+        metadata = dict(metadata or {})
+        layer_id = str(metadata.get("layer_id") or "").strip()
+        if layer_id:
+            return f"layer:{layer_id}"
+        layer_name = str(metadata.get("layer_name") or "").strip()
+        if layer_name:
+            return f"name:{layer_name}"
+        return ""
+
+    def _store_current_configuration(self, key: str):
+        if not key or self.raw_df is None or self.raw_df.empty:
+            return
+        try:
+            self._saved_configurations[key] = dict(self.get_current_configuration() or {})
+        except Exception:
+            return
+
+    def _restore_saved_configuration_for_metadata(self, metadata: Optional[Dict[str, Any]]):
+        key = self._configuration_key_from_metadata(metadata)
+        if not key:
+            return
+        config = dict(self._saved_configurations.get(key) or {})
+        if not config:
+            return
+        self._apply_saved_configuration(config)
+
+    def _apply_saved_configuration(self, config: Dict[str, Any]):
+        if not config:
+            return
+
+        self.filter_fields_list.clear()
+        self.row_fields_list.clear()
+        self.column_fields_list.clear()
+        self._sync_area_placeholder()
+
+        aggregation = str(config.get("aggregation") or "count")
+        for index in range(self.agg_combo.count()):
+            if str(self.agg_combo.itemData(index) or "") == aggregation:
+                self.agg_combo.setCurrentIndex(index)
+                break
+
+        row_fields = list(config.get("row_fields") or [])
+        column_fields = list(config.get("column_fields") or [])
+        filter_fields = list(config.get("filter_fields") or [])
+
+        for field_name in row_fields:
+            spec = self._field_spec_from_field_name(field_name)
+            if spec is not None:
+                self._add_field_to_area("row", spec, auto_refresh=False)
+
+        for field_name in column_fields:
+            spec = self._field_spec_from_field_name(field_name)
+            if spec is not None:
+                self._add_field_to_area("column", spec, auto_refresh=False)
+
+        for field_name in filter_fields:
+            spec = self._field_spec_from_field_name(field_name)
+            if spec is not None:
+                self._add_field_to_area("filter", spec, auto_refresh=False)
+
+        value_field = str(config.get("value_field") or "").strip()
+        if value_field:
+            spec = self._field_spec_from_field_name(value_field)
+            if spec is not None:
+                spec_key = self._register_field_spec(spec)
+                idx = self.value_field_combo.findData(spec_key)
+                if idx != -1:
+                    self.value_field_combo.setCurrentIndex(idx)
+
+        self.only_selected_check.setChecked(bool(config.get("only_selected")))
+        self.include_nulls_check.setChecked(bool(config.get("include_nulls")))
+        self.advanced_group.setChecked(aggregation != "count")
+        self._on_advanced_toggled(aggregation != "count")
+        self._sync_area_placeholder()
+
+        if row_fields:
+            self._set_last_active_area("row")
+        elif column_fields:
+            self._set_last_active_area("column")
+
+    def _field_spec_from_field_name(self, field_name: Optional[str]) -> Optional[PivotFieldSpec]:
+        target = str(field_name or "").strip()
+        if not target:
+            return None
+        for spec in self._field_specs_by_key.values():
+            if spec.field_name == target:
+                return spec
+        return None
 
     # ------------------------------------------------------------------ Filters & refresh
     def refresh(self):
