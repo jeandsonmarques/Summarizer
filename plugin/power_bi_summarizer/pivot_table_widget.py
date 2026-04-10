@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
 from qgis.PyQt.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QMimeData, QRegExp, QSettings, QSize, QTimer, Qt, QSortFilterProxyModel, QVariant
-from qgis.PyQt.QtGui import QFont, QIcon, QPainter, QPixmap, QStandardItem, QStandardItemModel
+from qgis.PyQt.QtGui import QColor, QFont, QIcon, QPainter, QPalette, QPixmap, QStandardItem, QStandardItemModel
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QAbstractScrollArea,
@@ -383,6 +383,7 @@ class PivotTableWidget(QWidget):
         self._build_ui()
         self._configure_compact_sizing()
         self._apply_styles()
+        self._enforce_filters_surface_backgrounds()
         self._apply_theming_tokens()
         self._load_sidebar_state()
         self._apply_sidebar_visibility(not self._sidebar_collapsed, persist=False)
@@ -581,15 +582,18 @@ class PivotTableWidget(QWidget):
         self.filters_panel_layout.addWidget(self.filters_panel_header)
 
         self.filters_builder_scroll = QScrollArea(self.filters_panel)
+        self.filters_builder_scroll.setObjectName("summaryFiltersScroll")
         self.filters_builder_scroll.setWidgetResizable(True)
         self.filters_builder_scroll.setFrameShape(QScrollArea.NoFrame)
         self.filters_builder_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.filters_builder_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.filters_builder_scroll.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.filters_builder_scroll.viewport().setObjectName("summaryFiltersViewport")
         self.filters_panel_layout.addWidget(self.filters_builder_scroll, 1)
 
         self.filters_builder_content = QWidget()
         self.filters_builder_content.setObjectName("summaryFiltersBuilderContent")
+        self.filters_builder_content.setAttribute(Qt.WA_StyledBackground, True)
         self.filters_builder_scroll.setWidget(self.filters_builder_content)
         self.filters_builder_layout = QVBoxLayout(self.filters_builder_content)
         self.filters_builder_layout.setContentsMargins(0, 0, 0, 0)
@@ -781,8 +785,10 @@ class PivotTableWidget(QWidget):
 
         self.row_area_card = QWidget()
         self.row_area_card.setProperty("sidebarSection", True)
+        self.row_area_card.setProperty("filterSectionCard", True)
+        self.row_area_card.setAttribute(Qt.WA_StyledBackground, True)
         row_layout = QVBoxLayout(self.row_area_card)
-        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setContentsMargins(6, 6, 6, 6)
         row_layout.setSpacing(4)
         self.row_area_title = QLabel("Linhas")
         self.row_area_title.setObjectName("summaryAxisTitle")
@@ -792,8 +798,10 @@ class PivotTableWidget(QWidget):
 
         self.column_area_card = QWidget()
         self.column_area_card.setProperty("sidebarSection", True)
+        self.column_area_card.setProperty("filterSectionCard", True)
+        self.column_area_card.setAttribute(Qt.WA_StyledBackground, True)
         col_layout = QVBoxLayout(self.column_area_card)
-        col_layout.setContentsMargins(0, 0, 0, 0)
+        col_layout.setContentsMargins(6, 6, 6, 6)
         col_layout.setSpacing(4)
         self.column_area_title = QLabel("Colunas")
         self.column_area_title.setObjectName("summaryAxisTitle")
@@ -803,8 +811,10 @@ class PivotTableWidget(QWidget):
 
         self.value_area_card = QWidget()
         self.value_area_card.setProperty("sidebarSection", True)
+        self.value_area_card.setProperty("filterSectionCard", True)
+        self.value_area_card.setAttribute(Qt.WA_StyledBackground, True)
         value_layout = QVBoxLayout(self.value_area_card)
-        value_layout.setContentsMargins(0, 0, 0, 0)
+        value_layout.setContentsMargins(6, 6, 6, 6)
         value_layout.setSpacing(4)
         self.value_area_title = QLabel("Valores")
         self.value_area_title.setObjectName("summaryAxisTitle")
@@ -826,12 +836,14 @@ class PivotTableWidget(QWidget):
 
         self.advanced_group = QGroupBox("Avançado")
         self.advanced_group.setObjectName("summaryAdvancedGroup")
+        self.advanced_group.setProperty("filterSectionCard", True)
+        self.advanced_group.setAttribute(Qt.WA_StyledBackground, True)
         self.advanced_group.setFlat(True)
         self.advanced_group.setCheckable(True)
         self.advanced_group.setChecked(False)
         self.advanced_group.toggled.connect(self._on_advanced_toggled)
         advanced_layout = QVBoxLayout(self.advanced_group)
-        advanced_layout.setContentsMargins(0, 8, 0, 0)
+        advanced_layout.setContentsMargins(8, 18, 8, 8)
         advanced_layout.setSpacing(8)
 
         self.advanced_value_label = QLabel("Campo de valor")
@@ -842,16 +854,17 @@ class PivotTableWidget(QWidget):
         self.value_field_combo.setVisible(False)
 
         self.only_selected_check = QCheckBox("Apenas selecionadas")
+        self.only_selected_check.setObjectName("summaryAdvancedCheck")
         self.only_selected_check.stateChanged.connect(self._maybe_refresh)
         self.include_nulls_check = QCheckBox("Incluir nulos")
+        self.include_nulls_check.setObjectName("summaryAdvancedCheck")
         self.include_nulls_check.stateChanged.connect(self._maybe_refresh)
-        flags_row = QHBoxLayout()
-        flags_row.setContentsMargins(0, 0, 0, 0)
-        flags_row.setSpacing(10)
-        flags_row.addWidget(self.only_selected_check)
-        flags_row.addWidget(self.include_nulls_check)
-        flags_row.addStretch(1)
-        advanced_layout.addLayout(flags_row)
+        flags_column = QVBoxLayout()
+        flags_column.setContentsMargins(0, 0, 0, 0)
+        flags_column.setSpacing(6)
+        flags_column.addWidget(self.only_selected_check, 0, Qt.AlignLeft)
+        flags_column.addWidget(self.include_nulls_check, 0, Qt.AlignLeft)
+        advanced_layout.addLayout(flags_column)
         self.filters_builder_layout.addWidget(self.advanced_group)
         self.filters_builder_layout.addStretch(1)
 
@@ -1281,9 +1294,15 @@ class PivotTableWidget(QWidget):
             }
             #summaryPivotRoot QFrame#summaryFieldsPanel,
             #summaryPivotRoot QFrame#summaryFiltersPanel {
-                background: #fafafb;
+                background: #ffffff;
                 border: 1px solid rgba(17, 24, 39, 0.09);
                 border-radius: 2px;
+            }
+            #summaryPivotRoot QScrollArea#summaryFiltersScroll,
+            #summaryPivotRoot QWidget#summaryFiltersViewport,
+            #summaryPivotRoot QWidget#summaryFiltersBuilderContent {
+                background: #ffffff;
+                border: none;
             }
             #summaryPivotRoot QWidget#summaryPanelHeader {
                 background: transparent;
@@ -1545,6 +1564,11 @@ class PivotTableWidget(QWidget):
                 background: transparent;
                 border: none;
             }
+            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[filterSectionCard="true"] {
+                background: #ffffff;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 2px;
+            }
             #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch,
             #summaryPivotRoot QFrame#summarySidebarPanel QComboBox#summaryOperationCombo,
             #summaryPivotRoot QFrame#summarySidebarPanel QComboBox,
@@ -1623,9 +1647,10 @@ class PivotTableWidget(QWidget):
             #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList,
             #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList,
             #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList {
-                background: transparent;
-                border: none;
-                padding: 0px;
+                background: rgba(255, 255, 255, 0.98);
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 2px;
+                padding: 4px;
                 outline: 0;
             }
             #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList::item,
@@ -1644,6 +1669,12 @@ class PivotTableWidget(QWidget):
             #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList::item:selected {
                 background: transparent;
                 color: #111827;
+            }
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList[activeArea="true"],
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList[activeArea="true"],
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList[activeArea="true"] {
+                background: #ffffff;
+                border-color: rgba(81, 96, 116, 0.22);
             }
             #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryFilterList[activeArea="true"] {
                 border-color: rgba(81, 96, 116, 0.28);
@@ -1698,6 +1729,10 @@ class PivotTableWidget(QWidget):
                 background: transparent;
                 border: none;
             }
+            #summaryPivotRoot QWidget#summaryAreaChipRow {
+                background: transparent;
+                border: none;
+            }
             #summaryPivotRoot QFrame#summaryAreaChip {
                 background: #ffffff;
                 border: 1px solid rgba(17, 24, 39, 0.10);
@@ -1720,16 +1755,18 @@ class PivotTableWidget(QWidget):
             }
             #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup,
             #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup {
-                background: transparent;
-                border: none;
-                margin-top: 0px;
-                padding-top: 0px;
+                background: #ffffff;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 2px;
+                margin-top: 8px;
+                padding-top: 8px;
             }
             #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup::title,
             #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup::title {
                 subcontrol-origin: margin;
-                left: 0px;
-                padding: 2px 0 6px 0;
+                left: 8px;
+                padding: 0 4px;
+                background: #ffffff;
                 color: #4b5563;
                 font-size: __FONT_SECONDARY_PX__px;
                 font-weight: __FONT_WEIGHT_MEDIUM__;
@@ -1745,6 +1782,11 @@ class PivotTableWidget(QWidget):
                 spacing: 8px;
                 font-size: __FONT_SECONDARY_PX__px;
                 font-weight: __FONT_WEIGHT_REGULAR__;
+            }
+            #summaryPivotRoot QFrame#summaryFiltersPanel QCheckBox#summaryAdvancedCheck {
+                min-height: 18px;
+                padding: 0px;
+                margin: 0px;
             }
             #summaryPivotRoot QFrame#summarySidebarPanel QScrollBar:vertical {
                 background: transparent;
@@ -1833,6 +1875,53 @@ class PivotTableWidget(QWidget):
         for key, value in tokens.items():
             qss = qss.replace(key, value)
         self.setStyleSheet(qss)
+        self._enforce_filters_surface_backgrounds()
+
+    def _enforce_filters_surface_backgrounds(self):
+        white = QColor("#ffffff")
+
+        for widget in (
+            getattr(self, "filters_panel", None),
+            getattr(self, "filters_builder_scroll", None),
+            getattr(self, "filters_builder_scroll", None).viewport() if getattr(self, "filters_builder_scroll", None) is not None else None,
+            getattr(self, "filters_builder_content", None),
+            getattr(self, "row_area_card", None),
+            getattr(self, "column_area_card", None),
+            getattr(self, "value_area_card", None),
+            getattr(self, "advanced_group", None),
+        ):
+            if widget is None:
+                continue
+            try:
+                palette = widget.palette()
+                palette.setColor(QPalette.Window, white)
+                palette.setColor(QPalette.Base, white)
+                widget.setPalette(palette)
+                widget.setAutoFillBackground(True)
+            except Exception:
+                pass
+
+        for list_widget in (
+            getattr(self, "filter_fields_list", None),
+            getattr(self, "row_fields_list", None),
+            getattr(self, "column_fields_list", None),
+            getattr(self, "value_fields_list", None),
+        ):
+            if list_widget is None:
+                continue
+            try:
+                palette = list_widget.palette()
+                palette.setColor(QPalette.Base, white)
+                palette.setColor(QPalette.Window, white)
+                list_widget.setPalette(palette)
+                list_widget.setAutoFillBackground(True)
+                viewport = list_widget.viewport()
+                if viewport is not None:
+                    viewport.setPalette(palette)
+                    viewport.setAutoFillBackground(True)
+                    viewport.setBackgroundRole(QPalette.Base)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ Data intake
     def set_summary_data(self, summary_data: Dict):
