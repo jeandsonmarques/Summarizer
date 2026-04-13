@@ -233,7 +233,7 @@ QToolButton[navIcon="true"]:checked {
     background: #FFFFFF;
     border: none;
     padding-left: 6px;
-    border-left: 3px solid #F2C811;
+    border-left: 3px solid ${color_brand};
 }
 
 /* Tables and lists --------------------------------------------------------- */

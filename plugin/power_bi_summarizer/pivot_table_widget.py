@@ -560,7 +560,6 @@ class _SummarySourceCard(QToolButton):
     def __init__(
         self,
         title: str,
-        icon: QIcon,
         badge_text: Optional[str] = None,
         tooltip_text: Optional[str] = None,
         parent=None,
@@ -570,11 +569,8 @@ class _SummarySourceCard(QToolButton):
         self.setCheckable(True)
         self.setAutoExclusive(False)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.setIcon(icon)
-        self.setIconSize(QSize(24, 24))
         self.setText(title)
-        self.setFixedSize(244, 62)
+        self.setFixedSize(244, 68)
         self.setAutoRaise(False)
         self.setMouseTracking(True)
         if tooltip_text:
@@ -622,30 +618,26 @@ class _SummarySourceCard(QToolButton):
         painter.setRenderHint(QPainter.Antialiasing)
 
         rect = self.rect().adjusted(1, 1, -1, -1)
-        radius = 8
+        radius = 12
 
         if self.isDown():
             fill_color = QColor("#F8FAFC")
-            border_color = QColor(17, 24, 39, 18)
+            border_color = QColor("#CBD5E1")
         elif self.isChecked():
-            fill_color = QColor("#F9FAFB")
-            border_color = QColor(81, 96, 116, 52)
+            fill_color = QColor("#FFFFFF")
+            border_color = QColor("#94A3B8")
         elif self._hovered:
-            fill_color = QColor("#FCFCFD")
-            border_color = QColor(17, 24, 39, 24)
+            fill_color = QColor("#F8FAFC")
+            border_color = QColor("#CBD5E1")
         else:
             fill_color = QColor("#FFFFFF")
-            border_color = QColor(17, 24, 39, 14)
+            border_color = QColor("#D7DEE8")
 
         painter.setPen(QPen(border_color, 1))
         painter.setBrush(fill_color)
         painter.drawRoundedRect(rect, radius, radius)
 
-        icon_rect = QRect(rect.left() + 14, rect.center().y() - 12, 24, 24)
-        icon_mode = QIcon.Selected if self.isChecked() else (QIcon.Active if self._hovered else QIcon.Normal)
-        self.icon().paint(painter, icon_rect, Qt.AlignCenter, mode=icon_mode, state=QIcon.On if self.isChecked() else QIcon.Off)
-
-        text_rect = QRect(icon_rect.right() + 12, rect.top(), rect.width() - icon_rect.right() - 28, rect.height())
+        text_rect = rect.adjusted(18, 0, -18, 0)
         title_font = QFont(self.font())
         title_font.setPixelSize(int(TYPOGRAPHY.get("font_body_px", 13)))
         title_font.setWeight(int(TYPOGRAPHY.get("font_weight_regular", 400)))
@@ -654,7 +646,7 @@ class _SummarySourceCard(QToolButton):
         painter.setPen(QColor("#0F172A"))
         metrics = QFontMetrics(title_font)
         title = metrics.elidedText(self.text(), Qt.ElideRight, text_rect.width())
-        painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, title)
+        painter.drawText(text_rect, Qt.AlignCenter, title)
 
 
 class _PivotFieldListDelegate(QStyledItemDelegate):
@@ -888,19 +880,8 @@ class PivotTableWidget(QWidget):
             ("cloud", "Cloud Beta", "source_cloud", "Acessar a integração cloud em fase beta."),
         )
         for key, title, icon_key, tooltip_text in source_specs:
-            icon = _svg_icon_from_template(
-                _TOOLBAR_SVG_ICONS[icon_key],
-                size=36,
-                color_map={
-                    QIcon.Normal: "#64748b",
-                    QIcon.Active: "#2B7DE9" if key == "map" else "#4F8FF0",
-                    QIcon.Selected: "#2B7DE9" if key == "map" else "#4F8FF0",
-                    QIcon.Disabled: "#cbd5e1",
-                },
-            )
             card = _SummarySourceCard(
                 title,
-                icon,
                 badge_text=None,
                 tooltip_text=tooltip_text,
                 parent=self.source_cards_host,
@@ -1876,7 +1857,7 @@ class PivotTableWidget(QWidget):
         self._place_context_bar(has_data)
         self.initial_state_frame.setVisible(not has_data)
         show_context = bool(has_data or self._entry_layer_selection_active)
-        self.controls_zone.setVisible(has_data)
+        self.controls_zone.setVisible(show_context)
         self.context_bar.setVisible(has_data or self._entry_layer_selection_active)
         if hasattr(self, "back_to_start_btn"):
             self.back_to_start_btn.setVisible(has_data or self._entry_layer_selection_active)

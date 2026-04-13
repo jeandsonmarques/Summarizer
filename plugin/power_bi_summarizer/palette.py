@@ -15,6 +15,8 @@ COLORS = {
     "color_text_secondary": "#4B5563",
     "color_primary": "#F2C811",
     "color_primary_hover": "#D6A800",
+    "color_brand": "#5A3FE6",
+    "color_brand_soft": "rgba(104, 92, 208, 0.10)",
     "color_secondary": "#2B7DE9",
     "color_success": "#2FB26A",
     "color_warning": "#F2994A",

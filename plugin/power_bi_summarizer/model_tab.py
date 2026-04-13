@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Optional
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -20,19 +21,39 @@ from .dashboard_add_dialog import DashboardAddDialog
 from .dashboard_canvas import DashboardCanvas
 from .dashboard_models import DashboardChartItem, DashboardProject
 from .dashboard_project_store import DashboardProjectStore, PROJECT_EXTENSION
+from .utils.resources import svg_icon
 
 
 class _ModelCardAction(QFrame):
     clicked = pyqtSignal()
 
-    def __init__(self, title: str, description: str, parent=None):
+    def __init__(self, title: str, description: str, icon_name: str = "", parent=None):
         super().__init__(parent)
         self.setObjectName("ModelActionCard")
         self.setCursor(Qt.PointingHandCursor)
+        self._description = str(description or "")
+        self._icon_name = str(icon_name or "")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setMinimumHeight(132)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
+
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(10)
+
+        self.icon_chip = QLabel("", self)
+        self.icon_chip.setObjectName("ModelActionCardIcon")
+        self.icon_chip.setFixedSize(34, 34)
+        icon = svg_icon(self._icon_name) if self._icon_name else QIcon()
+        if not icon.isNull():
+            self.icon_chip.setPixmap(icon.pixmap(18, 18))
+            self.icon_chip.setAlignment(Qt.AlignCenter)
+        top_row.addWidget(self.icon_chip, 0)
+        top_row.addStretch(1)
+        layout.addLayout(top_row)
 
         self.title_label = QLabel(title, self)
         self.title_label.setObjectName("ModelActionCardTitle")
@@ -42,6 +63,7 @@ class _ModelCardAction(QFrame):
         self.description_label = QLabel(description, self)
         self.description_label.setObjectName("ModelActionCardText")
         self.description_label.setWordWrap(True)
+        self.description_label.setVisible(False)
         layout.addWidget(self.description_label)
 
     def mouseReleaseEvent(self, event):
@@ -54,6 +76,14 @@ class _ModelCardAction(QFrame):
             return
         super().mouseReleaseEvent(event)
 
+    def enterEvent(self, event):
+        self.description_label.setVisible(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.description_label.setVisible(False)
+        super().leaveEvent(event)
+
 
 class _ModelRecentCard(QFrame):
     clicked = pyqtSignal()
@@ -62,6 +92,7 @@ class _ModelRecentCard(QFrame):
         super().__init__(parent)
         self.setObjectName("ModelRecentCard")
         self.setCursor(Qt.PointingHandCursor)
+        self.setAttribute(Qt.WA_StyledBackground, True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
@@ -159,6 +190,7 @@ class ModelTab(QWidget):
 
         welcome = QFrame(self.empty_page)
         welcome.setObjectName("ModelWelcomeCard")
+        welcome.setAttribute(Qt.WA_StyledBackground, True)
         welcome_layout = QVBoxLayout(welcome)
         welcome_layout.setContentsMargins(18, 18, 18, 18)
         welcome_layout.setSpacing(14)
@@ -177,9 +209,9 @@ class ModelTab(QWidget):
         cards_row = QHBoxLayout()
         cards_row.setContentsMargins(0, 0, 0, 0)
         cards_row.setSpacing(12)
-        self.empty_new_btn = self._build_action_card("Novo painel", "Criar um painel em branco e comecar a montar.")
-        self.empty_open_btn = self._build_action_card("Abrir painel salvo", "Abrir um arquivo .pbsdash ja existente.")
-        self.empty_import_btn = self._build_action_card("Importar arquivo", "Selecionar um painel salvo para continuar editando.")
+        self.empty_new_btn = self._build_action_card("Novo painel", "Criar um painel em branco e comecar a montar.", "icon_dashboard.svg")
+        self.empty_open_btn = self._build_action_card("Abrir painel salvo", "Abrir um arquivo .pbsdash ja existente.", "report_add.svg")
+        self.empty_import_btn = self._build_action_card("Importar arquivo", "Selecionar um painel salvo para continuar editando.", "Workspace.svg")
         cards_row.addWidget(self.empty_new_btn, 1)
         cards_row.addWidget(self.empty_open_btn, 1)
         cards_row.addWidget(self.empty_import_btn, 1)
@@ -189,6 +221,7 @@ class ModelTab(QWidget):
 
         self.recents_card = QFrame(self.empty_page)
         self.recents_card.setObjectName("ModelRecentsCard")
+        self.recents_card.setAttribute(Qt.WA_StyledBackground, True)
         recents_layout = QVBoxLayout(self.recents_card)
         recents_layout.setContentsMargins(18, 18, 18, 18)
         recents_layout.setSpacing(10)
@@ -285,13 +318,18 @@ class ModelTab(QWidget):
             QFrame#ModelActionCard,
             QFrame#ModelRecentCard {
                 background: #FFFFFF;
-                border: 1px solid #E5E7EB;
+                border: 1px solid #C9D2E3;
                 border-radius: 14px;
             }
             QFrame#ModelActionCard:hover,
             QFrame#ModelRecentCard:hover {
-                background: #F9FAFB;
-                border-color: #CBD5E1;
+                background: #F8FAFC;
+                border-color: #94A3B8;
+            }
+            QLabel#ModelActionCardIcon {
+                background: #EEF2FF;
+                border: 1px solid #C7D2FE;
+                border-radius: 10px;
             }
             QLabel#ModelActionCardTitle,
             QLabel#ModelRecentCardTitle {
@@ -311,9 +349,8 @@ class ModelTab(QWidget):
         self._refresh_recents()
         self._refresh_ui_state()
 
-    def _build_action_card(self, title: str, description: str) -> QWidget:
-        card = _ModelCardAction(title, description, self)
-        card.setMinimumHeight(120)
+    def _build_action_card(self, title: str, description: str, icon_name: str) -> QWidget:
+        card = _ModelCardAction(title, description, icon_name, self)
         return card
 
     def current_project_name(self) -> str:

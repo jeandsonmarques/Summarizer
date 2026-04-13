@@ -13,8 +13,8 @@ class SidebarController:
     """Slim icon-only navigation for the Power BI Summarizer dialog."""
 
     ICON_MAP = {
+        "relatorios": ("Relatorios", "AI-Sparkles.svg"),
         "resumo": ("Resumo", "Table.svg"),
-        "relatorios": ("Relatorios", "Report-Builder.svg"),
         "model": ("Model", "Model.svg"),
         "integracao": ("Integracao", "Linked-Entity.svg"),
     }
