@@ -2197,10 +2197,10 @@ class PowerBISummarizerDialog(QDialog):
             )
             return
 
-        if raw_df is not None and not getattr(raw_df, "empty", True):
-            self.dashboard_widget.set_pivot_data(raw_df, metadata, config)
-        elif pivot_result is not None and hasattr(self.dashboard_widget, "set_pivot_result"):
+        if pivot_result is not None and hasattr(self.dashboard_widget, "set_pivot_result"):
             self.dashboard_widget.set_pivot_result(pivot_result)
+        elif raw_df is not None and not getattr(raw_df, "empty", True):
+            self.dashboard_widget.set_pivot_data(raw_df, metadata, config)
         else:
             self.dashboard_widget.set_pivot_data(pivot_df, metadata, config)
         self.dashboard_widget.show()

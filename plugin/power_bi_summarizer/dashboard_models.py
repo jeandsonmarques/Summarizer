@@ -76,6 +76,7 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
         show_percent=bool(payload.get("show_percent")),
         show_grid=bool(payload.get("show_grid")),
         sort_mode=str(payload.get("sort_mode") or "default"),
+        bar_corner_style=str(payload.get("bar_corner_style") or "square"),
         title_override=str(payload.get("title_override") or ""),
         legend_label_override=str(payload.get("legend_label_override") or ""),
         legend_item_overrides=dict(payload.get("legend_item_overrides") or {}),

@@ -85,12 +85,6 @@ class DashboardWidget(QWidget):
         self.primary_chart.selectionChanged.connect(lambda payload: self._handle_chart_selection(self.primary_chart, payload))
         charts_layout.addWidget(self._create_chart_frame(self.primary_chart), 0, 0)
 
-        self.secondary_chart = ReportChartWidget(self)
-        self.secondary_chart.setMinimumHeight(340)
-        self.secondary_chart.set_payload(None, empty_text="Sem dados para exibir")
-        self.secondary_chart.selectionChanged.connect(lambda payload: self._handle_chart_selection(self.secondary_chart, payload))
-        charts_layout.addWidget(self._create_chart_frame(self.secondary_chart), 0, 1)
-
         layout.addWidget(charts_container, stretch=4)
 
         details_frame = QFrame()
@@ -338,14 +332,10 @@ class DashboardWidget(QWidget):
         saved_paths = []
         try:
             primary_path = os.path.join(directory, f"{base_name}_grafico_1.png")
-            secondary_path = os.path.join(directory, f"{base_name}_grafico_2.png")
             table_path = os.path.join(directory, f"{base_name}_dados.csv")
 
             self.primary_chart.grab().save(primary_path, "PNG")
             saved_paths.append(primary_path)
-
-            self.secondary_chart.grab().save(secondary_path, "PNG")
-            saved_paths.append(secondary_path)
 
             export_df = self.current_view_df if not self.current_view_df.empty else self.current_df
             export_df.to_csv(table_path, index=False)
@@ -369,9 +359,7 @@ class DashboardWidget(QWidget):
         self.subtitle_label.setText(message or "Selecione uma camada e gere um resumo para visualizar o dashboard.")
         self.summary_line_label.setText("")
         self.primary_chart.set_payload(None, empty_text="Sem dados para exibir")
-        self.secondary_chart.set_payload(None, empty_text="Sem dados para exibir")
         self.primary_chart.set_chart_context({})
-        self.secondary_chart.set_chart_context({})
         self.current_source_df = pd.DataFrame()
         self.current_view_df = pd.DataFrame()
         self.current_df = pd.DataFrame()
@@ -420,16 +408,12 @@ class DashboardWidget(QWidget):
         chart_df = self._build_chart_dataset()
         if chart_df.empty or float(chart_df["Valor"].fillna(0).sum()) == 0.0:
             self.primary_chart.set_payload(None, empty_text="Sem metricas numericas")
-            self.secondary_chart.set_payload(None, empty_text="Sem metricas numericas")
             return
 
         primary_payload = self._build_chart_payload(chart_df, title="Top categorias", chart_type="barh", limit=10)
-        secondary_payload = self._build_chart_payload(chart_df, title="Participacao (%)", chart_type="donut", limit=6)
 
         self.primary_chart.set_payload(primary_payload, empty_text="Sem dados para o grafico principal")
-        self.secondary_chart.set_payload(secondary_payload, empty_text="Sem dados para o grafico secundario")
         self.primary_chart.set_chart_context(self._chart_context_for_model(primary_payload))
-        self.secondary_chart.set_chart_context(self._chart_context_for_model(secondary_payload))
 
     def _build_chart_dataset(self) -> pd.DataFrame:
         if self.current_pivot_result is not None:
@@ -572,7 +556,31 @@ class DashboardWidget(QWidget):
             return pd.DataFrame(columns=["Categoria", "Valor", "RawCategoria", "FeatureIds"])
 
         rows = []
-        if result.row_headers:
+        if result.row_headers and result.column_headers:
+            for row_index, row_key in enumerate(result.row_headers):
+                row_cells = result.matrix[row_index] if row_index < len(result.matrix) else []
+                for column_index, column_key in enumerate(result.column_headers):
+                    if column_index >= len(row_cells):
+                        continue
+                    cell = row_cells[column_index]
+                    value = getattr(cell, "raw_value", None)
+                    if value is None:
+                        value = getattr(cell, "display_value", None)
+                    try:
+                        numeric_value = float(value)
+                    except Exception:
+                        numeric_value = None
+                    if numeric_value is None:
+                        continue
+                    rows.append(
+                        {
+                            "Categoria": f"{PivotFormatter.format_header_tuple(row_key)} / {PivotFormatter.format_header_tuple(column_key)}",
+                            "Valor": float(numeric_value),
+                            "RawCategoria": (row_key, column_key),
+                            "FeatureIds": list(getattr(cell, "feature_ids", []) or []),
+                        }
+                    )
+        elif result.row_headers:
             for row_index, row_key in enumerate(result.row_headers):
                 value = result.row_totals.get(row_key)
                 if value is None:
@@ -713,11 +721,10 @@ class DashboardWidget(QWidget):
 
     def _sync_chart_selection(self):
         category_key = self.active_category_key or ""
-        for chart in (self.primary_chart, self.secondary_chart):
-            try:
-                chart.set_selected_category(category_key, emit_signal=False)
-            except Exception:
-                pass
+        try:
+            self.primary_chart.set_selected_category(category_key, emit_signal=False)
+        except Exception:
+            pass
 
     def _handle_chart_selection(self, source_chart, payload):
         if not payload or not isinstance(payload, dict):

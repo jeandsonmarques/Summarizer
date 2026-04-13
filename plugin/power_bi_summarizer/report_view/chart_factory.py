@@ -38,6 +38,7 @@ class ChartVisualState:
     show_percent: bool = False
     show_grid: bool = False
     sort_mode: str = "default"
+    bar_corner_style: str = "square"
     title_override: str = ""
     legend_label_override: str = ""
     legend_item_overrides: Dict[str, str] = field(default_factory=dict)
@@ -209,12 +210,13 @@ class ReportChartWidget(QWidget):
                 "palette": str(self.chart_state.palette or "purple"),
                 "show_legend": bool(self.chart_state.show_legend),
                 "show_values": bool(self.chart_state.show_values),
-                "show_percent": bool(self.chart_state.show_percent),
-                "show_grid": bool(self.chart_state.show_grid),
-                "sort_mode": str(self.chart_state.sort_mode or "default"),
-                "title_override": str(self.chart_state.title_override or ""),
-                "legend_label_override": str(self.chart_state.legend_label_override or ""),
-                "legend_item_overrides": dict(self.chart_state.legend_item_overrides or {}),
+            "show_percent": bool(self.chart_state.show_percent),
+            "show_grid": bool(self.chart_state.show_grid),
+            "sort_mode": str(self.chart_state.sort_mode or "default"),
+            "bar_corner_style": str(self.chart_state.bar_corner_style or "square"),
+            "title_override": str(self.chart_state.title_override or ""),
+            "legend_label_override": str(self.chart_state.legend_label_override or ""),
+            "legend_item_overrides": dict(self.chart_state.legend_item_overrides or {}),
             },
             "title": str(
                 self._chart_context.get("title")
@@ -230,6 +232,7 @@ class ReportChartWidget(QWidget):
     def _default_visual_state(self, payload: Optional[ChartPayload]) -> ChartVisualState:
         chart_type = self._normalize_chart_type(getattr(payload, "chart_type", "bar"))
         state = ChartVisualState(chart_type=chart_type, palette="purple")
+        state.bar_corner_style = "square"
         if chart_type in {"pie", "donut"}:
             state.show_legend = True
             state.show_values = False
@@ -271,6 +274,7 @@ class ReportChartWidget(QWidget):
         personalize_menu = menu.addMenu("Personalizar gráfico")
         palette_menu = personalize_menu.addMenu("Paleta")
         sort_menu = personalize_menu.addMenu("Ordenação")
+        corners_menu = personalize_menu.addMenu("Cantos")
 
         self._ensure_visual_state_compatibility()
         supported_types = self._supported_chart_types()
@@ -323,6 +327,20 @@ class ReportChartWidget(QWidget):
             action.triggered.connect(lambda checked=False, value=sort_mode: self._set_sort_mode(value))
             sort_group.addAction(action)
             sort_menu.addAction(action)
+
+        corner_group = QActionGroup(menu)
+        corner_group.setExclusive(True)
+        square_action = QAction("Retos", menu, checkable=True)
+        square_action.setChecked(self._normalized_corner_style() == "square")
+        square_action.triggered.connect(lambda checked=False: self._set_bar_corner_style("square"))
+        corner_group.addAction(square_action)
+        corners_menu.addAction(square_action)
+
+        rounded_action = QAction("Arredondados", menu, checkable=True)
+        rounded_action.setChecked(self._normalized_corner_style() == "rounded")
+        rounded_action.triggered.connect(lambda checked=False: self._set_bar_corner_style("rounded"))
+        corner_group.addAction(rounded_action)
+        corners_menu.addAction(rounded_action)
 
         menu.addSeparator()
 
@@ -502,6 +520,8 @@ class ReportChartWidget(QWidget):
             self.chart_state.show_grid = False
         if self.chart_state.chart_type not in {"bar", "barh", "line", "area"}:
             self.chart_state.show_grid = False
+        if self._normalized_corner_style() not in {"square", "rounded"}:
+            self.chart_state.bar_corner_style = "square"
 
     def _set_chart_type(self, chart_type: str):
         if not self._supported_chart_types().get(chart_type, False):
@@ -536,6 +556,16 @@ class ReportChartWidget(QWidget):
     def _set_sort_mode(self, sort_mode: str):
         self.chart_state.sort_mode = str(sort_mode or "default").strip().lower()
         self._rerender_chart()
+
+    def _set_bar_corner_style(self, style: str):
+        requested = str(style or "square").strip().lower()
+        if requested not in {"square", "rounded"}:
+            requested = "square"
+        self.chart_state.bar_corner_style = requested
+        self._rerender_chart()
+
+    def _normalized_corner_style(self) -> str:
+        return str(getattr(self.chart_state, "bar_corner_style", "square") or "square").strip().lower()
 
     def _reset_chart_style(self):
         self.chart_state = self._default_visual_state(self._payload)
@@ -1278,6 +1308,7 @@ class ReportChartWidget(QWidget):
         row_height = chart_rect.height() / count
         bar_height = max(12.0, row_height * 0.5)
         metrics = QFontMetrics(self.font())
+        radius = 0.0 if self._normalized_corner_style() == "square" else 4.0
 
         painter.save()
         for index, category in enumerate(categories):
@@ -1295,7 +1326,10 @@ class ReportChartWidget(QWidget):
             else:
                 painter.setPen(Qt.NoPen)
             painter.setBrush(fill_color)
-            painter.drawRoundedRect(bar_rect, 6, 6)
+            if radius > 0:
+                painter.drawRoundedRect(bar_rect, radius, radius)
+            else:
+                painter.drawRect(bar_rect)
             self._register_data_point_region(bar_rect.adjusted(-2, -2, 2, 2), item)
 
             painter.setPen(QPen(QColor("#4B5563")))
@@ -1334,6 +1368,7 @@ class ReportChartWidget(QWidget):
         slot_width = chart_rect.width() / count
         bar_width = min(max(16.0, slot_width * 0.62), 72.0)
         metrics = QFontMetrics(self.font())
+        radius = 0.0 if self._normalized_corner_style() == "square" else 4.0
 
         painter.save()
         for index, category in enumerate(categories):
@@ -1351,7 +1386,10 @@ class ReportChartWidget(QWidget):
             else:
                 painter.setPen(Qt.NoPen)
             painter.setBrush(fill_color)
-            painter.drawRoundedRect(bar_rect, 6, 6)
+            if radius > 0:
+                painter.drawRoundedRect(bar_rect, radius, radius)
+            else:
+                painter.drawRect(bar_rect)
             self._register_data_point_region(bar_rect.adjusted(-2, -2, 2, 2), item)
 
             annotation = self._format_annotation(values[index], float(payload["total"]))

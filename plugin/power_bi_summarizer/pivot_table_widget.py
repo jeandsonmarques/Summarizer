@@ -752,7 +752,7 @@ class PivotTableWidget(QWidget):
         self._apply_theming_tokens()
         self._load_sidebar_state()
         self._apply_sidebar_visibility(not self._sidebar_collapsed, persist=False)
-        self._set_content_mode(False)
+        self._set_content_mode(True)
 
     def minimumSizeHint(self):
         return QSize(640, 300)
@@ -792,29 +792,6 @@ class PivotTableWidget(QWidget):
         layer_host_layout.addWidget(self.layer_combo_placeholder)
         self.context_layer_row.addWidget(self.layer_combo_host, 1)
 
-        self.back_to_start_btn = QPushButton("Voltar")
-        self.back_to_start_btn.setObjectName("summaryBackButton")
-        self.back_to_start_btn.setCursor(Qt.PointingHandCursor)
-        self.back_to_start_btn.setVisible(False)
-        self.back_to_start_btn.setFixedHeight(30)
-        self.back_to_start_btn.setMinimumWidth(92)
-        self.back_to_start_btn.setFlat(True)
-        self.back_to_start_btn.setIcon(
-            _svg_icon_from_template(
-                _TOOLBAR_SVG_ICONS["back_arrow"],
-                size=14,
-                color_map={
-                    QIcon.Normal: "#64748b",
-                    QIcon.Active: "#111827",
-                    QIcon.Selected: "#111827",
-                    QIcon.Disabled: "#cbd5e1",
-                },
-            )
-        )
-        self.back_to_start_btn.setIconSize(QSize(14, 14))
-        self.back_to_start_btn.setToolTip("Voltar para a tela inicial")
-        self.back_to_start_btn.clicked.connect(self.show_welcome_prompt)
-        self.context_layer_row.addWidget(self.back_to_start_btn, 0, Qt.AlignVCenter)
         self.context_layout.addLayout(self.context_layer_row)
 
         self.meta_label = QLabel("")
@@ -1859,8 +1836,6 @@ class PivotTableWidget(QWidget):
         show_context = bool(has_data or self._entry_layer_selection_active)
         self.controls_zone.setVisible(show_context)
         self.context_bar.setVisible(has_data or self._entry_layer_selection_active)
-        if hasattr(self, "back_to_start_btn"):
-            self.back_to_start_btn.setVisible(has_data or self._entry_layer_selection_active)
         if hasattr(self, "fields_context_card"):
             self.fields_context_card.setVisible(has_data)
         self.toolbar_frame.setVisible(has_data)
@@ -1972,6 +1947,8 @@ class PivotTableWidget(QWidget):
             "Adicionar dados ao seu relatório",
             "Escolha uma fonte para começar. Os dados carregados serão exibidos no painel Resumo.",
         )
+        self._set_content_mode(True)
+        self.table_stack.setCurrentWidget(self.empty_state_frame)
 
     def _apply_styles(self):
         tokens = {

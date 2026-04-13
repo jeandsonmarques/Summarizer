@@ -13,7 +13,7 @@ class SidebarController:
     """Slim icon-only navigation for the Power BI Summarizer dialog."""
 
     ICON_MAP = {
-        "relatorios": ("Relatorios", "AI-Sparkles.svg"),
+        "relatorios": ("Relatorios", "icone_chat_exato_cropped.png"),
         "resumo": ("Resumo", "Table.svg"),
         "model": ("Model", "Model.svg"),
         "integracao": ("Integracao", "Linked-Entity.svg"),
@@ -46,7 +46,7 @@ class SidebarController:
         except Exception:
             pass
         self._update_upload_button_state()
-        self._set_mode("resumo")
+        self._set_mode("relatorios")
         self._refresh_nav_styles()
 
     def _build_sidebar(self):
@@ -65,11 +65,18 @@ class SidebarController:
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setToolTip(tooltip)
-            btn.setFixedSize(36, 36)
-            btn.setIconSize(QSize(20, 20))
+            if mode == "relatorios":
+                btn.setFixedSize(52, 52)
+            else:
+                btn.setFixedSize(36, 36)
+            btn.setIconSize(QSize(36, 36) if mode == "relatorios" else QSize(20, 20))
             btn.setProperty("navIcon", "true")
             btn.setProperty("active", False)
-            btn.setIcon(svg_icon(icon_name))
+            if mode == "relatorios":
+                icon_path = os.path.join(os.path.dirname(__file__), "resources", "icons", "icone_chat_exato_cropped.png")
+                btn.setIcon(QIcon(icon_path) if os.path.exists(icon_path) else svg_icon(icon_name))
+            else:
+                btn.setIcon(svg_icon(icon_name))
             btn.clicked.connect(lambda checked, m=mode: self._handle_nav_click(m))
             layout.addWidget(btn, 0, Qt.AlignTop)
             self.buttons[mode] = btn
