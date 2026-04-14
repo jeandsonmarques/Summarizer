@@ -1,14 +1,51 @@
 from __future__ import annotations
 
+import copy
+import os
 from typing import Optional
 
-from qgis.PyQt.QtCore import QEvent, QPoint, QRect, Qt, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QPainter, QPen
-from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from qgis.PyQt.QtCore import QEvent, QPoint, QRect, QSize, Qt, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPen
+from qgis.PyQt.QtWidgets import (
+    QAction,
+    QActionGroup,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .dashboard_models import DashboardChartBinding, DashboardChartItem
-from .slim_dialogs import slim_get_text
 from .report_view.chart_factory import ReportChartWidget
+from .slim_dialogs import slim_get_text
+
+
+def _icon_from_resource(name: str) -> QIcon:
+    path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "resources", "icons", str(name or "").strip())
+    )
+    if os.path.exists(path):
+        return QIcon(path)
+    return QIcon()
+
+
+class _DashboardConnectorOverlay(QWidget):
+    def __init__(self, host: "DashboardItemWidget", parent=None):
+        super().__init__(parent)
+        self._host = host
+        self.setObjectName("ModelDashboardOverlay")
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        # Conectores visuais ocultos para manter o canvas limpo; a relação é iniciada pelo comando no header.
+        return
 
 
 class DashboardItemWidget(QFrame):
@@ -21,6 +58,10 @@ class DashboardItemWidget(QFrame):
     resizeStarted = pyqtSignal(str, object)
     resizeMoved = pyqtSignal(str, object)
     resizeFinished = pyqtSignal(str, object)
+    linkStarted = pyqtSignal(str, object)
+    linkMoved = pyqtSignal(str, object)
+    linkFinished = pyqtSignal(str, object)
+    linkCommandRequested = pyqtSignal(str)
 
     def __init__(self, item: DashboardChartItem, parent=None):
         super().__init__(parent)
@@ -30,9 +71,12 @@ class DashboardItemWidget(QFrame):
         self._highlight_mode = "idle"
         self._active_resize_mode = ""
         self._resize_margin = 10
+        self._connector_radius = 6
         self._drag_candidate = False
         self._drag_active = False
         self._resize_active = False
+        self._link_active = False
+        self._active_link_side = ""
         self._press_pos = QPoint()
         self._header_pressed = False
         self._binding = item.binding.normalized()
@@ -73,9 +117,46 @@ class DashboardItemWidget(QFrame):
         title_column.addWidget(self.subtitle_label)
         header_layout.addLayout(title_column, 1)
 
-        self.remove_btn = QPushButton("Fechar", self.header)
+        self.model_edit_btn = QToolButton(self.header)
+        self.model_edit_btn.setObjectName("ModelDashboardHeaderIconButton")
+        self.model_edit_btn.setCursor(Qt.PointingHandCursor)
+        self.model_edit_btn.setToolTip("Alterar tipo de grafico")
+        model_icon = _icon_from_resource("model_chart_type.svg")
+        self.model_edit_btn.setIcon(model_icon)
+        self.model_edit_btn.setIconSize(QSize(16, 16))
+        if model_icon.isNull():
+            self.model_edit_btn.setText("T")
+        self.model_edit_btn.clicked.connect(self._open_chart_model_menu)
+        header_layout.addWidget(self.model_edit_btn, 0)
+
+        self.personalize_btn = QToolButton(self.header)
+        self.personalize_btn.setObjectName("ModelDashboardHeaderIconButton")
+        self.personalize_btn.setCursor(Qt.PointingHandCursor)
+        self.personalize_btn.setToolTip("Personalizar visual do grafico")
+        personalize_icon = _icon_from_resource("model_chart_brush.svg")
+        self.personalize_btn.setIcon(personalize_icon)
+        self.personalize_btn.setIconSize(QSize(16, 16))
+        if personalize_icon.isNull():
+            self.personalize_btn.setText("P")
+        self.personalize_btn.clicked.connect(self._open_chart_personalize_menu)
+        header_layout.addWidget(self.personalize_btn, 0)
+
+        self.link_command_btn = QPushButton("+ Relacao", self.header)
+        self.link_command_btn.setObjectName("ModelDashboardLinkCommandButton")
+        self.link_command_btn.setCursor(Qt.PointingHandCursor)
+        self.link_command_btn.setToolTip("Criar relacao com outro grafico")
+        self.link_command_btn.clicked.connect(lambda: self.linkCommandRequested.emit(self.item_id))
+        header_layout.addWidget(self.link_command_btn, 0)
+
+        self.remove_btn = QToolButton(self.header)
         self.remove_btn.setObjectName("ModelDashboardRemoveButton")
         self.remove_btn.setCursor(Qt.PointingHandCursor)
+        self.remove_btn.setToolTip("Fechar grafico")
+        close_icon = _icon_from_resource("model_close.svg")
+        self.remove_btn.setIcon(close_icon)
+        self.remove_btn.setIconSize(QSize(14, 14))
+        if close_icon.isNull():
+            self.remove_btn.setText("X")
         self.remove_btn.clicked.connect(lambda: self.removeRequested.emit(self.item_id))
         header_layout.addWidget(self.remove_btn, 0)
 
@@ -90,6 +171,9 @@ class DashboardItemWidget(QFrame):
         self.footer_label = QLabel("", self.card)
         self.footer_label.setObjectName("ModelDashboardItemFooter")
         card_layout.addWidget(self.footer_label, 0)
+
+        self._overlay = _DashboardConnectorOverlay(self, self)
+        self._overlay.raise_()
 
         self._event_widgets = (
             self,
@@ -132,7 +216,6 @@ class DashboardItemWidget(QFrame):
         self.chart_widget.set_external_filters(self._external_filters)
 
     def clear_local_selection(self):
-        """Limpa apenas o estado visual local do gráfico, sem disparar eventos."""
         try:
             self.chart_widget.clear_selection(emit_signal=False)
         except Exception:
@@ -223,8 +306,14 @@ class DashboardItemWidget(QFrame):
 
     def set_edit_mode(self, enabled: bool):
         self._edit_mode = bool(enabled)
+        if not self._edit_mode:
+            self._link_active = False
+            self._active_link_side = ""
         self.drag_label.setVisible(self._edit_mode)
         self.remove_btn.setVisible(self._edit_mode)
+        self.model_edit_btn.setVisible(self._edit_mode)
+        self.personalize_btn.setVisible(self._edit_mode)
+        self.link_command_btn.setVisible(self._edit_mode)
         self.subtitle_label.setVisible(self._edit_mode)
         self.footer_label.setVisible(self._edit_mode)
         self.title_label.setToolTip("Duplo clique para renomear" if self._edit_mode else "")
@@ -243,6 +332,12 @@ class DashboardItemWidget(QFrame):
         if not self._edit_mode:
             self.unsetCursor()
         self._apply_styles()
+        try:
+            self._overlay.setVisible(self._edit_mode)
+            self._overlay.setGeometry(self.rect())
+            self._overlay.raise_()
+        except Exception:
+            pass
         self.update()
 
     def set_highlight_mode(self, mode: str):
@@ -300,21 +395,159 @@ class DashboardItemWidget(QFrame):
                 font-size: 11px;
                 font-weight: 400;
             }}
-            QPushButton#ModelDashboardRemoveButton {{
+            QToolButton#ModelDashboardRemoveButton,
+            QToolButton#ModelDashboardHeaderIconButton {{
                 min-height: 28px;
-                padding: 0 10px;
+                max-height: 28px;
+                min-width: 28px;
+                max-width: 28px;
+                padding: 0;
                 color: #374151;
                 background: #FFFFFF;
                 border: 1px solid #D1D5DB;
-                border-radius: 8px;
+                border-radius: 6px;
                 font-weight: 400;
             }}
-            QPushButton#ModelDashboardRemoveButton:hover {{
+            QToolButton#ModelDashboardRemoveButton:hover,
+            QToolButton#ModelDashboardHeaderIconButton:hover {{
                 background: #F9FAFB;
                 border-color: #9CA3AF;
             }}
+            QPushButton#ModelDashboardLinkCommandButton {{
+                min-height: 28px;
+                padding: 0 10px;
+                color: #3730A3;
+                background: #EEF2FF;
+                border: 1px solid #818CF8;
+                border-radius: 8px;
+                font-weight: 600;
+            }}
+            QPushButton#ModelDashboardLinkCommandButton:hover {{
+                background: #E0E7FF;
+                border-color: #6366F1;
+            }}
             """
         )
+
+    def _header_button_anchor(self, button: QWidget) -> QPoint:
+        try:
+            local = QPoint(max(8, int(button.width() / 2)), max(8, int(button.height()) + 2))
+            return button.mapToGlobal(local)
+        except Exception:
+            try:
+                return self.mapToGlobal(self.rect().center())
+            except Exception:
+                return QPoint()
+
+    def _open_chart_model_menu(self):
+        if not self._edit_mode:
+            return
+        menu = QMenu(self)
+        type_group = QActionGroup(menu)
+        type_group.setExclusive(True)
+
+        priority_menu = menu.addMenu("Prioridade")
+        for chart_type in list(self.chart_widget.TYPE_PRIORITY or []):
+            label = self.chart_widget.TYPE_LABELS.get(chart_type, chart_type)
+            action = QAction(label, menu, checkable=True)
+            action.setChecked(str(self.chart_widget.chart_state.chart_type or "bar") == chart_type)
+            action.triggered.connect(lambda checked=False, value=chart_type: self.chart_widget._set_chart_type(value))
+            type_group.addAction(action)
+            priority_menu.addAction(action)
+
+        if priority_menu.actions():
+            menu.addSeparator()
+
+        for group_label, chart_types in list(self.chart_widget.TYPE_GROUPS or []):
+            group_menu = menu.addMenu(str(group_label or "Tipos"))
+            for chart_type in list(chart_types or []):
+                label = self.chart_widget.TYPE_LABELS.get(chart_type, chart_type)
+                action = QAction(label, menu, checkable=True)
+                action.setChecked(str(self.chart_widget.chart_state.chart_type or "bar") == chart_type)
+                action.triggered.connect(lambda checked=False, value=chart_type: self.chart_widget._set_chart_type(value))
+                type_group.addAction(action)
+                group_menu.addAction(action)
+
+        before = copy.deepcopy(self.chart_widget.chart_state)
+        menu.exec_(self._header_button_anchor(self.model_edit_btn))
+        if before != self.chart_widget.chart_state:
+            self._item.visual_state = copy.deepcopy(self.chart_widget.chart_state)
+            self.itemChanged.emit()
+
+    def _open_chart_personalize_menu(self):
+        if not self._edit_mode:
+            return
+        menu = QMenu(self)
+        palette_menu = menu.addMenu("Paleta")
+        sort_menu = menu.addMenu("Ordenacao")
+        corners_menu = menu.addMenu("Cantos")
+
+        self.chart_widget._ensure_visual_state_compatibility()
+
+        palette_group = QActionGroup(menu)
+        palette_group.setExclusive(True)
+        for palette_name, label in dict(self.chart_widget.PALETTE_LABELS).items():
+            action = QAction(label, menu, checkable=True)
+            action.setChecked(str(self.chart_widget.chart_state.palette or "") == palette_name)
+            action.triggered.connect(lambda checked=False, value=palette_name: self.chart_widget._set_chart_palette(value))
+            palette_group.addAction(action)
+            palette_menu.addAction(action)
+
+        legend_action = QAction("Mostrar legenda", menu, checkable=True)
+        legend_action.setChecked(bool(self.chart_widget.chart_state.show_legend))
+        legend_action.triggered.connect(self.chart_widget._toggle_show_legend)
+        menu.addAction(legend_action)
+
+        values_action = QAction("Mostrar valores", menu, checkable=True)
+        values_action.setChecked(bool(self.chart_widget.chart_state.show_values))
+        values_action.triggered.connect(self.chart_widget._toggle_show_values)
+        menu.addAction(values_action)
+
+        percent_action = QAction("Mostrar percentual", menu, checkable=True)
+        percent_action.setChecked(bool(self.chart_widget.chart_state.show_percent))
+        percent_action.setEnabled(bool(self.chart_widget._supports_percentage()))
+        percent_action.triggered.connect(self.chart_widget._toggle_show_percent)
+        menu.addAction(percent_action)
+
+        grid_action = QAction("Mostrar grade", menu, checkable=True)
+        grid_action.setChecked(bool(self.chart_widget.chart_state.show_grid))
+        grid_action.setEnabled(str(self.chart_widget.chart_state.chart_type or "") in {"bar", "barh", "line", "area"})
+        grid_action.triggered.connect(self.chart_widget._toggle_show_grid)
+        menu.addAction(grid_action)
+
+        sort_group = QActionGroup(menu)
+        sort_group.setExclusive(True)
+        for sort_mode, label in dict(self.chart_widget.SORT_LABELS).items():
+            action = QAction(label, menu, checkable=True)
+            action.setChecked(str(self.chart_widget.chart_state.sort_mode or "default") == sort_mode)
+            action.triggered.connect(lambda checked=False, value=sort_mode: self.chart_widget._set_sort_mode(value))
+            sort_group.addAction(action)
+            sort_menu.addAction(action)
+
+        corners_group = QActionGroup(menu)
+        corners_group.setExclusive(True)
+        straight_action = QAction("Retos", menu, checkable=True)
+        straight_action.setChecked(self.chart_widget._normalized_corner_style() == "square")
+        straight_action.triggered.connect(lambda checked=False: self.chart_widget._set_bar_corner_style("square"))
+        corners_group.addAction(straight_action)
+        corners_menu.addAction(straight_action)
+
+        rounded_action = QAction("Arredondados", menu, checkable=True)
+        rounded_action.setChecked(self.chart_widget._normalized_corner_style() == "rounded")
+        rounded_action.triggered.connect(lambda checked=False: self.chart_widget._set_bar_corner_style("rounded"))
+        corners_group.addAction(rounded_action)
+        corners_menu.addAction(rounded_action)
+
+        menu.addSeparator()
+        reset_action = QAction("Restaurar visual padrao", menu)
+        reset_action.triggered.connect(self.chart_widget._reset_chart_style)
+        menu.addAction(reset_action)
+
+        before = copy.deepcopy(self.chart_widget.chart_state)
+        menu.exec_(self._header_button_anchor(self.personalize_btn))
+        if before != self.chart_widget.chart_state:
+            self._item.visual_state = copy.deepcopy(self.chart_widget.chart_state)
+            self.itemChanged.emit()
 
     def _event_global_pos(self, event) -> QPoint:
         try:
@@ -383,6 +616,10 @@ class DashboardItemWidget(QFrame):
         if not self._edit_mode:
             self.unsetCursor()
             return
+        connector_side = self.connector_hit_side(pos)
+        if connector_side:
+            self.setCursor(Qt.CrossCursor)
+            return
         resize_mode = self._resize_mode_for_pos(pos)
         if resize_mode:
             self.setCursor(self._cursor_for_resize_mode(resize_mode))
@@ -412,6 +649,19 @@ class DashboardItemWidget(QFrame):
             },
         )
 
+    def _start_link(self, side: str, global_pos: QPoint):
+        self._link_active = True
+        self._active_link_side = str(side or "").strip().lower()
+        self._press_pos = global_pos
+        self.set_highlight_mode("drag")
+        self.linkStarted.emit(
+            self.item_id,
+            {
+                "side": self._active_link_side,
+                "global_pos": global_pos,
+            },
+        )
+
     def _emit_drag_move(self, global_pos: QPoint):
         if not self._drag_active:
             return
@@ -424,6 +674,17 @@ class DashboardItemWidget(QFrame):
             self.item_id,
             {
                 "mode": self._active_resize_mode,
+                "global_pos": global_pos,
+            },
+        )
+
+    def _emit_link_move(self, global_pos: QPoint):
+        if not self._link_active:
+            return
+        self.linkMoved.emit(
+            self.item_id,
+            {
+                "side": self._active_link_side,
                 "global_pos": global_pos,
             },
         )
@@ -449,6 +710,57 @@ class DashboardItemWidget(QFrame):
         self.set_highlight_mode("idle")
         self.unsetCursor()
 
+    def _finish_link(self, global_pos: QPoint):
+        self.linkFinished.emit(
+            self.item_id,
+            {
+                "side": self._active_link_side,
+                "global_pos": global_pos,
+            },
+        )
+        self._link_active = False
+        self._active_link_side = ""
+        self.set_highlight_mode("idle")
+        self.unsetCursor()
+
+    def connector_points(self):
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        return {
+            "left": QPoint(rect.left(), rect.center().y()),
+            "right": QPoint(rect.right(), rect.center().y()),
+            "top": QPoint(rect.center().x(), rect.top()),
+            "bottom": QPoint(rect.center().x(), rect.bottom()),
+        }
+
+    def display_handle_points(self):
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        return [
+            QPoint(rect.left(), rect.top()),
+            QPoint(rect.center().x(), rect.top()),
+            QPoint(rect.right(), rect.top()),
+            QPoint(rect.right(), rect.center().y()),
+            QPoint(rect.right(), rect.bottom()),
+            QPoint(rect.center().x(), rect.bottom()),
+            QPoint(rect.left(), rect.bottom()),
+            QPoint(rect.left(), rect.center().y()),
+        ]
+
+    def connector_point(self, side: str) -> QPoint:
+        points = self.connector_points()
+        return QPoint(points.get(str(side or "").strip().lower(), points["right"]))
+
+    def connector_radius(self) -> int:
+        return int(self._connector_radius)
+
+    def connector_hit_side(self, pos: QPoint) -> str:
+        radius = max(6, int(self._connector_radius) + 3)
+        for side, point in self.connector_points().items():
+            dx = int(pos.x()) - int(point.x())
+            dy = int(pos.y()) - int(point.y())
+            if (dx * dx + dy * dy) <= int(radius * radius):
+                return side
+        return ""
+
     def eventFilter(self, watched, event):
         if not self._edit_mode:
             return super().eventFilter(watched, event)
@@ -460,6 +772,9 @@ class DashboardItemWidget(QFrame):
         global_pos = self._event_global_pos(event)
 
         if event_type == QEvent.MouseMove:
+            if self._link_active:
+                self._emit_link_move(global_pos)
+                return True
             if self._resize_active:
                 self._emit_resize_move(global_pos)
                 return True
@@ -476,6 +791,10 @@ class DashboardItemWidget(QFrame):
             return False
 
         if event_type == QEvent.MouseButtonPress and getattr(event, "button", lambda: None)() == Qt.LeftButton:
+            link_side = self.connector_hit_side(local_pos)
+            if link_side:
+                self._start_link(link_side, global_pos)
+                return True
             resize_mode = self._resize_mode_for_pos(local_pos)
             if resize_mode:
                 self._start_resize(resize_mode, global_pos)
@@ -492,6 +811,9 @@ class DashboardItemWidget(QFrame):
             return True
 
         if event_type == QEvent.MouseButtonRelease and getattr(event, "button", lambda: None)() == Qt.LeftButton:
+            if self._link_active:
+                self._finish_link(global_pos)
+                return True
             if self._resize_active:
                 self._finish_resize(global_pos)
                 return True
@@ -512,10 +834,10 @@ class DashboardItemWidget(QFrame):
         try:
             new_text, accepted = slim_get_text(
                 parent=self,
-                title="Editar título",
-                label_text="Título do gráfico",
+                title="Editar titulo",
+                label_text="Titulo do grafico",
                 text=current,
-                placeholder="Digite o novo título",
+                placeholder="Digite o novo titulo",
                 helper_text="Altere apenas o nome exibido no card.",
                 accept_label="Salvar",
             )
@@ -528,34 +850,17 @@ class DashboardItemWidget(QFrame):
         self.itemChanged.emit()
 
     def leaveEvent(self, event):
-        if not self._drag_active and not self._resize_active:
+        if not self._drag_active and not self._resize_active and not self._link_active:
             self.unsetCursor()
         super().leaveEvent(event)
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        if not self._edit_mode:
-            return
 
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(QColor("#C7CDD9"))
-        pen.setWidth(1)
-        painter.setPen(pen)
-        painter.setBrush(QColor("#FFFFFF"))
-
-        handle_size = 6
-        half = handle_size // 2
-        rect = self.rect().adjusted(1, 1, -1, -1)
-        points = [
-            QPoint(rect.left(), rect.top()),
-            QPoint(rect.center().x(), rect.top()),
-            QPoint(rect.right(), rect.top()),
-            QPoint(rect.right(), rect.center().y()),
-            QPoint(rect.right(), rect.bottom()),
-            QPoint(rect.center().x(), rect.bottom()),
-            QPoint(rect.left(), rect.bottom()),
-            QPoint(rect.left(), rect.center().y()),
-        ]
-        for point in points:
-            painter.drawRect(point.x() - half, point.y() - half, handle_size, handle_size)
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        try:
+            self._overlay.setGeometry(self.rect())
+            self._overlay.raise_()
+        except Exception:
+            pass

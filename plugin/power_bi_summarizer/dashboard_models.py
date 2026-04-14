@@ -4,7 +4,7 @@ import copy
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .report_view.chart_factory import ChartVisualState
 from .report_view.result_models import ChartPayload
@@ -400,11 +400,187 @@ class DashboardChartItem:
 
 
 @dataclass
+class DashboardVisualLink:
+    link_id: str = ""
+    relation_id: str = ""
+    source_chart_id: str = ""
+    target_chart_id: str = ""
+    source_anchor: str = "right"
+    target_anchor: str = "left"
+    active: bool = True
+    created_at: str = field(default_factory=_timestamp_now)
+
+    def normalized(self) -> "DashboardVisualLink":
+        link_id = str(self.link_id or "").strip() or uuid.uuid4().hex
+        relation_id = str(self.relation_id or "").strip()
+        source_chart_id = str(self.source_chart_id or "").strip()
+        target_chart_id = str(self.target_chart_id or "").strip()
+        source_anchor = str(self.source_anchor or "right").strip().lower() or "right"
+        target_anchor = str(self.target_anchor or "left").strip().lower() or "left"
+        if source_anchor not in {"left", "right", "top", "bottom"}:
+            source_anchor = "right"
+        if target_anchor not in {"left", "right", "top", "bottom"}:
+            target_anchor = "left"
+        return DashboardVisualLink(
+            link_id=link_id,
+            relation_id=relation_id,
+            source_chart_id=source_chart_id,
+            target_chart_id=target_chart_id,
+            source_anchor=source_anchor,
+            target_anchor=target_anchor,
+            active=bool(self.active),
+            created_at=str(self.created_at or _timestamp_now()),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        normalized = self.normalized()
+        return {
+            "link_id": normalized.link_id,
+            "relation_id": normalized.relation_id,
+            "source_chart_id": normalized.source_chart_id,
+            "target_chart_id": normalized.target_chart_id,
+            "source_anchor": normalized.source_anchor,
+            "target_anchor": normalized.target_anchor,
+            "active": bool(normalized.active),
+            "created_at": normalized.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "DashboardVisualLink":
+        payload = dict(data or {})
+        return cls(
+            link_id=str(payload.get("link_id") or "").strip(),
+            relation_id=str(payload.get("relation_id") or "").strip(),
+            source_chart_id=str(payload.get("source_chart_id") or payload.get("source_id") or "").strip(),
+            target_chart_id=str(payload.get("target_chart_id") or payload.get("target_id") or "").strip(),
+            source_anchor=str(payload.get("source_anchor") or "right"),
+            target_anchor=str(payload.get("target_anchor") or "left"),
+            active=bool(payload.get("active", True)),
+            created_at=str(payload.get("created_at") or _timestamp_now()),
+        ).normalized()
+
+
+@dataclass
+class DashboardChartRelation:
+    relation_id: str = ""
+    source_chart_id: str = ""
+    target_chart_id: str = ""
+    source_id: str = ""
+    target_id: str = ""
+    source_field: str = ""
+    target_field: str = ""
+    interaction_mode: str = "filter"
+    direction: str = "both"
+    active: bool = True
+    created_at: str = field(default_factory=_timestamp_now)
+
+    @staticmethod
+    def _normalize_interaction_mode(value: Any) -> str:
+        text = str(value or "filter").strip().lower()
+        if text in {"none", "nenhum", "off", "disabled", "disable"}:
+            return "none"
+        return "filter"
+
+    @staticmethod
+    def _normalize_direction(value: Any) -> str:
+        text = str(value or "both").strip().lower()
+        if text in {
+            "origem_para_destino",
+            "source_to_target",
+            "forward",
+            "origem->destino",
+            "origem_destino",
+        }:
+            return "origem_para_destino"
+        if text in {
+            "destino_para_origem",
+            "target_to_source",
+            "backward",
+            "destino->origem",
+            "destino_origem",
+            "reverse",
+        }:
+            return "destino_para_origem"
+        return "both"
+
+    def normalized(self) -> "DashboardChartRelation":
+        return DashboardChartRelation(
+            relation_id=str(self.relation_id or "").strip() or uuid.uuid4().hex,
+            source_chart_id=str(self.source_chart_id or "").strip(),
+            target_chart_id=str(self.target_chart_id or "").strip(),
+            source_id=str(self.source_id or "").strip(),
+            target_id=str(self.target_id or "").strip(),
+            source_field=str(self.source_field or "").strip(),
+            target_field=str(self.target_field or "").strip(),
+            interaction_mode=self._normalize_interaction_mode(self.interaction_mode),
+            direction=self._normalize_direction(self.direction),
+            active=bool(self.active),
+            created_at=str(self.created_at or _timestamp_now()),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        normalized = self.normalized()
+        return {
+            "relation_id": normalized.relation_id,
+            "source_chart_id": normalized.source_chart_id,
+            "target_chart_id": normalized.target_chart_id,
+            "source_id": normalized.source_id,
+            "target_id": normalized.target_id,
+            "source_field": normalized.source_field,
+            "target_field": normalized.target_field,
+            "interaction_mode": normalized.interaction_mode,
+            "direction": normalized.direction,
+            "active": bool(normalized.active),
+            "created_at": normalized.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "DashboardChartRelation":
+        payload = dict(data or {})
+        return cls(
+            relation_id=str(payload.get("relation_id") or payload.get("id") or "").strip(),
+            source_chart_id=str(payload.get("source_chart_id") or payload.get("source_id") or "").strip(),
+            target_chart_id=str(payload.get("target_chart_id") or payload.get("target_id") or "").strip(),
+            source_id=str(
+                payload.get("source_id_value")
+                or payload.get("source_data_id")
+                or payload.get("source_binding_id")
+                or payload.get("source_id")
+                or ""
+            ),
+            target_id=str(
+                payload.get("target_id_value")
+                or payload.get("target_data_id")
+                or payload.get("target_binding_id")
+                or payload.get("target_id")
+                or ""
+            ),
+            source_field=str(payload.get("source_field") or payload.get("field_origin") or "").strip(),
+            target_field=str(payload.get("target_field") or payload.get("field_target") or "").strip(),
+            interaction_mode=str(payload.get("interaction_mode") or "filter"),
+            direction=str(payload.get("direction") or "both"),
+            active=bool(payload.get("active", True)),
+            created_at=str(payload.get("created_at") or _timestamp_now()),
+        ).normalized()
+
+    def duplicate_key(self) -> Tuple[str, str, str, str]:
+        source_chart_id = str(self.source_chart_id or "").strip().lower()
+        target_chart_id = str(self.target_chart_id or "").strip().lower()
+        source_field = str(self.source_field or "").strip().lower()
+        target_field = str(self.target_field or "").strip().lower()
+        normal = (source_chart_id, source_field, target_chart_id, target_field)
+        reverse = (target_chart_id, target_field, source_chart_id, source_field)
+        return normal if normal <= reverse else reverse
+
+
+@dataclass
 class DashboardProject:
     name: str = "Novo painel"
     project_id: str = field(default_factory=lambda: uuid.uuid4().hex)
-    version: int = 1
+    version: int = 2
     items: List[DashboardChartItem] = field(default_factory=list)
+    visual_links: List[DashboardVisualLink] = field(default_factory=list)
+    chart_relations: List[DashboardChartRelation] = field(default_factory=list)
     created_at: str = field(default_factory=_timestamp_now)
     updated_at: str = field(default_factory=_timestamp_now)
     edit_mode: bool = True
@@ -414,6 +590,8 @@ class DashboardProject:
         self.updated_at = _timestamp_now()
 
     def to_dict(self) -> Dict[str, Any]:
+        self._normalize_graph_state()
+        self.version = max(2, int(self.version or 2))
         self.touch()
         return {
             "version": int(self.version),
@@ -424,6 +602,8 @@ class DashboardProject:
             "edit_mode": bool(self.edit_mode),
             "source_meta": _json_safe(self.source_meta),
             "items": [item.to_dict() for item in self.items],
+            "visual_links": [link.to_dict() for link in self.visual_links],
+            "chart_relations": [relation.to_dict() for relation in self.chart_relations],
         }
 
     @classmethod
@@ -434,13 +614,82 @@ class DashboardProject:
             project_id=str(payload.get("project_id") or uuid.uuid4().hex),
             version=int(payload.get("version", 1) or 1),
             items=[DashboardChartItem.from_dict(item) for item in list(payload.get("items") or [])],
+            visual_links=[DashboardVisualLink.from_dict(item) for item in list(payload.get("visual_links") or [])],
+            chart_relations=[DashboardChartRelation.from_dict(item) for item in list(payload.get("chart_relations") or [])],
             created_at=str(payload.get("created_at") or _timestamp_now()),
             updated_at=str(payload.get("updated_at") or _timestamp_now()),
             edit_mode=bool(payload.get("edit_mode", True)),
             source_meta=dict(payload.get("source_meta") or {}),
         )
         project.items.sort(key=lambda item: (item.layout.y, item.layout.x, item.created_at))
+        project._normalize_graph_state()
         return project
 
     def copy(self) -> "DashboardProject":
         return DashboardProject.from_dict(copy.deepcopy(self.to_dict()))
+
+    def _normalize_graph_state(self):
+        valid_ids = {item.item_id for item in self.items}
+
+        unique_relations: List[DashboardChartRelation] = []
+        seen_relation_keys = set()
+        for relation in list(self.chart_relations or []):
+            normalized = relation.normalized()
+            if (
+                not normalized.source_chart_id
+                or not normalized.target_chart_id
+                or normalized.source_chart_id == normalized.target_chart_id
+                or normalized.source_chart_id not in valid_ids
+                or normalized.target_chart_id not in valid_ids
+                or not normalized.source_field
+                or not normalized.target_field
+            ):
+                continue
+            relation_key = normalized.duplicate_key()
+            if relation_key in seen_relation_keys:
+                continue
+            seen_relation_keys.add(relation_key)
+            unique_relations.append(normalized)
+        self.chart_relations = unique_relations
+
+        relation_ids = {relation.relation_id for relation in self.chart_relations}
+        unique_links: List[DashboardVisualLink] = []
+        seen_links = set()
+        for link in list(self.visual_links or []):
+            normalized = link.normalized()
+            if (
+                not normalized.source_chart_id
+                or not normalized.target_chart_id
+                or normalized.source_chart_id == normalized.target_chart_id
+                or normalized.source_chart_id not in valid_ids
+                or normalized.target_chart_id not in valid_ids
+                or not normalized.relation_id
+            ):
+                continue
+            if normalized.relation_id not in relation_ids:
+                continue
+            link_key = (
+                normalized.relation_id,
+                normalized.source_chart_id,
+                normalized.target_chart_id,
+                normalized.source_anchor,
+                normalized.target_anchor,
+            )
+            if link_key in seen_links:
+                continue
+            seen_links.add(link_key)
+            unique_links.append(normalized)
+
+        if not unique_links and self.chart_relations:
+            for relation in self.chart_relations:
+                unique_links.append(
+                    DashboardVisualLink(
+                        relation_id=relation.relation_id,
+                        source_chart_id=relation.source_chart_id,
+                        target_chart_id=relation.target_chart_id,
+                        source_anchor="right",
+                        target_anchor="left",
+                        active=bool(relation.active),
+                    ).normalized()
+                )
+        self.visual_links = unique_links

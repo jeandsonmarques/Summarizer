@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from qgis.PyQt.QtCore import QObject, pyqtSignal
 
-from .dashboard_models import DashboardChartBinding
+from .dashboard_models import DashboardChartBinding, DashboardChartRelation
 
 
 class ModelInteractionManager(QObject):
@@ -17,6 +17,7 @@ class ModelInteractionManager(QObject):
         self._widgets: Dict[str, Any] = {}
         self._bindings: Dict[str, DashboardChartBinding] = {}
         self._active_filters: Dict[str, Dict[str, Any]] = {}
+        self._chart_relations: List[DashboardChartRelation] = []
 
     # ------------------------------------------------------------------ Registry
     def register_chart(self, widget, binding: Optional[DashboardChartBinding] = None):
@@ -41,16 +42,48 @@ class ModelInteractionManager(QObject):
         binding = self._bindings.get(key)
         self._widgets.pop(key, None)
         self._bindings.pop(key, None)
+        removed_any = False
+        for filter_key, filter_data in list(self._active_filters.items()):
+            origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
+            if origin_chart_id == key:
+                self._active_filters.pop(filter_key, None)
+                removed_any = True
         filter_key = self._binding_filter_key(binding) if binding is not None else ""
         if filter_key and not any(self._binding_filter_key(other_binding) == filter_key for other_binding in self._bindings.values()):
             self._active_filters.pop(filter_key, None)
+            removed_any = True
+        if removed_any:
+            self._apply_all_filters()
+            return
         self._emit_filters_changed()
 
     def clear_registry(self):
         self._widgets.clear()
         self._bindings.clear()
         self._active_filters.clear()
+        self._chart_relations = []
         self.filtersChanged.emit(self.active_filters_summary())
+
+    def set_chart_relations(self, relations: Optional[List[DashboardChartRelation]] = None):
+        normalized: List[DashboardChartRelation] = []
+        seen = set()
+        for relation in list(relations or []):
+            item = relation.normalized()
+            if (
+                not item.source_chart_id
+                or not item.target_chart_id
+                or item.source_chart_id == item.target_chart_id
+                or not item.source_field
+                or not item.target_field
+            ):
+                continue
+            key = item.duplicate_key()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(item)
+        self._chart_relations = normalized
+        self._apply_all_filters()
 
     # ---------------------------------------------------------------- Selection
     def handle_chart_selection(self, payload: Optional[Dict[str, Any]]):
@@ -184,13 +217,25 @@ class ModelInteractionManager(QObject):
         active_filters = self.active_filters()
         for chart_id, widget in list(self._widgets.items()):
             try:
-                binding = self._bindings.get(chart_id)
                 widget_filters = {}
-                widget_keys = self._binding_match_keys(binding)
                 for filter_key, filter_data in active_filters.items():
-                    if not widget_keys.intersection(self._filter_match_keys(filter_data)):
+                    origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
+                    if not origin_chart_id or origin_chart_id == chart_id:
                         continue
-                    widget_filters[filter_key] = dict(filter_data)
+
+                    transformed = self._relation_filter_for(origin_chart_id, chart_id, filter_data)
+                    if transformed is not None:
+                        transformed_key = str(transformed.get("filter_key") or f"relation:{origin_chart_id}:{chart_id}")
+                        widget_filters[transformed_key] = dict(transformed)
+                        continue
+
+                    if self._has_relation_between(origin_chart_id, chart_id):
+                        continue
+
+                    if self._should_apply_phase1(origin_chart_id, chart_id):
+                        phase_filter = dict(filter_data or {})
+                        phase_filter["filter_key"] = f"phase1:{origin_chart_id}:{chart_id}:{filter_key}"
+                        widget_filters[str(phase_filter["filter_key"])] = phase_filter
                 widget.set_external_filters(widget_filters)
                 try:
                     widget.clear_local_selection()
@@ -205,12 +250,23 @@ class ModelInteractionManager(QObject):
         binding = self._bindings.get(chart_id)
         if widget is None or binding is None:
             return
-        widget_keys = self._binding_match_keys(binding)
         try:
             widget_filters = {}
             for filter_key, filter_data in self._active_filters.items():
-                if widget_keys.intersection(self._filter_match_keys(filter_data)):
-                    widget_filters[filter_key] = dict(filter_data)
+                origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
+                if not origin_chart_id or origin_chart_id == chart_id:
+                    continue
+                transformed = self._relation_filter_for(origin_chart_id, chart_id, filter_data)
+                if transformed is not None:
+                    transformed_key = str(transformed.get("filter_key") or f"relation:{origin_chart_id}:{chart_id}")
+                    widget_filters[transformed_key] = dict(transformed)
+                    continue
+                if self._has_relation_between(origin_chart_id, chart_id):
+                    continue
+                if self._should_apply_phase1(origin_chart_id, chart_id):
+                    phase_filter = dict(filter_data or {})
+                    phase_filter["filter_key"] = f"phase1:{origin_chart_id}:{chart_id}:{filter_key}"
+                    widget_filters[str(phase_filter["filter_key"])] = phase_filter
             widget.set_external_filters(widget_filters)
         except Exception:
             pass
@@ -272,9 +328,7 @@ class ModelInteractionManager(QObject):
     def _binding_match_keys(self, binding: Optional[DashboardChartBinding]) -> set[str]:
         if binding is None:
             return set()
-        keys = self._unique_keys([binding.semantic_field_key, binding.dimension_field, binding.semantic_field_aliases])
-        if not keys and str(binding.source_id or "").strip():
-            keys = self._unique_keys([binding.source_id])
+        keys = self._unique_keys([binding.semantic_field_key, binding.dimension_field, binding.semantic_field_aliases, binding.source_id])
         return set(keys)
 
     def _filter_match_keys(self, filter_data: Dict[str, Any]) -> set[str]:
@@ -284,13 +338,13 @@ class ModelInteractionManager(QObject):
                 filter_data.get("field_key"),
                 filter_data.get("field"),
                 filter_data.get("semantic_field_aliases"),
+                filter_data.get("source_id"),
             ]
         )
-        if not keys and str(filter_data.get("source_id") or "").strip():
-            keys = self._unique_keys([filter_data.get("source_id")])
         return set(keys)
 
     def _selection_filter_key(self, payload: Dict[str, Any], binding: Optional[DashboardChartBinding]) -> str:
+        chart_id = str(payload.get("chart_id") or (binding.chart_id if binding is not None else "") or "").strip()
         field_key = self._semantic_key(
             payload.get("semantic_field_key")
             or payload.get("field_key")
@@ -299,7 +353,101 @@ class ModelInteractionManager(QObject):
             or (binding.dimension_field if binding else "")
         )
         if field_key:
-            return field_key
+            return f"{chart_id}::{field_key}" if chart_id else field_key
         if binding is not None and str(binding.source_id or "").strip():
-            return str(binding.source_id or "").strip()
-        return str(payload.get("source_id") or "").strip()
+            source_key = str(binding.source_id or "").strip()
+            return f"{chart_id}::{source_key}" if chart_id else source_key
+        source_key = str(payload.get("source_id") or "").strip()
+        return f"{chart_id}::{source_key}" if chart_id and source_key else (chart_id or source_key)
+
+    def _should_apply_phase1(self, origin_chart_id: str, target_chart_id: str) -> bool:
+        origin_binding = self._bindings.get(origin_chart_id)
+        target_binding = self._bindings.get(target_chart_id)
+        if origin_binding is None or target_binding is None:
+            return False
+        source_id = str(origin_binding.source_id or "").strip()
+        target_source_id = str(target_binding.source_id or "").strip()
+        return bool(source_id and target_source_id and source_id == target_source_id)
+
+    def _relation_filter_for(self, origin_chart_id: str, target_chart_id: str, filter_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        for relation in self._chart_relations:
+            relation_data = self._relation_mapping_for(origin_chart_id, target_chart_id, relation)
+            if relation_data is None:
+                continue
+            relation_source_field_key = self._field_key(relation_data["source_field"])
+            if relation_source_field_key and relation_source_field_key not in self._filter_match_keys(filter_data):
+                continue
+            mapped_filter = dict(filter_data or {})
+            mapped_filter.update(
+                {
+                    "chart_id": target_chart_id,
+                    "target_chart_id": target_chart_id,
+                    "origin_chart_id": origin_chart_id,
+                    "source_id": relation_data["target_source_id"],
+                    "field": relation_data["target_field"],
+                    "field_key": self._field_key(relation_data["target_field"]),
+                    "semantic_field_key": self._semantic_key(relation_data["target_field"]),
+                    "semantic_field_aliases": self._unique_keys([relation_data["target_field"]]),
+                    "filter_key": f"relation:{relation.relation_id}:{target_chart_id}",
+                    "interaction_mode": relation_data["interaction_mode"],
+                    "direction": relation_data["direction"],
+                    "active": relation_data["active"],
+                }
+            )
+            return mapped_filter
+        return None
+
+    def _has_relation_between(self, chart_a: str, chart_b: str) -> bool:
+        left = str(chart_a or "").strip()
+        right = str(chart_b or "").strip()
+        if not left or not right:
+            return False
+        for relation in self._chart_relations:
+            normalized = relation.normalized()
+            if (
+                (normalized.source_chart_id == left and normalized.target_chart_id == right)
+                or (normalized.source_chart_id == right and normalized.target_chart_id == left)
+            ):
+                return True
+        return False
+
+    def _relation_mapping_for(
+        self,
+        origin_chart_id: str,
+        target_chart_id: str,
+        relation: DashboardChartRelation,
+    ) -> Optional[Dict[str, Any]]:
+        normalized = relation.normalized()
+        if not normalized.active:
+            return None
+        if normalized.interaction_mode != "filter":
+            return None
+        if (
+            normalized.source_chart_id == origin_chart_id
+            and normalized.target_chart_id == target_chart_id
+            and normalized.direction in {"both", "origem_para_destino"}
+        ):
+            return {
+                "source_field": normalized.source_field,
+                "target_field": normalized.target_field,
+                "source_source_id": normalized.source_id,
+                "target_source_id": normalized.target_id,
+                "interaction_mode": normalized.interaction_mode,
+                "direction": normalized.direction,
+                "active": normalized.active,
+            }
+        if (
+            normalized.source_chart_id == target_chart_id
+            and normalized.target_chart_id == origin_chart_id
+            and normalized.direction in {"both", "destino_para_origem"}
+        ):
+            return {
+                "source_field": normalized.target_field,
+                "target_field": normalized.source_field,
+                "source_source_id": normalized.target_id,
+                "target_source_id": normalized.source_id,
+                "interaction_mode": normalized.interaction_mode,
+                "direction": normalized.direction,
+                "active": normalized.active,
+            }
+        return None

@@ -862,10 +862,11 @@ class ReportChartWidget(QWidget):
                 continue
             seen.add(text)
             unique.append(text)
-        if not unique:
-            source_id = self._current_source_id()
-            if source_id:
-                unique.append(source_id.lower())
+        source_id = self._current_source_id()
+        source_key = source_id.lower().strip() if source_id else ""
+        if source_key and source_key not in seen:
+            seen.add(source_key)
+            unique.append(source_key)
         return unique
 
     def _resolve_external_filter(self) -> Dict[str, Any]:
@@ -888,10 +889,9 @@ class ReportChartWidget(QWidget):
                 alias_text = str(alias or "").strip().lower()
                 if alias_text:
                     filter_keys.add(alias_text)
-            if not filter_keys:
-                source_id = str(filter_data.get("source_id") or "").strip().lower()
-                if source_id:
-                    filter_keys.add(source_id)
+            source_id = str(filter_data.get("source_id") or "").strip().lower()
+            if source_id:
+                filter_keys.add(source_id)
             if current_keys.intersection(filter_keys):
                 return dict(filter_data)
         return {}

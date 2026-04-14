@@ -439,7 +439,7 @@ class ModelTab(QWidget):
         self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
         self.current_path = ""
         self._dirty = False
-        self.canvas.set_items([])
+        self.canvas.set_items([], [], [])
         self._refresh_ui_state()
 
     def open_project(self, path: Optional[str] = None):
@@ -461,7 +461,7 @@ class ModelTab(QWidget):
         self.current_path = self.store.normalize_path(path)
         self._dirty = False
         self.edit_mode_btn.setChecked(bool(project.edit_mode))
-        self.canvas.set_items(project.items)
+        self.canvas.set_items(project.items, project.visual_links, project.chart_relations)
         self._refresh_recents()
         self._refresh_ui_state()
 
@@ -474,6 +474,8 @@ class ModelTab(QWidget):
         if self.current_project is None:
             return
         self.current_project.items = self.canvas.items()
+        self.current_project.visual_links = self.canvas.visual_links()
+        self.current_project.chart_relations = self.canvas.chart_relations()
         self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
         target_path = self.current_path
         if save_as or not target_path:
@@ -520,6 +522,8 @@ class ModelTab(QWidget):
     def _handle_canvas_changed(self):
         if self.current_project is not None:
             self.current_project.items = self.canvas.items()
+            self.current_project.visual_links = self.canvas.visual_links()
+            self.current_project.chart_relations = self.canvas.chart_relations()
             self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
         self._dirty = True
         self._refresh_ui_state()
