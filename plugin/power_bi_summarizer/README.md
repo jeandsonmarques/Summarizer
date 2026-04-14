@@ -99,8 +99,6 @@ Optional dependencies are not required for the core plugin UI to load, but relat
 
 ## Support and issues
 
-- Project page: `<README_OR_PROJECT_PAGE_URL>`
-- Source repository: `<PUBLIC_REPOSITORY_URL>`
-- Issue tracker: `<ISSUES_URL>`
-
-Replace the placeholders above before publishing the repository or uploading a release to the official QGIS plugin repository.
+- Project page: https://github.com/jeandsonmarques/PowerBISummarizer
+- Source repository: https://github.com/jeandsonmarques/PowerBISummarizer
+- Issue tracker: https://github.com/jeandsonmarques/PowerBISummarizer/issues

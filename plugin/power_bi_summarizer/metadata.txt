@@ -1,5 +1,4 @@
 [general]
-; Replace the placeholder URLs below before uploading to the official QGIS repository.
 name=Power BI Summarizer
 qgisMinimumVersion=3.34
 qgisMaximumVersion=3.99
@@ -13,9 +12,9 @@ about=Power BI Summarizer helps analysts explore project layers, build summaries
 version=0.1.0
 author=Jeandson Marques
 email=jeandsonnunes@icloud.com
-repository=<PUBLIC_REPOSITORY_URL>
-homepage=<README_OR_PROJECT_PAGE_URL>
-tracker=<ISSUES_URL>
+repository=https://github.com/jeandsonmarques/PowerBISummarizer
+homepage=https://github.com/jeandsonmarques/PowerBISummarizer
+tracker=https://github.com/jeandsonmarques/PowerBISummarizer/issues
 changelog=0.1.0 - Initial publication hardening pass for future QGIS upload.
     Reworked packaging boundaries, publication metadata, cloud safety notes and client network handling.
 category=Database
