@@ -84,6 +84,104 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
 
 
 @dataclass
+class DashboardChartBinding:
+    chart_id: str = ""
+    source_id: str = ""
+    dimension_field: str = ""
+    measure_field: str = ""
+    aggregation: str = ""
+    base_filters: List[Dict[str, Any]] = field(default_factory=list)
+    source_name: str = ""
+
+    def normalized(self) -> "DashboardChartBinding":
+        return DashboardChartBinding(
+            chart_id=str(self.chart_id or "").strip(),
+            source_id=str(self.source_id or "").strip(),
+            dimension_field=str(self.dimension_field or "").strip(),
+            measure_field=str(self.measure_field or "").strip(),
+            aggregation=str(self.aggregation or "").strip(),
+            base_filters=[dict(item or {}) for item in list(self.base_filters or [])],
+            source_name=str(self.source_name or "").strip(),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        normalized = self.normalized()
+        return {
+            "chart_id": normalized.chart_id,
+            "source_id": normalized.source_id,
+            "dimension_field": normalized.dimension_field,
+            "measure_field": normalized.measure_field,
+            "aggregation": normalized.aggregation,
+            "base_filters": _json_safe(normalized.base_filters),
+            "source_name": normalized.source_name,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "DashboardChartBinding":
+        payload = dict(data or {})
+        return cls(
+            chart_id=str(payload.get("chart_id") or "").strip(),
+            source_id=str(payload.get("source_id") or "").strip(),
+            dimension_field=str(payload.get("dimension_field") or "").strip(),
+            measure_field=str(payload.get("measure_field") or "").strip(),
+            aggregation=str(payload.get("aggregation") or "").strip(),
+            base_filters=[dict(item or {}) for item in list(payload.get("base_filters") or [])],
+            source_name=str(payload.get("source_name") or "").strip(),
+        ).normalized()
+
+    @classmethod
+    def infer_from_snapshot(cls, snapshot: Dict[str, Any], chart_id: Optional[str] = None) -> "DashboardChartBinding":
+        payload = dict(snapshot or {})
+        chart_payload = dict(payload.get("payload") or {})
+        source_meta = dict(payload.get("source_meta") or {})
+        metadata = dict(source_meta.get("metadata") or {})
+        config = dict(source_meta.get("config") or {})
+        binding = dict(payload.get("binding") or {})
+        source_id = (
+            binding.get("source_id")
+            or metadata.get("layer_id")
+            or chart_payload.get("selection_layer_id")
+            or source_meta.get("source_id")
+            or ""
+        )
+        dimension_field = (
+            binding.get("dimension_field")
+            or config.get("row_label")
+            or config.get("row_field")
+            or chart_payload.get("category_field")
+            or ""
+        )
+        measure_field = (
+            binding.get("measure_field")
+            or config.get("value_label")
+            or chart_payload.get("value_label")
+            or ""
+        )
+        aggregation = (
+            binding.get("aggregation")
+            or config.get("aggregation")
+            or chart_payload.get("chart_type")
+            or ""
+        )
+        base_filters = list(binding.get("base_filters") or payload.get("filters") or [])
+        source_name = (
+            binding.get("source_name")
+            or metadata.get("layer_name")
+            or source_meta.get("layer_name")
+            or ""
+        )
+        return cls(
+            chart_id=str(chart_id or binding.get("chart_id") or payload.get("chart_id") or payload.get("item_id") or "").strip(),
+            source_id=str(source_id).strip(),
+            dimension_field=str(dimension_field).strip(),
+            measure_field=str(measure_field).strip(),
+            aggregation=str(aggregation).strip(),
+            base_filters=[dict(item or {}) for item in list(base_filters or [])],
+            source_name=str(source_name).strip(),
+        ).normalized()
+
+
+@dataclass
 class DashboardItemLayout:
     x: int = 24
     y: int = 24
@@ -161,6 +259,7 @@ class DashboardChartItem:
     origin: str
     payload: ChartPayload
     visual_state: ChartVisualState = field(default_factory=ChartVisualState)
+    binding: DashboardChartBinding = field(default_factory=DashboardChartBinding)
     title: str = ""
     subtitle: str = ""
     filters: List[Dict[str, Any]] = field(default_factory=list)
@@ -171,11 +270,16 @@ class DashboardChartItem:
     @classmethod
     def from_chart_snapshot(cls, snapshot: Dict[str, Any]) -> "DashboardChartItem":
         layout = DashboardItemLayout.from_dict(snapshot.get("layout"))
+        item_id = str(snapshot.get("item_id") or snapshot.get("chart_id") or uuid.uuid4().hex)
+        binding = DashboardChartBinding.from_dict(snapshot.get("binding"))
+        if not binding.chart_id:
+            binding = DashboardChartBinding.infer_from_snapshot(snapshot, chart_id=item_id)
         return cls(
-            item_id=str(snapshot.get("item_id") or uuid.uuid4().hex),
+            item_id=item_id,
             origin=str(snapshot.get("origin") or "unknown"),
             payload=deserialize_chart_payload(snapshot.get("payload")),
             visual_state=deserialize_chart_visual_state(snapshot.get("visual_state")),
+            binding=binding,
             title=str(snapshot.get("title") or ""),
             subtitle=str(snapshot.get("subtitle") or ""),
             filters=[dict(item or {}) for item in list(snapshot.get("filters") or [])],
@@ -196,9 +300,11 @@ class DashboardChartItem:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "item_id": self.item_id,
+            "chart_id": self.binding.chart_id or self.item_id,
             "origin": self.origin,
             "payload": serialize_chart_payload(self.payload),
             "visual_state": serialize_chart_visual_state(self.visual_state),
+            "binding": self.binding.to_dict(),
             "title": self.title,
             "subtitle": self.subtitle,
             "filters": _json_safe(self.filters),

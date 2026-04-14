@@ -6,12 +6,13 @@ from qgis.PyQt.QtCore import QEvent, QPoint, QRect, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter, QPen
 from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from .dashboard_models import DashboardChartItem
+from .dashboard_models import DashboardChartBinding, DashboardChartItem
 from .report_view.chart_factory import ReportChartWidget
 
 
 class DashboardItemWidget(QFrame):
     removeRequested = pyqtSignal(str)
+    selectionChanged = pyqtSignal(object)
     dragStarted = pyqtSignal(str, object)
     dragMoved = pyqtSignal(str, object)
     dragFinished = pyqtSignal(str, object)
@@ -32,6 +33,8 @@ class DashboardItemWidget(QFrame):
         self._resize_active = False
         self._press_pos = QPoint()
         self._header_pressed = False
+        self._binding = item.binding.normalized()
+        self._external_filters = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -76,6 +79,7 @@ class DashboardItemWidget(QFrame):
 
         self.chart_widget = ReportChartWidget(self.card)
         self.chart_widget.setMinimumSize(220, 180)
+        self.chart_widget.selectionChanged.connect(self._handle_chart_selection)
         card_layout.addWidget(self.chart_widget, 1)
 
         self.footer_label = QLabel("", self.card)
@@ -110,15 +114,91 @@ class DashboardItemWidget(QFrame):
     def item(self) -> DashboardChartItem:
         return self._item
 
+    @property
+    def binding(self) -> DashboardChartBinding:
+        return self._binding
+
+    def set_binding(self, binding: Optional[DashboardChartBinding]):
+        self._binding = (binding or DashboardChartBinding()).normalized()
+        self._sync_chart_identity()
+
+    def set_external_filters(self, filters):
+        self._external_filters = dict(filters or {})
+        self.chart_widget.set_external_filters(self._external_filters)
+
+    def clear_local_selection(self):
+        """Limpa apenas o estado visual local do gráfico, sem disparar eventos."""
+        try:
+            self.chart_widget.clear_selection(emit_signal=False)
+        except Exception:
+            pass
+
+    def _sync_chart_identity(self):
+        try:
+            self.chart_widget.set_chart_identity(self._binding.to_dict())
+        except Exception:
+            pass
+
+    def _handle_chart_selection(self, payload):
+        normalized = self._normalize_selection_payload(payload)
+        self.selectionChanged.emit(normalized)
+
+    def _normalize_selection_payload(self, payload):
+        if not payload:
+            return {
+                "chart_id": self._binding.chart_id or self.item_id,
+                "source_id": self._binding.source_id,
+                "field": self._binding.dimension_field,
+                "field_key": self._binding.dimension_field.lower().strip() if self._binding.dimension_field else "",
+                "values": [],
+                "feature_ids": [],
+                "cleared": True,
+            }
+        data = dict(payload or {})
+        data.setdefault("chart_id", self._binding.chart_id or self.item_id)
+        data.setdefault("source_id", self._binding.source_id)
+        data.setdefault("field", self._binding.dimension_field)
+        data.setdefault("field_key", self._binding.dimension_field.lower().strip() if self._binding.dimension_field else "")
+        data.setdefault("measure_field", self._binding.measure_field)
+        data.setdefault("aggregation", self._binding.aggregation)
+        data.setdefault("source_name", self._binding.source_name)
+        values = self._flatten_values(data.get("values"))
+        if not values:
+            raw_value = data.get("raw_category") or data.get("display_label") or data.get("category")
+            values = self._flatten_values(raw_value)
+        data["values"] = values
+        data["feature_ids"] = [int(value) for value in list(data.get("feature_ids") or []) if value is not None]
+        return data
+
+    def _flatten_values(self, value):
+        flattened = []
+
+        def _walk(item):
+            if item is None:
+                return
+            if isinstance(item, (list, tuple, set)):
+                for sub_item in item:
+                    _walk(sub_item)
+                return
+            text = str(item).strip()
+            if text:
+                flattened.append(text)
+
+        _walk(value)
+        return flattened
+
     def refresh(self, item: Optional[DashboardChartItem] = None):
         if item is not None:
             self._item = item
         layout = self._item.layout.normalized()
         self._item.layout = layout
+        self._binding = self._item.binding.normalized()
         self.title_label.setText(self._item.display_title())
         self.subtitle_label.setText(self._item.subtitle or "")
+        self._sync_chart_identity()
         self.chart_widget.set_payload(self._item.payload)
         self.chart_widget.chart_state = self._item.visual_state
+        self.chart_widget.set_external_filters(self._external_filters)
         self.chart_widget.clear_selection(emit_signal=False)
         self.chart_widget.update()
         self.footer_label.setText(f"{self._item.origin} | {layout.width}x{layout.height}")

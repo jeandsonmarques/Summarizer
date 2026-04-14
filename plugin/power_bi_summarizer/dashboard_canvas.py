@@ -8,6 +8,7 @@ from qgis.PyQt.QtWidgets import QFrame, QScrollArea, QVBoxLayout, QWidget
 
 from .dashboard_item_widget import DashboardItemWidget
 from .dashboard_models import DashboardChartItem, DashboardItemLayout
+from .model_interaction_manager import ModelInteractionManager
 
 
 class _DashboardCanvasSurface(QWidget):
@@ -42,6 +43,7 @@ class _DashboardCanvasSurface(QWidget):
 
 class DashboardCanvas(QWidget):
     itemsChanged = pyqtSignal()
+    filtersChanged = pyqtSignal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -55,6 +57,8 @@ class DashboardCanvas(QWidget):
         self._widgets: Dict[str, DashboardItemWidget] = {}
         self._interaction: Dict[str, object] = {}
         self._preview_rect: Optional[QRect] = None
+        self.interaction_manager = ModelInteractionManager(self)
+        self.interaction_manager.filtersChanged.connect(self.filtersChanged.emit)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -78,6 +82,7 @@ class DashboardCanvas(QWidget):
         )
 
     def set_items(self, items: List[DashboardChartItem]):
+        self.interaction_manager.clear_registry()
         self._items = [item.clone() for item in list(items or [])]
         self._rebuild_widgets()
         self._normalize_layouts()
@@ -110,9 +115,13 @@ class DashboardCanvas(QWidget):
         self._items = []
         self._interaction = {}
         self._preview_rect = None
+        self.interaction_manager.clear_registry()
         self._rebuild_widgets()
         self._apply_geometries()
         self.itemsChanged.emit()
+
+    def clear_filters(self):
+        self.interaction_manager.clear_filters()
 
     def set_edit_mode(self, enabled: bool):
         self._edit_mode = bool(enabled)
@@ -146,6 +155,10 @@ class DashboardCanvas(QWidget):
             if item_id in existing_ids:
                 continue
             widget = self._widgets.pop(item_id)
+            try:
+                self.interaction_manager.unregister_chart(item_id)
+            except Exception:
+                pass
             widget.setParent(None)
             widget.deleteLater()
 
@@ -154,6 +167,7 @@ class DashboardCanvas(QWidget):
             if widget is None:
                 widget = DashboardItemWidget(item, self.surface)
                 widget.removeRequested.connect(self._remove_item)
+                widget.selectionChanged.connect(self.interaction_manager.handle_chart_selection)
                 widget.dragStarted.connect(self._start_drag)
                 widget.dragMoved.connect(self._move_drag)
                 widget.dragFinished.connect(self._finish_drag)
@@ -163,6 +177,7 @@ class DashboardCanvas(QWidget):
                 self._widgets[item.item_id] = widget
             widget.refresh(item)
             widget.set_edit_mode(self._edit_mode)
+            self.interaction_manager.register_chart(widget, item.binding)
 
     def _normalize_layouts(self):
         for item in self._items:
@@ -240,6 +255,10 @@ class DashboardCanvas(QWidget):
         self._items = [item for item in self._items if item.item_id != item_id]
         self._interaction = {}
         self._set_preview_rect(None)
+        try:
+            self.interaction_manager.unregister_chart(item_id)
+        except Exception:
+            pass
         self._rebuild_widgets()
         self._apply_geometries()
         self.itemsChanged.emit()

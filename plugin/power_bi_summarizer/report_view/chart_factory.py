@@ -145,6 +145,8 @@ class ReportChartWidget(QWidget):
         self._selected_category_key: str = ""
         self._filtered_category_key: str = ""
         self._chart_context: Dict[str, Any] = {}
+        self._chart_identity: Dict[str, Any] = {}
+        self._external_filters: Dict[str, Dict[str, Any]] = {}
         self.setMinimumHeight(280)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -170,7 +172,9 @@ class ReportChartWidget(QWidget):
         if emit_signal:
             if normalized_key:
                 payload = self._selection_payload_from_key(normalized_key)
-                self.selectionChanged.emit(payload or {"key": normalized_key})
+                if payload is None:
+                    payload = {"key": normalized_key}
+                self.selectionChanged.emit(self._selection_context_for_item(payload) if isinstance(payload, dict) else payload)
             else:
                 self.selectionChanged.emit(None)
         self._rerender_chart()
@@ -186,11 +190,84 @@ class ReportChartWidget(QWidget):
     def set_chart_context(self, context: Optional[Dict[str, Any]] = None):
         self._chart_context = dict(context or {})
 
+    def set_chart_identity(
+        self,
+        identity: Optional[Dict[str, Any]] = None,
+        *,
+        chart_id: Optional[str] = None,
+        source_id: Optional[str] = None,
+        dimension_field: Optional[str] = None,
+        measure_field: Optional[str] = None,
+        aggregation: Optional[str] = None,
+        base_filters: Optional[List[Dict[str, Any]]] = None,
+    ):
+        payload = dict(identity or {})
+        if chart_id is not None:
+            payload["chart_id"] = chart_id
+        if source_id is not None:
+            payload["source_id"] = source_id
+        if dimension_field is not None:
+            payload["dimension_field"] = dimension_field
+        if measure_field is not None:
+            payload["measure_field"] = measure_field
+        if aggregation is not None:
+            payload["aggregation"] = aggregation
+        if base_filters is not None:
+            payload["base_filters"] = list(base_filters or [])
+        self._chart_identity = {
+            "chart_id": str(payload.get("chart_id") or "").strip(),
+            "source_id": str(payload.get("source_id") or "").strip(),
+            "dimension_field": str(payload.get("dimension_field") or "").strip(),
+            "measure_field": str(payload.get("measure_field") or "").strip(),
+            "aggregation": str(payload.get("aggregation") or "").strip(),
+            "base_filters": [dict(item or {}) for item in list(payload.get("base_filters") or [])],
+        }
+
+    def set_external_filters(self, filters: Optional[Dict[str, Dict[str, Any]]] = None):
+        self._external_filters = {
+            str(source_id or "").strip(): dict(filter_data or {})
+            for source_id, filter_data in dict(filters or {}).items()
+            if str(source_id or "").strip()
+        }
+        self._rerender_chart()
+
     def build_model_snapshot(self) -> Dict[str, Any]:
         payload = self._payload
         if payload is None:
             return {}
+        source_meta = dict(self._chart_context.get("source_meta") or {})
+        metadata = dict(source_meta.get("metadata") or {})
+        config = dict(source_meta.get("config") or {})
+        chart_id = str(self._chart_identity.get("chart_id") or self._chart_context.get("chart_id") or "").strip()
+        source_id = str(
+            self._chart_identity.get("source_id")
+            or metadata.get("layer_id")
+            or payload.selection_layer_id
+            or source_meta.get("source_id")
+            or ""
+        ).strip()
+        dimension_field = str(
+            self._chart_identity.get("dimension_field")
+            or config.get("row_label")
+            or config.get("row_field")
+            or payload.category_field
+            or ""
+        ).strip()
+        measure_field = str(
+            self._chart_identity.get("measure_field")
+            or config.get("value_label")
+            or payload.value_label
+            or ""
+        ).strip()
+        aggregation = str(
+            self._chart_identity.get("aggregation")
+            or config.get("aggregation")
+            or payload.chart_type
+            or ""
+        ).strip()
+        base_filters = [dict(item or {}) for item in list(self._chart_identity.get("base_filters") or self._chart_context.get("filters") or [])]
         return {
+            "chart_id": chart_id,
             "origin": str(self._chart_context.get("origin") or "unknown"),
             "payload": {
                 "chart_type": str(payload.chart_type or "bar"),
@@ -205,18 +282,27 @@ class ReportChartWidget(QWidget):
                 "raw_categories": list(payload.raw_categories or []),
                 "category_feature_ids": list(payload.category_feature_ids or []),
             },
+            "binding": {
+                "chart_id": chart_id,
+                "source_id": source_id,
+                "dimension_field": dimension_field,
+                "measure_field": measure_field,
+                "aggregation": aggregation,
+                "base_filters": base_filters,
+                "source_name": str(metadata.get("layer_name") or source_meta.get("layer_name") or ""),
+            },
             "visual_state": {
                 "chart_type": str(self.chart_state.chart_type or "bar"),
                 "palette": str(self.chart_state.palette or "purple"),
                 "show_legend": bool(self.chart_state.show_legend),
                 "show_values": bool(self.chart_state.show_values),
-            "show_percent": bool(self.chart_state.show_percent),
-            "show_grid": bool(self.chart_state.show_grid),
-            "sort_mode": str(self.chart_state.sort_mode or "default"),
-            "bar_corner_style": str(self.chart_state.bar_corner_style or "square"),
-            "title_override": str(self.chart_state.title_override or ""),
-            "legend_label_override": str(self.chart_state.legend_label_override or ""),
-            "legend_item_overrides": dict(self.chart_state.legend_item_overrides or {}),
+                "show_percent": bool(self.chart_state.show_percent),
+                "show_grid": bool(self.chart_state.show_grid),
+                "sort_mode": str(self.chart_state.sort_mode or "default"),
+                "bar_corner_style": str(self.chart_state.bar_corner_style or "square"),
+                "title_override": str(self.chart_state.title_override or ""),
+                "legend_label_override": str(self.chart_state.legend_label_override or ""),
+                "legend_item_overrides": dict(self.chart_state.legend_item_overrides or {}),
             },
             "title": str(
                 self._chart_context.get("title")
@@ -226,7 +312,7 @@ class ReportChartWidget(QWidget):
             ),
             "subtitle": str(self._chart_context.get("subtitle") or ""),
             "filters": list(self._chart_context.get("filters") or []),
-            "source_meta": dict(self._chart_context.get("source_meta") or {}),
+            "source_meta": source_meta,
         }
 
     def _default_visual_state(self, payload: Optional[ChartPayload]) -> ChartVisualState:
@@ -327,6 +413,20 @@ class ReportChartWidget(QWidget):
             action.triggered.connect(lambda checked=False, value=sort_mode: self._set_sort_mode(value))
             sort_group.addAction(action)
             sort_menu.addAction(action)
+
+        corner_group = QActionGroup(menu)
+        corner_group.setExclusive(True)
+        square_action = QAction("Retos", menu, checkable=True)
+        square_action.setChecked(self._normalized_corner_style() == "square")
+        square_action.triggered.connect(lambda checked=False: self._set_bar_corner_style("square"))
+        corner_group.addAction(square_action)
+        corners_menu.addAction(square_action)
+
+        rounded_action = QAction("Arredondados", menu, checkable=True)
+        rounded_action.setChecked(self._normalized_corner_style() == "rounded")
+        rounded_action.triggered.connect(lambda checked=False: self._set_bar_corner_style("rounded"))
+        corner_group.addAction(rounded_action)
+        corners_menu.addAction(rounded_action)
 
         corner_group = QActionGroup(menu)
         corner_group.setExclusive(True)
@@ -619,6 +719,68 @@ class ReportChartWidget(QWidget):
     def _display_legend_item_label(self, category: str) -> str:
         key = str(category or "")
         return (self.chart_state.legend_item_overrides.get(key) or "").strip() or key
+
+    def _primary_value(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                candidate = self._primary_value(item)
+                if candidate:
+                    return candidate
+            return ""
+        text = str(value).strip()
+        return text
+
+    def _flatten_values(self, value: Any) -> List[str]:
+        primary = self._primary_value(value)
+        return [primary] if primary else []
+
+    def _current_source_id(self) -> str:
+        return str(
+            self._chart_identity.get("source_id")
+            or getattr(self._payload, "selection_layer_id", "")
+            or ""
+        ).strip()
+
+    def _current_filter_key(self) -> str:
+        field_name = str(
+            self._chart_identity.get("dimension_field")
+            or getattr(self._payload, "category_field", "")
+            or ""
+        ).strip()
+        if field_name:
+            return field_name.lower()
+        return self._current_source_id()
+
+    def _current_chart_id(self) -> str:
+        return str(self._chart_identity.get("chart_id") or self._chart_context.get("chart_id") or "").strip()
+
+    def _selection_context_for_item(self, item: Dict[str, object]) -> Dict[str, object]:
+        values = self._flatten_values(item.get("feature_ids"))
+        raw_value = item.get("raw_category")
+        if raw_value in (None, ""):
+            raw_value = item.get("category")
+        if raw_value in (None, ""):
+            raw_value = item.get("key")
+        return {
+            "chart_id": self._current_chart_id(),
+            "source_id": self._current_source_id(),
+            "field_key": self._current_filter_key(),
+            "field": str(
+                self._chart_identity.get("dimension_field")
+                or getattr(self._payload, "category_field", "")
+                or ""
+            ).strip(),
+            "values": self._flatten_values(raw_value),
+            "feature_ids": [int(fid) for fid in values if fid is not None],
+            "display_label": str(item.get("display_label") or item.get("category") or ""),
+            "raw_category": item.get("raw_category"),
+            "category": str(item.get("category") or ""),
+        }
+
+    def _emit_selection_for_item(self, item: Dict[str, object]):
+        self.selectionChanged.emit(self._selection_context_for_item(item))
 
     def _register_interactive_region(
         self,
@@ -961,7 +1123,11 @@ class ReportChartWidget(QWidget):
         self._selected_category_key = category_key
         self._active_category_keys = [category_key]
         self._filtered_category_key = ""
-        self.selectionChanged.emit(self._selection_payload_from_key(category_key) or dict(target))
+        selection_item = self._selection_payload_from_key(category_key) or dict(target)
+        if isinstance(selection_item, dict):
+            self.selectionChanged.emit(self._selection_context_for_item(selection_item))
+        else:
+            self.selectionChanged.emit(selection_item)
         self._apply_category_selection(target, zoom=zoom)
         self._rerender_chart()
 
@@ -972,7 +1138,11 @@ class ReportChartWidget(QWidget):
         self._filtered_category_key = category_key
         self._selected_category_key = category_key
         self._active_category_keys = [category_key]
-        self.selectionChanged.emit(self._selection_payload_from_key(category_key) or dict(target))
+        selection_item = self._selection_payload_from_key(category_key) or dict(target)
+        if isinstance(selection_item, dict):
+            self.selectionChanged.emit(self._selection_context_for_item(selection_item))
+        else:
+            self.selectionChanged.emit(selection_item)
         self._rerender_chart()
 
     def _clear_chart_filter(self):
@@ -1068,10 +1238,44 @@ class ReportChartWidget(QWidget):
                 }
             )
 
+        filter_key = self._current_filter_key()
+        external_filter = dict(self._external_filters.get(filter_key) or {}) if filter_key else {}
+        if external_filter:
+            selected_feature_ids = {
+                int(fid)
+                for fid in list(external_filter.get("feature_ids") or [])
+                if fid is not None
+            }
+            selected_values = set(self._flatten_values(external_filter.get("values")))
+            if selected_feature_ids:
+                filtered_pairs = []
+                for item in pairs:
+                    item_feature_ids = {int(fid) for fid in list(item.get("feature_ids") or []) if fid is not None}
+                    if item_feature_ids.intersection(selected_feature_ids):
+                        filtered_pairs.append(item)
+                if filtered_pairs:
+                    pairs = filtered_pairs
+                elif selected_values:
+                    filtered_pairs = []
+                    for item in pairs:
+                        raw_value = str(item.get("raw_category") or "")
+                        display_value = str(item.get("category") or "")
+                        if raw_value in selected_values or display_value in selected_values:
+                            filtered_pairs.append(item)
+                    if filtered_pairs:
+                        pairs = filtered_pairs
+            elif selected_values:
+                filtered_pairs = []
+                for item in pairs:
+                    raw_value = self._primary_value(item.get("raw_category"))
+                    display_value = self._primary_value(item.get("category"))
+                    if raw_value in selected_values or display_value in selected_values:
+                        filtered_pairs.append(item)
+                pairs = filtered_pairs
+
         if self._filtered_category_key:
             filtered_pairs = [item for item in pairs if str(item.get("key") or "") == self._filtered_category_key]
-            if filtered_pairs:
-                pairs = filtered_pairs
+            pairs = filtered_pairs
 
         if self.chart_state.sort_mode == "asc":
             pairs = sorted(pairs, key=lambda item: float(item["value"]))

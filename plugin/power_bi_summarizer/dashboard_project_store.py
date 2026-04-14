@@ -57,6 +57,14 @@ class DashboardProjectStore:
         with open(final_path, "r", encoding="utf-8") as handler:
             payload = json.load(handler)
         project = DashboardProject.from_dict(payload)
+        for item in list(project.items or []):
+            try:
+                binding = item.binding.normalized()
+                if not binding.chart_id:
+                    binding.chart_id = item.item_id
+                item.binding = binding
+            except Exception:
+                continue
         self.settings.setValue(LAST_DIR_SETTINGS_KEY, os.path.dirname(final_path))
         self.record_recent_project(final_path, project.name)
         return project

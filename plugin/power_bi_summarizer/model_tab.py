@@ -180,6 +180,22 @@ class ModelTab(QWidget):
 
         root.addWidget(header, 0)
 
+        self.filters_bar = QFrame(self)
+        self.filters_bar.setObjectName("ModelFiltersBar")
+        self.filters_bar.setAttribute(Qt.WA_StyledBackground, True)
+        filters_layout = QHBoxLayout(self.filters_bar)
+        filters_layout.setContentsMargins(14, 10, 14, 10)
+        filters_layout.setSpacing(10)
+        self.filters_label = QLabel("Filtros ativos: nenhum")
+        self.filters_label.setObjectName("ModelFiltersLabel")
+        self.filters_label.setWordWrap(True)
+        filters_layout.addWidget(self.filters_label, 1)
+        self.clear_filters_btn = QPushButton("Limpar filtros")
+        self.clear_filters_btn.setObjectName("ModelToolbarButton")
+        self.clear_filters_btn.clicked.connect(self._clear_model_filters)
+        filters_layout.addWidget(self.clear_filters_btn, 0)
+        root.addWidget(self.filters_bar, 0)
+
         self.body_stack = QStackedWidget(self)
         root.addWidget(self.body_stack, 1)
 
@@ -264,6 +280,7 @@ class ModelTab(QWidget):
         self.empty_open_btn.clicked.connect(self.open_project)
         self.empty_import_btn.clicked.connect(self.import_project)
         self.canvas.itemsChanged.connect(self._handle_canvas_changed)
+        self.canvas.filtersChanged.connect(self._handle_canvas_filters_changed)
 
         self.setStyleSheet(
             """
@@ -283,6 +300,15 @@ class ModelTab(QWidget):
             QLabel#ModelWelcomeText,
             QLabel#ModelRecentsPlaceholder {
                 color: #6B7280;
+                font-size: 12px;
+            }
+            QFrame#ModelFiltersBar {
+                background: #F8FAFC;
+                border: 1px solid #D6D9E0;
+                border-radius: 12px;
+            }
+            QLabel#ModelFiltersLabel {
+                color: #374151;
                 font-size: 12px;
             }
             QFrame#ModelWelcomeCard,
@@ -400,7 +426,7 @@ class ModelTab(QWidget):
         item = DashboardChartItem.from_chart_snapshot(snapshot)
         self.current_project.items.append(item)
         self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
-        self.canvas.set_items(self.current_project.items)
+        self.canvas.add_item(item)
         self._dirty = True
         self._refresh_ui_state()
 
@@ -497,6 +523,38 @@ class ModelTab(QWidget):
         self._dirty = True
         self._refresh_ui_state()
 
+    def _handle_canvas_filters_changed(self, summary: Dict[str, object]):
+        self._update_filters_bar(summary)
+
+    def _update_filters_bar(self, summary: Optional[Dict[str, object]] = None):
+        summary = summary or self.canvas.interaction_manager.active_filters_summary()
+        items = list(summary.get("items") or [])
+        if not items:
+            self.filters_label.setText("Filtros ativos: nenhum")
+            self.filters_bar.setVisible(False)
+            return
+        parts = []
+        for item in items:
+            source_name = str(item.get("source_name") or "")
+            field = str(item.get("field") or "")
+            label = str(item.get("label") or field or item.get("filter_key") or source_name or "Filtro")
+            values = [str(value) for value in list(item.get("values") or []) if str(value).strip()]
+            value_text = ", ".join(values) if values else "seleção ativa"
+            if source_name and source_name != label:
+                parts.append(f"{label} ({source_name}) = {value_text}")
+            elif field:
+                parts.append(f"{label} = {value_text}")
+            else:
+                parts.append(f"{label}: {value_text}")
+        self.filters_label.setText("Filtros ativos: " + " | ".join(parts))
+        self.filters_bar.setVisible(True)
+
+    def _clear_model_filters(self):
+        try:
+            self.canvas.clear_filters()
+        except Exception:
+            pass
+
     def _refresh_recents(self):
         while self.recents_layout.count():
             item = self.recents_layout.takeAt(0)
@@ -528,6 +586,7 @@ class ModelTab(QWidget):
         self.project_status_label.setText(f"{project_name}{dirty_suffix} | {path_text}")
         has_items = self.canvas.has_items()
         self.body_stack.setCurrentWidget(self.canvas_page if has_items else self.empty_page)
+        self._update_filters_bar()
         if self.current_project is None:
             self.project_hint_label.setText(
                 "Crie um painel novo ou envie graficos pelo menu contextual 'Adicionar ao Model'."
