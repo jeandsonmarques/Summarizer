@@ -25,7 +25,7 @@ class DashboardProjectStore:
         if configured and os.path.isdir(configured):
             return configured
         documents = os.path.join(os.path.expanduser("~"), "Documents")
-        target = os.path.join(documents, "Power BI Summarizer", "Dashboards")
+        target = os.path.join(documents, "Summarizer", "Dashboards")
         try:
             os.makedirs(target, exist_ok=True)
         except Exception:

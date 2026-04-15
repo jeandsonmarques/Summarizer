@@ -27,7 +27,7 @@ class Ui_PowerBISummarizerDialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
         Dialog.resize(1200, 800)
-        Dialog.setWindowTitle("Power BI Summarizer - QGIS")
+        Dialog.setWindowTitle("Summarizer - QGIS")
 
         self.verticalLayout = QVBoxLayout(Dialog)
         self.verticalLayout.setContentsMargins(6, 6, 6, 6)
@@ -46,7 +46,7 @@ class Ui_PowerBISummarizerDialog(object):
             self.logo_label.setPixmap(logo_icon.pixmap(QSize(40, 40)))
         header_layout.addWidget(self.logo_label, 0, Qt.AlignLeft | Qt.AlignVCenter)
 
-        self.title_label = QLabel("Power BI Summarizer")
+        self.title_label = QLabel("Summarizer")
         self.title_label.setProperty("role", "appTitle")
         header_layout.addWidget(self.title_label, 0, Qt.AlignLeft | Qt.AlignVCenter)
         header_layout.addStretch()

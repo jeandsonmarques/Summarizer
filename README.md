@@ -1,6 +1,6 @@
-# Power BI Summarizer
+# Summarizer
 
-Power BI Summarizer is a QGIS plugin that helps turn spatial data into clean, report-ready outputs. It is designed for analysts who need to explore project layers, summarize results, prepare dashboard-style views, and move data into a Power BI-oriented workflow without leaving QGIS.
+Summarizer is a QGIS plugin that helps turn spatial data into clean, report-ready outputs. It is designed for analysts who need to explore project layers, summarize results, prepare dashboard-style views, and move data into a streamlined reporting workflow without leaving QGIS.
 
 ## Highlights
 
@@ -12,7 +12,7 @@ Power BI Summarizer is a QGIS plugin that helps turn spatial data into clean, re
 
 ## Why this plugin
 
-Many QGIS workflows stop at map exploration. Power BI Summarizer extends that process by helping you organize data into formats that are easier to review, share, and reuse in business reporting.
+Many QGIS workflows stop at map exploration. Summarizer extends that process by helping you organize data into formats that are easier to review, share, and reuse in business reporting.
 
 The plugin is built to stay lightweight from the user point of view:
 

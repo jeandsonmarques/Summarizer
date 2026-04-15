@@ -14,7 +14,7 @@ except Exception:  # pragma: no cover - allows pure-python smoke tests
             return None
 
 
-LOG_CHANNEL = "PowerBI Summarizer"
+LOG_CHANNEL = "Summarizer"
 
 
 def log_info(message: str) -> None:

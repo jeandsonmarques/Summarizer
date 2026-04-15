@@ -44,7 +44,7 @@ class PowerBICloudDialog(SlimDialogBase):
 
     def __init__(self, parent: Optional[QWidget] = None, initial_tab: Optional[str] = None):
         super().__init__(parent, geometry_key="PowerBISummarizer/cloud/dialog")
-        self.setWindowTitle("PowerBI Cloud (beta)")
+        self.setWindowTitle("Summarizer Cloud (beta)")
         self.resize(640, 420)
         self._upload_layers: List[QgsVectorLayer] = []
         self._build_ui()
@@ -64,7 +64,7 @@ class PowerBICloudDialog(SlimDialogBase):
 
         header = QHBoxLayout()
         header.setSpacing(8)
-        title = QLabel("Gerenciar sessão PowerBI Cloud", self)
+        title = QLabel("Gerenciar sessão Summarizer Cloud", self)
         title.setStyleSheet("font-size: 15px; font-weight: 500;")
         header.addWidget(title)
         header.addStretch(1)
@@ -169,7 +169,7 @@ class PowerBICloudDialog(SlimDialogBase):
         config_layout.addLayout(config_buttons, 4, 0, 1, 2)
 
         config_hint = QLabel(
-            "Sua API do PowerBI Cloud ja esta ativa. "
+            "Sua API do Summarizer Cloud ja esta ativa. "
             "Use a Base URL e os endpoints abaixo normalmente. "
             "Com 'Hospedagem ativa' marcada, o plugin usa apenas camadas reais do servidor (sem dados de teste).",
             config_tab,
@@ -299,7 +299,7 @@ class PowerBICloudDialog(SlimDialogBase):
         username = self.user_edit.text().strip()
         password = self.password_edit.text()
         if not username or not password:
-            self._show_cloud_message("PowerBI Cloud", "Informe usuário e senha.")
+            self._show_cloud_message("Summarizer Cloud", "Informe usuário e senha.")
             return
         try:
             session_payload = cloud_session.login(username, password)
@@ -314,14 +314,14 @@ class PowerBICloudDialog(SlimDialogBase):
                     f"Sessão mock ativa para {username}.\n"
                     "Ative 'Hospedagem ativa' quando o backend estiver disponível para usar o catálogo remoto."
                 )
-            self._show_cloud_message("PowerBI Cloud", message)
+            self._show_cloud_message("Summarizer Cloud", message)
             # Após login bem-sucedido, atualizamos o e-mail padrão vinculado à conexão ativa.
             self._persist_cloud_user_from_login(username)
             cloud_session.update_saved_credentials(username, password, self.remember_checkbox.isChecked())
         except ValueError as exc:
-            self._show_cloud_message("PowerBI Cloud", str(exc))
+            self._show_cloud_message("Summarizer Cloud", str(exc))
         except Exception as exc:  # pragma: no cover - runtime safeguard
-            self._show_cloud_message("PowerBI Cloud", f"Falha no login: {exc}")
+            self._show_cloud_message("Summarizer Cloud", f"Falha no login: {exc}")
         finally:
             self.password_edit.clear()
 
@@ -339,12 +339,12 @@ class PowerBICloudDialog(SlimDialogBase):
             message = "Catálogo Cloud atualizado."
         else:
             message = "Catálogo mock atualizado."
-        self._show_cloud_message("PowerBI Cloud", message)
+        self._show_cloud_message("Summarizer Cloud", message)
 
     def _open_browser_hint(self):
         self._show_cloud_message(
-            "PowerBI Cloud",
-            "Abra o painel Navegador do QGIS e expanda PowerBI Summarizer -> PowerBI Cloud "
+            "Summarizer Cloud",
+            "Abra o painel Navegador do QGIS e expanda Summarizer -> Summarizer Cloud "
             "para carregar as camadas disponíveis.",
         )
 
@@ -355,17 +355,17 @@ class PowerBICloudDialog(SlimDialogBase):
             layers_endpoint=self.layers_endpoint_edit.text().strip(),
             hosting_ready=self.hosting_checkbox.isChecked(),
         )
-        self._show_cloud_message("PowerBI Cloud", "Configurações salvas.")
+        self._show_cloud_message("Summarizer Cloud", "Configurações salvas.")
 
     def _handle_real_access_attempt(self):
         if not cloud_session.hosting_ready():
             self._show_cloud_message(
-                "PowerBI Cloud",
+                "Summarizer Cloud",
                 "Ative 'Hospedagem ativa' para trabalhar apenas com as camadas reais publicadas no servidor.",
             )
             return
         self._show_cloud_message(
-            "PowerBI Cloud",
+            "Summarizer Cloud",
             "Com 'Hospedagem ativa' marcada, o plugin já usa apenas o catálogo real informado.",
         )
 
@@ -529,7 +529,7 @@ class PowerBICloudDialog(SlimDialogBase):
                 level="error",
             )
             self._show_cloud_message(
-                "PowerBI Cloud",
+                "Summarizer Cloud",
                 "Voce precisa estar conectado ao Cloud como administrador para enviar camadas.",
             )
             return
@@ -537,7 +537,7 @@ class PowerBICloudDialog(SlimDialogBase):
         layer = self._current_upload_layer()
         if layer is None:
             self._set_upload_status("Selecione uma camada do QGIS para enviar.", level="error")
-            self._show_cloud_message("PowerBI Cloud", "Nenhuma camada vetorial selecionada.")
+            self._show_cloud_message("Summarizer Cloud", "Nenhuma camada vetorial selecionada.")
             return
 
         layer_name = self.upload_name_edit.text().strip() or layer.name() or "camada"

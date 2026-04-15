@@ -1,9 +1,9 @@
 [general]
-name=Power BI Summarizer
+name=Summarizer
 qgisMinimumVersion=3.34
 qgisMaximumVersion=3.99
-description=Summarize QGIS layers and prepare Power BI-ready outputs.
-about=Power BI Summarizer helps analysts explore project layers, build summaries,
+description=Summarize QGIS layers and prepare report-ready outputs.
+about=Summarizer helps analysts explore project layers, build summaries,
     prepare dashboard-ready tables, and export results for downstream reporting.
     Core workflows run locally inside QGIS.
     Optional cloud workflows require a separately deployed backend service,
@@ -18,7 +18,7 @@ tracker=https://github.com/jeandsonmarques/PowerBISummarizer/issues
 changelog=0.1.0 - Initial publication hardening pass for future QGIS upload.
     Reworked packaging boundaries, publication metadata, cloud safety notes and client network handling.
 category=Database
-tags=power bi, reporting, analytics, dashboard, database, postgis, cloud
+tags=reporting, analytics, dashboard, database, postgis, cloud
 icon=resources/icon.svg
 experimental=True
 deprecated=False

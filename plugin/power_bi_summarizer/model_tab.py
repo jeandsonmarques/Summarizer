@@ -408,7 +408,7 @@ class ModelTab(QWidget):
                     self,
                     "Escolher painel salvo",
                     self.store.default_directory(),
-                    f"Power BI Dashboard (*{PROJECT_EXTENSION});;JSON (*.json)",
+                    f"Summarizer Dashboard (*{PROJECT_EXTENSION});;JSON (*.json)",
                 )
             if not path:
                 return False
@@ -448,7 +448,7 @@ class ModelTab(QWidget):
                 self,
                 "Abrir painel salvo",
                 self.store.default_directory(),
-                f"Power BI Dashboard (*{PROJECT_EXTENSION});;JSON (*.json)",
+                f"Summarizer Dashboard (*{PROJECT_EXTENSION});;JSON (*.json)",
             )
         if not path:
             return
@@ -485,7 +485,7 @@ class ModelTab(QWidget):
                 self,
                 "Salvar painel",
                 suggested_path,
-                f"Power BI Dashboard (*{PROJECT_EXTENSION});;JSON (*.json)",
+                f"Summarizer Dashboard (*{PROJECT_EXTENSION});;JSON (*.json)",
             )
         if not target_path:
             return

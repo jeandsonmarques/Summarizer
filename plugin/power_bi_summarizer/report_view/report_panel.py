@@ -56,11 +56,11 @@ ICONS = {
 
 
 def log_info(message: str):
-    QgsMessageLog.logMessage(str(message), "PowerBI Summarizer", level=Qgis.Info)
+    QgsMessageLog.logMessage(str(message), "Summarizer", level=Qgis.Info)
 
 
 def log_warning(message: str):
-    QgsMessageLog.logMessage(str(message), "PowerBI Summarizer", level=Qgis.Warning)
+    QgsMessageLog.logMessage(str(message), "Summarizer", level=Qgis.Warning)
 
 
 class ReportDataProvider:
@@ -718,7 +718,7 @@ class VisualizationsPanel(QWidget):
             if icon.isNull():
                 QgsMessageLog.logMessage(
                     f"[PBI Summarizer] Ícone de visualização não encontrado: {icon_path}",
-                    "PowerBI Summarizer",
+                    "Summarizer",
                 )
             btn.setIcon(icon)
             btn.setToolTip(label)
@@ -925,14 +925,14 @@ class FieldsTreePanel(QWidget):
         self._on_search_text_changed(self.search_line.text())
         QgsMessageLog.logMessage(
             f"[PBI Summarizer] campos carregados: {root.rowCount()} tabelas",
-            "PowerBI Summarizer",
+            "Summarizer",
             level=Qgis.Info,
         )
         try:
             tree_model = self.tree.model()
             QgsMessageLog.logMessage(
                 f"[PBI Summarizer] arvore usa modelo: {type(tree_model).__name__}, linhas raiz: {tree_model.rowCount()}",
-                "PowerBI Summarizer",
+                "Summarizer",
                 level=Qgis.Info,
             )
         except Exception:
@@ -948,7 +948,7 @@ class FieldsTreePanel(QWidget):
                     if tables:
                         QgsMessageLog.logMessage(
                             f"[PBI Summarizer] iter_tables_for_reports -> {len(tables)} tabelas",
-                            "PowerBI Summarizer",
+                            "Summarizer",
                             level=Qgis.Info,
                         )
                         tables = self._filter_by_canvas(tables)
@@ -960,7 +960,7 @@ class FieldsTreePanel(QWidget):
                 if tables:
                     QgsMessageLog.logMessage(
                         f"[PBI Summarizer] get_available_tables -> {len(tables)} tabelas",
-                        "PowerBI Summarizer",
+                        "Summarizer",
                         level=Qgis.Info,
                     )
                     tables = self._filter_by_canvas(tables)
@@ -979,7 +979,7 @@ class FieldsTreePanel(QWidget):
                         if tables:
                             QgsMessageLog.logMessage(
                                 f"[PBI Summarizer] iter_tables_for_reports (apos refresh) -> {len(tables)} tabelas",
-                                "PowerBI Summarizer",
+                                "Summarizer",
                                 level=Qgis.Info,
                             )
                             tables = self._filter_by_canvas(tables)
@@ -1007,7 +1007,7 @@ class FieldsTreePanel(QWidget):
                 if canvas_tables:
                     QgsMessageLog.logMessage(
                         f"[PBI Summarizer] fallback tables (canvas items) -> {len(canvas_tables)} tabelas",
-                        "PowerBI Summarizer",
+                        "Summarizer",
                         level=Qgis.Info,
                     )
                     return self._filter_by_canvas(canvas_tables)
@@ -1129,7 +1129,7 @@ class ReportFieldsWidget(QWidget):
 
     def reload_from_model(self):
         """
-        Rebuilds the tree from the Power BI model, falling back to project layers.
+        Rebuilds the tree from the BI model, falling back to project layers.
         """
         self.tree.clear()
 

@@ -34,7 +34,7 @@ class DashboardWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName("DashboardRoot")
-        self.setWindowTitle("Dashboard Interativo - Power BI Summarizer")
+        self.setWindowTitle("Dashboard Interativo - Summarizer")
         self.setMinimumSize(1040, 720)
 
         self.current_df: pd.DataFrame = pd.DataFrame()

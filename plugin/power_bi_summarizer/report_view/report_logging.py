@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - supports running report_view as a top-
     from utils.runtime_paths import runtime_state_file
 
 
-LOG_CHANNEL = "PowerBI Summarizer"
+LOG_CHANNEL = "Summarizer"
 LOG_FILE = runtime_state_file("relatorios_debug.log")
 
 

@@ -10,7 +10,7 @@ from qgis.PyQt.QtGui import QColor, QFont, QPainter, QPageSize, QPdfWriter
 
 class ExportManager:
     def __init__(self):
-        self.export_dir = os.path.join(os.path.expanduser("~"), "QGIS_PowerBI_Exports")
+        self.export_dir = os.path.join(os.path.expanduser("~"), "QGIS_Summarizer_Exports")
         os.makedirs(self.export_dir, exist_ok=True)
 
     def _ensure_parent_dir(self, file_path):
@@ -115,7 +115,7 @@ class ExportManager:
         painter.drawText(
             QRectF(margin, 20, page_width - 2 * margin, 30),
             Qt.AlignLeft | Qt.AlignVCenter,
-            "Relatório Power BI Summarizer",
+            "Relatório Summarizer",
         )
         painter.setFont(text_font)
         painter.drawText(

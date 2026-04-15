@@ -115,9 +115,9 @@ def build_gpkg_vsicurl_path(
     clean_endpoint = sanitize_layers_endpoint(layers_endpoint)
     identifier = str(layer_id)
     if not clean_base_url:
-        raise ValueError("Base URL do PowerBI Cloud não está configurada.")
+        raise ValueError("Base URL do Summarizer Cloud não está configurada.")
     if not (clean_base_url.startswith("http://") or clean_base_url.startswith("https://")):
-        raise ValueError("Base URL do PowerBI Cloud deve comecar com http:// ou https://.")
+        raise ValueError("Base URL do Summarizer Cloud deve comecar com http:// ou https://.")
     if not identifier:
         raise ValueError("ID da camada inválido para download GPKG.")
     download_url = f"{clean_base_url.rstrip('/')}/{clean_endpoint}/{identifier}/download-gpkg"
@@ -204,8 +204,8 @@ class PowerBICloudSession(QObject):
                 expiry = payload.get("expires_at")
                 if expiry and payload.get("mode") == "remote":
                     QgsMessageLog.logMessage(
-                        f"PowerBI Cloud token carregado do QSettings. Valido ate {expiry}.",
-                        "PowerBI Summarizer",
+                        f"Summarizer Cloud token carregado do QSettings. Valido ate {expiry}.",
+                        "Summarizer",
                         Qgis.Info,
                     )
                 return payload
@@ -278,8 +278,8 @@ class PowerBICloudSession(QObject):
             expiry_dt = QDateTime.fromSecsSinceEpoch(exp_int, Qt.UTC)
             session["expires_at"] = expiry_dt.toString(Qt.ISODate)
             QgsMessageLog.logMessage(
-                f"PowerBI Cloud token válido até {session['expires_at']}.",
-                "PowerBI Summarizer",
+                f"Summarizer Cloud token válido até {session['expires_at']}.",
+                "Summarizer",
                 Qgis.Info,
             )
 
@@ -305,18 +305,18 @@ class PowerBICloudSession(QObject):
         seconds = self._seconds_until_expiry()
         if not token or (seconds is not None and seconds <= 0):
             QgsMessageLog.logMessage(
-                "PowerBI Cloud token expirado — renovando...",
-                "PowerBI Summarizer",
+                "Summarizer Cloud token expirado — renovando...",
+                "Summarizer",
                 Qgis.Info,
             )
             refreshed = self._try_auto_login(reload_layers=not self._is_reloading)
             if not refreshed:
-                raise RuntimeError("Token do PowerBI Cloud expirado. Realize o login novamente.")
+                raise RuntimeError("Token do Summarizer Cloud expirado. Realize o login novamente.")
             return
         if seconds is not None and seconds < TOKEN_REFRESH_THRESHOLD:
             QgsMessageLog.logMessage(
-                "PowerBI Cloud token proximo do vencimento — renovando...",
-                "PowerBI Summarizer",
+                "Summarizer Cloud token proximo do vencimento — renovando...",
+                "Summarizer",
                 Qgis.Info,
             )
             self._try_auto_login(reload_layers=not self._is_reloading)
@@ -332,14 +332,14 @@ class PowerBICloudSession(QObject):
             session = self._remote_login(username, password)
         except Exception as exc:
             QgsMessageLog.logMessage(
-                f"PowerBI Cloud falhou ao renovar token automaticamente: {exc}",
-                "PowerBI Summarizer",
+                f"Summarizer Cloud falhou ao renovar token automaticamente: {exc}",
+                "Summarizer",
                 Qgis.Warning,
             )
             return False
         QgsMessageLog.logMessage(
-            "PowerBI Cloud token renovado automaticamente.",
-            "PowerBI Summarizer",
+            "Summarizer Cloud token renovado automaticamente.",
+            "Summarizer",
             Qgis.Info,
         )
         self._apply_session(session, reload_layers=reload_layers)
@@ -373,7 +373,7 @@ class PowerBICloudSession(QObject):
     def _store_credentials(self, username: str, password: str):
         manager = QgsApplication.authManager()
         config = QgsAuthMethodConfig("Basic")
-        config.setName("PowerBI Cloud")
+        config.setName("Summarizer Cloud")
         config.setConfig("username", username)
         config.setConfig("password", password)
         if self._authcfg_id:
@@ -556,11 +556,11 @@ class PowerBICloudSession(QObject):
                 timeout_s=REQUEST_TIMEOUT,
             )
         except NetworkError as exc:
-            raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({redact_url(url)}): {exc}") from exc
+            raise RuntimeError(f"Falha ao conectar ao Summarizer Cloud ({redact_url(url)}): {exc}") from exc
         try:
             return response.json()
         except ValueError as exc:
-            raise RuntimeError("Resposta inválida recebida do PowerBI Cloud.") from exc
+            raise RuntimeError("Resposta inválida recebida do Summarizer Cloud.") from exc
 
     def _fetch_profile(self, token: str, token_type: str) -> Dict:
         """Fetches /me to enrich session with role/id info. Best effort; ignores failures."""
@@ -660,7 +660,7 @@ class PowerBICloudSession(QObject):
                 timeout_s=REQUEST_TIMEOUT,
             )
         except NetworkError as exc:
-            raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({redact_url(url)}): {exc}") from exc
+            raise RuntimeError(f"Falha ao conectar ao Summarizer Cloud ({redact_url(url)}): {exc}") from exc
         data = response.json(default={})
         return response.status_code, data if isinstance(data, dict) else {}
 
@@ -684,8 +684,8 @@ class PowerBICloudSession(QObject):
             "group_name": group_name or "",
         }
         QgsMessageLog.logMessage(
-            f"PowerBI Cloud| Enviando upload GPKG com group_name={group_name!r}",
-            "PowerBI Summarizer",
+            f"Summarizer Cloud| Enviando upload GPKG com group_name={group_name!r}",
+            "Summarizer",
             Qgis.Info,
         )
 
@@ -703,7 +703,7 @@ class PowerBICloudSession(QObject):
                     timeout_s=REQUEST_TIMEOUT,
                 )
             except NetworkError as exc:
-                raise RuntimeError(f"Falha ao conectar ao PowerBI Cloud ({redact_url(url)}): {exc}") from exc
+                raise RuntimeError(f"Falha ao conectar ao Summarizer Cloud ({redact_url(url)}): {exc}") from exc
 
         payload = response.json(default={})
         return response.status_code, payload if isinstance(payload, dict) else {}
@@ -751,8 +751,8 @@ class PowerBICloudSession(QObject):
             if raw_provider == "gpkg":
                 download_url, vsicurl_path = build_gpkg_vsicurl_path(base_url, layers_endpoint, layer_id, token)
                 QgsMessageLog.logMessage(
-                    f"PowerBI Cloud GPKG endpoint configurado: {redact_url(download_url)}",
-                    "PowerBI Summarizer",
+                    f"Summarizer Cloud GPKG endpoint configurado: {redact_url(download_url)}",
+                    "Summarizer",
                     Qgis.Info,
                 )
                 # GDAL suporta HTTP via /vsicurl
@@ -793,7 +793,7 @@ class PowerBICloudSession(QObject):
             layers.append(layer)
         connection = {
             "id": "powerbi_cloud_remote",
-            "name": "PowerBI Cloud",
+            "name": "Summarizer Cloud",
             "status": "online" if layers else "offline",
             "description": (
                 "Camadas disponibilizadas pelo banco configurado."

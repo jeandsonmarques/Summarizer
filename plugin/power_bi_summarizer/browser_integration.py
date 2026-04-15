@@ -52,7 +52,7 @@ if CLOUD_ICON.isNull():
     CLOUD_ICON = ROOT_ICON
 if GROUP_ICON.isNull():
     GROUP_ICON = CONNECTION_ICON
-ROOT_PATH = "/PowerBISummarizer"
+ROOT_PATH = "/Summarizer"
 _CLOUD_NODE_LOGGED = False
 
 
@@ -186,7 +186,7 @@ connection_registry = IntegrationConnectionRegistry()
 
 
 class PowerBISummarizerBrowserProvider(QgsDataItemProvider):
-    """Registers the PowerBI Summarizer node inside the QGIS Browser."""
+    """Registers the Summarizer node inside the QGIS Browser."""
 
     PROVIDER_NAME = "powerbi_summarizer"
 
@@ -214,7 +214,7 @@ class PowerBIRootItem(QgsDataCollectionItem):
     def __init__(self, parent: Optional[QgsDataItem]):
         super().__init__(
             parent,
-            "PowerBI Summarizer",
+            "Summarizer",
             ROOT_PATH,
             PowerBISummarizerBrowserProvider.PROVIDER_NAME,
         )
@@ -239,7 +239,7 @@ class PowerBIRootItem(QgsDataCollectionItem):
         widget = parent
         actions: List[QAction] = []
 
-        cloud_action = QAction("Configurar PowerBI Cloud...", widget)
+        cloud_action = QAction("Configurar Summarizer Cloud...", widget)
 
         def _open_cloud_dialog():
             from .cloud_dialogs import open_cloud_dialog  # Import tardio evita ciclo
@@ -274,18 +274,18 @@ class PowerBIRootItem(QgsDataCollectionItem):
         log_info("Conexão PostgreSQL adicionada via Navegador.")
         QMessageBox.information(
             parent,
-            "PowerBI Summarizer",
+            "Summarizer",
             f"Conexão '{payload.get('name')}' salva. Expanda o nó novamente para ver as tabelas.",
         )
 
 
 class PowerBICloudRootItem(QgsDataCollectionItem):
-    """Top node for the PowerBI Cloud hierarchy."""
+    """Top node for the Summarizer Cloud hierarchy."""
 
     def __init__(self, parent: Optional[QgsDataItem]):
         super().__init__(
             parent,
-            "PowerBI Cloud (beta)",
+            "Summarizer Cloud (beta)",
             f"{ROOT_PATH}/cloud",
             PowerBISummarizerBrowserProvider.PROVIDER_NAME,
         )
@@ -295,7 +295,7 @@ class PowerBICloudRootItem(QgsDataCollectionItem):
         cloud_session.layersChanged.connect(self.refresh)
         global _CLOUD_NODE_LOGGED
         if not _CLOUD_NODE_LOGGED:
-            log_info("Nó PowerBI Cloud carregado no Navegador.")
+            log_info("Nó Summarizer Cloud carregado no Navegador.")
             _CLOUD_NODE_LOGGED = True
 
     def createChildren(self) -> List[QgsDataItem]:
@@ -413,10 +413,10 @@ class PowerBICloudLayerItem(QgsLayerItem):
 
     def _warn_real_access(self):
         if cloud_session.hosting_ready():
-            message = "As camadas do PowerBI Cloud são abertas diretamente do servidor configurado no plugin."
+            message = "As camadas do Summarizer Cloud são abertas diretamente do servidor configurado no plugin."
         else:
             message = "Ative 'Hospedagem ativa' nas Configurações Cloud para usar apenas camadas reais do servidor."
-        QMessageBox.information(None, "PowerBI Cloud", message)
+        QMessageBox.information(None, "Summarizer Cloud", message)
     def _can_delete_layer(self) -> bool:
         if self.meta.get("mock_only", True):
             return False
@@ -428,12 +428,12 @@ class PowerBICloudLayerItem(QgsLayerItem):
     def _delete_layer(self):
         layer_id = self.meta.get("id")
         if not layer_id:
-            QMessageBox.warning(None, "PowerBI Cloud", "Identificador da camada inválido.")
+            QMessageBox.warning(None, "Summarizer Cloud", "Identificador da camada inválido.")
             return
         layer_name = self.meta.get("name") or str(layer_id)
         confirm = QMessageBox.question(
             None,
-            "PowerBI Cloud",
+            "Summarizer Cloud",
             f"Tem certeza que deseja excluir a camada '{layer_name}'?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -441,15 +441,15 @@ class PowerBICloudLayerItem(QgsLayerItem):
         if confirm != QMessageBox.Yes:
             return
         QgsMessageLog.logMessage(
-            f"PowerBI Cloud solicitando exclusão da camada {layer_name} (id={layer_id})",
-            "PowerBI Summarizer",
+            f"Summarizer Cloud solicitando exclusão da camada {layer_name} (id={layer_id})",
+            "Summarizer",
             Qgis.Info,
         )
         try:
             cloud_session.delete_cloud_layer(layer_id)
         except Exception as exc:
-            log_warning(f"PowerBI Cloud falha ao excluir camada {layer_name}: {exc}")
-            QMessageBox.warning(None, "PowerBI Cloud", f"Falha ao excluir camada:\n{exc}")
+            log_warning(f"Summarizer Cloud falha ao excluir camada {layer_name}: {exc}")
+            QMessageBox.warning(None, "Summarizer Cloud", f"Falha ao excluir camada:\n{exc}")
             return
         parent_item = self.parent()
         try:
@@ -463,11 +463,11 @@ class PowerBICloudLayerItem(QgsLayerItem):
             pass
         reload_cloud_catalog(force_remote_only=True)
         QgsMessageLog.logMessage(
-            f"PowerBI Cloud camada {layer_name} excluída com sucesso.",
-            "PowerBI Summarizer",
+            f"Summarizer Cloud camada {layer_name} excluída com sucesso.",
+            "Summarizer",
             Qgis.Info,
         )
-        QMessageBox.information(None, "PowerBI Cloud", f"Camada '{layer_name}' foi excluída com sucesso.")
+        QMessageBox.information(None, "Summarizer Cloud", f"Camada '{layer_name}' foi excluída com sucesso.")
 
 class PowerBIPlaceholderItem(QgsDataCollectionItem):
     """Displayed when there are no saved connections."""
@@ -549,7 +549,7 @@ class PowerBIConnectionItem(QgsDataCollectionItem):
             details.append(f"Último erro: {self._last_error}")
         QMessageBox.information(
             None,
-            "PowerBI Summarizer",
+            "Summarizer",
             "\n".join(details),
         )
 
@@ -726,16 +726,16 @@ def _refresh_browser_model():
 
 def reload_cloud_catalog(force_remote_only: Optional[bool] = None) -> None:
     """
-    Recarrega completamente o catálogo do PowerBI Cloud:
+    Recarrega completamente o catálogo do Summarizer Cloud:
     - Chama a API /layers (quando hospedagem ativa)
-    - Reconstrói a estrutura: PowerBI Cloud (beta) -> grupos -> camadas
+    - Reconstrói a estrutura: Summarizer Cloud (beta) -> grupos -> camadas
     - Atualiza a árvore do navegador
     """
     force_remote = cloud_session.hosting_ready() if force_remote_only is None else bool(force_remote_only)
     try:
         cloud_session.reload_cloud_layers(force_remote_only=force_remote)
     except Exception as exc:
-        log_warning(f"PowerBI Cloud falhou ao recarregar catálogo: {exc}")
+        log_warning(f"Summarizer Cloud falhou ao recarregar catálogo: {exc}")
     _refresh_browser_model()
 
 
@@ -768,7 +768,7 @@ Instalação:
 Registro no QGIS:
   • No construtor principal (data_summarizer.PowerBISummarizer), importe
     register_browser_provider/unregister_browser_provider e chame
-    register_browser_provider() em initGui() para exibir o nó “PowerBI Summarizer”
+    register_browser_provider() em initGui() para exibir o nó “Summarizer”
     e unregister_browser_provider() em unload().
 
 Sincronização de conexões:

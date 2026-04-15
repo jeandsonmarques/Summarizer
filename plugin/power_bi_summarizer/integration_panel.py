@@ -87,7 +87,7 @@ class ConnectorConfig:
 
 
 class ConnectorCard(QFrame):
-    """Clickable tile that mimics Power BI get data cards."""
+    """Clickable tile that mimics BI get data cards."""
 
     triggered = pyqtSignal(str)
 
@@ -277,7 +277,7 @@ class ResponsiveGrid(QWidget):
 
 
 class IntegrationPanel(QWidget):
-    """Power BI-like integration hub for loading external datasets."""
+    """Integration hub for loading external datasets."""
 
     def __init__(self, host, iface, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -473,7 +473,7 @@ class IntegrationPanel(QWidget):
 
         header_layout = QHBoxLayout()
         header_layout.setSpacing(8)
-        title = QLabel("PowerBI Cloud (beta)", self.cloud_section)
+        title = QLabel("Summarizer Cloud (beta)", self.cloud_section)
         title.setProperty("cardTitle", True)
         title.setFont(QFont("Segoe UI", 13, QFont.DemiBold))
         header_layout.addWidget(title)
@@ -493,7 +493,7 @@ class IntegrationPanel(QWidget):
 
         buttons_row = QHBoxLayout()
         buttons_row.setSpacing(8)
-        self.cloud_open_btn = QPushButton("Abrir PowerBI Cloud...", self.cloud_section)
+        self.cloud_open_btn = QPushButton("Abrir Summarizer Cloud...", self.cloud_section)
         self.cloud_refresh_btn = QPushButton("Atualizar catálogo", self.cloud_section)
         self.cloud_refresh_btn.setProperty("variant", "ghost")
         self.cloud_browser_btn = QPushButton("Abrir no Navegador", self.cloud_section)
@@ -561,12 +561,12 @@ class IntegrationPanel(QWidget):
 
         reload_cloud_catalog()
         self._on_cloud_layers_changed()
-        self._show_cloud_message("PowerBI Cloud", "Catálogo Cloud atualizado.")
+        self._show_cloud_message("Summarizer Cloud", "Catálogo Cloud atualizado.")
 
     def _open_cloud_browser_hint(self):
         self._show_cloud_message(
-            "PowerBI Cloud",
-            "Abra o Navegador do QGIS e expanda PowerBI Summarizer → PowerBI Cloud para carregar as camadas disponiveis.",
+            "Summarizer Cloud",
+            "Abra o Navegador do QGIS e expanda Summarizer → Summarizer Cloud para carregar as camadas disponiveis.",
         )
 
     def _refresh_cloud_summary(self):
@@ -788,9 +788,9 @@ class IntegrationPanel(QWidget):
 
     def _normalize_connection_name(self, raw: str) -> str:
         if not raw:
-            return "PowerBI_Connection"
+            return "Summarizer_Connection"
         sanitized = re.sub(r"[^0-9A-Za-z_]+", "_", raw).strip("_")
-        return sanitized or "PowerBI_Connection"
+        return sanitized or "Summarizer_Connection"
 
     def open_connections_manager(self):
         dialog = SlimDialogBase(
@@ -890,7 +890,7 @@ class IntegrationPanel(QWidget):
             self._save_connections()
             slim_message(
                 dialog,
-                title="PowerBI Cloud",
+                title="Summarizer Cloud",
                 text="Usuário Cloud padrão atualizado para esta conexão.",
                 icon=_cloud_popup_icon(),
             )
@@ -1598,7 +1598,7 @@ class DatabaseImportDialog(SlimDialogBase):
         saved_row.addWidget(self.test_btn, 0)
 
         self.browser_sync_btn = QPushButton("Mostrar no Navegador", self)
-        self.browser_sync_btn.setToolTip("Força o nó 'PowerBI Summarizer' a exibir esta conexão.")
+        self.browser_sync_btn.setToolTip("Força o nó 'Summarizer' a exibir esta conexão.")
         self.browser_sync_btn.clicked.connect(self._force_browser_sync)
         saved_row.addWidget(self.browser_sync_btn, 0)
         layout.addLayout(saved_row)
@@ -1896,7 +1896,7 @@ class DatabaseImportDialog(SlimDialogBase):
         QMessageBox.information(
             self,
             "Navegador",
-            "Conexão enviada para o Navegador.\nExpanda 'PostgreSQL' (ou 'PowerBI Summarizer', se disponível) para visualizar.",
+            "Conexão enviada para o Navegador.\nExpanda 'PostgreSQL' (ou 'Summarizer', se disponível) para visualizar.",
         )
 
 

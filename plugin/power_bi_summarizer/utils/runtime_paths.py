@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 
-APP_NAME = "PowerBISummarizer"
+APP_NAME = "Summarizer"
 
 
 def _candidate_state_roots() -> list[Path]:

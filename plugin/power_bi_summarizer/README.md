@@ -1,4 +1,4 @@
-# Power BI Summarizer Package
+# Summarizer Package
 
 This directory contains the distributable QGIS plugin package.
 

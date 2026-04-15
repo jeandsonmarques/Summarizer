@@ -118,7 +118,7 @@ class PowerBISummarizer:
             QCoreApplication.installTranslator(self.translator)
 
         self.actions = []
-        self.menu = self.tr("Power BI Summarizer")
+        self.menu = self.tr("Summarizer")
         self.dlg = None
         self._browser_provider = None
 
@@ -129,12 +129,12 @@ class PowerBISummarizer:
         plugin_icon = svg_icon("PowerPages.svg")
         self.action = QAction(
             plugin_icon,
-            self.tr("Power BI Summarizer"),
+            self.tr("Summarizer"),
             self.iface.mainWindow(),
         )
         self.action.triggered.connect(self.run)
         self.action.setWhatsThis(
-            self.tr("Resume dados de diferentes camadas como no Power BI")
+            self.tr("Resume dados de diferentes camadas")
         )
 
         self.actions.append(self.action)
@@ -156,7 +156,7 @@ class PowerBISummarizer:
                 self._browser_provider = register_browser_provider()
         except Exception as exc:
             self._browser_provider = None
-            message = f"Falha ao registrar nó PowerBI Summarizer no Navegador: {exc}"
+            message = f"Falha ao registrar nó Summarizer no Navegador: {exc}"
             QgsMessageLog.logMessage(message, "PowerBISummarizer", Qgis.Critical)
             log_error(message)
 
@@ -1621,7 +1621,7 @@ class PowerBISummarizerDialog(QDialog):
         layer_part = self._normalize_filename_component(metadata.get("layer_name", ""))
         field_part = self._normalize_filename_component(metadata.get("field_name", ""))
         parts = [part for part in (layer_part, field_part) if part]
-        return "_".join(parts) if parts else "resumo_powerbi"
+        return "_".join(parts) if parts else "resumo_summarizer"
 
     def _set_export_path(self, path: str):
         base, ext = os.path.splitext(path)
@@ -1887,7 +1887,7 @@ class PowerBISummarizerDialog(QDialog):
             if not cloud_session.is_authenticated() or not cloud_session.is_admin():
                 QMessageBox.information(
                     self,
-                    "PowerBI Cloud",
+                "Summarizer Cloud",
                     "Somente administradores conectados podem enviar camadas para o Cloud.",
                 )
                 return
@@ -2213,12 +2213,12 @@ class PowerBISummarizerDialog(QDialog):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(8)
 
-        title = QLabel("Power BI Summarizer", dialog)
+        title = QLabel("Summarizer", dialog)
         title.setProperty("sublabel", True)
         layout.addWidget(title)
 
         body = QLabel(
-            "Resumo e exporta??uo de camadas do QGIS com visual inspirado no Power BI.",
+            "Resumo e exportação de camadas do QGIS com visual focado em análise e relatórios.",
             dialog,
         )
         body.setWordWrap(True)
@@ -2246,7 +2246,7 @@ def _vector_layer_to_dataframe(layer) -> Optional[pd.DataFrame]:
 
 
 class GetDataDialog(QDialog):
-    """Diálogo compacto de 'Obter Dados' inspirado no Power BI."""
+    """Diálogo compacto de 'Obter Dados' focado em relatórios."""
 
     def __init__(self, host, parent=None):
         super().__init__(parent)
@@ -2262,7 +2262,7 @@ class GetDataDialog(QDialog):
         layout.setSpacing(10)
 
         info = QLabel(
-            "Escolha a fonte de dados (PostgreSQL ou Power BI Summarizer Cloud). "
+            "Escolha a fonte de dados (PostgreSQL ou Summarizer Cloud). "
             "As tabelas selecionadas serão adicionadas ao modelo sem abrir camadas no mapa."
         )
         info.setWordWrap(True)
@@ -2270,7 +2270,7 @@ class GetDataDialog(QDialog):
 
         self.source_combo = QComboBox(self)
         self.source_combo.addItem("PostgreSQL / SQL", "database")
-        self.source_combo.addItem("Power BI Summarizer Cloud", "cloud")
+        self.source_combo.addItem("Summarizer Cloud", "cloud")
         self.source_combo.currentIndexChanged.connect(self._on_source_changed)
         layout.addWidget(self.source_combo)
 
@@ -2298,7 +2298,7 @@ class GetDataDialog(QDialog):
         cloud_layout = QVBoxLayout(cloud_page)
         cloud_layout.setContentsMargins(0, 0, 0, 0)
         cloud_layout.setSpacing(8)
-        cloud_layout.addWidget(QLabel("Selecione camadas disponíveis no Power BI Summarizer Cloud:"))
+        cloud_layout.addWidget(QLabel("Selecione camadas disponíveis no Summarizer Cloud:"))
         self.cloud_list = QListWidget(cloud_page)
         self.cloud_list.setSelectionMode(QListWidget.MultiSelection)
         cloud_layout.addWidget(self.cloud_list, 1)
@@ -2393,7 +2393,7 @@ class GetDataDialog(QDialog):
             if df is None:
                 continue
             metadata = {
-                "connector": "PowerBI Cloud",
+                "connector": "Summarizer Cloud",
                 "display_name": layer_name,
                 "source_path": source,
                 "record_count": len(df),
