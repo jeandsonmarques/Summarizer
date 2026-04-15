@@ -1,79 +1,81 @@
 # Power BI Summarizer
 
-Power BI Summarizer é um plugin para QGIS voltado à análise, resumo e preparação de dados geoespaciais para uso em relatórios, painéis e fluxos de trabalho inspirados no Power BI.
+Power BI Summarizer is a QGIS plugin that helps turn spatial data into clean, report-ready outputs. It is designed for analysts who need to explore project layers, summarize results, prepare dashboard-style views, and move data into a Power BI-oriented workflow without leaving QGIS.
 
-O foco do projeto é oferecer uma experiência sólida dentro do QGIS para:
+## Highlights
 
-- resumir camadas vetoriais e tabelas;
-- gerar tabelas prontas para relatório;
-- criar visões analíticas e gráficos;
-- apoiar a organização de dados para consumo externo;
-- manter os fluxos principais funcionando localmente, sem depender de backend para uso básico.
+- Summarize layers and tables into compact analytical outputs.
+- Build report-friendly views and chart widgets inside QGIS.
+- Export structured results for downstream reporting.
+- Support local-first workflows with optional cloud integration.
+- Keep the plugin focused on practical analysis rather than framework-heavy setup.
 
-## Visão geral
+## Why this plugin
 
-O repositório está organizado para separar claramente o pacote do plugin QGIS de eventuais componentes auxiliares. O código distribuído ao usuário final fica em `plugin/power_bi_summarizer/`, enquanto a raiz do repositório serve como ponto de documentação e manutenção do projeto.
+Many QGIS workflows stop at map exploration. Power BI Summarizer extends that process by helping you organize data into formats that are easier to review, share, and reuse in business reporting.
 
-## Estrutura do repositório
+The plugin is built to stay lightweight from the user point of view:
 
-- `plugin/power_bi_summarizer/`: pacote principal do plugin QGIS
-- `plugin/power_bi_summarizer/metadata.txt`: metadados exigidos pelo QGIS
-- `plugin/power_bi_summarizer/__init__.py`: ponto de entrada do plugin
-- `plugin/power_bi_summarizer/README.md`: documentação técnica do pacote do plugin
+- core workflows run locally in QGIS;
+- cloud features are optional;
+- the main package remains a QGIS plugin, not a backend application.
 
-## Compatibilidade
+## Installation
 
-- QGIS 3.34 até 3.99
-- Ambiente Python fornecido pelo QGIS
+### From a ZIP package
 
-O projeto ainda não é apresentado como compatível com QGIS 4 ou Qt6.
+1. Open `Plugins > Manage and Install Plugins...` in QGIS.
+2. Choose `Install from ZIP`.
+3. Select a ZIP file whose root contains the `power_bi_summarizer/` folder.
 
-## Instalação
+### From this repository
 
-### Pela interface do QGIS
+The distributable package should contain only the `power_bi_summarizer/` directory at the root of the archive.
 
-1. Abra `Plugins > Manage and Install Plugins...`.
-2. Use a opção `Install from ZIP`.
-3. Selecione um arquivo ZIP que contenha a pasta `power_bi_summarizer/` na raiz do pacote.
+This layout matches the structure expected by QGIS plugin packaging.
 
-### A partir deste repositório
+## Compatibility
 
-O pacote final do plugin deve ser montado de forma que o ZIP contenha apenas a pasta `power_bi_summarizer/` no nível superior.
+- QGIS 3.34 to 3.99
+- Standard QGIS Python environment
 
-Isso é importante porque o QGIS espera encontrar os arquivos do plugin diretamente dentro dessa pasta.
+The project is not currently positioned as QGIS 4 or Qt6 ready.
 
-## O que o plugin faz
+## Project structure
 
-O plugin reúne funcionalidades para:
+- `plugin/power_bi_summarizer/`: distributable QGIS plugin package
+- `plugin/power_bi_summarizer/metadata.txt`: plugin metadata consumed by QGIS
+- `plugin/power_bi_summarizer/__init__.py`: plugin entry point
+- `plugin/power_bi_summarizer/README.md`: technical notes for the package
 
-- explorar camadas carregadas no projeto;
-- produzir resumos e tabelas derivadas;
-- criar visualizações para análise e apresentação;
-- exportar resultados para uso posterior em relatórios ou integrações;
-- apoiar fluxos opcionais de conectividade com serviços externos.
+## What the plugin covers
 
-## Dependências e observações
+- layer summaries and analytical views
+- dashboard-style charting
+- export of structured outputs for reporting
+- optional cloud session and browser-assisted workflows
+- optional AI-assisted interpretation for report generation
 
-O funcionamento básico depende apenas do QGIS.
+## Dependencies
 
-Alguns recursos adicionais podem exigir:
+Core functionality depends on QGIS.
 
-- `pandas` para processamento tabular;
-- conexão de rede do próprio QGIS para integração com serviços remotos;
-- serviços externos opcionais para recursos de IA ou backend.
+Optional features may use:
 
-Essas dependências adicionais não são necessárias para carregar o plugin nem para os fluxos locais principais.
+- `pandas` for table-oriented processing;
+- network access provided by the QGIS runtime;
+- external services for cloud or AI-assisted workflows.
 
-## Publicação no QGIS
+## Publishing notes
 
-Antes de publicar o plugin no repositório oficial do QGIS, verifique:
+Before publishing the plugin, confirm that:
 
-- se `plugin/power_bi_summarizer/metadata.txt` contém URLs reais de repositório e rastreador de problemas;
-- se o arquivo ZIP de distribuição contém somente a pasta `power_bi_summarizer/`;
-- se não há arquivos temporários, caches ou artefatos de build no pacote final;
-- se a versão declarada no `metadata.txt` corresponde à versão pretendida para publicação.
+- `plugin/power_bi_summarizer/metadata.txt` contains real repository and issue tracker URLs;
+- the release ZIP includes only the `power_bi_summarizer/` folder at the top level;
+- no caches, build outputs, or temporary files are included in the package;
+- the declared version matches the release being published.
 
-## Documentação complementar
+## Support
 
-- [README técnico do pacote do plugin](plugin/power_bi_summarizer/README.md)
-- [Metadados do plugin](plugin/power_bi_summarizer/metadata.txt)
+- Repository: https://github.com/jeandsonmarques/PowerBISummarizer
+- Issues: https://github.com/jeandsonmarques/PowerBISummarizer/issues

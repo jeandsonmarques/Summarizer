@@ -1,44 +1,28 @@
-# Power BI Summarizer - Plugin Package
+# Power BI Summarizer Package
 
-Este diretório contém o pacote distribuído do plugin QGIS Power BI Summarizer.
+This directory contains the distributable QGIS plugin package.
 
-## Conteúdo esperado pelo QGIS
+## Package scope
 
-O pacote do plugin deve incluir, no mínimo:
+The package is intentionally client-side only. It includes the plugin code, resources, and metadata needed for QGIS to load the extension.
 
-- `metadata.txt`
-- `__init__.py`
-- o código Python do plugin
-- os recursos referenciados pelo plugin, como ícones e arquivos de interface
+## Distribution rules
 
-## Finalidade
+- Ship only the `power_bi_summarizer/` folder at the root of the ZIP archive.
+- Keep development-only assets, test fixtures, and backend components out of the release package.
+- Make sure `metadata.txt` is updated before publishing.
 
-O plugin foi estruturado para executar os fluxos principais dentro do QGIS:
+## Included surface area
 
-- resumo de camadas e tabelas;
-- preparação de saídas analíticas;
-- geração de visualizações e componentes de dashboard;
-- integração opcional com serviços externos.
+- plugin entry point
+- plugin metadata
+- UI and report components
+- local resources and icons
+- optional integrations used by the QGIS client
 
-## Empacotamento
+## Release checklist
 
-Ao criar a versão final para distribuição:
-
-1. compacte apenas a pasta `power_bi_summarizer/`;
-2. mantenha a pasta na raiz do ZIP;
-3. evite incluir diretórios de desenvolvimento, testes ou backend;
-4. confirme que `metadata.txt` contém URLs válidos antes da publicação.
-
-## Publicação
-
-Antes de enviar o plugin para o repositório oficial do QGIS, revise:
-
-- compatibilidade declarada em `metadata.txt`;
-- descrição e resumo do plugin;
-- URL do repositório;
-- URL do rastreador de problemas;
-- versão de publicação.
-
-## Observação
-
-Os recursos de backend e integrações remotas não fazem parte do pacote principal do plugin e devem ser mantidos fora do ZIP de distribuição do QGIS.
+- confirm version and compatibility in `metadata.txt`
+- confirm repository and issue tracker URLs
+- verify the archive structure before release
+- remove temporary files and build artifacts
