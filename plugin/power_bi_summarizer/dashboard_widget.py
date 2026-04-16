@@ -57,45 +57,119 @@ class DashboardWidget(QWidget):
     # ------------------------------------------------------------------ UI build
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
 
-        header_font = QFont(TYPOGRAPHY.get("font_family", "Segoe UI"), 20, QFont.DemiBold)
+        header_font = QFont(TYPOGRAPHY.get("font_family", "Segoe UI"), 21, QFont.DemiBold)
+
+        hero_frame = QFrame()
+        hero_frame.setObjectName("HeroFrame")
+        hero_layout = QVBoxLayout(hero_frame)
+        hero_layout.setContentsMargins(16, 14, 16, 14)
+        hero_layout.setSpacing(6)
 
         self.title_label = QLabel("Dashboard Interativo")
         self.title_label.setFont(header_font)
         self.title_label.setProperty("role", "title")
         self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        layout.addWidget(self.title_label)
+        hero_layout.addWidget(self.title_label)
 
         self.subtitle_label = QLabel("Selecione uma camada e gere um resumo para visualizar o dashboard.")
         self.subtitle_label.setObjectName("Subtitle")
         self.subtitle_label.setProperty("role", "helper")
-        layout.addWidget(self.subtitle_label)
+        hero_layout.addWidget(self.subtitle_label)
 
         self.summary_line_label = QLabel("")
         self.summary_line_label.setObjectName("SummaryLine")
         self.summary_line_label.setProperty("role", "helper")
         self.summary_line_label.setWordWrap(True)
-        layout.addWidget(self.summary_line_label)
+        hero_layout.addWidget(self.summary_line_label)
+        layout.addWidget(hero_frame)
 
-        charts_container = QWidget()
-        charts_layout = QGridLayout(charts_container)
-        charts_layout.setContentsMargins(0, 0, 0, 0)
-        charts_layout.setSpacing(14)
+        kpi_row = QHBoxLayout()
+        kpi_row.setContentsMargins(0, 0, 0, 0)
+        kpi_row.setSpacing(10)
+        self.kpi_total_card, self.kpi_total_value, self.kpi_total_label = self._create_kpi_card("0", "Total")
+        self.kpi_rows_card, self.kpi_rows_value, self.kpi_rows_label = self._create_kpi_card("0", "Linhas")
+        self.kpi_categories_card, self.kpi_categories_value, self.kpi_categories_label = self._create_kpi_card("0", "Categorias")
+        kpi_row.addWidget(self.kpi_total_card, 1)
+        kpi_row.addWidget(self.kpi_rows_card, 1)
+        kpi_row.addWidget(self.kpi_categories_card, 1)
+        layout.addLayout(kpi_row)
+
+        filter_frame = QFrame()
+        filter_frame.setObjectName("FilterPanel")
+        filter_layout = QVBoxLayout(filter_frame)
+        filter_layout.setContentsMargins(12, 10, 12, 10)
+        filter_layout.setSpacing(8)
+
+        filter_header = QHBoxLayout()
+        filter_header.setContentsMargins(0, 0, 0, 0)
+        filter_header.setSpacing(8)
+        filter_title = QLabel("Filtros por Categoria")
+        filter_title.setObjectName("SectionTitle")
+        filter_header.addWidget(filter_title)
+        filter_header.addStretch(1)
+        self.clear_filter_btn = QPushButton("Limpar filtros")
+        self.clear_filter_btn.setObjectName("DashboardGhostButton")
+        self.clear_filter_btn.clicked.connect(self._clear_category_filters)
+        filter_header.addWidget(self.clear_filter_btn)
+        filter_layout.addLayout(filter_header)
+
+        self.filter_chip_scroll = QScrollArea(self)
+        self.filter_chip_scroll.setWidgetResizable(True)
+        self.filter_chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.filter_chip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.filter_chip_scroll.setFrameShape(QFrame.NoFrame)
+        self.filter_chip_container = QWidget()
+        self.filter_chip_container.setObjectName("FilterChipContainer")
+        self.filter_chip_layout = QHBoxLayout(self.filter_chip_container)
+        self.filter_chip_layout.setContentsMargins(0, 2, 0, 2)
+        self.filter_chip_layout.setSpacing(8)
+        self.filter_chip_layout.addStretch(1)
+        self.filter_chip_scroll.setWidget(self.filter_chip_container)
+        filter_layout.addWidget(self.filter_chip_scroll)
+        layout.addWidget(filter_frame)
+
+        self.content_splitter = QSplitter(Qt.Vertical, self)
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setHandleWidth(8)
+
+        charts_frame = QFrame()
+        charts_frame.setObjectName("ChartCard")
+        charts_layout = QVBoxLayout(charts_frame)
+        charts_layout.setContentsMargins(10, 10, 10, 10)
+        charts_layout.setSpacing(8)
+
+        chart_title = QLabel("Visão de Categorias")
+        chart_title.setObjectName("SectionTitle")
+        charts_layout.addWidget(chart_title)
 
         self.primary_chart = ReportChartWidget(self)
-        self.primary_chart.setMinimumHeight(340)
+        self.primary_chart.setMinimumHeight(420)
         self.primary_chart.set_payload(None, empty_text="Sem dados para exibir")
         self.primary_chart.selectionChanged.connect(lambda payload: self._handle_chart_selection(self.primary_chart, payload))
-        charts_layout.addWidget(self._create_chart_frame(self.primary_chart), 0, 0)
 
-        layout.addWidget(charts_container, stretch=4)
+        self.chart_scroll = QScrollArea(self)
+        self.chart_scroll.setWidgetResizable(True)
+        self.chart_scroll.setFrameShape(QFrame.NoFrame)
+        self.chart_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.chart_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        self.chart_canvas = QWidget()
+        chart_canvas_layout = QVBoxLayout(self.chart_canvas)
+        chart_canvas_layout.setContentsMargins(0, 0, 0, 0)
+        chart_canvas_layout.setSpacing(0)
+        chart_canvas_layout.addWidget(self.primary_chart)
+        self.chart_scroll.setWidget(self.chart_canvas)
+        charts_layout.addWidget(self.chart_scroll, stretch=1)
+
+        self.content_splitter.addWidget(charts_frame)
 
         details_frame = QFrame()
         details_frame.setObjectName("DetailFrame")
         details_layout = QVBoxLayout(details_frame)
-        details_layout.setContentsMargins(16, 16, 16, 16)
+        details_layout.setContentsMargins(12, 12, 12, 12)
         details_layout.setSpacing(8)
 
         table_header = QLabel("Dados filtrados da tabela dinamica")
@@ -121,7 +195,10 @@ class DashboardWidget(QWidget):
         self.table_hint_label.setProperty("role", "helper")
         details_layout.addWidget(self.table_hint_label)
 
-        layout.addWidget(details_frame, stretch=3)
+        self.content_splitter.addWidget(details_frame)
+        self.content_splitter.setStretchFactor(0, 7)
+        self.content_splitter.setStretchFactor(1, 3)
+        layout.addWidget(self.content_splitter, stretch=1)
 
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
@@ -138,14 +215,19 @@ class DashboardWidget(QWidget):
 
         self._render_empty_state()
 
-    def _create_chart_frame(self, chart_widget: ReportChartWidget) -> QFrame:
-        frame = QFrame()
-        frame.setObjectName("ChartCard")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(0)
-        layout.addWidget(chart_widget)
-        return frame
+    def _create_kpi_card(self, value_text: str, label_text: str):
+        card = QFrame()
+        card.setObjectName("KpiCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(14, 10, 14, 10)
+        card_layout.setSpacing(2)
+        value_label = QLabel(value_text)
+        value_label.setObjectName("KpiValue")
+        label = QLabel(label_text)
+        label.setObjectName("KpiLabel")
+        card_layout.addWidget(value_label)
+        card_layout.addWidget(label)
+        return card, value_label, label
 
     def _apply_styles(self):
         surface = COLORS["color_surface"]
@@ -158,22 +240,39 @@ class DashboardWidget(QWidget):
         self.setStyleSheet(
             f"""
             QWidget#DashboardRoot {{
-                background-color: {COLORS["color_app_bg"]};
+                background-color: #F3F6FB;
+            }}
+            QFrame#HeroFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #EEF6FF, stop:1 #E8F8F4);
+                border: 1px solid #D7E6F7;
+                border-radius: 10px;
             }}
             QLabel#Subtitle {{
                 color: {helper};
                 font-size: {TYPOGRAPHY["font_small_size"]}pt;
             }}
+            QFrame#FilterPanel,
+            QFrame#KpiCard,
             QFrame#ChartCard,
             QFrame#DetailFrame {{
                 background-color: {surface};
-                border-radius: 0px;
+                border-radius: 10px;
                 border: 1px solid {border};
             }}
             QLabel#SectionTitle {{
                 color: {primary_text};
+                font-weight: 600;
             }}
             QLabel#SummaryLine {{
+                color: {helper};
+                font-size: {TYPOGRAPHY["font_small_size"]}pt;
+            }}
+            QLabel#KpiValue {{
+                color: #0F172A;
+                font-size: 16pt;
+                font-weight: 700;
+            }}
+            QLabel#KpiLabel {{
                 color: {helper};
                 font-size: {TYPOGRAPHY["font_small_size"]}pt;
             }}
@@ -185,10 +284,36 @@ class DashboardWidget(QWidget):
                 color: {primary_text};
                 font-size: {TYPOGRAPHY["font_small_size"]}pt;
             }}
+            QPushButton#DashboardGhostButton {{
+                border: 1px solid #CBD5E1;
+                border-radius: 8px;
+                background: #FFFFFF;
+                color: #0F172A;
+                padding: 6px 12px;
+                font-weight: 600;
+            }}
+            QPushButton#DashboardGhostButton:hover {{
+                background: #F8FAFC;
+                border-color: #94A3B8;
+            }}
+            QPushButton[dashboardChip=\"true\"] {{
+                border: 1px solid #D1D9E6;
+                border-radius: 14px;
+                background: #FFFFFF;
+                color: #1E293B;
+                padding: 6px 10px;
+                font-size: 9pt;
+            }}
+            QPushButton[dashboardChip=\"true\"]:checked {{
+                background: #DBEAFE;
+                border-color: #3B82F6;
+                color: #1D4ED8;
+                font-weight: 600;
+            }}
             QTableWidget {{
                 background-color: {surface};
                 border: 1px solid {border};
-                border-radius: 0px;
+                border-radius: 8px;
                 gridline-color: {border};
                 selection-background-color: {selection};
                 alternate-background-color: {zebra};
@@ -208,6 +333,7 @@ class DashboardWidget(QWidget):
         self.current_pivot_result = None
         self.active_category_key = ""
         self.active_category_label = ""
+        self.active_category_keys = []
 
         if df is None or df.empty:
             self.current_source_df = pd.DataFrame()
@@ -231,6 +357,9 @@ class DashboardWidget(QWidget):
             return
 
         self.current_pivot_result = result
+        self.active_category_key = ""
+        self.active_category_label = ""
+        self.active_category_keys = []
         metadata = dict(getattr(result, "metadata", {}) or {})
         raw_df = self._build_source_dataframe_from_pivot_result(result)
         if raw_df is None or raw_df.empty:
@@ -343,7 +472,7 @@ class DashboardWidget(QWidget):
             saved_paths.append(primary_path)
 
             export_df = self.current_view_df if not self.current_view_df.empty else self.current_df
-            export_df.to_csv(table_path, index=False)
+            export_df.to_csv(table_path, index=False, sep=";", decimal=",", encoding="utf-8-sig")
             saved_paths.append(table_path)
         except Exception as exc:
             QMessageBox.critical(self, "Exportar dashboard", f"Falha ao exportar os arquivos do dashboard: {exc}")
@@ -354,10 +483,11 @@ class DashboardWidget(QWidget):
     # ------------------------------------------------------------------ Rendering
     def _render_current_data(self):
         self._update_subtitle()
-        self._update_summary_line()
-        self._update_charts()
+        chart_df = self._update_charts()
+        self._rebuild_filter_chips(chart_df)
+        self._apply_active_filters()
         self._sync_chart_selection()
-        self._update_table()
+        self._update_summary_line(chart_df)
         self._update_filter_label()
 
     def _render_empty_state(self, message: Optional[str] = None):
@@ -365,11 +495,16 @@ class DashboardWidget(QWidget):
         self.summary_line_label.setText("")
         self.primary_chart.set_payload(None, empty_text="Sem dados para exibir")
         self.primary_chart.set_chart_context({})
+        self._adjust_chart_height(0)
         self.current_source_df = pd.DataFrame()
         self.current_view_df = pd.DataFrame()
         self.current_df = pd.DataFrame()
         self.active_category_key = ""
         self.active_category_label = ""
+        self.active_category_keys = []
+        self._category_filters = {}
+        self._rebuild_filter_chips(pd.DataFrame())
+        self._set_kpi_values(total=0.0, rows=0, categories=0)
         self.details_table.clear()
         self.details_table.setRowCount(0)
         self.details_table.setColumnCount(0)
@@ -383,7 +518,7 @@ class DashboardWidget(QWidget):
         pivot_desc = f"{agg_label} de {value_label}"
         self.subtitle_label.setText(f"{layer} - {pivot_desc}")
 
-    def _update_summary_line(self):
+    def _update_summary_line(self, chart_df: Optional[pd.DataFrame] = None):
         base_df = self.current_source_df if not self.current_source_df.empty else self.current_df
         numeric_cols = [col for col in base_df.select_dtypes(include=[np.number]).columns.tolist() if col != "_feature_id"]
         if numeric_cols:
@@ -394,31 +529,42 @@ class DashboardWidget(QWidget):
 
         total = float(values.sum()) if values.size else 0.0
         rows = int(base_df.shape[0])
-        categories = 0
-        try:
-            chart_df = self._build_chart_dataset()
-            categories = int(len(chart_df.index))
-        except Exception:
-            categories = 0
+        if chart_df is None:
+            try:
+                chart_df = self._build_chart_dataset()
+            except Exception:
+                chart_df = pd.DataFrame()
+        categories = int(len(chart_df.index)) if isinstance(chart_df, pd.DataFrame) else 0
 
         if rows <= 0:
             self.summary_line_label.setText("")
+            self._set_kpi_values(total=0.0, rows=0, categories=0)
             return
 
+        filtered_rows = int(len(self.current_view_df.index)) if isinstance(self.current_view_df, pd.DataFrame) else rows
+        self._set_kpi_values(total=total, rows=filtered_rows, categories=categories)
         self.summary_line_label.setText(
-            f"{rows} linha(s) analisadas | {categories} categoria(s) | total {self._format_number(total)}"
+            f"{rows} linha(s) de origem | {filtered_rows} linha(s) visiveis | {categories} categoria(s)"
         )
 
     def _update_charts(self):
         chart_df = self._build_chart_dataset()
         if chart_df.empty or float(chart_df["Valor"].fillna(0).sum()) == 0.0:
             self.primary_chart.set_payload(None, empty_text="Sem metricas numericas")
-            return
+            self._adjust_chart_height(0)
+            return chart_df
 
-        primary_payload = self._build_chart_payload(chart_df, title="Top categorias", chart_type="barh", limit=10)
+        primary_payload = self._build_chart_payload(
+            chart_df,
+            title="Categorias (com filtro multiplo)",
+            chart_type="barh",
+            limit=max(1, int(len(chart_df.index))),
+        )
 
         self.primary_chart.set_payload(primary_payload, empty_text="Sem dados para o grafico principal")
         self.primary_chart.set_chart_context(self._chart_context_for_model(primary_payload))
+        self._adjust_chart_height(len(primary_payload.categories) if primary_payload is not None else 0)
+        return chart_df
 
     def _build_chart_dataset(self) -> pd.DataFrame:
         if self.current_pivot_result is not None:
@@ -682,6 +828,157 @@ class DashboardWidget(QWidget):
             },
         }
 
+    def _set_kpi_values(self, *, total: float, rows: int, categories: int):
+        self.kpi_total_value.setText(self._format_number(float(total)))
+        self.kpi_total_label.setText("Total agregado")
+        self.kpi_rows_value.setText(str(max(0, int(rows))))
+        self.kpi_rows_label.setText("Linhas visiveis")
+        self.kpi_categories_value.setText(str(max(0, int(categories))))
+        self.kpi_categories_label.setText("Categorias")
+
+    def _adjust_chart_height(self, category_count: int):
+        count = max(0, int(category_count or 0))
+        dynamic_height = 220 + (count * 34)
+        bounded = max(360, min(dynamic_height, 24000))
+        self.primary_chart.setMinimumHeight(bounded)
+        self.primary_chart.setMaximumHeight(bounded)
+        self.primary_chart.resize(self.primary_chart.width(), bounded)
+        self.chart_canvas.setMinimumHeight(bounded + 8)
+
+    def _clear_filter_chips(self):
+        while self.filter_chip_layout.count() > 0:
+            item = self.filter_chip_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.filter_chip_layout.addStretch(1)
+
+    def _rebuild_filter_chips(self, chart_df: pd.DataFrame):
+        self._updating_filter_chips = True
+        try:
+            self._clear_filter_chips()
+            self._category_filters = {}
+            if chart_df is None or chart_df.empty:
+                self.active_category_keys = []
+                return
+
+            for row in chart_df.itertuples(index=False):
+                category = str(getattr(row, "Categoria", ""))
+                value = float(getattr(row, "Valor", 0.0) or 0.0)
+                raw_category = getattr(row, "RawCategoria", category)
+                feature_ids = list(getattr(row, "FeatureIds", []) or [])
+                key = self.primary_chart._category_key(raw_category)
+                if not key:
+                    key = self.primary_chart._category_key(category)
+                if not key:
+                    continue
+                self._category_filters[key] = {
+                    "key": key,
+                    "category": category,
+                    "raw_category": raw_category,
+                    "display_label": category,
+                    "numeric_value": value,
+                    "feature_ids": feature_ids,
+                }
+
+                chip = QPushButton(f"{category} ({self._format_number(value)})")
+                chip.setProperty("dashboardChip", True)
+                chip.setProperty("categoryKey", key)
+                chip.setCheckable(True)
+                chip.setChecked(key in self.active_category_keys)
+                chip.toggled.connect(lambda checked=False, category_key=key: self._on_category_chip_toggled(category_key, checked))
+                self.filter_chip_layout.insertWidget(max(0, self.filter_chip_layout.count() - 1), chip)
+
+            self.active_category_keys = [key for key in self.active_category_keys if key in self._category_filters]
+            self.active_category_key = self.active_category_keys[0] if self.active_category_keys else ""
+            self.active_category_label = ", ".join(
+                [str(self._category_filters.get(item, {}).get("display_label") or item) for item in self.active_category_keys]
+            )
+        finally:
+            self._updating_filter_chips = False
+
+    def _on_category_chip_toggled(self, category_key: str, checked: bool):
+        if self._updating_filter_chips:
+            return
+        category_key = str(category_key or "").strip()
+        if not category_key:
+            return
+
+        keys = list(self.active_category_keys)
+        if checked and category_key not in keys:
+            keys.append(category_key)
+        elif not checked and category_key in keys:
+            keys = [item for item in keys if item != category_key]
+        self.active_category_keys = keys
+        self.active_category_key = keys[0] if keys else ""
+        self.active_category_label = ", ".join(
+            [str(self._category_filters.get(item, {}).get("display_label") or item) for item in keys]
+        )
+        self._apply_active_filters()
+        self._sync_chart_selection()
+        self._update_summary_line()
+        self._update_filter_label()
+
+    def _clear_category_filters(self):
+        self.active_category_keys = []
+        self.active_category_key = ""
+        self.active_category_label = ""
+        self._updating_filter_chips = True
+        try:
+            for index in range(self.filter_chip_layout.count()):
+                item = self.filter_chip_layout.itemAt(index)
+                widget = item.widget()
+                if isinstance(widget, QPushButton) and widget.property("dashboardChip"):
+                    widget.setChecked(False)
+        finally:
+            self._updating_filter_chips = False
+        self._apply_active_filters()
+        self._sync_chart_selection()
+        self._update_summary_line()
+        self._update_filter_label()
+
+    def _apply_active_filters(self):
+        if self.current_source_df is None or self.current_source_df.empty:
+            self.current_view_df = pd.DataFrame()
+            self.current_df = self.current_view_df
+            self._update_table()
+            return
+
+        if not self.active_category_keys:
+            self.current_view_df = self.current_source_df.copy()
+            self.current_df = self.current_view_df
+            self._update_table()
+            return
+
+        filtered_parts: List[pd.DataFrame] = []
+        seen_ids = set()
+        for category_key in self.active_category_keys:
+            payload = self._category_filters.get(category_key)
+            if not payload:
+                continue
+            part = self._filter_source_dataframe(payload)
+            if part is None or part.empty:
+                continue
+            if "_feature_id" in part.columns:
+                for feature_id in part["_feature_id"].tolist():
+                    try:
+                        seen_ids.add(int(feature_id))
+                    except Exception:
+                        continue
+            filtered_parts.append(part)
+
+        if filtered_parts:
+            if seen_ids and "_feature_id" in self.current_source_df.columns:
+                filtered = self.current_source_df[self.current_source_df["_feature_id"].isin(list(seen_ids))].copy()
+            else:
+                filtered = pd.concat(filtered_parts, axis=0, ignore_index=True).drop_duplicates()
+            self.current_view_df = filtered
+        else:
+            self.current_view_df = pd.DataFrame(columns=self.current_source_df.columns)
+
+        self.current_df = self.current_view_df
+        self._update_table()
+
     def _update_table(self):
         df = self.current_view_df.copy()
         max_rows = min(len(df), 200)
@@ -719,13 +1016,18 @@ class DashboardWidget(QWidget):
         self.details_table.resizeColumnsToContents()
 
     def _update_filter_label(self):
-        if not self.active_category_label:
+        if not self.active_category_keys:
             self.table_filter_label.setText("")
             return
-        self.table_filter_label.setText(f"Filtro ativo: {self.active_category_label}")
+        selected = ", ".join(
+            [str(self._category_filters.get(item, {}).get("display_label") or item) for item in self.active_category_keys]
+        )
+        self.table_filter_label.setText(
+            f"Filtro ativo ({len(self.active_category_keys)}): {selected}"
+        )
 
     def _sync_chart_selection(self):
-        category_key = self.active_category_key or ""
+        category_key = self.active_category_keys[0] if self.active_category_keys else ""
         try:
             self.primary_chart.set_selected_category(category_key, emit_signal=False)
         except Exception:
@@ -733,37 +1035,52 @@ class DashboardWidget(QWidget):
 
     def _handle_chart_selection(self, source_chart, payload):
         if not payload or not isinstance(payload, dict):
-            self.active_category_key = ""
-            self.active_category_label = ""
-            self.current_view_df = self.current_source_df.copy()
-            self.current_df = self.current_view_df
-            self._render_current_data()
+            self._clear_category_filters()
             return
 
         category_key = str(payload.get("key") or "").strip()
         if not category_key:
-            self.active_category_key = ""
-            self.active_category_label = ""
-            self.current_view_df = self.current_source_df.copy()
-            self.current_df = self.current_view_df
-            self._render_current_data()
+            self._clear_category_filters()
             return
 
-        filtered_df = self._filter_source_dataframe(payload)
-        if filtered_df is None:
-            filtered_df = self.current_source_df.copy()
+        if category_key not in self._category_filters:
+            self._category_filters[category_key] = dict(payload)
 
-        self.active_category_key = category_key
-        self.active_category_label = str(
-            payload.get("display_label")
-            or payload.get("category")
-            or payload.get("current_text")
-            or payload.get("raw_category")
-            or category_key
+        keys = list(self.active_category_keys)
+        if category_key in keys:
+            keys = [item for item in keys if item != category_key]
+        else:
+            keys.append(category_key)
+
+        self.active_category_keys = keys
+        self.active_category_key = keys[0] if keys else ""
+        self.active_category_label = ", ".join(
+            [
+                str(
+                    self._category_filters.get(item, {}).get("display_label")
+                    or self._category_filters.get(item, {}).get("category")
+                    or item
+                )
+                for item in keys
+            ]
         )
-        self.current_view_df = filtered_df.copy()
-        self.current_df = self.current_view_df
-        self._render_current_data()
+
+        self._updating_filter_chips = True
+        try:
+            for index in range(self.filter_chip_layout.count()):
+                item = self.filter_chip_layout.itemAt(index)
+                widget = item.widget()
+                if not isinstance(widget, QPushButton) or not widget.property("dashboardChip"):
+                    continue
+                widget_key = str(widget.property("categoryKey") or "").strip()
+                if widget_key:
+                    widget.setChecked(widget_key in keys)
+        finally:
+            self._updating_filter_chips = False
+
+        self._apply_active_filters()
+        self._update_summary_line()
+        self._update_filter_label()
 
     def _filter_source_dataframe(self, payload: Dict[str, Any]) -> Optional[pd.DataFrame]:
         if self.current_source_df.empty:
