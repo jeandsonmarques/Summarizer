@@ -2279,67 +2279,97 @@ class ReportChartWidget(QWidget):
         painter.save()
         self._draw_surface_card(painter, frame, 12)
 
+        palette = {
+            "border": QColor("#E5E7EB"),
+            "header_fill": QColor("#F8FAFC"),
+            "header_fill_alt": QColor("#F3F4F6"),
+            "row_fill": QColor("#FFFFFF"),
+            "row_fill_alt": QColor("#FAFAFC"),
+            "total_fill": QColor("#EEF2FF"),
+            "total_fill_alt": QColor("#EDE9FE"),
+            "label_text": QColor("#334155"),
+            "header_text": QColor("#6D28D9"),
+            "value_text": QColor("#111827"),
+            "value_accent": QColor("#4F46E5"),
+        }
+
         font = QFont(self.font())
         font.setPointSize(max(8, font.pointSize() - 1))
         metrics = QFontMetrics(font)
+        header_font = QFont(font)
+        header_font.setBold(True)
         row_header_width = min(
-            max(130, max((metrics.horizontalAdvance(str(row)) for row in rows), default=120) + 26),
-            int(frame.width() * 0.34),
+            max(146, max((metrics.horizontalAdvance(str(row)) for row in rows), default=124) + 28),
+            int(frame.width() * 0.36),
         )
-        header_h = 30
-        row_h = max(24, int((frame.height() - header_h - 10) / max(1, len(rows))))
+        header_h = 28
+        row_h = max(26, int((frame.height() - header_h - 12) / max(1, len(rows))))
         column_count = max(1, len(headers))
-        cell_width = max(72, int((frame.width() - row_header_width - 14) / column_count))
+        cell_width = max(72, int((frame.width() - row_header_width - 18) / column_count))
 
-        painter.setFont(font)
-        painter.setPen(QPen(QColor("#475569")))
+        top_band = QRectF(frame.left() + 10, frame.top() + 8, frame.width() - 20, 3)
+        painter.fillRect(top_band, QColor("#4F46E5"))
+
+        painter.setFont(header_font)
+        painter.setPen(QPen(palette["header_text"]))
         painter.drawText(
-            QRectF(frame.left() + 10, frame.top() + 8, row_header_width - 16, header_h - 4),
+            QRectF(frame.left() + 10, frame.top() + 12, row_header_width - 16, header_h - 6),
             Qt.AlignLeft | Qt.AlignVCenter,
             str(payload.get("value_label") or "Matrix"),
         )
 
         for col_index, header in enumerate(headers):
             x = frame.left() + row_header_width + 10 + col_index * cell_width
-            header_rect = QRectF(x, frame.top() + 6, cell_width - 4, header_h - 2)
-            painter.setPen(QPen(QColor("#EDE9FE")))
-            painter.setBrush(QColor("#F8FAFF" if col_index % 2 == 0 else "#FFFFFF"))
-            painter.drawRoundedRect(header_rect, 8, 8)
-            painter.setPen(QPen(QColor("#6D28D9")))
+            header_rect = QRectF(x, frame.top() + 8, cell_width - 2, header_h)
+            is_total_header = header == "Total"
+            painter.setPen(QPen(palette["border"]))
+            painter.setBrush(palette["total_fill_alt"] if is_total_header else (palette["header_fill_alt"] if col_index % 2 == 0 else palette["header_fill"]))
+            painter.drawRect(header_rect)
+            painter.setPen(QPen(QColor("#111827" if is_total_header else "#4F46E5")))
             painter.drawText(header_rect.adjusted(8, 0, -8, 0), Qt.AlignLeft | Qt.AlignVCenter, header)
 
         for row_index, row_label in enumerate(rows):
-            y = frame.top() + header_h + row_index * row_h
-            row_rect = QRectF(frame.left() + 10, y, row_header_width - 14, row_h)
-            row_fill = QColor("#F8FAFF" if row_index % 2 == 0 else "#FFFFFF")
-            painter.setPen(QPen(QColor("#E5E7EB")))
+            y = frame.top() + header_h + 8 + row_index * row_h
+            is_total_row = row_label == "Total"
+            row_rect = QRectF(frame.left() + 10, y, row_header_width - 12, row_h)
+            row_fill = palette["total_fill"] if is_total_row else (palette["row_fill_alt"] if row_index % 2 else palette["row_fill"])
+            painter.setPen(QPen(palette["border"]))
             painter.setBrush(row_fill)
             painter.drawRect(row_rect)
-            painter.setPen(QPen(QColor("#334155")))
+            painter.setPen(QPen(QColor("#111827" if is_total_row else "#1F2937")))
+            label_font = QFont(font)
+            label_font.setBold(True if is_total_row else False)
+            painter.setFont(label_font)
             painter.drawText(
                 row_rect.adjusted(8, 0, -8, 0),
                 Qt.AlignVCenter | Qt.AlignLeft,
                 metrics.elidedText(row_label, Qt.ElideRight, int(row_rect.width()) - 14),
             )
-            row_item = {"category": row_label, "raw_category": row_label, "key": self._category_key(row_label), "value": 0.0, "feature_ids": []}
+            row_item = {
+                "category": row_label,
+                "raw_category": row_label,
+                "key": self._category_key(row_label),
+                "value": 0.0,
+                "feature_ids": [],
+            }
             self._register_data_point_region(row_rect, row_item)
 
             if composite:
-                row_total = 0.0
                 for col_index, header in enumerate(headers):
                     if show_total and header == "Total":
                         value = sum(max(0.0, float(matrix.get(row_label, {}).get(series_label, 0.0))) for series_label in series)
-                        row_total = value
                     else:
                         value = float(matrix.get(row_label, {}).get(header, 0.0))
-                        row_total += value
                     cell_rect = QRectF(frame.left() + 10 + row_header_width + col_index * cell_width, y, cell_width, row_h)
-                    painter.setPen(QPen(QColor("#E5E7EB")))
-                    painter.setBrush(QColor("#FAFBFF" if col_index % 2 == 0 else "#FFFFFF"))
-                    if show_total and header == "Total":
-                        painter.setBrush(QColor("#F5F3FF"))
+                    is_total_cell = show_total and header == "Total"
+                    painter.setPen(QPen(palette["border"]))
+                    painter.setBrush(palette["total_fill"] if is_total_cell else (palette["row_fill_alt"] if row_index % 2 else palette["row_fill"]))
                     painter.drawRect(cell_rect)
-                    painter.setPen(QPen(QColor("#6D28D9" if header != "Total" else "#111827")))
+                    cell_font = QFont(font)
+                    if is_total_cell:
+                        cell_font.setBold(True)
+                    painter.setFont(cell_font)
+                    painter.setPen(QPen(QColor("#111827" if is_total_cell else palette["value_accent"])))
                     painter.drawText(
                         cell_rect.adjusted(8, 0, -8, 0),
                         Qt.AlignVCenter | Qt.AlignRight,
@@ -2355,10 +2385,11 @@ class ReportChartWidget(QWidget):
                     self._register_data_point_region(cell_rect, cell_item)
             else:
                 value = float(matrix.get(row_label, {}).get("", 0.0))
-                cell_rect = QRectF(frame.left() + 10 + row_header_width, y, frame.width() - row_header_width - 16, row_h)
-                painter.setPen(QPen(QColor("#E5E7EB")))
-                painter.setBrush(QColor("#FFFFFF"))
+                cell_rect = QRectF(frame.left() + 10 + row_header_width, y, frame.width() - row_header_width - 20, row_h)
+                painter.setPen(QPen(palette["border"]))
+                painter.setBrush(palette["row_fill_alt"] if row_index % 2 else palette["row_fill"])
                 painter.drawRect(cell_rect)
+                painter.setFont(font)
                 painter.setPen(QPen(QColor("#111827")))
                 painter.drawText(
                     cell_rect.adjusted(8, 0, -8, 0),

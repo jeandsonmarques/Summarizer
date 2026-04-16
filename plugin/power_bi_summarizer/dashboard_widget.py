@@ -14,6 +14,8 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSplitter,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
@@ -45,6 +47,9 @@ class DashboardWidget(QWidget):
         self.current_pivot_result = None
         self.active_category_key: str = ""
         self.active_category_label: str = ""
+        self.active_category_keys: List[str] = []
+        self._category_filters: Dict[str, Dict[str, Any]] = {}
+        self._updating_filter_chips = False
 
         self._build_ui()
         self._apply_styles()

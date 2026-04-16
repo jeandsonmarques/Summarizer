@@ -1,7 +1,7 @@
 ﻿from functools import partial
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -4224,6 +4224,206 @@ class PivotTableWidget(QWidget):
         return converted.notna().any()
 
     # ------------------------------------------------------------------ Export
+    def _build_export_pivot_dataframe(self) -> pd.DataFrame:
+        if self.proxy_model is None or self.table_view is None:
+            return self.get_visible_pivot_dataframe()
+
+        column_indexes = [
+            column
+            for column in range(self.proxy_model.columnCount())
+            if not self.table_view.isColumnHidden(column)
+        ]
+        if not column_indexes:
+            return self.get_visible_pivot_dataframe()
+
+        headers = [
+            str(self.proxy_model.headerData(column, Qt.Horizontal) or f"Coluna {column + 1}")
+            for column in column_indexes
+        ]
+        rows: List[List[Any]] = []
+        for row in range(self.proxy_model.rowCount()):
+            row_values: List[Any] = []
+            for column in column_indexes:
+                index = self.proxy_model.index(row, column)
+                value = self.proxy_model.data(index, Qt.DisplayRole) if index.isValid() else None
+                row_values.append("" if value is None else value)
+            rows.append(row_values)
+        return pd.DataFrame(rows, columns=headers)
+
+    def _build_export_layer_dataframe(self) -> pd.DataFrame:
+        for candidate in (self.filtered_df, self.raw_df):
+            if isinstance(candidate, pd.DataFrame) and not candidate.empty:
+                return candidate.copy()
+        if isinstance(self.filtered_df, pd.DataFrame):
+            return self.filtered_df.copy()
+        if isinstance(self.raw_df, pd.DataFrame):
+            return self.raw_df.copy()
+        return pd.DataFrame()
+
+    def _export_to_excel_with_layer_data(
+        self,
+        file_path: str,
+        pivot_df: pd.DataFrame,
+        layer_df: pd.DataFrame,
+        pivot_config: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+            pivot_df.to_excel(writer, sheet_name="Tabela_Dinamica", index=False)
+            layer_df.to_excel(writer, sheet_name="Dados_Camada", index=False)
+        if pivot_config is None:
+            return ""
+        _, note = self._try_create_native_excel_pivot(file_path, layer_df, pivot_config)
+        return note
+
+    def _try_create_native_excel_pivot(
+        self,
+        file_path: str,
+        layer_df: pd.DataFrame,
+        pivot_config: Dict[str, Any],
+    ) -> Tuple[bool, str]:
+        if layer_df is None or layer_df.empty:
+            return False, "Sem dados da camada para gerar tabela dinamica nativa."
+
+        try:
+            import win32com.client as win32  # type: ignore
+        except Exception:
+            return (
+                False,
+                "Tabela dinamica nativa do Excel nao criada (pywin32/Excel nao disponivel).",
+            )
+
+        available_fields = [str(column) for column in list(layer_df.columns)]
+        available_set = set(available_fields)
+        if not available_fields:
+            return False, "Sem colunas validas para montar tabela dinamica nativa."
+
+        def _valid_fields(values: Optional[List[str]]) -> List[str]:
+            valid: List[str] = []
+            for value in values or []:
+                field_name = str(value or "").strip()
+                if field_name and field_name in available_set and field_name not in valid:
+                    valid.append(field_name)
+            return valid
+
+        row_fields = _valid_fields(pivot_config.get("row_fields"))
+        column_fields = _valid_fields(pivot_config.get("column_fields"))
+        filter_fields = _valid_fields(pivot_config.get("filter_fields"))
+
+        value_field = str(pivot_config.get("value_field") or "").strip()
+        if not value_field or value_field not in available_set:
+            excluded = set(row_fields + column_fields + filter_fields)
+            candidates = [field for field in available_fields if field not in excluded]
+            if candidates:
+                value_field = candidates[0]
+            elif row_fields:
+                value_field = row_fields[0]
+            elif column_fields:
+                value_field = column_fields[0]
+            else:
+                value_field = available_fields[0]
+
+        if not value_field:
+            return False, "Nao foi possivel determinar um campo de valor para a tabela dinamica."
+
+        aggregation = str(pivot_config.get("aggregation") or "count").lower()
+        agg_map = {
+            "count": -4112,    # xlCount
+            "sum": -4157,      # xlSum
+            "average": -4106,  # xlAverage
+            "min": -4139,      # xlMin
+            "max": -4136,      # xlMax
+            "stddev": -4155,   # xlStDev
+            "variance": -4164, # xlVar
+            "median": -4106,   # fallback: media
+            "unique": -4112,   # fallback: contagem
+        }
+        agg_function = agg_map.get(aggregation, -4112)
+        aggregation_label = str(pivot_config.get("aggregation_label") or aggregation.upper()).strip()
+        data_caption = (
+            f"{aggregation_label} de {value_field}"
+            if aggregation != "count"
+            else f"Contagem de {value_field}"
+        )
+
+        excel = None
+        workbook = None
+        try:
+            excel = win32.DispatchEx("Excel.Application")
+            excel.Visible = False
+            excel.DisplayAlerts = False
+            workbook = excel.Workbooks.Open(file_path)
+
+            ws_data = workbook.Worksheets("Dados_Camada")
+            used = ws_data.UsedRange
+            last_row = int(used.Rows.Count)
+            last_col = int(used.Columns.Count)
+            if last_row < 2 or last_col < 1:
+                return False, "Dados insuficientes para montar a tabela dinamica nativa."
+
+            try:
+                ws_snapshot = workbook.Worksheets("Tabela_Dinamica")
+                try:
+                    workbook.Worksheets("Resumo_Pivot").Delete()
+                except Exception:
+                    pass
+                ws_snapshot.Name = "Resumo_Pivot"
+            except Exception:
+                pass
+
+            try:
+                workbook.Worksheets("Tabela_Dinamica").Delete()
+            except Exception:
+                pass
+
+            ws_pivot = workbook.Worksheets.Add()
+            ws_pivot.Name = "Tabela_Dinamica"
+
+            source_range = ws_data.Range(ws_data.Cells(1, 1), ws_data.Cells(last_row, last_col))
+            pivot_cache = workbook.PivotCaches().Create(SourceType=1, SourceData=source_range)
+            pivot_name = "PivotSummarizer"
+            pivot_cache.CreatePivotTable(
+                TableDestination="'Tabela_Dinamica'!R3C1",
+                TableName=pivot_name,
+            )
+            pivot_table = ws_pivot.PivotTables(pivot_name)
+
+            for position, field_name in enumerate(filter_fields, start=1):
+                field = pivot_table.PivotFields(field_name)
+                field.Orientation = 3  # xlPageField
+                field.Position = position
+
+            for position, field_name in enumerate(row_fields, start=1):
+                field = pivot_table.PivotFields(field_name)
+                field.Orientation = 1  # xlRowField
+                field.Position = position
+
+            for position, field_name in enumerate(column_fields, start=1):
+                field = pivot_table.PivotFields(field_name)
+                field.Orientation = 2  # xlColumnField
+                field.Position = position
+
+            value_pivot_field = pivot_table.PivotFields(value_field)
+            pivot_table.AddDataField(value_pivot_field, data_caption, agg_function)
+            pivot_table.RowGrand = True
+            pivot_table.ColumnGrand = True
+            ws_pivot.Columns.AutoFit()
+
+            workbook.Save()
+            return True, "Tabela dinamica nativa do Excel criada com campos interativos."
+        except Exception as exc:
+            return False, f"Tabela dinamica nativa do Excel nao criada: {exc}"
+        finally:
+            if workbook is not None:
+                try:
+                    workbook.Close(SaveChanges=True)
+                except Exception:
+                    pass
+            if excel is not None:
+                try:
+                    excel.Quit()
+                except Exception:
+                    pass
+
     def _export_pivot_table(self):
         if self.pivot_df is None or self.pivot_df.empty:
             QMessageBox.information(
@@ -4240,21 +4440,34 @@ class PivotTableWidget(QWidget):
         if not path:
             return
 
+        pivot_export_df = self._build_export_pivot_dataframe()
+
+        success_note = ""
         try:
             if "csv" in selected_filter.lower():
                 if not path.lower().endswith(".csv"):
                     path += ".csv"
-                if self._current_pivot_result is not None:
-                    self.pivot_export_service.export_to_csv(self._current_pivot_result, path)
-                else:
-                    self.pivot_df.to_csv(path, index=False)
+                pivot_export_df.to_csv(
+                    path,
+                    index=False,
+                    sep=";",
+                    encoding="utf-8-sig",
+                    decimal=",",
+                )
             elif "xlsx" in selected_filter.lower():
                 if not path.lower().endswith(".xlsx"):
                     path += ".xlsx"
-                if self._current_pivot_result is not None:
-                    self.pivot_export_service.export_to_excel(self._current_pivot_result, path)
-                else:
-                    self.pivot_df.to_excel(path, index=False)
+                layer_export_df = self._build_export_layer_dataframe()
+                pivot_config = self.get_current_configuration()
+                native_note = self._export_to_excel_with_layer_data(
+                    path,
+                    pivot_export_df,
+                    layer_export_df,
+                    pivot_config=pivot_config,
+                )
+                success_note = "\nAbas geradas: Tabela_Dinamica e Dados_Camada."
+                if native_note:
+                    success_note += f"\n{native_note}"
             else:
                 if not path.lower().endswith(".gpkg"):
                     path += ".gpkg"
@@ -4270,7 +4483,7 @@ class PivotTableWidget(QWidget):
         QMessageBox.information(
             self,
             "Exportar tabela dinamica",
-            f"Tabela dinamica exportada para:\n{path}",
+            f"Tabela dinamica exportada para:\n{path}{success_note}",
         )
 
     def _export_to_gpkg(self, path: str):
