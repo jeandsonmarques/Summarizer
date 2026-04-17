@@ -77,18 +77,18 @@ QPushButton:hover {
     border-color: #CBD5E1;
 }
 QPushButton#SlimPrimaryButton {
-    border: 1px solid #5A3FE6;
-    background-color: #5A3FE6;
-    color: #FFFFFF;
+    border: 1px solid #D1D5DB;
+    background-color: #FFFFFF;
+    color: #111827;
     font-weight: 500;
 }
 QPushButton#SlimPrimaryButton:hover {
-    background-color: #4E35CF;
-    border-color: #4E35CF;
+    background-color: #F9FAFB;
+    border-color: #9CA3AF;
 }
 QPushButton#SlimSecondaryButton {
     background-color: #FFFFFF;
-    color: #334155;
+    color: #111827;
 }
 QPushButton#SlimSecondaryButton:hover {
     background-color: #F8FAFC;
@@ -166,8 +166,8 @@ QFrame#SlimPopoverIconWrap {
     max-width: 28px;
     min-height: 28px;
     max-height: 28px;
-    background: rgba(90, 63, 230, 0.08);
-    border: 1px solid rgba(90, 63, 230, 0.12);
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.16);
     border-radius: 14px;
 }
 QLabel#SlimPopoverIcon {
@@ -188,17 +188,17 @@ QLineEdit#SlimDialogLineEdit:focus {
 }
 QPushButton#SlimPrimaryButton {
     min-height: 34px;
-    border: 1px solid #5A3FE6;
+    border: 1px solid #D1D5DB;
     border-radius: 12px;
     padding: 0 14px;
-    background: #5A3FE6;
-    color: #FFFFFF;
+    background: #FFFFFF;
+    color: #111827;
     font-size: 12px;
     font-weight: 500;
 }
 QPushButton#SlimPrimaryButton:hover {
-    background: #4E35CF;
-    border-color: #4E35CF;
+    background: #F9FAFB;
+    border-color: #9CA3AF;
 }
 QPushButton#SlimSecondaryButton {
     min-height: 34px;
@@ -206,7 +206,7 @@ QPushButton#SlimSecondaryButton {
     border-radius: 12px;
     padding: 0 14px;
     background: #FFFFFF;
-    color: #334155;
+    color: #111827;
     font-size: 12px;
     font-weight: 400;
 }

@@ -81,6 +81,7 @@ class DashboardItemWidget(QFrame):
         self._header_pressed = False
         self._binding = item.binding.normalized()
         self._external_filters = {}
+        self._zoom_scale = 1.0
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -163,7 +164,7 @@ class DashboardItemWidget(QFrame):
         card_layout.addWidget(self.header, 0)
 
         self.chart_widget = ReportChartWidget(self.card)
-        self.chart_widget.setMinimumSize(220, 180)
+        self.chart_widget.setMinimumSize(220, 160)
         self.chart_widget.set_embedded_mode(True)
         self.chart_widget.selectionChanged.connect(self._handle_chart_selection)
         card_layout.addWidget(self.chart_widget, 1)
@@ -301,8 +302,54 @@ class DashboardItemWidget(QFrame):
         self.chart_widget.clear_selection(emit_signal=False)
         self.chart_widget.update()
         self.footer_label.setText(f"{self._item.origin} | {layout.width}x{layout.height}")
-        self.setMinimumSize(220, 180)
+        self.set_zoom_scale(self._zoom_scale, force=True)
         self.set_edit_mode(self._edit_mode)
+
+    def set_zoom_scale(self, scale: float, force: bool = False):
+        try:
+            normalized = float(scale)
+        except Exception:
+            normalized = 1.0
+        normalized = max(0.6, min(2.0, normalized))
+        if not force and abs(normalized - self._zoom_scale) < 1e-3:
+            return
+        self._zoom_scale = normalized
+
+        card_margin = max(2, int(round(4 * normalized)))
+        card_spacing = max(2, int(round(3 * normalized)))
+        header_margin = max(2, int(round(4 * normalized)))
+        header_spacing = max(4, int(round(10 * normalized)))
+        button_side = max(20, int(round(28 * normalized)))
+        icon_side = max(14, int(round(16 * normalized)))
+        remove_icon_side = max(12, int(round(14 * normalized)))
+
+        try:
+            self.card.layout().setContentsMargins(card_margin, card_margin, card_margin, card_margin)
+            self.card.layout().setSpacing(card_spacing)
+            self.header.layout().setContentsMargins(header_margin, header_margin, header_margin, header_margin)
+            self.header.layout().setSpacing(header_spacing)
+        except Exception:
+            pass
+
+        self.model_edit_btn.setFixedSize(button_side, button_side)
+        self.personalize_btn.setFixedSize(button_side, button_side)
+        self.remove_btn.setFixedSize(max(20, button_side - 2), max(20, button_side - 2))
+        self.model_edit_btn.setIconSize(QSize(icon_side, icon_side))
+        self.personalize_btn.setIconSize(QSize(icon_side, icon_side))
+        self.remove_btn.setIconSize(QSize(remove_icon_side, remove_icon_side))
+        self.link_command_btn.setMinimumHeight(button_side)
+        self.link_command_btn.setMaximumHeight(button_side)
+        self.link_command_btn.setMinimumWidth(max(56, int(round(84 * normalized))))
+        self.link_command_btn.setMaximumWidth(16777215)
+        self.setMinimumSize(max(180, int(round(220 * normalized))), max(140, int(round(160 * normalized))))
+        self.chart_widget.setMinimumSize(max(180, int(round(220 * normalized))), max(140, int(round(160 * normalized))))
+        if hasattr(self.chart_widget, "set_display_scale"):
+            try:
+                self.chart_widget.set_display_scale(normalized)
+            except Exception:
+                pass
+
+        self._apply_styles()
 
     def set_edit_mode(self, enabled: bool):
         self._edit_mode = bool(enabled)
@@ -319,8 +366,10 @@ class DashboardItemWidget(QFrame):
         self.title_label.setToolTip("Duplo clique para renomear" if self._edit_mode else "")
         if self._edit_mode:
             try:
-                self.card.layout().setContentsMargins(4, 4, 4, 4)
-                self.card.layout().setSpacing(3)
+                margin = max(0, int(round(4 * self._zoom_scale)))
+                spacing = max(0, int(round(3 * self._zoom_scale)))
+                self.card.layout().setContentsMargins(margin, margin, margin, margin)
+                self.card.layout().setSpacing(spacing)
             except Exception:
                 pass
         else:
@@ -349,6 +398,7 @@ class DashboardItemWidget(QFrame):
         self.update()
 
     def _apply_styles(self):
+        zoom = max(0.6, min(2.0, float(self._zoom_scale or 1.0)))
         border = "#D6D9E0"
         header_bg = "#F8FAFC"
         header_border = "#E5E7EB"
@@ -385,27 +435,27 @@ class DashboardItemWidget(QFrame):
             }}
             QLabel#ModelDashboardItemTitle {{
                 color: #1F2937;
-                font-size: 13px;
+                font-size: {max(11, min(18, int(round(13 * zoom))))}px;
                 font-weight: 600;
             }}
             QLabel#ModelDashboardItemSubtitle,
             QLabel#ModelDashboardItemFooter,
             QLabel#ModelDashboardDragHandle {{
                 color: #6B7280;
-                font-size: 11px;
+                font-size: {max(9, min(15, int(round(11 * zoom))))}px;
                 font-weight: 400;
             }}
             QToolButton#ModelDashboardRemoveButton,
             QToolButton#ModelDashboardHeaderIconButton {{
-                min-height: 28px;
-                max-height: 28px;
-                min-width: 28px;
-                max-width: 28px;
+                min-height: {max(20, int(round(28 * zoom)))}px;
+                max-height: {max(20, int(round(28 * zoom)))}px;
+                min-width: {max(20, int(round(28 * zoom)))}px;
+                max-width: {max(20, int(round(28 * zoom)))}px;
                 padding: 0;
                 color: #374151;
                 background: #FFFFFF;
                 border: 1px solid #D1D5DB;
-                border-radius: 6px;
+                border-radius: {max(4, int(round(6 * zoom)))}px;
                 font-weight: 400;
             }}
             QToolButton#ModelDashboardRemoveButton:hover,
@@ -414,12 +464,14 @@ class DashboardItemWidget(QFrame):
                 border-color: #9CA3AF;
             }}
             QPushButton#ModelDashboardLinkCommandButton {{
-                min-height: 28px;
-                padding: 0 10px;
+                min-height: {max(18, int(round(28 * zoom)))}px;
+                max-height: {max(18, int(round(28 * zoom)))}px;
+                padding: 0 {max(4, int(round(8 * zoom)))}px;
                 color: #3730A3;
                 background: #EEF2FF;
                 border: 1px solid #818CF8;
-                border-radius: 8px;
+                border-radius: {max(6, int(round(8 * zoom)))}px;
+                font-size: {max(9, min(14, int(round(11 * zoom))))}px;
                 font-weight: 600;
             }}
             QPushButton#ModelDashboardLinkCommandButton:hover {{
@@ -767,14 +819,30 @@ class DashboardItemWidget(QFrame):
         return ""
 
     def eventFilter(self, watched, event):
-        if not self._edit_mode:
-            return super().eventFilter(watched, event)
         if watched not in self._event_widgets:
             return super().eventFilter(watched, event)
 
         event_type = event.type()
         local_pos = self._map_event_pos(watched, event)
         global_pos = self._event_global_pos(event)
+
+        if event_type == QEvent.Wheel:
+            try:
+                modifiers = event.modifiers()
+            except Exception:
+                modifiers = Qt.NoModifier
+            if not (modifiers & Qt.ControlModifier):
+                return False
+            canvas = self._find_canvas_host()
+            if canvas is not None and hasattr(canvas, "_handle_wheel_zoom"):
+                try:
+                    return bool(canvas._handle_wheel_zoom(event))
+                except Exception:
+                    return False
+            return False
+
+        if not self._edit_mode:
+            return super().eventFilter(watched, event)
 
         if event_type == QEvent.MouseMove:
             if self._link_active:
@@ -833,6 +901,14 @@ class DashboardItemWidget(QFrame):
             return False
 
         return super().eventFilter(watched, event)
+
+    def _find_canvas_host(self):
+        widget = self.parentWidget()
+        while widget is not None:
+            if hasattr(widget, "_handle_wheel_zoom"):
+                return widget
+            widget = widget.parentWidget()
+        return None
 
     def _edit_title(self):
         current = self._item.display_title()

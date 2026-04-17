@@ -511,6 +511,13 @@ class DashboardWidget(QWidget):
         self.table_filter_label.setText("")
         self.table_hint_label.setText("")
 
+    def apply_animation_profile(self):
+        for chart in self.findChildren(ReportChartWidget):
+            try:
+                chart.refresh_animation_configuration()
+            except Exception:
+                continue
+
     def _update_subtitle(self):
         layer = self.current_metadata.get("layer_name") or "Camada"
         value_label = self.current_config.get("value_label") or "Campo"

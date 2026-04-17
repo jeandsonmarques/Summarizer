@@ -33,6 +33,10 @@ class _DashboardCanvasSurface(QWidget):
         super().__init__(parent)
         self._canvas = canvas
         self.setObjectName("DashboardCanvasSurface")
+        self._pan_active = False
+        self._pan_start_pos = QPoint()
+        self._pan_start_h = 0
+        self._pan_start_v = 0
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -44,7 +48,7 @@ class _DashboardCanvasSurface(QWidget):
             grid_pen = QPen(QColor("#F3F4F6"))
             grid_pen.setWidth(1)
             painter.setPen(grid_pen)
-            grid_size = self._canvas.grid_size
+            grid_size = max(4, int(round(self._canvas.grid_size * max(self._canvas._zoom, 0.0001))))
             for x in range(0, self.width(), grid_size):
                 painter.drawLine(x, 0, x, self.height())
             for y in range(0, self.height(), grid_size):
@@ -91,18 +95,65 @@ class _DashboardCanvasSurface(QWidget):
             fill = QColor(99, 114, 255, 35)
             border = QColor("#6372FF")
             painter.setPen(QPen(border, 2, Qt.DashLine))
-            painter.fillRect(preview_rect, fill)
-            painter.drawRoundedRect(preview_rect.adjusted(1, 1, -1, -1), 12, 12)
+            scaled_preview = self._canvas._scaled_rect(preview_rect)
+            painter.fillRect(scaled_preview, fill)
+            painter.drawRoundedRect(scaled_preview.adjusted(1, 1, -1, -1), 12, 12)
 
     def mousePressEvent(self, event):
         if self._canvas._handle_surface_mouse_press(event):
             return
+        if getattr(event, "button", lambda: None)() in (Qt.LeftButton, Qt.MiddleButton):
+            self._pan_active = True
+            self._pan_start_pos = self._canvas._event_pos_to_point(event)
+            self._pan_start_h = self._canvas.scroll.horizontalScrollBar().value()
+            self._pan_start_v = self._canvas.scroll.verticalScrollBar().value()
+            self.setCursor(Qt.ClosedHandCursor)
+            try:
+                event.accept()
+            except Exception:
+                pass
+            return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._pan_active:
+            current = self._canvas._event_pos_to_point(event)
+            delta = current - self._pan_start_pos
+            hbar = self._canvas.scroll.horizontalScrollBar()
+            vbar = self._canvas.scroll.verticalScrollBar()
+            hbar.setValue(max(hbar.minimum(), min(hbar.maximum(), self._pan_start_h - delta.x())))
+            vbar.setValue(max(vbar.minimum(), min(vbar.maximum(), self._pan_start_v - delta.y())))
+            try:
+                event.accept()
+            except Exception:
+                pass
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._pan_active and getattr(event, "button", lambda: None)() in (Qt.LeftButton, Qt.MiddleButton):
+            self._pan_active = False
+            self.unsetCursor()
+            try:
+                event.accept()
+            except Exception:
+                pass
+            return
+        super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event):
+        if self._canvas._handle_wheel_zoom(event):
+            return
+        try:
+            event.ignore()
+        except Exception:
+            pass
 
 
 class DashboardCanvas(QWidget):
     itemsChanged = pyqtSignal()
     filtersChanged = pyqtSignal(dict)
+    zoomChanged = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -120,6 +171,10 @@ class DashboardCanvas(QWidget):
         self._preview_rect: Optional[QRect] = None
         self._link_preview: Optional[Dict[str, object]] = None
         self._selected_relation_id: str = ""
+        self._zoom = 1.0
+        self._min_zoom = 0.6
+        self._max_zoom = 2.0
+        self._zoom_step = 1.15
         self.interaction_manager = ModelInteractionManager(self)
         self.interaction_manager.filtersChanged.connect(self.filtersChanged.emit)
 
@@ -144,6 +199,97 @@ class DashboardCanvas(QWidget):
             """
         )
 
+    def _event_pos_to_point(self, event) -> QPoint:
+        try:
+            pos = event.position()
+            return QPoint(int(pos.x()), int(pos.y()))
+        except Exception:
+            try:
+                pos = event.pos()
+                return QPoint(int(pos.x()), int(pos.y()))
+            except Exception:
+                return QPoint()
+
+    def _clamp_zoom(self, value: float) -> float:
+        return max(self._min_zoom, min(self._max_zoom, float(value)))
+
+    def _scaled_rect(self, rect: QRect) -> QRect:
+        rect = QRect(rect)
+        zoom = max(self._zoom, 0.0001)
+        return QRect(
+            int(round(rect.x() * zoom)),
+            int(round(rect.y() * zoom)),
+            max(1, int(round(rect.width() * zoom))),
+            max(1, int(round(rect.height() * zoom))),
+        )
+
+    def _logical_delta(self, delta: QPoint) -> QPoint:
+        zoom = max(self._zoom, 0.0001)
+        return QPoint(int(round(delta.x() / zoom)), int(round(delta.y() / zoom)))
+
+    def _apply_zoom(self, new_zoom: float, anchor_viewport_pos: Optional[QPoint] = None):
+        new_zoom = self._clamp_zoom(new_zoom)
+        if abs(new_zoom - self._zoom) < 1e-6:
+            return
+
+        viewport = self.scroll.viewport()
+        anchor = QPoint(anchor_viewport_pos) if anchor_viewport_pos is not None else viewport.rect().center()
+        hbar = self.scroll.horizontalScrollBar()
+        vbar = self.scroll.verticalScrollBar()
+        anchor_x = int(anchor.x())
+        anchor_y = int(anchor.y())
+        old_zoom = max(self._zoom, 0.0001)
+        logical_x = (hbar.value() + anchor_x) / old_zoom
+        logical_y = (vbar.value() + anchor_y) / old_zoom
+
+        self._zoom = new_zoom
+        self._apply_geometries()
+
+        hbar.setValue(max(hbar.minimum(), min(hbar.maximum(), int(round(logical_x * self._zoom - anchor_x)))))
+        vbar.setValue(max(vbar.minimum(), min(vbar.maximum(), int(round(logical_y * self._zoom - anchor_y)))))
+        self.zoomChanged.emit(self._zoom)
+
+    def _handle_wheel_zoom(self, event) -> bool:
+        try:
+            modifiers = event.modifiers()
+        except Exception:
+            modifiers = Qt.NoModifier
+        if not (modifiers & Qt.ControlModifier):
+            try:
+                event.ignore()
+            except Exception:
+                pass
+            return False
+        try:
+            delta = event.angleDelta().y()
+        except Exception:
+            delta = 0
+        if delta == 0:
+            try:
+                event.ignore()
+            except Exception:
+                pass
+            return False
+
+        self._apply_zoom(self._zoom * (self._zoom_step ** (delta / 120.0)), self._event_pos_to_point(event))
+        try:
+            event.accept()
+        except Exception:
+            pass
+        return True
+
+    def set_zoom(self, value: float, anchor_viewport_pos: Optional[QPoint] = None):
+        self._apply_zoom(value, anchor_viewport_pos)
+
+    def zoom_in(self):
+        self._apply_zoom(self._zoom * self._zoom_step)
+
+    def zoom_out(self):
+        self._apply_zoom(self._zoom / self._zoom_step)
+
+    def reset_zoom(self):
+        self._apply_zoom(1.0)
+
     def set_items(
         self,
         items: List[DashboardChartItem],
@@ -155,6 +301,7 @@ class DashboardCanvas(QWidget):
         self._set_graph_state(visual_links=visual_links, chart_relations=chart_relations)
         self._rebuild_widgets()
         self._normalize_layouts()
+        self._zoom = 1.0
         self._apply_geometries()
 
     def items(self) -> List[DashboardChartItem]:
@@ -278,6 +425,7 @@ class DashboardCanvas(QWidget):
         self._selected_relation_id = ""
         self.interaction_manager.clear_registry()
         self._rebuild_widgets()
+        self._zoom = 1.0
         self._apply_geometries()
         self.itemsChanged.emit()
 
@@ -483,11 +631,14 @@ class DashboardCanvas(QWidget):
         max_bottom = viewport_height - bottom
         for item in self._items:
             layout = item.layout.normalized()
-            max_right = max(max_right, layout.x + layout.width + right)
-            max_bottom = max(max_bottom, layout.y + layout.height + bottom)
+            scaled_right = int(round((layout.x + layout.width) * self._zoom))
+            scaled_bottom = int(round((layout.y + layout.height) * self._zoom))
+            max_right = max(max_right, scaled_right + right)
+            max_bottom = max(max_bottom, scaled_bottom + bottom)
         if self._preview_rect is not None:
-            max_right = max(max_right, self._preview_rect.right() + right)
-            max_bottom = max(max_bottom, self._preview_rect.bottom() + bottom)
+            preview = self._scaled_rect(self._preview_rect)
+            max_right = max(max_right, preview.right() + right)
+            max_bottom = max(max_bottom, preview.bottom() + bottom)
         self.surface.setMinimumSize(QSize(max_right + left, max_bottom + top))
         self.surface.resize(max_right + left, max_bottom + top)
 
@@ -498,7 +649,13 @@ class DashboardCanvas(QWidget):
             widget = self._widgets.get(item.item_id)
             if widget is None:
                 continue
-            rect = self._rect_from_layout(item.layout)
+            if hasattr(widget, "set_zoom_scale"):
+                try:
+                    # Propagate the real zoom so headers, charts and labels reflow together.
+                    widget.set_zoom_scale(self._zoom)
+                except Exception:
+                    pass
+            rect = self._scaled_rect(self._rect_from_layout(item.layout))
             widget.setGeometry(rect)
             widget.raise_()
             widget.show()
@@ -562,7 +719,7 @@ class DashboardCanvas(QWidget):
         if start_global is None or start_layout is None:
             return
         current_global = payload.get("global_pos")
-        delta = current_global - start_global
+        delta = self._logical_delta(current_global - start_global)
         rect = QRect(
             self._snap(start_layout.x + delta.x()),
             self._snap(start_layout.y + delta.y()),
@@ -572,7 +729,7 @@ class DashboardCanvas(QWidget):
         self._set_preview_rect(rect)
         widget = self._widgets.get(item_id)
         if widget is not None:
-            widget.setGeometry(rect)
+            widget.setGeometry(self._scaled_rect(rect))
             widget.raise_()
 
     def _finish_drag(self, item_id: str, payload):
@@ -648,12 +805,12 @@ class DashboardCanvas(QWidget):
         if start_global is None or start_layout is None or not resize_mode:
             return
         current_global = payload.get("global_pos")
-        delta = current_global - start_global
+        delta = self._logical_delta(current_global - start_global)
         rect = self._resize_rect(start_layout, resize_mode, delta)
         self._set_preview_rect(rect)
         widget = self._widgets.get(item_id)
         if widget is not None:
-            widget.setGeometry(rect)
+            widget.setGeometry(self._scaled_rect(rect))
             widget.raise_()
 
     def _finish_resize(self, item_id: str, payload):
@@ -814,7 +971,7 @@ class DashboardCanvas(QWidget):
                 color: #111827;
             }
             QDialog#ModelRelationTargetDialog QComboBox:focus {
-                border-color: #2563EB;
+                border-color: #9CA3AF;
             }
             QDialog#ModelRelationTargetDialog QPushButton {
                 min-height: 30px;
@@ -830,13 +987,13 @@ class DashboardCanvas(QWidget):
                 border-color: #9CA3AF;
             }
             QDialog#ModelRelationTargetDialog QPushButton#PrimaryActionButton {
-                border-color: #2563EB;
-                background: #EFF6FF;
-                color: #1D4ED8;
+                border-color: #D1D5DB;
+                background: #FFFFFF;
+                color: #111827;
             }
             QDialog#ModelRelationTargetDialog QPushButton#PrimaryActionButton:hover {
-                background: #DBEAFE;
-                border-color: #1D4ED8;
+                background: #F9FAFB;
+                border-color: #9CA3AF;
             }
             """
         )

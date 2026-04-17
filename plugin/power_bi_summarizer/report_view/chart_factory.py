@@ -3,8 +3,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QPointF, QRectF, Qt, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPainterPath, QPen
+from qgis.PyQt.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from qgis.PyQt.QtWidgets import (
     QAction,
     QActionGroup,
@@ -109,6 +109,8 @@ class ChartFactory:
 class ReportChartWidget(QWidget):
     selectionChanged = pyqtSignal(object)
     addToModelRequested = pyqtSignal(object)
+    GLOBAL_ANIMATION_ENABLED = True
+    GLOBAL_ANIMATION_PROFILE = "normal"
 
     TYPE_LABELS: Dict[str, str] = {
         "bar": "Barras",
@@ -158,11 +160,27 @@ class ReportChartWidget(QWidget):
         "desc": "Ordenar decrescente",
     }
 
+    ANIMATION_DURATIONS_MS: Dict[str, int] = {
+        "hover": 185,
+        "selection": 200,
+        "filter": 300,
+        "data": 320,
+        "entry": 360,
+        "type": 390,
+    }
+    ANIMATION_INTENSITY_MULTIPLIERS: Dict[str, float] = {
+        "normal": 1.0,
+        "reduced": 0.72,
+        "off": 0.0,
+    }
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._payload: Optional[ChartPayload] = None
         self._empty_text = ""
         self._embedded_mode = False
+        self._display_scale = 1.0
+        self._base_font = QFont(self.font())
         self.chart_state = ChartVisualState()
         self._interactive_regions: List[Dict[str, object]] = []
         self._active_category_keys: List[str] = []
@@ -171,6 +189,32 @@ class ReportChartWidget(QWidget):
         self._chart_context: Dict[str, Any] = {}
         self._chart_identity: Dict[str, Any] = {}
         self._external_filters: Dict[str, Dict[str, Any]] = {}
+        self._animation_enabled_override: Optional[bool] = None
+        self.animation_enabled = self.GLOBAL_ANIMATION_PROFILE != "off"
+        self._animation_intensity = self.GLOBAL_ANIMATION_PROFILE
+        self.animation_progress = 1.0
+        self.previous_visual_snapshot: Dict[str, Any] = {}
+        self.current_visual_snapshot: Dict[str, Any] = {}
+        self._animation_reason = "data"
+        self._transition_change_level = 1.0
+        self._transition_crossfade_strength = 0.16
+        self._previous_frame_snapshot: Optional[QPixmap] = None
+        self._active_render_payload: Optional[Dict[str, object]] = None
+        self._paint_context: Dict[str, Any] = {}
+        self._interaction_levels: Dict[str, float] = {}
+        self._interaction_start_levels: Dict[str, float] = {}
+        self._interaction_target_map: Dict[str, float] = {}
+        self._hovered_category_key: str = ""
+        self._transition_animation = QVariantAnimation(self)
+        self._transition_animation.setStartValue(0.0)
+        self._transition_animation.setEndValue(1.0)
+        self._transition_animation.valueChanged.connect(self._on_transition_progress_changed)
+        self._transition_animation.finished.connect(self._on_transition_finished)
+        self._interaction_animation = QVariantAnimation(self)
+        self._interaction_animation.setStartValue(0.0)
+        self._interaction_animation.setEndValue(1.0)
+        self._interaction_animation.valueChanged.connect(self._on_interaction_progress_changed)
+        self._interaction_animation.finished.connect(self._on_interaction_finished)
         self.setMinimumHeight(280)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAutoFillBackground(False)
@@ -178,7 +222,450 @@ class ReportChartWidget(QWidget):
         self.customContextMenuRequested.connect(self._open_chart_menu)
         self.setMouseTracking(True)
 
+    def set_display_scale(self, scale: float):
+        try:
+            normalized = float(scale)
+        except Exception:
+            normalized = 1.0
+        normalized = max(0.6, min(2.0, normalized))
+        if abs(normalized - self._display_scale) < 1e-3:
+            return
+        self._display_scale = normalized
+
+        base_font = QFont(self._base_font)
+        point_size = base_font.pointSizeF()
+        if point_size > 0:
+            base_font.setPointSizeF(max(6.0, point_size * normalized))
+        else:
+            pixel_size = base_font.pixelSize()
+            if pixel_size > 0:
+                base_font.setPixelSize(max(6, int(round(pixel_size * normalized))))
+        self.setFont(base_font)
+        self.setMinimumSize(max(120, int(round(220 * normalized))), max(90, int(round(180 * normalized))))
+        self.update()
+
+    def _scaled_size(self, value: float, minimum: int = 6, maximum: Optional[int] = None) -> int:
+        scaled = int(round(float(value) * float(self._display_scale or 1.0)))
+        scaled = max(minimum, scaled)
+        if maximum is not None:
+            scaled = min(maximum, scaled)
+        return scaled
+
+    @classmethod
+    def set_global_animation_enabled(cls, enabled: bool):
+        cls.GLOBAL_ANIMATION_ENABLED = bool(enabled)
+
+    @classmethod
+    def set_global_animation_profile(cls, profile: str):
+        normalized = str(profile or "normal").strip().lower()
+        if normalized not in cls.ANIMATION_INTENSITY_MULTIPLIERS:
+            normalized = "normal"
+        cls.GLOBAL_ANIMATION_PROFILE = normalized
+
+    def _effective_animation_profile(self, context: Optional[Dict[str, Any]] = None) -> str:
+        chart_context = dict(context or {})
+        if "animation_intensity" in chart_context:
+            return self._normalize_animation_intensity(chart_context.get("animation_intensity"))
+        if "animation_profile" in chart_context:
+            return self._normalize_animation_intensity(chart_context.get("animation_profile"))
+        if bool(chart_context.get("reduced_motion")):
+            return "reduced"
+        return self._normalize_animation_intensity(self.GLOBAL_ANIMATION_PROFILE)
+
+    def _apply_animation_preferences(self, context: Optional[Dict[str, Any]] = None):
+        chart_context = dict(context or {})
+        profile = self._effective_animation_profile(chart_context)
+        explicit_enabled = "animation_enabled" in chart_context
+        explicit_intensity = any(
+            key in chart_context
+            for key in ("animation_intensity", "animation_profile", "reduced_motion")
+        )
+
+        if explicit_enabled:
+            self._animation_enabled_override = bool(chart_context.get("animation_enabled"))
+            self.animation_enabled = self._animation_enabled_override
+        elif self._animation_enabled_override is not None:
+            self.animation_enabled = bool(self._animation_enabled_override)
+        else:
+            self.animation_enabled = profile != "off"
+
+        if explicit_intensity:
+            self._animation_intensity = profile
+        else:
+            self._animation_intensity = profile
+
+        if not self._animations_active():
+            self.animation_progress = 1.0
+            self._transition_animation.stop()
+            self._previous_frame_snapshot = None
+
+    def refresh_animation_configuration(self):
+        self._apply_animation_preferences(self._chart_context)
+        self.update()
+
+    def set_animation_enabled(self, enabled: bool):
+        self._animation_enabled_override = bool(enabled)
+        self.animation_enabled = bool(enabled)
+        if not self.animation_enabled:
+            self.animation_progress = 1.0
+            self._transition_animation.stop()
+            self._previous_frame_snapshot = None
+        self._rerender_chart(transition="data")
+
+    def _normalize_animation_intensity(self, value: Any) -> str:
+        normalized = str(value or "normal").strip().lower()
+        if normalized not in self.ANIMATION_INTENSITY_MULTIPLIERS:
+            return "normal"
+        return normalized
+
+    def set_animation_intensity(self, intensity: str):
+        requested = self._normalize_animation_intensity(intensity)
+        if requested == self._animation_intensity:
+            return
+        self._animation_intensity = requested
+        if requested == "off":
+            self._transition_animation.stop()
+            self.animation_progress = 1.0
+            self._previous_frame_snapshot = None
+        self._rerender_chart(transition="data")
+
+    def _animation_intensity_multiplier(self) -> float:
+        return float(self.ANIMATION_INTENSITY_MULTIPLIERS.get(self._animation_intensity, 1.0))
+
+    def _animations_active(self) -> bool:
+        return bool(
+            self.animation_enabled
+            and self.GLOBAL_ANIMATION_ENABLED
+            and self._animation_intensity_multiplier() > 0.0
+        )
+
+    def _clamp01(self, value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
+
+    def _blend_color(self, base: QColor, overlay: QColor, amount: float) -> QColor:
+        ratio = self._clamp01(amount)
+        return QColor(
+            int(round(base.red() + (overlay.red() - base.red()) * ratio)),
+            int(round(base.green() + (overlay.green() - base.green()) * ratio)),
+            int(round(base.blue() + (overlay.blue() - base.blue()) * ratio)),
+            int(round(base.alpha() + (overlay.alpha() - base.alpha()) * ratio)),
+        )
+
+    def _animation_duration_ms(self, reason: str, change_score: Optional[float] = None) -> int:
+        key = str(reason or "data").strip().lower()
+        base = float(self.ANIMATION_DURATIONS_MS.get(key, self.ANIMATION_DURATIONS_MS["data"]))
+        base = base * self._animation_intensity_multiplier()
+        if change_score is not None:
+            change = self._clamp01(change_score)
+            if key in {"data", "filter"}:
+                base = base * (0.86 + 0.34 * change)
+            elif key in {"entry", "type"}:
+                base = base * (0.92 + 0.16 * max(0.25, change))
+        return int(max(90.0, min(520.0, base)))
+
+    def _animation_easing_curve(self, reason: str) -> QEasingCurve:
+        key = str(reason or "data").strip().lower()
+        if key in {"hover", "selection"}:
+            return QEasingCurve(QEasingCurve.OutCubic)
+        if key in {"type", "entry"}:
+            return QEasingCurve(QEasingCurve.OutQuart)
+        return QEasingCurve(QEasingCurve.InOutCubic)
+
+    def _compute_transition_change_score(self, previous: Dict[str, Any], current: Dict[str, Any], reason: str) -> float:
+        key = str(reason or "data").strip().lower()
+        if key in {"entry"}:
+            return 1.0
+        prev_type = str(previous.get("chart_type") or "")
+        curr_type = str(current.get("chart_type") or "")
+        if prev_type and curr_type and prev_type != curr_type:
+            return 1.0
+        prev_values = dict(previous.get("values_by_key") or {})
+        curr_values = dict(current.get("values_by_key") or {})
+        if not prev_values and not curr_values:
+            return 1.0 if key in {"type", "entry"} else 0.3
+        keys = set(prev_values.keys()) | set(curr_values.keys())
+        if not keys:
+            return 0.3
+        delta_sum = 0.0
+        for item_key in keys:
+            prev_value = float(prev_values.get(item_key, 0.0))
+            curr_value = float(curr_values.get(item_key, 0.0))
+            denom = max(1.0, abs(prev_value), abs(curr_value))
+            delta_sum += min(1.0, abs(curr_value - prev_value) / denom)
+        value_delta = delta_sum / max(1, len(keys))
+        prev_index = dict(previous.get("index_by_key") or {})
+        curr_index = dict(current.get("index_by_key") or {})
+        shift_sum = 0.0
+        shift_count = 0
+        max_span = max(1.0, float(max(len(prev_index), len(curr_index), 1)))
+        for item_key in (set(prev_index.keys()) & set(curr_index.keys())):
+            shift_sum += min(1.0, abs(float(curr_index[item_key]) - float(prev_index[item_key])) / max_span)
+            shift_count += 1
+        position_shift = (shift_sum / shift_count) if shift_count else 0.0
+        return self._clamp01(value_delta * 0.78 + position_shift * 0.22)
+
+    def _should_use_frame_blend(self, reason: str, change_score: float) -> bool:
+        key = str(reason or "data").strip().lower()
+        if key in {"selection", "hover"}:
+            return False
+        if key in {"entry", "type"}:
+            return True
+        return change_score > 0.08
+
+    def _capture_frame_snapshot(self) -> Optional[QPixmap]:
+        if self.width() <= 2 or self.height() <= 2:
+            return None
+        if not self.isVisible():
+            return None
+        try:
+            return self.grab()
+        except Exception:
+            return None
+
+    def _capture_visual_snapshot(self, payload: Optional[Dict[str, object]] = None) -> Dict[str, Any]:
+        render_payload = payload if payload is not None else self._render_payload()
+        if not isinstance(render_payload, dict):
+            return {}
+        items = list(render_payload.get("items") or [])
+        values_by_key: Dict[str, float] = {}
+        index_by_key: Dict[str, float] = {}
+        for index, item in enumerate(items):
+            key = str(item.get("key") or item.get("category") or f"item_{index}")
+            try:
+                value = float(item.get("value") or 0.0)
+            except Exception:
+                value = 0.0
+            values_by_key[key] = value
+            index_by_key[key] = float(index)
+        return {
+            "chart_type": str(render_payload.get("chart_type") or ""),
+            "values_by_key": values_by_key,
+            "index_by_key": index_by_key,
+            "total": float(render_payload.get("total") or 0.0),
+        }
+
+    def _start_transition_animation(self, reason: str = "data"):
+        self._animation_reason = str(reason or "data").strip().lower()
+        if self._animation_reason in {"selection", "hover"}:
+            self.animation_progress = 1.0
+            self._previous_frame_snapshot = None
+            return
+        if not self._animations_active():
+            self.animation_progress = 1.0
+            self._previous_frame_snapshot = None
+            return
+        self.previous_visual_snapshot = dict(self.current_visual_snapshot or {})
+        if not self.previous_visual_snapshot:
+            self.previous_visual_snapshot = {
+                "chart_type": "",
+                "values_by_key": {},
+                "index_by_key": {},
+                "total": 0.0,
+            }
+        next_snapshot = self._capture_visual_snapshot()
+        self._transition_change_level = self._compute_transition_change_score(
+            self.previous_visual_snapshot,
+            next_snapshot,
+            self._animation_reason,
+        )
+        self._transition_crossfade_strength = (
+            0.10
+            + 0.14 * self._transition_change_level
+        ) * max(0.5, self._animation_intensity_multiplier())
+        if self._should_use_frame_blend(self._animation_reason, self._transition_change_level):
+            self._previous_frame_snapshot = self._capture_frame_snapshot()
+        else:
+            self._previous_frame_snapshot = None
+        self.animation_progress = 0.0
+        self._transition_animation.stop()
+        self._transition_animation.setDuration(self._animation_duration_ms(self._animation_reason, self._transition_change_level))
+        self._transition_animation.setEasingCurve(self._animation_easing_curve(self._animation_reason))
+        self._transition_animation.start()
+
+    def _on_transition_progress_changed(self, value):
+        try:
+            progress = float(value)
+        except Exception:
+            progress = 1.0
+        self.animation_progress = self._clamp01(progress)
+        self.update()
+
+    def _on_transition_finished(self):
+        self.animation_progress = 1.0
+        self._previous_frame_snapshot = None
+        self.update()
+
+    def _is_transition_active(self) -> bool:
+        return bool(self._animations_active() and self._transition_animation.state() == QVariantAnimation.Running)
+
+    def _interpolate_visual_state(self, progress: float) -> Dict[str, object]:
+        payload = dict(self._active_render_payload or {})
+        if not payload:
+            return payload
+        items = [dict(item) for item in list(payload.get("items") or [])]
+        if not items:
+            payload["__animation_progress"] = self._clamp01(progress)
+            return payload
+
+        eased_progress = self._clamp01(progress)
+        previous = dict(self.previous_visual_snapshot or {})
+        previous_type = str(previous.get("chart_type") or "")
+        current_type = str(payload.get("chart_type") or "")
+        previous_values = dict(previous.get("values_by_key") or {})
+        previous_indexes = dict(previous.get("index_by_key") or {})
+        if previous_type and current_type and previous_type != current_type:
+            previous_values = {}
+            previous_indexes = {}
+
+        interpolated_items: List[Dict[str, object]] = []
+        interpolated_values: List[float] = []
+        for index, item in enumerate(items):
+            key = str(item.get("key") or item.get("category") or f"item_{index}")
+            try:
+                end_value = float(item.get("value") or 0.0)
+            except Exception:
+                end_value = 0.0
+            start_value = float(previous_values.get(key, 0.0))
+            value = start_value + (end_value - start_value) * eased_progress
+            start_index = float(previous_indexes.get(key, index))
+            animated_index = start_index + (float(index) - start_index) * eased_progress
+            next_item = dict(item)
+            next_item["value"] = value
+            next_item["animated_index"] = animated_index
+            interpolated_items.append(next_item)
+            interpolated_values.append(value)
+
+        payload["items"] = interpolated_items
+        payload["values"] = interpolated_values
+        payload["total"] = sum(max(0.0, float(value)) for value in interpolated_values)
+        payload["__animation_progress"] = eased_progress
+        payload["__animation_reason"] = self._animation_reason
+        return payload
+
+    def _paint_animated_frame(self, progress: float):
+        paint_context = dict(self._paint_context or {})
+        painter = paint_context.get("painter")
+        chart_rect = paint_context.get("chart_rect")
+        if painter is None or chart_rect is None:
+            return
+        payload = self._interpolate_visual_state(progress)
+        if self._previous_frame_snapshot is not None and progress < 1.0:
+            painter.save()
+            painter.setOpacity((1.0 - self._clamp01(progress)) * self._transition_crossfade_strength)
+            painter.drawPixmap(self.rect(), self._previous_frame_snapshot)
+            painter.restore()
+        self._dispatch_chart_draw(painter, chart_rect, payload)
+
+    def _compute_interaction_target_levels(self, payload: Optional[Dict[str, object]] = None) -> Dict[str, float]:
+        render_payload = payload if payload is not None else self._render_payload()
+        items = list(render_payload.get("items") or []) if isinstance(render_payload, dict) else []
+        selected_keys = set(self._active_category_keys or [])
+        if self._selected_category_key:
+            selected_keys.add(self._selected_category_key)
+        targets: Dict[str, float] = {}
+        for item in items:
+            key = str(item.get("key") or "")
+            if not key:
+                continue
+            level = 0.0
+            if key == self._hovered_category_key:
+                level = max(level, 0.24)
+            if key in selected_keys:
+                level = max(level, 0.82)
+            targets[key] = level
+        return targets
+
+    def _start_interaction_animation(self, reason: str = "hover"):
+        targets = self._compute_interaction_target_levels()
+        all_keys = set(self._interaction_levels.keys()) | set(targets.keys())
+        has_changes = any(
+            abs(float(self._interaction_levels.get(key, 0.0)) - float(targets.get(key, 0.0))) > 0.01
+            for key in all_keys
+        )
+        if not has_changes:
+            self._interaction_levels = dict(targets)
+            return
+        if not self._animations_active():
+            self._interaction_levels = dict(targets)
+            self.update()
+            return
+        self._interaction_start_levels = dict(self._interaction_levels)
+        self._interaction_target_map = dict(targets)
+        self._interaction_animation.stop()
+        self._interaction_animation.setDuration(self._animation_duration_ms(reason))
+        self._interaction_animation.setEasingCurve(QEasingCurve(QEasingCurve.OutCubic))
+        self._interaction_animation.start()
+
+    def _on_interaction_progress_changed(self, value):
+        try:
+            progress = float(value)
+        except Exception:
+            progress = 1.0
+        t = self._clamp01(progress)
+        keys = set(self._interaction_start_levels.keys()) | set(self._interaction_target_map.keys())
+        levels: Dict[str, float] = {}
+        for key in keys:
+            start = float(self._interaction_start_levels.get(key, 0.0))
+            target = float(self._interaction_target_map.get(key, 0.0))
+            level = start + (target - start) * t
+            if level > 0.005:
+                levels[key] = level
+        self._interaction_levels = levels
+        self.update()
+
+    def _on_interaction_finished(self):
+        self._interaction_levels = {
+            key: float(value)
+            for key, value in dict(self._interaction_target_map).items()
+            if float(value) > 0.005
+        }
+        self.update()
+
+    def _item_interaction_level(self, item: Dict[str, object]) -> float:
+        key = str(item.get("key") or "")
+        return float(self._interaction_levels.get(key, 0.0))
+
+    def _payload_animation_progress(self, payload: Optional[Dict[str, object]] = None) -> float:
+        if isinstance(payload, dict):
+            try:
+                return self._clamp01(float(payload.get("__animation_progress", 1.0)))
+            except Exception:
+                return 1.0
+        return self._clamp01(self.animation_progress if self._is_transition_active() else 1.0)
+
+    def _payload_animation_reason(self, payload: Optional[Dict[str, object]] = None) -> str:
+        if isinstance(payload, dict):
+            return str(payload.get("__animation_reason") or "").strip().lower()
+        return str(self._animation_reason or "").strip().lower()
+
+    def _staggered_progress(self, progress: float, index: int, count: int, reason: str) -> float:
+        if reason not in {"entry", "type"}:
+            return self._clamp01(progress)
+        if count <= 1:
+            return self._clamp01(progress)
+        lane = min(0.16, 0.08 + (1.0 / max(8.0, float(count))) * 0.25)
+        offset = lane * (float(index) / float(max(1, count - 1)))
+        if offset >= 0.999:
+            return 1.0
+        return self._clamp01((float(progress) - offset) / (1.0 - offset))
+
+    def _countup_progress(self, progress: float) -> float:
+        t = self._clamp01(progress)
+        eased = QEasingCurve(QEasingCurve.OutCubic).valueForProgress(t)
+        return self._clamp01((t * 0.72) + (eased * 0.28))
+
+    def _item_interaction_style(self, base_color: QColor, item: Dict[str, object]):
+        level = self._item_interaction_level(item)
+        fill = QColor(base_color)
+        if level > 0.0:
+            fill = self._blend_color(fill, QColor("#1E293B"), 0.08 * level)
+        border = self._blend_color(fill, QColor("#0F172A"), 0.24 * level)
+        border_width = 0.0 if level < 0.04 else (0.9 + level * 0.85)
+        return fill, border, border_width, level
+
     def set_payload(self, payload: Optional[ChartPayload], empty_text: Optional[str] = None):
+        previous_payload = self._payload
+        previous_type = self.chart_state.chart_type if previous_payload is not None else ""
         self._payload = payload
         if empty_text is not None:
             self._empty_text = empty_text
@@ -186,7 +673,15 @@ class ReportChartWidget(QWidget):
         self._active_category_keys = []
         self._selected_category_key = ""
         self._filtered_category_key = ""
-        self._rerender_chart()
+        self._hovered_category_key = ""
+        self._interaction_levels = {}
+        transition = "entry"
+        if previous_payload is not None and payload is not None:
+            next_type = self._normalize_chart_type(getattr(payload, "chart_type", "bar"))
+            transition = "type" if previous_type != next_type else "data"
+        elif payload is None:
+            transition = "data"
+        self._rerender_chart(transition=transition)
 
     def set_selected_category(self, category_key: Optional[str], *, emit_signal: bool = False):
         normalized_key = str(category_key or "").strip()
@@ -202,7 +697,8 @@ class ReportChartWidget(QWidget):
                 self.selectionChanged.emit(self._selection_context_for_item(payload) if isinstance(payload, dict) else payload)
             else:
                 self.selectionChanged.emit(None)
-        self._rerender_chart()
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="selection")
 
     def clear_selection(self, *, emit_signal: bool = False):
         self._selected_category_key = ""
@@ -210,10 +706,13 @@ class ReportChartWidget(QWidget):
         self._filtered_category_key = ""
         if emit_signal:
             self.selectionChanged.emit(None)
-        self._rerender_chart()
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="selection")
 
     def set_chart_context(self, context: Optional[Dict[str, Any]] = None):
         self._chart_context = dict(context or {})
+        self._apply_animation_preferences(self._chart_context)
+        self.update()
 
     def set_embedded_mode(self, enabled: bool):
         self._embedded_mode = bool(enabled)
@@ -266,7 +765,7 @@ class ReportChartWidget(QWidget):
             for source_id, filter_data in dict(filters or {}).items()
             if str(source_id or "").strip()
         }
-        self._rerender_chart()
+        self._rerender_chart(transition="filter")
 
     def build_model_snapshot(self) -> Dict[str, Any]:
         payload = self._payload
@@ -700,45 +1199,45 @@ class ReportChartWidget(QWidget):
             return
         self.chart_state.chart_type = chart_type
         self._ensure_visual_state_compatibility()
-        self._rerender_chart()
+        self._rerender_chart(transition="type")
 
     def _set_chart_palette(self, palette_name: str):
         requested = str(palette_name or "purple").strip().lower()
         if requested not in self.PALETTE_LABELS:
             requested = "purple"
         self.chart_state.palette = requested
-        self._rerender_chart()
+        self._rerender_chart(transition="data")
 
     def _toggle_show_legend(self, checked: bool):
         self.chart_state.show_legend = bool(checked)
-        self._rerender_chart()
+        self._rerender_chart(transition="data")
 
     def _toggle_show_values(self, checked: bool):
         self.chart_state.show_values = bool(checked)
-        self._rerender_chart()
+        self._rerender_chart(transition="data")
 
     def _toggle_show_percent(self, checked: bool):
         self.chart_state.show_percent = bool(checked and self._supports_percentage())
-        self._rerender_chart()
+        self._rerender_chart(transition="data")
 
     def _toggle_show_grid(self, checked: bool):
         self.chart_state.show_grid = bool(checked and self.chart_state.chart_type in {"bar", "barh", "line", "area"})
-        self._rerender_chart()
+        self._rerender_chart(transition="data")
 
     def _toggle_show_border(self, checked: bool):
         self.chart_state.show_border = bool(checked)
-        self._rerender_chart()
+        self._rerender_chart(transition="data")
 
     def _set_sort_mode(self, sort_mode: str):
         self.chart_state.sort_mode = str(sort_mode or "default").strip().lower()
-        self._rerender_chart()
+        self._rerender_chart(transition="data")
 
     def _set_bar_corner_style(self, style: str):
         requested = str(style or "square").strip().lower()
         if requested not in {"square", "rounded"}:
             requested = "square"
         self.chart_state.bar_corner_style = requested
-        self._rerender_chart()
+        self._rerender_chart(transition="data")
 
     def _normalized_corner_style(self) -> str:
         return str(getattr(self.chart_state, "bar_corner_style", "square") or "square").strip().lower()
@@ -748,8 +1247,10 @@ class ReportChartWidget(QWidget):
         self._active_category_keys = []
         self._selected_category_key = ""
         self._filtered_category_key = ""
+        self._hovered_category_key = ""
         self._ensure_visual_state_compatibility()
-        self._rerender_chart()
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="type")
 
     def _export_chart(self):
         try:
@@ -782,8 +1283,9 @@ class ReportChartWidget(QWidget):
             return
         self.addToModelRequested.emit(snapshot)
 
-    def _rerender_chart(self):
+    def _rerender_chart(self, transition: str = "data"):
         self._ensure_visual_state_compatibility()
+        self._start_transition_animation(reason=transition)
         self.update()
 
     def _display_title(self, title: str) -> str:
@@ -989,6 +1491,12 @@ class ReportChartWidget(QWidget):
 
     def mouseMoveEvent(self, event):
         target = self._interactive_target_at(self._event_point(event))
+        hovered_key = ""
+        if target is not None and str(target.get("target_type") or "") == "data_point":
+            hovered_key = str(target.get("key") or "")
+        if hovered_key != self._hovered_category_key:
+            self._hovered_category_key = hovered_key
+            self._start_interaction_animation("hover")
         if target is not None:
             self.setCursor(Qt.PointingHandCursor)
         else:
@@ -1039,6 +1547,9 @@ class ReportChartWidget(QWidget):
         super().mouseDoubleClickEvent(event)
 
     def leaveEvent(self, event):
+        if self._hovered_category_key:
+            self._hovered_category_key = ""
+            self._start_interaction_animation("hover")
         self.unsetCursor()
         super().leaveEvent(event)
 
@@ -1073,7 +1584,7 @@ class ReportChartWidget(QWidget):
             if new_text is None:
                 return
             self.chart_state.title_override = new_text
-            self._rerender_chart()
+            self._rerender_chart(transition="data")
             return
 
         if target_type == "legend_series":
@@ -1081,7 +1592,7 @@ class ReportChartWidget(QWidget):
             if new_text is None:
                 return
             self.chart_state.legend_label_override = new_text
-            self._rerender_chart()
+            self._rerender_chart(transition="data")
             return
 
         if target_type == "legend_item":
@@ -1095,7 +1606,7 @@ class ReportChartWidget(QWidget):
                 self.chart_state.legend_item_overrides[category_key] = new_text
             else:
                 self.chart_state.legend_item_overrides.pop(category_key, None)
-            self._rerender_chart()
+            self._rerender_chart(transition="data")
             return
 
     def _category_key(self, raw_category: Any) -> str:
@@ -1295,7 +1806,8 @@ class ReportChartWidget(QWidget):
         else:
             self.selectionChanged.emit(selection_item)
         self._apply_category_selection(target, zoom=zoom)
-        self._rerender_chart()
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="selection")
 
     def _filter_chart_to_category(self, target: Dict[str, object]):
         category_key = str(target.get("key") or "")
@@ -1309,16 +1821,19 @@ class ReportChartWidget(QWidget):
             self.selectionChanged.emit(self._selection_context_for_item(selection_item))
         else:
             self.selectionChanged.emit(selection_item)
-        self._rerender_chart()
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="filter")
 
     def _clear_chart_filter(self):
         self._filtered_category_key = ""
-        self._rerender_chart()
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="filter")
 
     def _clear_chart_selection_feedback(self, emit_signal: bool = False):
         self._selected_category_key = ""
         self._active_category_keys = []
         self._filtered_category_key = ""
+        self._hovered_category_key = ""
         try:
             layer = self._selection_layer()
             if layer is not None:
@@ -1327,7 +1842,8 @@ class ReportChartWidget(QWidget):
             pass
         if emit_signal:
             self.selectionChanged.emit(None)
-        self._rerender_chart()
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="selection")
 
     def _copy_category_value(self, target: Dict[str, object]):
         try:
@@ -1486,14 +2002,34 @@ class ReportChartWidget(QWidget):
 
         render_payload = self._render_payload()
         if render_payload is None:
+            self.current_visual_snapshot = {}
+            self._active_render_payload = None
+            self._paint_context = {}
             if self._empty_text:
                 painter.setPen(QPen(QColor("#6B7280")))
                 painter.drawText(rect, Qt.AlignCenter, self._empty_text)
             return
 
         chart_rect = rect.adjusted(0, 0, 0, 0)
-        chart_type = render_payload["chart_type"]
+        self._active_render_payload = dict(render_payload)
+        self.current_visual_snapshot = self._capture_visual_snapshot(render_payload)
+        self._paint_context = {
+            "painter": painter,
+            "chart_rect": chart_rect,
+        }
 
+        if self._is_transition_active():
+            self._paint_animated_frame(self.animation_progress)
+        else:
+            self._dispatch_chart_draw(painter, chart_rect, render_payload)
+
+        if bool(getattr(self.chart_state, "show_border", False)):
+            self._draw_chart_border(painter, chart_rect)
+        self._paint_context = {}
+        self._active_render_payload = None
+
+    def _dispatch_chart_draw(self, painter: QPainter, chart_rect: QRectF, render_payload: Dict[str, object]):
+        chart_type = str(render_payload.get("chart_type") or "bar")
         if chart_type == "pie":
             self._draw_pie_chart(painter, chart_rect, render_payload, donut=False)
         elif chart_type == "donut":
@@ -1533,12 +2069,9 @@ class ReportChartWidget(QWidget):
         else:
             self._draw_horizontal_bar_chart(painter, chart_rect, render_payload)
 
-        if bool(getattr(self.chart_state, "show_border", False)):
-            self._draw_chart_border(painter, chart_rect)
-
     def _draw_title(self, painter: QPainter, rect: QRectF, title: str):
         title_font = QFont(self.font())
-        title_font.setPointSize(max(10, title_font.pointSize() + 1))
+        title_font.setPointSize(self._scaled_size(title_font.pointSize() + 1, minimum=7))
         title_font.setBold(True)
         painter.save()
         painter.setFont(title_font)
@@ -1700,6 +2233,8 @@ class ReportChartWidget(QWidget):
     def _draw_horizontal_bar_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = payload["values"]
         categories = payload["categories"]
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         colors = self._palette_colors(len(values), "barh")
         max_value = max(values) if values else 1.0
         max_value = max(max_value, 1.0)
@@ -1724,16 +2259,18 @@ class ReportChartWidget(QWidget):
         painter.save()
         for index, category in enumerate(categories):
             item = self._payload_item(payload, index)
-            is_active = self._is_category_active(item.get("raw_category"))
             y = chart_rect.top() + index * row_height + (row_height - bar_height) / 2
             bar_ratio = values[index] / max_value if max_value else 0.0
-            width = chart_rect.width() * max(0.0, bar_ratio)
+            staged = self._staggered_progress(progress, index, max(1, len(categories)), reason)
+            width = chart_rect.width() * max(0.0, bar_ratio) * staged
             bar_rect = QRectF(chart_rect.left(), y, width, bar_height)
 
-            fill_color = QColor(colors[index % len(colors)])
-            if is_active:
-                fill_color = fill_color.darker(108)
-                painter.setPen(QPen(fill_color.darker(135), 2))
+            fill_color, border_color, border_width, level = self._item_interaction_style(
+                QColor(colors[index % len(colors)]),
+                item,
+            )
+            if border_width > 0.0:
+                painter.setPen(QPen(border_color, border_width))
             else:
                 painter.setPen(Qt.NoPen)
             painter.setBrush(fill_color)
@@ -1754,14 +2291,18 @@ class ReportChartWidget(QWidget):
 
             annotation = self._format_annotation(values[index], float(payload["total"]))
             if annotation:
+                painter.setOpacity(0.84 + 0.16 * max(progress, level))
                 painter.setPen(QPen(QColor("#1F2937")))
                 value_rect = QRectF(chart_rect.right() + 10, y - 2, annotation_width - 10, bar_height + 4)
                 painter.drawText(value_rect, Qt.AlignVCenter | Qt.AlignRight, annotation)
+                painter.setOpacity(1.0)
         painter.restore()
 
     def _draw_vertical_bar_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = payload["values"]
         categories = payload["categories"]
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         colors = self._palette_colors(len(values), "bar")
         max_value = max(values) if values else 1.0
         max_value = max(max_value, 1.0)
@@ -1784,16 +2325,18 @@ class ReportChartWidget(QWidget):
         painter.save()
         for index, category in enumerate(categories):
             item = self._payload_item(payload, index)
-            is_active = self._is_category_active(item.get("raw_category"))
             x = chart_rect.left() + slot_width * index + (slot_width - bar_width) / 2
-            height = chart_rect.height() * max(0.0, values[index] / max_value)
+            staged = self._staggered_progress(progress, index, max(1, len(categories)), reason)
+            height = chart_rect.height() * max(0.0, values[index] / max_value) * staged
             y = chart_rect.bottom() - height
             bar_rect = QRectF(x, y, bar_width, height)
 
-            fill_color = QColor(colors[index % len(colors)])
-            if is_active:
-                fill_color = fill_color.darker(108)
-                painter.setPen(QPen(fill_color.darker(135), 2))
+            fill_color, border_color, border_width, level = self._item_interaction_style(
+                QColor(colors[index % len(colors)]),
+                item,
+            )
+            if border_width > 0.0:
+                painter.setPen(QPen(border_color, border_width))
             else:
                 painter.setPen(Qt.NoPen)
             painter.setBrush(fill_color)
@@ -1805,12 +2348,14 @@ class ReportChartWidget(QWidget):
 
             annotation = self._format_annotation(values[index], float(payload["total"]))
             if annotation:
+                painter.setOpacity(0.84 + 0.16 * max(progress, level))
                 painter.setPen(QPen(QColor("#1F2937")))
                 painter.drawText(
                     QRectF(x - 18, y - 22, bar_width + 36, 18),
                     Qt.AlignHCenter | Qt.AlignBottom,
                     annotation,
                 )
+                painter.setOpacity(1.0)
 
             painter.setPen(QPen(QColor("#4B5563")))
             label_rect = QRectF(x - 12, chart_rect.bottom() + 8, bar_width + 24, 36)
@@ -1826,6 +2371,8 @@ class ReportChartWidget(QWidget):
         values = payload["values"]
         categories = payload["categories"]
         total = float(payload["total"])
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         if total <= 0:
             self._draw_horizontal_bar_chart(painter, rect, payload)
             return
@@ -1846,15 +2393,24 @@ class ReportChartWidget(QWidget):
             legend_rect = QRectF()
 
         start_angle = 0.0
+        sweep_budget = 360.0
+        if reason in {"entry", "type"}:
+            sweep_budget = 360.0 * progress
         painter.save()
         for index, value in enumerate(values):
             item = self._payload_item(payload, index)
-            is_active = self._is_category_active(item.get("raw_category"))
-            span = (max(0.0, value) / total) * 360.0
-            fill_color = QColor(colors[index % len(colors)])
-            if is_active:
-                fill_color = fill_color.darker(108)
-                painter.setPen(QPen(fill_color.darker(135), 2))
+            raw_span = (max(0.0, value) / total) * 360.0
+            if sweep_budget <= 0.0:
+                start_angle += raw_span
+                continue
+            span = min(raw_span, sweep_budget)
+            sweep_budget -= raw_span
+            fill_color, border_color, border_width, _level = self._item_interaction_style(
+                QColor(colors[index % len(colors)]),
+                item,
+            )
+            if border_width > 0.0:
+                painter.setPen(QPen(border_color, border_width))
             else:
                 painter.setPen(Qt.NoPen)
             painter.setBrush(fill_color)
@@ -1871,13 +2427,22 @@ class ReportChartWidget(QWidget):
             painter.setBrush(QColor("#FFFFFF"))
             painter.setPen(Qt.NoPen)
             painter.drawEllipse(hole_rect)
+            label_opacity = 0.9
+            if reason in {"entry", "type"}:
+                label_opacity = 0.82 + 0.18 * progress
+            painter.setOpacity(label_opacity)
             painter.setPen(QPen(QColor("#6B7280")))
             painter.drawText(hole_rect, Qt.AlignCenter, payload["value_label"])
+            painter.setOpacity(1.0)
 
         if self.chart_state.show_legend:
             metrics = QFontMetrics(self.font())
             line_height = 24
             legend_categories = list(payload.get("legend_categories") or categories)
+            legend_opacity = 0.9
+            if reason in {"entry", "type"}:
+                legend_opacity = 0.82 + 0.18 * progress
+            painter.setOpacity(legend_opacity)
             for index, category in enumerate(categories):
                 color = colors[index % len(colors)]
                 y = legend_rect.top() + index * line_height
@@ -1903,11 +2468,14 @@ class ReportChartWidget(QWidget):
                 self._register_data_point_region(text_rect, item)
                 if index < len(legend_categories):
                     self._register_interactive_region(text_rect, "legend_item", category, legend_categories[index])
+            painter.setOpacity(1.0)
         painter.restore()
 
     def _draw_line_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object], area_fill: bool = False):
         values = payload["values"]
         categories = payload["categories"]
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         if len(values) < 2:
             self._draw_horizontal_bar_chart(painter, rect, payload)
             return
@@ -1936,7 +2504,12 @@ class ReportChartWidget(QWidget):
             y = chart_rect.bottom() - (chart_rect.height() * (max(0.0, value) / max_value))
             points.append(QPointF(x, y))
 
+        reveal_x = chart_rect.right()
+        if reason in {"entry", "type"}:
+            reveal_x = chart_rect.left() + (chart_rect.width() * progress)
         painter.save()
+        if reason in {"entry", "type"}:
+            painter.setClipRect(QRectF(chart_rect.left(), chart_rect.top(), max(2.0, reveal_x - chart_rect.left()), chart_rect.height()))
         if area_fill and points:
             area_path = QPainterPath(points[0])
             for point in points[1:]:
@@ -1951,32 +2524,35 @@ class ReportChartWidget(QWidget):
         painter.setPen(QPen(main_color, 2))
         for index in range(1, len(points)):
             painter.drawLine(points[index - 1], points[index])
+        painter.restore()
 
-        painter.setBrush(main_color)
-        painter.setPen(Qt.NoPen)
+        painter.save()
         for index, point in enumerate(points):
             item = self._payload_item(payload, index)
-            is_active = self._is_category_active(item.get("raw_category"))
-            radius = 5 if is_active else 4
-            if is_active:
-                painter.setPen(QPen(main_color.darker(135), 2))
-                painter.setBrush(main_color.darker(108))
+            fill_color, border_color, border_width, level = self._item_interaction_style(main_color, item)
+            radius = (3.4 + level * 1.4) * (0.85 + progress * 0.35)
+            if border_width > 0.0:
+                painter.setPen(QPen(border_color, border_width))
             else:
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(main_color)
+            painter.setBrush(fill_color)
+            if point.x() > reveal_x + radius:
+                continue
             painter.drawEllipse(point, radius, radius)
             self._register_data_point_region(
-                QRectF(point.x() - 10, point.y() - 10, 20, 20),
+                QRectF(point.x() - 10 - level * 2, point.y() - 10 - level * 2, 20 + level * 4, 20 + level * 4),
                 item,
             )
             annotation = self._format_annotation(values[index], float(payload["total"]))
             if annotation:
+                painter.setOpacity(0.86 + 0.14 * max(progress, level))
                 painter.setPen(QPen(QColor("#1F2937")))
                 painter.drawText(
                     QRectF(point.x() - 36, point.y() - 24, 72, 18),
                     Qt.AlignHCenter | Qt.AlignBottom,
                     annotation,
                 )
+                painter.setOpacity(1.0)
                 painter.setPen(Qt.NoPen)
 
         painter.setPen(QPen(QColor("#4B5563")))
@@ -2081,7 +2657,7 @@ class ReportChartWidget(QWidget):
     def _draw_axis_label(self, painter: QPainter, rect: QRectF, text: str, align: Qt.AlignmentFlag = Qt.AlignLeft):
         painter.save()
         axis_font = QFont(self.font())
-        axis_font.setPointSize(max(8, axis_font.pointSize() - 1))
+        axis_font.setPointSize(self._scaled_size(axis_font.pointSize() - 1, minimum=6))
         painter.setFont(axis_font)
         painter.setPen(QPen(QColor("#6B7280")))
         painter.drawText(rect, align, text)
@@ -2091,16 +2667,21 @@ class ReportChartWidget(QWidget):
         values = list(payload.get("values") or [])
         total = float(payload.get("total") or sum(max(0.0, float(value)) for value in values) or 0.0)
         current = float(values[0]) if values else total
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         accent = self._palette_colors(1, "single")[0]
         frame = self._chart_surface(rect, 6, 6, 6, 6)
         painter.save()
+        if reason in {"entry", "type"}:
+            painter.setOpacity(0.42 + 0.58 * progress)
+            painter.translate(0.0, (1.0 - progress) * 7.5)
         self._draw_surface_card(painter, frame, 16)
         painter.setPen(Qt.NoPen)
         painter.setBrush(accent)
         painter.drawRoundedRect(QRectF(frame.left(), frame.top(), 5, frame.height()), 3, 3)
 
         label_font = QFont(self.font())
-        label_font.setPointSize(max(9, label_font.pointSize() - 1))
+        label_font.setPointSize(self._scaled_size(label_font.pointSize() - 1, minimum=6))
         painter.setFont(label_font)
         painter.setPen(QPen(QColor("#6B7280")))
         painter.drawText(
@@ -2110,14 +2691,18 @@ class ReportChartWidget(QWidget):
         )
 
         value_font = QFont(self.font())
-        value_font.setPointSize(max(22, value_font.pointSize() + 12))
+        value_font.setPointSize(self._scaled_size(value_font.pointSize() + 12, minimum=9))
         value_font.setBold(True)
         painter.setFont(value_font)
         painter.setPen(QPen(QColor("#111827")))
+        displayed_value = total if values else current
+        if self._is_transition_active():
+            start_total = float(self.previous_visual_snapshot.get("total") or 0.0)
+            displayed_value = start_total + (displayed_value - start_total) * self._countup_progress(progress)
         painter.drawText(
             QRectF(frame.left() + 20, frame.top() + 32, frame.width() - 40, frame.height() * 0.42),
             Qt.AlignLeft | Qt.AlignVCenter,
-            self._format_value(total if values else current),
+            self._format_value(displayed_value),
         )
 
         subtitle = ""
@@ -2127,6 +2712,10 @@ class ReportChartWidget(QWidget):
             subtitle = f"{self._format_value(current)} selecionado"
         painter.setFont(label_font)
         painter.setPen(QPen(QColor("#4B5563")))
+        subtitle_opacity = 0.92
+        if reason in {"entry", "type"}:
+            subtitle_opacity = 0.82 + 0.18 * progress
+        painter.setOpacity(subtitle_opacity)
         painter.drawText(
             QRectF(frame.left() + 20, frame.bottom() - 50, frame.width() - 40, 18),
             Qt.AlignLeft | Qt.AlignBottom,
@@ -2152,67 +2741,102 @@ class ReportChartWidget(QWidget):
         painter.setPen(QPen(QColor("#E5E7EB")))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(frame, 16, 16)
+        painter.setOpacity(1.0)
         painter.restore()
+
 
     def _draw_kpi_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = [float(value or 0.0) for value in list(payload.get("values") or [])]
         current = values[0] if values else float(payload.get("total") or 0.0)
         previous = values[1] if len(values) > 1 else None
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         accent = self._palette_colors(1, "single")[0]
-        frame = rect.adjusted(10, 12, -10, -12)
+        frame = rect.adjusted(10, 10, -10, -12)
         painter.save()
-        painter.setPen(QPen(QColor("#D9E1F2")))
+        if reason in {"entry", "type"}:
+            painter.setOpacity(0.56 + 0.44 * progress)
+        painter.setPen(QPen(QColor("#DDE5F3")))
         painter.setBrush(QColor("#FFFFFF"))
         painter.drawRoundedRect(frame, 18, 18)
-        painter.setPen(QPen(accent, 3))
-        painter.drawLine(QPointF(frame.left() + 18, frame.top() + 16), QPointF(frame.left() + 80, frame.top() + 16))
-        painter.setPen(QPen(QColor("#6B7280")))
+        painter.setPen(QPen(accent.darker(106), 2.8))
+        painter.drawLine(QPointF(frame.left() + 18, frame.top() + 16), QPointF(frame.left() + 92, frame.top() + 16))
+        painter.setPen(QPen(QColor("#64748B")))
         painter.setFont(QFont(self.font()))
         painter.drawText(
-            QRectF(frame.left() + 20, frame.top() + 26, frame.width() - 40, 24),
+            QRectF(frame.left() + 20, frame.top() + 24, frame.width() - 40, 22),
             Qt.AlignLeft | Qt.AlignTop,
             str(payload.get("value_label") or "KPI"),
         )
 
         value_font = QFont(self.font())
-        value_font.setPointSize(max(20, value_font.pointSize() + 12))
+        value_font.setPointSize(self._scaled_size(value_font.pointSize() + 12, minimum=9))
         value_font.setBold(True)
         painter.setFont(value_font)
         painter.setPen(QPen(QColor("#111827")))
+        display_current = current
+        if self._is_transition_active():
+            first_item = self._payload_item(payload, 0)
+            first_key = str(first_item.get("key") or "")
+            previous_values = dict(self.previous_visual_snapshot.get("values_by_key") or {})
+            start_current = float(previous_values.get(first_key, 0.0))
+            display_current = start_current + (current - start_current) * self._countup_progress(progress)
         painter.drawText(
-            QRectF(frame.left() + 20, frame.top() + 52, frame.width() - 40, frame.height() * 0.35),
+            QRectF(frame.left() + 20, frame.top() + 48, frame.width() - 40, frame.height() * 0.36),
             Qt.AlignLeft | Qt.AlignVCenter,
-            self._format_value(current),
+            self._format_value(display_current),
         )
 
         delta_font = QFont(self.font())
-        delta_font.setPointSize(max(10, delta_font.pointSize()))
+        delta_font.setPointSize(self._scaled_size(delta_font.pointSize() - 1, minimum=7))
         painter.setFont(delta_font)
+        helper_text = "Sem comparacao anterior"
         if previous is not None:
             delta = current - previous
-            delta_color = QColor("#059669" if delta >= 0 else "#DC2626")
-            delta_prefix = "▲" if delta >= 0 else "▼"
-            delta_text = f"{delta_prefix} {self._format_value(abs(delta))}"
+            delta_color = QColor("#0E9F6E" if delta >= 0 else "#D14343")
+            delta_prefix = "+" if delta >= 0 else "-"
+            delta_text = f"{delta_prefix}{self._format_value(abs(delta))}"
+            if not math.isclose(previous, 0.0, rel_tol=0.0, abs_tol=1e-9):
+                pct = (delta / abs(previous)) * 100.0
+                delta_text = f"{delta_text} ({pct:+.1f}%)".replace(".", ",")
+            helper_text = "Comparado ao periodo anterior"
         else:
-            delta_color = QColor("#6B7280")
-            delta_text = "Sem comparação anterior"
+            delta_color = QColor("#64748B")
+            delta_text = "Sem variacao"
+        status_rect = QRectF(frame.left() + 20, frame.bottom() - 48, frame.width() - 40, 20)
+        painter.setPen(Qt.NoPen)
+        status_fill = QColor(delta_color)
+        status_fill.setAlpha(30)
+        painter.setBrush(status_fill)
+        painter.drawRoundedRect(status_rect, 10, 10)
         painter.setPen(QPen(delta_color))
         painter.drawText(
-            QRectF(frame.left() + 20, frame.bottom() - 44, frame.width() - 40, 20),
-            Qt.AlignLeft | Qt.AlignBottom,
+            status_rect.adjusted(10, 0, -10, 0),
+            Qt.AlignLeft | Qt.AlignVCenter,
             delta_text,
         )
+        painter.setPen(QPen(QColor("#64748B")))
+        painter.drawText(
+            QRectF(frame.left() + 20, frame.bottom() - 24, frame.width() - 40, 16),
+            Qt.AlignLeft | Qt.AlignBottom,
+            helper_text,
+        )
+        painter.setOpacity(1.0)
         painter.restore()
 
     def _draw_gauge_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = [float(value or 0.0) for value in list(payload.get("values") or [])]
         current = values[0] if values else float(payload.get("total") or 0.0)
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         max_value = max([1.0, current, float(payload.get("total") or 0.0), *(values or [0.0])])
         ratio = max(0.0, min(1.0, current / max_value if max_value else 0.0))
         target = values[1] if len(values) > 1 else None
         frame = self._chart_surface(rect, 6, 6, 6, 6)
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing, True)
+        if reason in {"entry", "type"}:
+            painter.setOpacity(0.5 + 0.5 * progress)
         self._draw_surface_card(painter, frame, 16)
         painter.setPen(QPen(QColor("#E5E7EB"), 11, Qt.SolidLine, Qt.RoundCap))
         gauge_rect = QRectF(frame.left() + 18, frame.top() + 20, frame.width() - 36, frame.height() * 0.70)
@@ -2228,8 +2852,10 @@ class ReportChartWidget(QWidget):
             radius = gauge_rect.width() / 2
             target_inner = QPointF(center.x() + math.cos(target_angle) * (radius * 0.83), center.y() - math.sin(target_angle) * (radius * 0.83))
             target_outer = QPointF(center.x() + math.cos(target_angle) * (radius * 0.95), center.y() - math.sin(target_angle) * (radius * 0.95))
+            painter.setOpacity(0.45 + 0.55 * progress)
             painter.setPen(QPen(QColor("#A855F7"), 2))
             painter.drawLine(target_inner, target_outer)
+            painter.setOpacity(0.42 + 0.58 * progress)
 
         center = gauge_rect.center()
         radius = gauge_rect.width() / 2
@@ -2243,15 +2869,26 @@ class ReportChartWidget(QWidget):
         painter.drawEllipse(center, 5, 5)
 
         value_font = QFont(self.font())
-        value_font.setPointSize(max(20, value_font.pointSize() + 11))
+        value_font.setPointSize(self._scaled_size(value_font.pointSize() + 11, minimum=9))
         value_font.setBold(True)
         painter.setFont(value_font)
         painter.setPen(QPen(QColor("#111827")))
+        display_current = current
+        if self._is_transition_active():
+            first_item = self._payload_item(payload, 0)
+            first_key = str(first_item.get("key") or "")
+            previous_values = dict(self.previous_visual_snapshot.get("values_by_key") or {})
+            start_current = float(previous_values.get(first_key, 0.0))
+            display_current = start_current + (current - start_current) * self._countup_progress(progress)
         painter.drawText(
             QRectF(frame.left(), frame.top() + frame.height() * 0.40, frame.width(), 38),
             Qt.AlignHCenter | Qt.AlignTop,
-            self._format_value(current),
+            self._format_value(display_current),
         )
+        helper_opacity = 0.92
+        if reason in {"entry", "type"}:
+            helper_opacity = 0.84 + 0.16 * progress
+        painter.setOpacity(helper_opacity)
         painter.setFont(QFont(self.font()))
         painter.setPen(QPen(QColor("#6B7280")))
         painter.drawText(
@@ -2259,10 +2896,14 @@ class ReportChartWidget(QWidget):
             Qt.AlignHCenter | Qt.AlignTop,
             f"Meta {self._format_value(max_value)}",
         )
+        painter.setOpacity(1.0)
         painter.restore()
+
 
     def _draw_matrix_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         rows, series, matrix = self._series_matrix(payload)
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         if not rows:
             self._draw_card_view(painter, rect, payload)
             return
@@ -2277,38 +2918,44 @@ class ReportChartWidget(QWidget):
 
         frame = self._chart_surface(rect, 6, 4, 6, 6)
         painter.save()
+        if reason in {"entry", "type"}:
+            painter.setOpacity(0.58 + 0.42 * progress)
         self._draw_surface_card(painter, frame, 12)
+        painter.setClipRect(frame.adjusted(3, 3, -3, -3))
 
         palette = {
-            "border": QColor("#E5E7EB"),
+            "border": QColor("#E7EAF0"),
             "header_fill": QColor("#F8FAFC"),
             "header_fill_alt": QColor("#F3F4F6"),
             "row_fill": QColor("#FFFFFF"),
             "row_fill_alt": QColor("#FAFAFC"),
             "total_fill": QColor("#EEF2FF"),
             "total_fill_alt": QColor("#EDE9FE"),
-            "label_text": QColor("#334155"),
-            "header_text": QColor("#6D28D9"),
+            "header_text": QColor("#5B43D6"),
             "value_text": QColor("#111827"),
             "value_accent": QColor("#4F46E5"),
         }
 
         font = QFont(self.font())
-        font.setPointSize(max(8, font.pointSize() - 1))
-        metrics = QFontMetrics(font)
+        font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
         header_font = QFont(font)
         header_font.setBold(True)
-        row_header_width = min(
-            max(146, max((metrics.horizontalAdvance(str(row)) for row in rows), default=124) + 28),
-            int(frame.width() * 0.36),
-        )
-        header_h = 28
-        row_h = max(26, int((frame.height() - header_h - 12) / max(1, len(rows))))
-        column_count = max(1, len(headers))
-        cell_width = max(72, int((frame.width() - row_header_width - 18) / column_count))
+        total_font = QFont(font)
+        total_font.setBold(True)
+        metrics = QFontMetrics(font)
 
-        top_band = QRectF(frame.left() + 10, frame.top() + 8, frame.width() - 20, 3)
-        painter.fillRect(top_band, QColor("#4F46E5"))
+        row_header_width = min(
+            max(142.0, max((metrics.horizontalAdvance(str(row)) for row in rows), default=124) + 28),
+            frame.width() * 0.36,
+        )
+        header_h = max(28.0, float(self._scaled_size(27, minimum=24)))
+        available_h = max(64.0, frame.height() - header_h - 18.0)
+        row_h = max(24.0, min(36.0, available_h / max(1, len(rows))))
+        column_count = max(1, len(headers))
+        cell_width = max(74.0, (frame.width() - row_header_width - 20.0) / column_count)
+
+        top_band = QRectF(frame.left() + 10, frame.top() + 8, frame.width() - 20, 2)
+        painter.fillRect(top_band, QColor("#5A3FE6"))
 
         painter.setFont(header_font)
         painter.setPen(QPen(palette["header_text"]))
@@ -2322,29 +2969,23 @@ class ReportChartWidget(QWidget):
             x = frame.left() + row_header_width + 10 + col_index * cell_width
             header_rect = QRectF(x, frame.top() + 8, cell_width - 2, header_h)
             is_total_header = header == "Total"
-            painter.setPen(QPen(palette["border"]))
-            painter.setBrush(palette["total_fill_alt"] if is_total_header else (palette["header_fill_alt"] if col_index % 2 == 0 else palette["header_fill"]))
-            painter.drawRect(header_rect)
+            header_fill = palette["total_fill_alt"] if is_total_header else (palette["header_fill_alt"] if col_index % 2 == 0 else palette["header_fill"])
+            painter.setPen(QPen(palette["border"], 0.9))
+            painter.setBrush(header_fill)
+            painter.drawRoundedRect(header_rect, 4, 4)
             painter.setPen(QPen(QColor("#111827" if is_total_header else "#4F46E5")))
+            painter.setFont(header_font if is_total_header else font)
             painter.drawText(header_rect.adjusted(8, 0, -8, 0), Qt.AlignLeft | Qt.AlignVCenter, header)
 
+        row_count = max(1, len(rows))
         for row_index, row_label in enumerate(rows):
+            staged = self._staggered_progress(progress, row_index, row_count, reason)
+            if reason in {"entry", "type"} and staged <= 0.01:
+                continue
+            row_opacity = (0.84 + 0.16 * staged) if reason in {"entry", "type"} else 1.0
+            painter.setOpacity(row_opacity)
             y = frame.top() + header_h + 8 + row_index * row_h
-            is_total_row = row_label == "Total"
-            row_rect = QRectF(frame.left() + 10, y, row_header_width - 12, row_h)
-            row_fill = palette["total_fill"] if is_total_row else (palette["row_fill_alt"] if row_index % 2 else palette["row_fill"])
-            painter.setPen(QPen(palette["border"]))
-            painter.setBrush(row_fill)
-            painter.drawRect(row_rect)
-            painter.setPen(QPen(QColor("#111827" if is_total_row else "#1F2937")))
-            label_font = QFont(font)
-            label_font.setBold(True if is_total_row else False)
-            painter.setFont(label_font)
-            painter.drawText(
-                row_rect.adjusted(8, 0, -8, 0),
-                Qt.AlignVCenter | Qt.AlignLeft,
-                metrics.elidedText(row_label, Qt.ElideRight, int(row_rect.width()) - 14),
-            )
+
             row_item = {
                 "category": row_label,
                 "raw_category": row_label,
@@ -2352,29 +2993,27 @@ class ReportChartWidget(QWidget):
                 "value": 0.0,
                 "feature_ids": [],
             }
+            base_row_fill = palette["row_fill_alt"] if row_index % 2 else palette["row_fill"]
+            row_fill, row_border, row_border_w, _ = self._item_interaction_style(QColor(base_row_fill), row_item)
+            row_rect = QRectF(frame.left() + 10, y, row_header_width - 12, row_h)
+            painter.setPen(QPen(row_border, max(0.8, row_border_w)))
+            painter.setBrush(row_fill)
+            painter.drawRoundedRect(row_rect, 4, 4)
+            painter.setFont(font)
+            painter.setPen(QPen(QColor("#1F2937")))
+            painter.drawText(
+                row_rect.adjusted(8, 0, -8, 0),
+                Qt.AlignVCenter | Qt.AlignLeft,
+                metrics.elidedText(str(row_label), Qt.ElideRight, int(row_rect.width()) - 12),
+            )
             self._register_data_point_region(row_rect, row_item)
 
             if composite:
                 for col_index, header in enumerate(headers):
                     if show_total and header == "Total":
-                        value = sum(max(0.0, float(matrix.get(row_label, {}).get(series_label, 0.0))) for series_label in series)
+                        value = sum(float(matrix.get(row_label, {}).get(series_label, 0.0)) for series_label in series)
                     else:
                         value = float(matrix.get(row_label, {}).get(header, 0.0))
-                    cell_rect = QRectF(frame.left() + 10 + row_header_width + col_index * cell_width, y, cell_width, row_h)
-                    is_total_cell = show_total and header == "Total"
-                    painter.setPen(QPen(palette["border"]))
-                    painter.setBrush(palette["total_fill"] if is_total_cell else (palette["row_fill_alt"] if row_index % 2 else palette["row_fill"]))
-                    painter.drawRect(cell_rect)
-                    cell_font = QFont(font)
-                    if is_total_cell:
-                        cell_font.setBold(True)
-                    painter.setFont(cell_font)
-                    painter.setPen(QPen(QColor("#111827" if is_total_cell else palette["value_accent"])))
-                    painter.drawText(
-                        cell_rect.adjusted(8, 0, -8, 0),
-                        Qt.AlignVCenter | Qt.AlignRight,
-                        self._format_value(value) if value else "",
-                    )
                     cell_item = {
                         "category": f"{row_label} / {header}",
                         "raw_category": (row_label, header),
@@ -2382,20 +3021,25 @@ class ReportChartWidget(QWidget):
                         "value": value,
                         "feature_ids": [],
                     }
+                    base_fill = palette["total_fill"] if (show_total and header == "Total") else (palette["row_fill_alt"] if row_index % 2 else palette["row_fill"])
+                    cell_fill, cell_border, cell_border_w, _ = self._item_interaction_style(QColor(base_fill), cell_item)
+                    cell_rect = QRectF(frame.left() + 10 + row_header_width + col_index * cell_width, y, cell_width, row_h)
+                    painter.setPen(QPen(cell_border, max(0.75, cell_border_w * 0.85)))
+                    painter.setBrush(cell_fill)
+                    painter.drawRoundedRect(cell_rect, 4, 4)
+                    painter.setFont(total_font if (show_total and header == "Total") else font)
+                    text_opacity = 0.92 + 0.08 * progress if reason in {"data", "filter"} else 1.0
+                    painter.setOpacity(row_opacity * text_opacity)
+                    painter.setPen(QPen(QColor("#111827" if (show_total and header == "Total") else palette["value_accent"])))
+                    painter.drawText(
+                        cell_rect.adjusted(8, 0, -8, 0),
+                        Qt.AlignVCenter | Qt.AlignRight,
+                        self._format_value(value) if not math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-9) else "",
+                    )
+                    painter.setOpacity(row_opacity)
                     self._register_data_point_region(cell_rect, cell_item)
             else:
                 value = float(matrix.get(row_label, {}).get("", 0.0))
-                cell_rect = QRectF(frame.left() + 10 + row_header_width, y, frame.width() - row_header_width - 20, row_h)
-                painter.setPen(QPen(palette["border"]))
-                painter.setBrush(palette["row_fill_alt"] if row_index % 2 else palette["row_fill"])
-                painter.drawRect(cell_rect)
-                painter.setFont(font)
-                painter.setPen(QPen(QColor("#111827")))
-                painter.drawText(
-                    cell_rect.adjusted(8, 0, -8, 0),
-                    Qt.AlignVCenter | Qt.AlignRight,
-                    self._format_value(value) if value else "",
-                )
                 cell_item = {
                     "category": row_label,
                     "raw_category": row_label,
@@ -2403,18 +3047,39 @@ class ReportChartWidget(QWidget):
                     "value": value,
                     "feature_ids": [],
                 }
+                base_fill = palette["row_fill_alt"] if row_index % 2 else palette["row_fill"]
+                cell_fill, cell_border, cell_border_w, _ = self._item_interaction_style(QColor(base_fill), cell_item)
+                cell_rect = QRectF(frame.left() + 10 + row_header_width, y, frame.width() - row_header_width - 20, row_h)
+                painter.setPen(QPen(cell_border, max(0.75, cell_border_w * 0.85)))
+                painter.setBrush(cell_fill)
+                painter.drawRoundedRect(cell_rect, 4, 4)
+                painter.setFont(font)
+                text_opacity = 0.92 + 0.08 * progress if reason in {"data", "filter"} else 1.0
+                painter.setOpacity(row_opacity * text_opacity)
+                painter.setPen(QPen(QColor("#111827")))
+                painter.drawText(
+                    cell_rect.adjusted(8, 0, -8, 0),
+                    Qt.AlignVCenter | Qt.AlignRight,
+                    self._format_value(value) if not math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-9) else "",
+                )
+                painter.setOpacity(row_opacity)
                 self._register_data_point_region(cell_rect, cell_item)
 
+        painter.setOpacity(1.0)
         painter.restore()
 
     def _draw_slicer_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         items = list(payload.get("items") or [])
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         if not items:
             self._draw_card_view(painter, rect, payload)
             return
 
         frame = self._chart_surface(rect, 6, 4, 6, 6)
         painter.save()
+        if reason in {"entry", "type"}:
+            painter.setOpacity(0.56 + 0.44 * progress)
         self._draw_surface_card(painter, frame, 12)
         metrics = QFontMetrics(self.font())
         x = frame.left() + 14
@@ -2431,16 +3096,15 @@ class ReportChartWidget(QWidget):
                 x = frame.left() + 14
                 y += row_height + 8
             chip_rect = QRectF(x, y, chip_width, row_height)
-            is_active = self._is_category_active(item.get("raw_category"))
-            fill = colors[index % len(colors)]
-            if is_active:
-                painter.setPen(QPen(fill.darker(120), 1.5))
-                painter.setBrush(fill.lighter(130))
-            else:
-                painter.setPen(QPen(QColor("#D1D5DB")))
-                painter.setBrush(QColor("#F8FAFF"))
+            base = QColor(colors[index % len(colors)])
+            _fill, _border, _border_width, level = self._item_interaction_style(base, item)
+            selected_fill = self._blend_color(base.lighter(132), QColor("#FFFFFF"), 0.2)
+            fill = self._blend_color(QColor("#F8FAFF"), selected_fill, level)
+            border = self._blend_color(QColor("#D1D5DB"), base.darker(116), level)
+            painter.setPen(QPen(border, 0.95 + 0.55 * level))
+            painter.setBrush(fill)
             painter.drawRoundedRect(chip_rect, 14, 14)
-            painter.setPen(QPen(QColor("#1F2937")))
+            painter.setPen(QPen(self._blend_color(QColor("#1F2937"), QColor("#0F172A"), level * 0.32)))
             painter.drawText(
                 chip_rect.adjusted(12, 0, -12, 0),
                 Qt.AlignVCenter | Qt.AlignLeft,
@@ -2593,6 +3257,8 @@ class ReportChartWidget(QWidget):
     def _draw_combo_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = [float(value or 0.0) for value in list(payload.get("values") or [])]
         categories = [str(item or "") for item in list(payload.get("categories") or [])]
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         if len(values) < 2:
             self._draw_vertical_bar_chart(painter, rect, payload)
             return
@@ -2612,6 +3278,9 @@ class ReportChartWidget(QWidget):
         line_color = QColor("#0F766E")
         cumulative = 0.0
         points: List[QPointF] = []
+        reveal_x = chart_rect.right()
+        if reason in {"entry", "type"}:
+            reveal_x = chart_rect.left() + chart_rect.width() * progress
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing, True)
         for index, value in enumerate(values):
@@ -2619,11 +3288,15 @@ class ReportChartWidget(QWidget):
             height = chart_rect.height() * max(0.0, value / max_value)
             y = chart_rect.bottom() - height
             bar_rect = QRectF(x, y, bar_width, height)
-            painter.setPen(Qt.NoPen)
-            fill = bar_color if index % 2 == 0 else bar_color.lighter(120)
+            item = self._payload_item(payload, index)
+            base_fill = bar_color if index % 2 == 0 else bar_color.lighter(120)
+            fill, border, border_width, level = self._item_interaction_style(base_fill, item)
+            if border_width > 0.0:
+                painter.setPen(QPen(border, border_width))
+            else:
+                painter.setPen(Qt.NoPen)
             painter.setBrush(fill)
             painter.drawRoundedRect(bar_rect, 5, 5)
-            item = self._payload_item(payload, index)
             self._register_data_point_region(bar_rect.adjusted(-2, -2, 2, 2), item)
             cumulative = cumulative + value
             line_value = (cumulative / max(1.0, sum(max(0.0, v) for v in values))) * max_value
@@ -2631,10 +3304,15 @@ class ReportChartWidget(QWidget):
             points.append(QPointF(x + bar_width / 2, line_y))
             annotation = self._format_annotation(value, float(payload["total"]))
             if annotation:
+                painter.setOpacity(0.86 + 0.14 * max(progress, level))
                 painter.setPen(QPen(QColor("#1F2937")))
                 painter.drawText(QRectF(x - 10, y - 22, bar_width + 20, 18), Qt.AlignHCenter | Qt.AlignBottom, annotation)
+                painter.setOpacity(1.0)
 
         if len(points) >= 2:
+            painter.save()
+            if reason in {"entry", "type"}:
+                painter.setClipRect(QRectF(chart_rect.left(), chart_rect.top(), max(2.0, reveal_x - chart_rect.left()), chart_rect.height()))
             fill_path = QPainterPath(points[0])
             for point in points[1:]:
                 fill_path.lineTo(point)
@@ -2648,21 +3326,31 @@ class ReportChartWidget(QWidget):
             painter.setPen(QPen(line_color, 2.2))
             for index in range(1, len(points)):
                 painter.drawLine(points[index - 1], points[index])
+            painter.restore()
         painter.setBrush(line_color)
         painter.setPen(QPen(QColor("#FFFFFF"), 1.2))
         for point in points:
-            painter.drawEllipse(point, 4.2, 4.2)
+            if reason in {"entry", "type"} and point.x() > reveal_x + 5:
+                continue
+            painter.drawEllipse(point, 3.8 + progress * 0.8, 3.8 + progress * 0.8)
         painter.setPen(QPen(QColor("#4B5563")))
         metrics = QFontMetrics(self.font())
         for index, category in enumerate(categories):
             x = chart_rect.left() + slot_width * index
             label_rect = QRectF(x, chart_rect.bottom() + 6, slot_width, 22)
+            label_opacity = 0.92
+            if reason in {"entry", "type"}:
+                label_opacity = 0.86 + 0.14 * progress
+            painter.setOpacity(label_opacity)
             painter.drawText(label_rect, Qt.AlignHCenter | Qt.AlignTop, metrics.elidedText(category, Qt.ElideRight, int(slot_width) - 4))
+            painter.setOpacity(1.0)
         painter.restore()
 
     def _draw_scatter_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = [float(value or 0.0) for value in list(payload.get("values") or [])]
         categories = [str(item or "") for item in list(payload.get("categories") or [])]
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         if len(values) < 2:
             self._draw_card_view(painter, rect, payload)
             return
@@ -2681,98 +3369,147 @@ class ReportChartWidget(QWidget):
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing, True)
         points: List[QPointF] = []
-        for index, value in enumerate(values):
-            x = chart_rect.left() + step * index
+        items = [self._payload_item(payload, index) for index in range(len(values))]
+        for index, item in enumerate(items):
+            value = float(item.get("value") or values[index] or 0.0)
+            animated_index = float(item.get("animated_index", float(index)))
+            x = chart_rect.left() + step * animated_index
             y = chart_rect.bottom() - chart_rect.height() * max(0.0, value / max_value)
             points.append(QPointF(x, y))
-            radius = 4 + 9 * math.sqrt(max(0.0, value) / max_value)
-            painter.setPen(QPen(colors[index % len(colors)].darker(120), 1.2))
-            painter.setBrush(colors[index % len(colors)])
+            base_radius = 4 + 9 * math.sqrt(max(0.0, value) / max_value)
+            fill_color, border_color, border_width, level = self._item_interaction_style(
+                QColor(colors[index % len(colors)]),
+                item,
+            )
+            radius = base_radius * (0.82 + 0.28 * progress) + level * 1.2
+            painter.setPen(QPen(border_color, max(1.2, border_width)))
+            painter.setBrush(fill_color)
             painter.drawEllipse(QPointF(x, y), radius, radius)
-            item = self._payload_item(payload, index)
             self._register_data_point_region(QRectF(x - radius - 4, y - radius - 4, (radius + 4) * 2, (radius + 4) * 2), item)
             annotation = self._format_annotation(value, float(payload["total"]))
             if annotation:
+                painter.setOpacity(0.86 + 0.14 * max(progress, level))
                 painter.setPen(QPen(QColor("#1F2937")))
                 painter.drawText(QRectF(x - 28, y - 28, 56, 16), Qt.AlignHCenter | Qt.AlignBottom, annotation)
+                painter.setOpacity(1.0)
         painter.setPen(QPen(QColor("#4B5563")))
         metrics = QFontMetrics(self.font())
         for index, category in enumerate(categories):
             x = chart_rect.left() + step * index
             label_rect = QRectF(x - step / 2, chart_rect.bottom() + 6, step, 22)
+            label_opacity = 0.92
+            if reason in {"entry", "type"}:
+                label_opacity = 0.86 + 0.14 * progress
+            painter.setOpacity(label_opacity)
             painter.drawText(label_rect, Qt.AlignHCenter | Qt.AlignTop, metrics.elidedText(category, Qt.ElideRight, int(step) - 4))
+            painter.setOpacity(1.0)
         painter.setPen(QPen(QColor("#94A3B8")))
+        axis_opacity = 0.9
+        if reason in {"entry", "type"}:
+            axis_opacity = 0.86 + 0.14 * progress
+        painter.setOpacity(axis_opacity)
         painter.drawText(QRectF(chart_rect.left(), chart_rect.top() - 18, chart_rect.width(), 14), Qt.AlignLeft | Qt.AlignVCenter, str(payload.get("value_label") or "Valor"))
+        painter.setOpacity(1.0)
         painter.restore()
 
+
     def _draw_treemap_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
-        items = sorted(list(payload.get("items") or []), key=lambda item: float(item.get("value") or 0.0), reverse=True)
-        if not items:
+        raw_items = [dict(item or {}) for item in list(payload.get("items") or [])]
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
+        if not raw_items:
             self._draw_card_view(painter, rect, payload)
             return
 
+        if reason in {"entry", "type"}:
+            items = sorted(raw_items, key=lambda item: float(item.get("value") or 0.0), reverse=True)
+        else:
+            items = sorted(raw_items, key=lambda item: float(item.get("animated_index", 0.0)))
+
+        values = [max(0.0, float(item.get("value") or 0.0)) for item in items]
+        total = sum(values) or 1.0
         frame = self._chart_surface(rect, 6, 4, 6, 6)
-        total = sum(max(0.0, float(item.get("value") or 0.0)) for item in items) or 1.0
         colors = self._palette_colors(len(items), "purple")
         font = QFont(self.font())
-        font.setPointSize(max(8, font.pointSize() - 1))
+        font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
         metrics = QFontMetrics(font)
+
         painter.save()
+        if reason in {"entry", "type"}:
+            painter.setOpacity(0.64 + 0.36 * progress)
         self._draw_surface_card(painter, frame, 14)
         painter.setClipRect(frame.adjusted(4, 4, -4, -4))
 
         remaining = QRectF(frame.adjusted(6, 6, -6, -6))
         horizontal = remaining.width() >= remaining.height()
-        min_tile = 34.0
+        min_tile = 30.0
+        run_total = total
+        count = max(1, len(items))
         for index, item in enumerate(items):
-            value = max(0.0, float(item.get("value") or 0.0))
+            value = values[index]
             if index == len(items) - 1:
                 tile = QRectF(remaining)
             else:
-                ratio = value / total if total else 0.0
+                ratio = value / run_total if run_total else 0.0
                 if horizontal:
-                    width = max(min_tile if remaining.width() > min_tile * 1.6 else 0.0, remaining.width() * ratio)
+                    width = max(min_tile if remaining.width() > min_tile * 1.5 else 0.0, remaining.width() * ratio)
                     tile = QRectF(remaining.left(), remaining.top(), width, remaining.height())
                     remaining.setLeft(tile.right())
                 else:
-                    height = max(min_tile if remaining.height() > min_tile * 1.6 else 0.0, remaining.height() * ratio)
+                    height = max(min_tile if remaining.height() > min_tile * 1.5 else 0.0, remaining.height() * ratio)
                     tile = QRectF(remaining.left(), remaining.top(), remaining.width(), height)
                     remaining.setTop(tile.bottom())
-                total -= value
+                run_total -= value
                 horizontal = not horizontal
 
             tile = tile.adjusted(3, 3, -3, -3)
-            fill = QColor(colors[index % len(colors)])
-            fill.setAlpha(232)
-            painter.setPen(QPen(fill.darker(136), 1))
+            staged = self._staggered_progress(progress, index, count, reason)
+            draw_tile = QRectF(tile)
+            if reason in {"entry", "type"}:
+                inset = (1.0 - staged) * 4.0
+                draw_tile = draw_tile.adjusted(inset, inset, -inset, -inset)
+
+            fill, border, border_width, _ = self._item_interaction_style(QColor(colors[index % len(colors)]), item)
+            fill.setAlpha(230)
+            painter.setPen(QPen(border, max(0.9, border_width)))
             painter.setBrush(fill)
-            painter.drawRoundedRect(tile, 10, 10)
+            radius = 10.0 if min(draw_tile.width(), draw_tile.height()) > 52 else 7.0
+            painter.drawRoundedRect(draw_tile, radius, radius)
 
             label = str(item.get("category") or "")
-            text_rect = tile.adjusted(10, 8, -10, -8)
+            text_rect = draw_tile.adjusted(10, 8, -10, -8)
             painter.setFont(font)
-            if tile.width() > 72 and tile.height() > 32:
-                painter.setPen(QPen(QColor("#FFFFFF")))
+            label_opacity = 0.92
+            if reason in {"entry", "type"}:
+                label_opacity = 0.78 + 0.22 * staged
+            painter.setOpacity(label_opacity)
+            painter.setPen(QPen(QColor("#FFFFFF")))
+            if draw_tile.width() > 86 and draw_tile.height() > 40:
                 painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignTop, metrics.elidedText(label, Qt.ElideRight, int(text_rect.width()) - 4))
                 painter.drawText(text_rect, Qt.AlignRight | Qt.AlignBottom, self._format_value(value))
-            elif tile.width() > 42 and tile.height() > 22:
-                painter.setPen(QPen(QColor("#FFFFFF")))
+            elif draw_tile.width() > 56 and draw_tile.height() > 26:
                 painter.drawText(text_rect, Qt.AlignCenter, metrics.elidedText(label, Qt.ElideRight, int(text_rect.width()) - 2))
-            self._register_data_point_region(tile, item)
+            painter.setOpacity(1.0)
+            self._register_data_point_region(draw_tile, item)
 
         painter.restore()
+
 
     def _draw_waterfall_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = [float(value or 0.0) for value in list(payload.get("values") or [])]
         categories = [str(item or "") for item in list(payload.get("categories") or [])]
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
         if not values:
             self._draw_card_view(painter, rect, payload)
             return
 
         frame = self._chart_surface(rect, 6, 4, 6, 6)
         painter.save()
+        if reason in {"entry", "type"}:
+            painter.setOpacity(0.6 + 0.4 * progress)
         self._draw_surface_card(painter, frame, 14)
-        chart_rect = frame.adjusted(18, 26, -18, -36)
+        chart_rect = frame.adjusted(18, 28, -18, -40)
         if chart_rect.width() <= 0 or chart_rect.height() <= 0:
             painter.restore()
             return
@@ -2789,41 +3526,49 @@ class ReportChartWidget(QWidget):
         zero_y = chart_rect.bottom() - (0.0 - minimum) * scale
 
         slot_width = chart_rect.width() / max(1, len(values))
-        bar_width = min(max(18.0, slot_width * 0.56), 68.0)
-        colors = self._palette_colors(len(values), "purple")
+        bar_width = min(max(18.0, slot_width * 0.52), 64.0)
+        positive_base = QColor("#5A3FE6")
+        negative_base = QColor("#D14343")
+        total_base = QColor("#0F766E")
+
         self._draw_grid_lines(painter, chart_rect, vertical=False)
-        painter.setPen(QPen(QColor("#D1D5DB"), 1, Qt.DotLine))
+        painter.setPen(QPen(QColor("#CBD5E1"), 1, Qt.DotLine))
         painter.drawLine(QPointF(chart_rect.left(), zero_y), QPointF(chart_rect.right(), zero_y))
 
         previous_x = None
         previous_y = None
-        total_value = cumulative_values[-1] if cumulative_values else 0.0
+        item_count = max(1, len(values))
         for index, value in enumerate(values):
+            item = self._payload_item(payload, index)
             start = cumulative_values[index]
             end = cumulative_values[index + 1]
-            left = chart_rect.left() + slot_width * index + (slot_width - bar_width) / 2
-            top_y = chart_rect.bottom() - (max(start, end) - minimum) * scale
-            bottom_y = chart_rect.bottom() - (min(start, end) - minimum) * scale
-            bar_rect = QRectF(left, min(top_y, bottom_y), bar_width, max(8.0, abs(bottom_y - top_y)))
+            staged = self._staggered_progress(progress, index, item_count, reason)
+            visible_end = start + (end - start) * staged if reason in {"entry", "type"} else end
 
-            fill = QColor(colors[index % len(colors)])
-            fill.setAlpha(232)
-            if value >= 0:
-                painter.setBrush(fill)
-            else:
-                painter.setBrush(fill.darker(118))
-            painter.setPen(QPen(fill.darker(138), 1))
+            left = chart_rect.left() + slot_width * index + (slot_width - bar_width) / 2
+            top_y = chart_rect.bottom() - (max(start, visible_end) - minimum) * scale
+            bottom_y = chart_rect.bottom() - (min(start, visible_end) - minimum) * scale
+            bar_rect = QRectF(left, min(top_y, bottom_y), bar_width, max(7.0, abs(bottom_y - top_y)))
+
+            is_total_bar = index == len(values) - 1
+            base = total_base if is_total_bar else (positive_base if value >= 0 else negative_base)
+            fill, border, border_width, _ = self._item_interaction_style(base, item)
+            if value < 0 and not is_total_bar:
+                fill = fill.darker(108)
+            painter.setPen(QPen(border, max(0.9, border_width)))
+            painter.setBrush(fill)
             painter.drawRoundedRect(bar_rect, 5, 5)
 
-            if previous_x is not None:
-                connector_y = bar_rect.top() if value >= 0 else bar_rect.bottom()
-                painter.setPen(QPen(QColor("#94A3B8"), 1.1, Qt.DotLine))
-                painter.drawLine(QPointF(previous_x, previous_y), QPointF(left + bar_width / 2, connector_y))
+            start_y = chart_rect.bottom() - (start - minimum) * scale
+            if previous_x is not None and previous_y is not None:
+                painter.setPen(QPen(QColor("#94A3B8"), 1.0, Qt.DotLine))
+                painter.drawLine(QPointF(previous_x, previous_y), QPointF(left + bar_width / 2, start_y))
             previous_x = left + bar_width / 2
-            previous_y = bar_rect.top() if value >= 0 else bar_rect.bottom()
+            previous_y = chart_rect.bottom() - (visible_end - minimum) * scale
 
-            item = self._payload_item(payload, index)
             self._register_data_point_region(bar_rect.adjusted(-2, -2, 2, 2), item)
+            value_opacity = 0.92 if reason not in {"entry", "type"} else (0.78 + 0.22 * staged)
+            painter.setOpacity(value_opacity)
             painter.setPen(QPen(QColor("#111827")))
             label_y = bar_rect.top() - 20 if value >= 0 else bar_rect.bottom() + 4
             painter.drawText(QRectF(left - 8, label_y, bar_width + 16, 16), Qt.AlignHCenter | Qt.AlignBottom, self._format_value(value))
@@ -2833,68 +3578,110 @@ class ReportChartWidget(QWidget):
                 Qt.AlignHCenter | Qt.AlignTop,
                 categories[index] if index < len(categories) else f"Item {index + 1}",
             )
+            painter.setOpacity(1.0)
 
+        total_value = cumulative_values[-1] if cumulative_values else 0.0
         painter.setPen(QPen(QColor("#64748B")))
         painter.drawText(
             QRectF(chart_rect.left(), frame.top() + 4, chart_rect.width(), 16),
             Qt.AlignLeft | Qt.AlignVCenter,
             self._display_series_legend_label(str(payload.get("value_label") or "Valor")),
         )
+
+        badge_rect = QRectF(chart_rect.right() - 146, frame.top() + 2, 146, 20)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#EEF2FF"))
+        painter.drawRoundedRect(badge_rect, 10, 10)
         painter.setPen(QPen(QColor("#1F2937")))
         painter.drawText(
-            QRectF(chart_rect.left(), frame.top() + 4, chart_rect.width(), 16),
+            badge_rect.adjusted(10, 0, -10, 0),
             Qt.AlignRight | Qt.AlignVCenter,
             f"Total {self._format_value(total_value)}",
         )
         painter.restore()
 
+
     def _draw_funnel_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
-        items = list(payload.get("items") or [])
-        if not items:
+        raw_items = [dict(item or {}) for item in list(payload.get("items") or [])]
+        progress = self._payload_animation_progress(payload)
+        reason = self._payload_animation_reason(payload)
+        if not raw_items:
             self._draw_card_view(painter, rect, payload)
             return
-        items = sorted(items, key=lambda item: float(item.get("value") or 0.0), reverse=True)
+
+        if reason in {"entry", "type"}:
+            items = sorted(raw_items, key=lambda item: float(item.get("value") or 0.0), reverse=True)
+        else:
+            items = sorted(raw_items, key=lambda item: float(item.get("animated_index", 0.0)))
+
         values = [max(0.0, float(item.get("value") or 0.0)) for item in items]
-        total = max(sum(values), 1.0)
+        max_value = max(values) if values else 1.0
+        max_value = max(max_value, 1.0)
+
         frame = self._chart_surface(rect, 6, 4, 6, 6)
         painter.save()
+        if reason in {"entry", "type"}:
+            painter.setOpacity(0.62 + 0.38 * progress)
         self._draw_surface_card(painter, frame, 14)
-        inner = frame.adjusted(18, 20, -18, -18)
+
+        inner = frame.adjusted(18, 22, -18, -18)
         step_h = max(28.0, inner.height() / max(1, len(items)))
         top_width = inner.width() * 0.94
-        bottom_width = inner.width() * 0.34
+        bottom_width = inner.width() * 0.30
         colors = self._palette_colors(len(items), "purple")
         font = QFont(self.font())
-        font.setPointSize(max(8, font.pointSize() - 1))
+        font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
         metrics = QFontMetrics(font)
+
+        count = max(1, len(items))
         for index, item in enumerate(items):
-            ratio = values[index] / total if total else 0.0
-            next_ratio = values[index + 1] / total if index + 1 < len(values) else 0.0
+            value = values[index]
+            next_value = values[index + 1] if index + 1 < len(values) else 0.0
+            ratio = value / max_value
+            next_ratio = next_value / max_value
             width_top = bottom_width + (top_width - bottom_width) * ratio
             width_bottom = bottom_width + (top_width - bottom_width) * next_ratio
+            staged = self._staggered_progress(progress, index, count, reason)
+            if reason in {"entry", "type"}:
+                width_top = bottom_width + (width_top - bottom_width) * staged
+                width_bottom = bottom_width + (width_bottom - bottom_width) * staged
+
             y = inner.top() + index * step_h
             x_top = inner.center().x() - width_top / 2
             x_bottom = inner.center().x() - width_bottom / 2
+
             path = QPainterPath()
             path.moveTo(QPointF(x_top + 12, y))
             path.lineTo(QPointF(x_top + width_top - 12, y))
             path.lineTo(QPointF(x_bottom + width_bottom - 12, y + step_h - 2))
             path.lineTo(QPointF(x_bottom + 12, y + step_h - 2))
             path.closeSubpath()
-            color = QColor(colors[index % len(colors)])
-            painter.setPen(QPen(color.darker(138), 1))
-            painter.setBrush(color)
+
+            fill, border, border_width, _ = self._item_interaction_style(QColor(colors[index % len(colors)]), item)
+            painter.setPen(QPen(border, max(0.9, border_width)))
+            painter.setBrush(fill)
             painter.drawPath(path)
-            painter.setPen(QPen(QColor("#FFFFFF")))
+
             label = str(item.get("category") or "")
             text_rect = QRectF(x_top + 16, y + 3, width_top - 32, step_h - 8)
             painter.setFont(font)
-            if width_top > 130:
-                painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, metrics.elidedText(label, Qt.ElideRight, int(text_rect.width() * 0.68)))
-                painter.drawText(text_rect, Qt.AlignRight | Qt.AlignVCenter, self._format_value(values[index]))
-            elif width_top > 86:
+            text_opacity = 0.92 if reason not in {"entry", "type"} else (0.78 + 0.22 * staged)
+            painter.setOpacity(text_opacity)
+            painter.setPen(QPen(QColor("#FFFFFF")))
+            if width_top > 138:
+                conv = ""
+                if value > 0.0 and index + 1 < len(values):
+                    conv = f"{(next_value / value) * 100.0:.1f}%".replace(".", ",")
+                painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, metrics.elidedText(label, Qt.ElideRight, int(text_rect.width() * 0.64)))
+                right_text = self._format_value(value)
+                if conv:
+                    right_text = f"{right_text} | {conv}"
+                painter.drawText(text_rect, Qt.AlignRight | Qt.AlignVCenter, right_text)
+            elif width_top > 92:
                 painter.drawText(text_rect, Qt.AlignCenter, metrics.elidedText(label, Qt.ElideRight, int(text_rect.width()) - 4))
+            painter.setOpacity(1.0)
             self._register_data_point_region(path.boundingRect().adjusted(-2, -2, 2, 2), item)
+
         painter.setPen(QPen(QColor("#64748B")))
         painter.drawText(
             QRectF(inner.left(), frame.top() + 4, inner.width(), 16),
@@ -2902,10 +3689,15 @@ class ReportChartWidget(QWidget):
             self._display_series_legend_label(str(payload.get("value_label") or "Etapas")),
         )
         painter.setPen(QPen(QColor("#1F2937")))
+        start_value = values[0] if values else 0.0
+        end_value = values[-1] if values else 0.0
+        conv_total = ""
+        if start_value > 0.0:
+            conv_total = f" ({(end_value / start_value) * 100.0:.1f}%)".replace(".", ",")
         painter.drawText(
             QRectF(inner.left(), frame.top() + 4, inner.width(), 16),
             Qt.AlignRight | Qt.AlignVCenter,
-            f"{self._format_value(values[0])} -> {self._format_value(values[-1])}",
+            f"{self._format_value(start_value)} -> {self._format_value(end_value)}{conv_total}",
         )
         painter.restore()
 

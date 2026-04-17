@@ -167,7 +167,7 @@ class ModelRelationsPopup(QDialog):
                 color: #111827;
             }
             QDialog#ModelRelationsPopup QComboBox:focus {
-                border-color: #2563EB;
+                border-color: #9CA3AF;
             }
             QDialog#ModelRelationsPopup QPushButton {
                 min-height: 30px;
@@ -183,22 +183,22 @@ class ModelRelationsPopup(QDialog):
                 border-color: #9CA3AF;
             }
             QDialog#ModelRelationsPopup QPushButton#PrimaryActionButton {
-                border-color: #2563EB;
-                background: #EFF6FF;
-                color: #1D4ED8;
+                border-color: #D1D5DB;
+                background: #FFFFFF;
+                color: #111827;
             }
             QDialog#ModelRelationsPopup QPushButton#PrimaryActionButton:hover {
-                background: #DBEAFE;
-                border-color: #1D4ED8;
+                background: #F9FAFB;
+                border-color: #9CA3AF;
             }
             QDialog#ModelRelationsPopup QPushButton#DangerActionButton {
-                border-color: #EF4444;
-                background: #FEF2F2;
-                color: #B91C1C;
+                border-color: #D1D5DB;
+                background: #FFFFFF;
+                color: #111827;
             }
             QDialog#ModelRelationsPopup QPushButton#DangerActionButton:hover {
-                border-color: #DC2626;
-                background: #FEE2E2;
+                background: #F9FAFB;
+                border-color: #9CA3AF;
             }
             """
         )

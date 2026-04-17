@@ -28,6 +28,7 @@ class DashboardAddDialog(QDialog):
         parent=None,
     ):
         super().__init__(parent)
+        self.setObjectName("ModelAddDialog")
         self.setWindowTitle("Adicionar ao Model")
         self.setModal(True)
         self.resize(460, 320)
@@ -117,7 +118,7 @@ class DashboardAddDialog(QDialog):
 
         self.setStyleSheet(
             """
-            QDialog {
+            QDialog#ModelAddDialog {
                 background: #FFFFFF;
             }
             QFrame#ModelDialogOptionsCard {
@@ -125,7 +126,7 @@ class DashboardAddDialog(QDialog):
                 border: 1px solid #E5E7EB;
                 border-radius: 14px;
             }
-            QLabel {
+            QDialog#ModelAddDialog QLabel {
                 color: #1F2937;
                 font-weight: 400;
             }
@@ -141,7 +142,7 @@ class DashboardAddDialog(QDialog):
             QPushButton#ModelDialogSecondaryButton {
                 min-height: 36px;
                 padding: 0 14px;
-                color: #374151;
+                color: #111827;
                 background: #FFFFFF;
                 border: 1px solid #D1D5DB;
                 border-radius: 10px;
@@ -153,9 +154,7 @@ class DashboardAddDialog(QDialog):
                 border-color: #9CA3AF;
             }
             QPushButton#ModelDialogPrimaryButton {
-                background: #EEF2FF;
-                border-color: #A5B4FC;
-                color: #3730A3;
+                font-weight: 500;
             }
             """
         )

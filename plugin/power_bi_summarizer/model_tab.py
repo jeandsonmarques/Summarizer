@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from typing import Dict, List, Optional
@@ -12,6 +12,8 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSlider,
+    QToolButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -120,6 +122,7 @@ class _ModelRecentCard(QFrame):
 
 
 class ModelTab(QWidget):
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("ModelTabRoot")
@@ -127,10 +130,11 @@ class ModelTab(QWidget):
         self.current_project: Optional[DashboardProject] = None
         self.current_path: str = ""
         self._dirty = False
+        self._syncing_zoom_controls = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(14)
+        root.setSpacing(6)
 
         header = QFrame(self)
         header.setObjectName("ModelHeader")
@@ -271,17 +275,58 @@ class ModelTab(QWidget):
         self.body_stack.addWidget(self.empty_page)
         self.body_stack.addWidget(self.canvas_page)
 
+        self.footer_bar = QFrame(self)
+        self.footer_bar.setObjectName("ModelFooterBar")
+        self.footer_bar.setAttribute(Qt.WA_StyledBackground, True)
+        self.footer_bar.setFixedHeight(30)
+        self.footer_bar.setVisible(False)
+        footer_layout = QHBoxLayout(self.footer_bar)
+        footer_layout.setContentsMargins(4, 2, 4, 2)
+        footer_layout.setSpacing(4)
+        footer_layout.addStretch(1)
+
+        self.zoom_label = QLabel("100%")
+        self.zoom_label.setObjectName("ModelZoomLabel")
+        footer_layout.addWidget(self.zoom_label, 0)
+        self.zoom_out_btn = QPushButton("-")
+        self.zoom_out_btn.setObjectName("ModelZoomButton")
+        self.zoom_out_btn.setFixedSize(20, 16)
+        footer_layout.addWidget(self.zoom_out_btn, 0)
+        self.zoom_reset_btn = QPushButton("100%")
+        self.zoom_reset_btn.setObjectName("ModelZoomButton")
+        self.zoom_reset_btn.setFixedSize(40, 16)
+        footer_layout.addWidget(self.zoom_reset_btn, 0)
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setObjectName("ModelZoomSlider")
+        self.zoom_slider.setRange(60, 200)
+        self.zoom_slider.setSingleStep(5)
+        self.zoom_slider.setPageStep(15)
+        self.zoom_slider.setFixedWidth(100)
+        self.zoom_slider.setValue(100)
+        self.zoom_slider.setFocusPolicy(Qt.NoFocus)
+        footer_layout.addWidget(self.zoom_slider, 0)
+        self.zoom_in_btn = QPushButton("+")
+        self.zoom_in_btn.setObjectName("ModelZoomButton")
+        self.zoom_in_btn.setFixedSize(20, 16)
+        footer_layout.addWidget(self.zoom_in_btn, 0)
+        root.addWidget(self.footer_bar, 0)
+
         self.new_btn.clicked.connect(self.new_project)
         self.open_btn.clicked.connect(self.open_project)
         self.save_btn.clicked.connect(self.save_project)
         self.save_as_btn.clicked.connect(lambda: self.save_project(save_as=True))
         self.export_btn.clicked.connect(self.export_project)
+        self.zoom_out_btn.clicked.connect(self._zoom_canvas_out)
+        self.zoom_reset_btn.clicked.connect(self._zoom_canvas_reset)
+        self.zoom_in_btn.clicked.connect(self._zoom_canvas_in)
+        self.zoom_slider.valueChanged.connect(self._zoom_slider_changed)
         self.edit_mode_btn.toggled.connect(self.set_edit_mode)
         self.empty_new_btn.clicked.connect(self.new_project)
         self.empty_open_btn.clicked.connect(self.open_project)
         self.empty_import_btn.clicked.connect(self.import_project)
         self.canvas.itemsChanged.connect(self._handle_canvas_changed)
         self.canvas.filtersChanged.connect(self._handle_canvas_filters_changed)
+        self.canvas.zoomChanged.connect(self._handle_canvas_zoom_changed)
 
         self.setStyleSheet(
             """
@@ -318,11 +363,43 @@ class ModelTab(QWidget):
                 border: 1px solid #D6D9E0;
                 border-radius: 16px;
             }
+            QFrame#ModelFooterBar {
+                background: transparent;
+                border-top: 1px solid #E5E7EB;
+            }
             QLabel#ModelWelcomeTitle,
             QLabel#ModelRecentsTitle {
                 color: #111827;
                 font-size: 15px;
                 font-weight: 600;
+            }
+            QLabel#ModelZoomLabel {
+                color: #6B7280;
+                font-size: 9px;
+                font-weight: 500;
+            }
+            QSlider#ModelZoomSlider {
+                background: transparent;
+                min-height: 10px;
+            }
+            QSlider#ModelZoomSlider::groove:horizontal {
+                height: 2px;
+                background: #E5E7EB;
+                border-radius: 1px;
+            }
+            QSlider#ModelZoomSlider::sub-page:horizontal {
+                background: #C7D2FE;
+                border-radius: 1px;
+            }
+            QSlider#ModelZoomSlider::handle:horizontal {
+                width: 8px;
+                margin: -4px 0;
+                border-radius: 3px;
+                background: #6366F1;
+                border: 1px solid #4F46E5;
+            }
+            QSlider#ModelZoomSlider::handle:horizontal:hover {
+                background: #4F46E5;
             }
             QPushButton#ModelToolbarButton {
                 min-height: 34px;
@@ -341,6 +418,26 @@ class ModelTab(QWidget):
                 background: #EEF2FF;
                 border-color: #818CF8;
                 color: #3730A3;
+            }
+            QPushButton#ModelToolbarButton:pressed {
+                background: #E5E7EB;
+            }
+            QPushButton#ModelZoomButton {
+                min-height: 16px;
+                color: #374151;
+                background: #FFFFFF;
+                border: 1px solid #D1D5DB;
+                border-radius: 5px;
+                font-size: 9px;
+                font-weight: 500;
+                padding: 0;
+            }
+            QPushButton#ModelZoomButton:hover {
+                background: #F9FAFB;
+                border-color: #9CA3AF;
+            }
+            QPushButton#ModelZoomButton:pressed {
+                background: #E5E7EB;
             }
             QFrame#ModelActionCard,
             QFrame#ModelRecentCard {
@@ -519,6 +616,47 @@ class ModelTab(QWidget):
         self._dirty = True if self.current_project is not None else self._dirty
         self._refresh_ui_state()
 
+    def _zoom_canvas_in(self):
+        if hasattr(self.canvas, "zoom_in"):
+            self.canvas.zoom_in()
+
+    def _zoom_canvas_out(self):
+        if hasattr(self.canvas, "zoom_out"):
+            self.canvas.zoom_out()
+
+    def _zoom_canvas_reset(self):
+        if hasattr(self.canvas, "reset_zoom"):
+            self.canvas.reset_zoom()
+
+    def _handle_canvas_zoom_changed(self, zoom: float):
+        try:
+            percent = int(round(float(zoom) * 100.0))
+        except Exception:
+            percent = 100
+        self._sync_zoom_controls(percent)
+
+    def _zoom_slider_changed(self, value: int):
+        if self._syncing_zoom_controls:
+            return
+        try:
+            zoom_value = max(0.6, min(2.0, float(value) / 100.0))
+        except Exception:
+            zoom_value = 1.0
+        if hasattr(self.canvas, "set_zoom"):
+            self.canvas.set_zoom(zoom_value)
+    def _sync_zoom_controls(self, percent: int):
+        self._syncing_zoom_controls = True
+        try:
+            value = max(60, min(200, int(percent)))
+            self.zoom_label.setText(f"{value}%")
+            if self.zoom_slider.value() != value:
+                self.zoom_slider.setValue(value)
+        finally:
+            self._syncing_zoom_controls = False
+
+    def _update_footer_visibility(self):
+        self.footer_bar.setVisible(self.body_stack.currentWidget() is self.canvas_page)
+
     def _handle_canvas_changed(self):
         if self.current_project is not None:
             self.current_project.items = self.canvas.items()
@@ -591,6 +729,8 @@ class ModelTab(QWidget):
         self.project_status_label.setText(f"{project_name}{dirty_suffix} | {path_text}")
         has_items = self.canvas.has_items()
         self.body_stack.setCurrentWidget(self.canvas_page if has_items else self.empty_page)
+        self._update_footer_visibility()
         self._update_filters_bar()
         self.filters_bar.setVisible(bool(self.edit_mode_btn.isChecked()) and self.filters_bar.isVisible())
         self.project_hint_label.setVisible(False)
+

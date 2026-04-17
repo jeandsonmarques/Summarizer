@@ -926,6 +926,13 @@ class AssistantMessageWidget(QWidget):
         self.content_layout.addLayout(actions_row)
         self._update_details_label()
 
+    def apply_animation_profile(self):
+        for chart_widget in self.findChildren(ReportChartWidget):
+            try:
+                chart_widget.refresh_animation_configuration()
+            except Exception:
+                continue
+
     def _add_filter_selector(self):
         plan = self.feedback_plan()
         if plan is None or not plan.filters or self.filter_choice_callback is None:
