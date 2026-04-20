@@ -1578,6 +1578,53 @@ class ReportChartWidget(QWidget):
         primary = self._primary_value(value)
         return [primary] if primary else []
 
+    def _filter_match_tokens(self, value: Any) -> List[str]:
+        tokens: List[str] = []
+        for raw_token in (
+            self._clean_label_text(value),
+            self._primary_value(value),
+            str(value or "").strip(),
+        ):
+            text = str(raw_token or "").strip()
+            if not text:
+                continue
+            tokens.append(text)
+            if " / " in text:
+                head = text.split(" / ", 1)[0].strip()
+                if head:
+                    tokens.append(head)
+            elif "/" in text:
+                head = text.split("/", 1)[0].strip()
+                if head:
+                    tokens.append(head)
+        seen = set()
+        normalized: List[str] = []
+        for token in tokens:
+            key = str(token).strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            normalized.append(key)
+        return normalized
+
+    def _matches_selected_values(self, item: Dict[str, object], selected_values: set) -> bool:
+        selected = {
+            str(value or "").strip().lower()
+            for value in set(selected_values or set())
+            if str(value or "").strip()
+        }
+        if not selected:
+            return False
+        item_tokens = set(self._filter_match_tokens(item.get("raw_category")))
+        item_tokens.update(self._filter_match_tokens(item.get("category")))
+        for token in item_tokens:
+            if token in selected:
+                return True
+            for selected_value in selected:
+                if token.startswith(selected_value + " /"):
+                    return True
+        return False
+
     def _current_source_id(self) -> str:
         return str(
             self._chart_identity.get("source_id")
@@ -2049,7 +2096,9 @@ class ReportChartWidget(QWidget):
             return
         self._selected_category_key = category_key
         self._active_category_keys = [category_key]
-        self._filtered_category_key = ""
+        # Keep click behavior consistent with bars/other visuals:
+        # selecting a point isolates that category inside the chart.
+        self._filtered_category_key = category_key
         selection_item = self._selection_payload_from_key(category_key) or dict(target)
         if isinstance(selection_item, dict):
             self.selectionChanged.emit(self._selection_context_for_item(selection_item))
@@ -2196,18 +2245,14 @@ class ReportChartWidget(QWidget):
                 elif selected_values:
                     filtered_pairs = []
                     for item in pairs:
-                        raw_value = str(item.get("raw_category") or "")
-                        display_value = str(item.get("category") or "")
-                        if raw_value in selected_values or display_value in selected_values:
+                        if self._matches_selected_values(item, selected_values):
                             filtered_pairs.append(item)
                     if filtered_pairs:
                         pairs = filtered_pairs
             elif selected_values:
                 filtered_pairs = []
                 for item in pairs:
-                    raw_value = self._primary_value(item.get("raw_category"))
-                    display_value = self._primary_value(item.get("category"))
-                    if raw_value in selected_values or display_value in selected_values:
+                    if self._matches_selected_values(item, selected_values):
                         filtered_pairs.append(item)
                 pairs = filtered_pairs
 

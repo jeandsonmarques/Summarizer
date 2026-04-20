@@ -1,28 +1,37 @@
 ﻿from __future__ import annotations
 
 import os
+import uuid
 from typing import Dict, List, Optional
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import (
+    QComboBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSlider,
+    QSpinBox,
     QToolButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
+from qgis.core import QgsProject, QgsVectorLayer
 
 from .dashboard_add_dialog import DashboardAddDialog
 from .dashboard_canvas import DashboardCanvas
-from .dashboard_models import DashboardChartItem, DashboardProject
+from .dashboard_models import DashboardChartBinding, DashboardChartItem, DashboardProject
 from .dashboard_project_store import DashboardProjectStore, PROJECT_EXTENSION
+from .report_view.chart_factory import ChartVisualState
+from .report_view.result_models import ChartPayload
 from .utils.resources import svg_icon
 
 
@@ -131,6 +140,7 @@ class ModelTab(QWidget):
         self.current_path: str = ""
         self._dirty = False
         self._syncing_zoom_controls = False
+        self._builder_layers: Dict[str, QgsVectorLayer] = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -160,6 +170,7 @@ class ModelTab(QWidget):
         self.save_btn = QPushButton("Salvar")
         self.save_as_btn = QPushButton("Salvar como")
         self.export_btn = QPushButton("Exportar")
+        self.create_chart_btn = QPushButton("Criar grafico")
         self.edit_mode_btn = QPushButton("Edicao")
         self.edit_mode_btn.setCheckable(True)
         self.edit_mode_btn.setChecked(True)
@@ -169,6 +180,7 @@ class ModelTab(QWidget):
             self.save_btn,
             self.save_as_btn,
             self.export_btn,
+            self.create_chart_btn,
             self.edit_mode_btn,
         ):
             button.setObjectName("ModelToolbarButton")
@@ -265,12 +277,16 @@ class ModelTab(QWidget):
         empty_layout.addWidget(self.recents_card, 1)
 
         self.canvas_page = QWidget(self.body_stack)
-        canvas_page_layout = QVBoxLayout(self.canvas_page)
+        canvas_page_layout = QHBoxLayout(self.canvas_page)
         canvas_page_layout.setContentsMargins(0, 0, 0, 0)
-        canvas_page_layout.setSpacing(0)
+        canvas_page_layout.setSpacing(10)
 
         self.canvas = DashboardCanvas(self.canvas_page)
         canvas_page_layout.addWidget(self.canvas, 1)
+
+        self.builder_panel = self._build_chart_builder_panel(self.canvas_page)
+        self.builder_panel.setFixedWidth(300)
+        canvas_page_layout.addWidget(self.builder_panel, 0)
 
         self.body_stack.addWidget(self.empty_page)
         self.body_stack.addWidget(self.canvas_page)
@@ -316,6 +332,7 @@ class ModelTab(QWidget):
         self.save_btn.clicked.connect(self.save_project)
         self.save_as_btn.clicked.connect(lambda: self.save_project(save_as=True))
         self.export_btn.clicked.connect(self.export_project)
+        self.create_chart_btn.clicked.connect(self._add_chart_from_builder)
         self.zoom_out_btn.clicked.connect(self._zoom_canvas_out)
         self.zoom_reset_btn.clicked.connect(self._zoom_canvas_reset)
         self.zoom_in_btn.clicked.connect(self._zoom_canvas_in)
@@ -327,6 +344,7 @@ class ModelTab(QWidget):
         self.canvas.itemsChanged.connect(self._handle_canvas_changed)
         self.canvas.filtersChanged.connect(self._handle_canvas_filters_changed)
         self.canvas.zoomChanged.connect(self._handle_canvas_zoom_changed)
+        self.canvas.emptyCanvasContextMenuRequested.connect(self._open_canvas_context_menu)
 
         self.setStyleSheet(
             """
@@ -366,6 +384,35 @@ class ModelTab(QWidget):
             QFrame#ModelFooterBar {
                 background: transparent;
                 border-top: 1px solid #E5E7EB;
+            }
+            QFrame#ModelBuilderPanel {
+                background: #F8FAFC;
+                border: 1px solid #D6D9E0;
+                border-radius: 12px;
+            }
+            QLabel#ModelBuilderTitle {
+                color: #111827;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLabel#ModelBuilderHint {
+                color: #6B7280;
+                font-size: 11px;
+            }
+            QComboBox#ModelBuilderCombo,
+            QLineEdit#ModelBuilderLineEdit,
+            QSpinBox#ModelBuilderSpin {
+                min-height: 30px;
+                border: 1px solid #D1D5DB;
+                border-radius: 8px;
+                padding: 0 8px;
+                background: #FFFFFF;
+                color: #111827;
+            }
+            QComboBox#ModelBuilderCombo:focus,
+            QLineEdit#ModelBuilderLineEdit:focus,
+            QSpinBox#ModelBuilderSpin:focus {
+                border-color: #818CF8;
             }
             QLabel#ModelWelcomeTitle,
             QLabel#ModelRecentsTitle {
@@ -471,7 +518,351 @@ class ModelTab(QWidget):
         )
 
         self._refresh_recents()
+        self._refresh_builder_layers()
         self._refresh_ui_state()
+        project = QgsProject.instance()
+        try:
+            project.layersAdded.connect(lambda *_: self._refresh_builder_layers())
+            project.layersRemoved.connect(lambda *_: self._refresh_builder_layers())
+            project.layerWillBeRemoved.connect(lambda *_: self._refresh_builder_layers())
+        except Exception:
+            pass
+
+    def _build_chart_builder_panel(self, parent: QWidget) -> QFrame:
+        panel = QFrame(parent)
+        panel.setObjectName("ModelBuilderPanel")
+        panel.setAttribute(Qt.WA_StyledBackground, True)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+
+        title = QLabel("Camada e campos")
+        title.setObjectName("ModelBuilderTitle")
+        layout.addWidget(title, 0)
+
+        helper = QLabel("Selecione a camada, campos e crie um grafico direto no canvas.")
+        helper.setObjectName("ModelBuilderHint")
+        helper.setWordWrap(True)
+        layout.addWidget(helper, 0)
+
+        form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(8)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        form.setFormAlignment(Qt.AlignTop)
+
+        self.builder_layer_combo = QComboBox(panel)
+        self.builder_layer_combo.setObjectName("ModelBuilderCombo")
+        form.addRow("Camada", self.builder_layer_combo)
+
+        self.builder_dimension_combo = QComboBox(panel)
+        self.builder_dimension_combo.setObjectName("ModelBuilderCombo")
+        form.addRow("Categoria", self.builder_dimension_combo)
+
+        self.builder_value_combo = QComboBox(panel)
+        self.builder_value_combo.setObjectName("ModelBuilderCombo")
+        form.addRow("Metrica", self.builder_value_combo)
+
+        self.builder_agg_combo = QComboBox(panel)
+        self.builder_agg_combo.setObjectName("ModelBuilderCombo")
+        self.builder_agg_combo.addItem("Contagem", "count")
+        self.builder_agg_combo.addItem("Soma", "sum")
+        self.builder_agg_combo.addItem("Media", "avg")
+        self.builder_agg_combo.addItem("Minimo", "min")
+        self.builder_agg_combo.addItem("Maximo", "max")
+        form.addRow("Agregacao", self.builder_agg_combo)
+
+        self.builder_chart_type_combo = QComboBox(panel)
+        self.builder_chart_type_combo.setObjectName("ModelBuilderCombo")
+        self.builder_chart_type_combo.addItem("Colunas", "bar")
+        self.builder_chart_type_combo.addItem("Barras", "barh")
+        self.builder_chart_type_combo.addItem("Linha", "line")
+        self.builder_chart_type_combo.addItem("Pizza", "pie")
+        self.builder_chart_type_combo.addItem("Rosca", "donut")
+        self.builder_chart_type_combo.addItem("Card", "card")
+        form.addRow("Tipo", self.builder_chart_type_combo)
+
+        self.builder_topn_spin = QSpinBox(panel)
+        self.builder_topn_spin.setObjectName("ModelBuilderSpin")
+        self.builder_topn_spin.setRange(3, 50)
+        self.builder_topn_spin.setValue(12)
+        form.addRow("Top N", self.builder_topn_spin)
+
+        self.builder_title_edit = QLineEdit(panel)
+        self.builder_title_edit.setObjectName("ModelBuilderLineEdit")
+        self.builder_title_edit.setPlaceholderText("Titulo do grafico (opcional)")
+        form.addRow("Titulo", self.builder_title_edit)
+        layout.addLayout(form, 0)
+
+        actions = QHBoxLayout()
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(8)
+        self.builder_refresh_btn = QPushButton("Atualizar")
+        self.builder_refresh_btn.setObjectName("ModelToolbarButton")
+        self.builder_add_btn = QPushButton("Adicionar grafico")
+        self.builder_add_btn.setObjectName("ModelToolbarButton")
+        actions.addWidget(self.builder_refresh_btn, 0)
+        actions.addWidget(self.builder_add_btn, 1)
+        layout.addLayout(actions, 0)
+        layout.addStretch(1)
+
+        self.builder_layer_combo.currentIndexChanged.connect(self._on_builder_layer_changed)
+        self.builder_value_combo.currentIndexChanged.connect(self._on_builder_value_changed)
+        self.builder_refresh_btn.clicked.connect(self._refresh_builder_layers)
+        self.builder_add_btn.clicked.connect(self._add_chart_from_builder)
+        return panel
+
+    def _field_is_numeric(self, field_def) -> bool:
+        if field_def is None:
+            return False
+        try:
+            return bool(field_def.isNumeric())
+        except Exception:
+            pass
+        type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
+        return any(token in type_name for token in ("int", "double", "float", "real", "numeric", "decimal"))
+
+    def _refresh_builder_layers(self):
+        previous_layer_id = str(self.builder_layer_combo.currentData() or "")
+        self._builder_layers = {}
+        self.builder_layer_combo.blockSignals(True)
+        self.builder_layer_combo.clear()
+        project = QgsProject.instance()
+        for layer in list(project.mapLayers().values()):
+            if not isinstance(layer, QgsVectorLayer) or not layer.isValid():
+                continue
+            self._builder_layers[layer.id()] = layer
+            self.builder_layer_combo.addItem(layer.name(), layer.id())
+        self.builder_layer_combo.blockSignals(False)
+        if previous_layer_id and previous_layer_id in self._builder_layers:
+            index = self.builder_layer_combo.findData(previous_layer_id)
+            if index >= 0:
+                self.builder_layer_combo.setCurrentIndex(index)
+        self._on_builder_layer_changed()
+
+    def _on_builder_layer_changed(self):
+        layer_id = str(self.builder_layer_combo.currentData() or "")
+        layer = self._builder_layers.get(layer_id)
+        self.builder_dimension_combo.blockSignals(True)
+        self.builder_value_combo.blockSignals(True)
+        self.builder_dimension_combo.clear()
+        self.builder_value_combo.clear()
+        self.builder_value_combo.addItem("Contagem de registros", "__count__")
+        if layer is not None:
+            for field_def in list(layer.fields()):
+                field_name = str(field_def.name() or "").strip()
+                if not field_name:
+                    continue
+                self.builder_dimension_combo.addItem(field_name, field_name)
+                if self._field_is_numeric(field_def):
+                    self.builder_value_combo.addItem(field_name, field_name)
+        self.builder_dimension_combo.blockSignals(False)
+        self.builder_value_combo.blockSignals(False)
+        self._on_builder_value_changed()
+        has_layer = layer is not None and self.builder_dimension_combo.count() > 0
+        self.builder_add_btn.setEnabled(has_layer)
+
+    def _on_builder_value_changed(self):
+        value_key = str(self.builder_value_combo.currentData() or "__count__")
+        preferred = "count" if value_key == "__count__" else "sum"
+        index = self.builder_agg_combo.findData(preferred)
+        if index >= 0:
+            self.builder_agg_combo.setCurrentIndex(index)
+
+    def _safe_float(self, value) -> Optional[float]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        text = text.replace(" ", "")
+        if "," in text and "." in text:
+            text = text.replace(".", "").replace(",", ".")
+        elif "," in text:
+            text = text.replace(",", ".")
+        try:
+            return float(text)
+        except Exception:
+            return None
+
+    def _build_model_chart_item_from_builder(self) -> Optional[DashboardChartItem]:
+        layer_id = str(self.builder_layer_combo.currentData() or "")
+        layer = self._builder_layers.get(layer_id)
+        if layer is None or not layer.isValid():
+            QMessageBox.information(self, "Model", "Selecione uma camada valida para criar o grafico.")
+            return None
+        dimension_field = str(self.builder_dimension_combo.currentData() or "").strip()
+        if not dimension_field:
+            QMessageBox.information(self, "Model", "Selecione o campo de categoria.")
+            return None
+        value_field = str(self.builder_value_combo.currentData() or "__count__").strip() or "__count__"
+        aggregation = str(self.builder_agg_combo.currentData() or "count").strip().lower() or "count"
+        chart_type = str(self.builder_chart_type_combo.currentData() or "bar").strip().lower() or "bar"
+        top_n = max(3, int(self.builder_topn_spin.value()))
+
+        grouped: Dict[str, Dict[str, object]] = {}
+        has_numeric_values = False
+        for feature in layer.getFeatures():
+            raw_category = feature[dimension_field]
+            category = str(raw_category).strip() if raw_category is not None else ""
+            if not category:
+                category = "(vazio)"
+            bucket = grouped.setdefault(
+                category,
+                {
+                    "raw_category": raw_category if raw_category is not None else category,
+                    "feature_ids": [],
+                    "sum": 0.0,
+                    "count": 0,
+                    "min": None,
+                    "max": None,
+                },
+            )
+            try:
+                bucket["feature_ids"].append(int(feature.id()))
+            except Exception:
+                pass
+
+            if value_field == "__count__":
+                value = 1.0
+            else:
+                value = self._safe_float(feature[value_field])
+                if value is None:
+                    continue
+                has_numeric_values = True
+
+            bucket["sum"] = float(bucket.get("sum") or 0.0) + float(value)
+            bucket["count"] = int(bucket.get("count") or 0) + 1
+            current_min = bucket.get("min")
+            current_max = bucket.get("max")
+            bucket["min"] = float(value) if current_min is None else min(float(current_min), float(value))
+            bucket["max"] = float(value) if current_max is None else max(float(current_max), float(value))
+
+        if value_field != "__count__" and not has_numeric_values:
+            QMessageBox.information(self, "Model", "Nao foi possivel calcular valores numericos para esse campo.")
+            return None
+        if not grouped:
+            QMessageBox.information(self, "Model", "A camada nao possui dados suficientes para montar o grafico.")
+            return None
+
+        rows: List[Dict[str, object]] = []
+        for category, bucket in grouped.items():
+            count = int(bucket.get("count") or 0)
+            if count <= 0:
+                continue
+            if aggregation == "avg":
+                metric_value = float(bucket.get("sum") or 0.0) / float(count)
+            elif aggregation == "min":
+                metric_value = float(bucket.get("min") or 0.0)
+            elif aggregation == "max":
+                metric_value = float(bucket.get("max") or 0.0)
+            elif aggregation == "sum":
+                metric_value = float(bucket.get("sum") or 0.0)
+            else:
+                metric_value = float(count)
+            rows.append(
+                {
+                    "category": str(category),
+                    "value": metric_value,
+                    "raw_category": bucket.get("raw_category"),
+                    "feature_ids": list(bucket.get("feature_ids") or []),
+                }
+            )
+
+        if not rows:
+            QMessageBox.information(self, "Model", "Sem resultados para os campos selecionados.")
+            return None
+
+        rows.sort(key=lambda item: float(item.get("value") or 0.0), reverse=True)
+        truncated = len(rows) > top_n
+        rows = rows[:top_n]
+
+        categories = [str(item.get("category") or "") for item in rows]
+        values = [float(item.get("value") or 0.0) for item in rows]
+        raw_categories = [item.get("raw_category") for item in rows]
+        feature_groups = [list(item.get("feature_ids") or []) for item in rows]
+
+        agg_label = {
+            "count": "Contagem",
+            "sum": "Soma",
+            "avg": "Media",
+            "min": "Minimo",
+            "max": "Maximo",
+        }.get(aggregation, "Contagem")
+        value_label = "count" if value_field == "__count__" else f"{agg_label} de {value_field}"
+        title_text = str(self.builder_title_edit.text() or "").strip()
+        if not title_text:
+            if value_field == "__count__":
+                title_text = f"Contagem por {dimension_field}"
+            else:
+                title_text = f"{agg_label} de {value_field} por {dimension_field}"
+
+        payload = ChartPayload.build(
+            chart_type=chart_type,
+            title=title_text,
+            categories=categories,
+            values=values,
+            value_label=value_label,
+            truncated=truncated,
+            selection_layer_id=layer.id(),
+            selection_layer_name=layer.name(),
+            category_field=dimension_field,
+            raw_categories=raw_categories,
+            category_feature_ids=feature_groups,
+        )
+
+        item_id = uuid.uuid4().hex
+        visual_state = ChartVisualState(chart_type=chart_type, show_legend=chart_type in {"pie", "donut", "funnel"})
+        binding = DashboardChartBinding(
+            chart_id=item_id,
+            source_id=layer.id(),
+            dimension_field=dimension_field,
+            semantic_field_key=dimension_field,
+            semantic_field_aliases=[dimension_field],
+            measure_field="" if value_field == "__count__" else value_field,
+            aggregation=aggregation,
+            source_name=layer.name(),
+        ).normalized()
+        subtitle = f"{layer.name()} - {dimension_field} - {value_label}"
+        return DashboardChartItem(
+            item_id=item_id,
+            origin="model_builder",
+            payload=payload,
+            visual_state=visual_state,
+            binding=binding,
+            title=title_text,
+            subtitle=subtitle,
+            source_meta={
+                "metadata": {"layer_id": layer.id(), "layer_name": layer.name()},
+                "config": {"row_field": dimension_field, "semantic_field_key": dimension_field, "aggregation": aggregation},
+            },
+        )
+
+    def _add_chart_from_builder(self):
+        item = self._build_model_chart_item_from_builder()
+        if item is None:
+            return
+        if self.current_project is None:
+            self._create_blank_project("Novo painel")
+        if self.current_project is None:
+            return
+        self.current_project.items.append(item)
+        self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
+        self.canvas.add_item(item)
+        self._dirty = True
+        self._refresh_ui_state()
+
+    def _open_canvas_context_menu(self, global_pos):
+        menu = QMenu(self)
+        add_chart_action = menu.addAction("Adicionar grafico em branco")
+        open_panel_action = menu.addAction("Abrir painel de camada")
+        chosen = menu.exec_(global_pos)
+        if chosen is add_chart_action:
+            self._add_chart_from_builder()
+        elif chosen is open_panel_action:
+            self.builder_panel.setVisible(True)
+            self.builder_layer_combo.setFocus(Qt.TabFocusReason)
 
     def _build_action_card(self, title: str, description: str, icon_name: str) -> QWidget:
         card = _ModelCardAction(title, description, icon_name, self)
@@ -537,6 +928,7 @@ class ModelTab(QWidget):
         self.current_path = ""
         self._dirty = False
         self.canvas.set_items([], [], [])
+        self._refresh_builder_layers()
         self._refresh_ui_state()
 
     def open_project(self, path: Optional[str] = None):
@@ -559,6 +951,7 @@ class ModelTab(QWidget):
         self._dirty = False
         self.edit_mode_btn.setChecked(bool(project.edit_mode))
         self.canvas.set_items(project.items, project.visual_links, project.chart_relations)
+        self._refresh_builder_layers()
         self._refresh_recents()
         self._refresh_ui_state()
 
@@ -611,6 +1004,8 @@ class ModelTab(QWidget):
 
     def set_edit_mode(self, enabled: bool):
         self.canvas.set_edit_mode(enabled)
+        self.create_chart_btn.setVisible(bool(enabled))
+        self.builder_panel.setVisible(bool(enabled) and self.body_stack.currentWidget() is self.canvas_page)
         if self.current_project is not None:
             self.current_project.edit_mode = bool(enabled)
         self._dirty = True if self.current_project is not None else self._dirty
@@ -727,8 +1122,11 @@ class ModelTab(QWidget):
         path_text = self.current_path or "Sem arquivo salvo"
         dirty_suffix = " *" if self._dirty else ""
         self.project_status_label.setText(f"{project_name}{dirty_suffix} | {path_text}")
-        has_items = self.canvas.has_items()
-        self.body_stack.setCurrentWidget(self.canvas_page if has_items else self.empty_page)
+        has_project = self.current_project is not None
+        self.body_stack.setCurrentWidget(self.canvas_page if has_project else self.empty_page)
+        in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
+        self.create_chart_btn.setVisible(bool(self.edit_mode_btn.isChecked()))
+        self.builder_panel.setVisible(bool(self.edit_mode_btn.isChecked()) and in_canvas_page)
         self._update_footer_visibility()
         self._update_filters_bar()
         self.filters_bar.setVisible(bool(self.edit_mode_btn.isChecked()) and self.filters_bar.isVisible())

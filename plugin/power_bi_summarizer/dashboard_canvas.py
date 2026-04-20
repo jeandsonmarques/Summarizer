@@ -149,11 +149,17 @@ class _DashboardCanvasSurface(QWidget):
         except Exception:
             pass
 
+    def contextMenuEvent(self, event):
+        if self._canvas._handle_surface_context_menu(event):
+            return
+        super().contextMenuEvent(event)
+
 
 class DashboardCanvas(QWidget):
     itemsChanged = pyqtSignal()
     filtersChanged = pyqtSignal(dict)
     zoomChanged = pyqtSignal(float)
+    emptyCanvasContextMenuRequested = pyqtSignal(QPoint)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1065,6 +1071,27 @@ class DashboardCanvas(QWidget):
         self._selected_relation_id = relation_id
         self._edit_relation(relation_id)
         self.surface.update()
+        return True
+
+    def _handle_surface_context_menu(self, event) -> bool:
+        if not self._edit_mode:
+            return False
+        local_pos = self._event_pos_to_point(event)
+        for widget in self._widgets.values():
+            try:
+                if widget.geometry().contains(local_pos):
+                    return False
+            except Exception:
+                continue
+        try:
+            global_pos = event.globalPos()
+        except Exception:
+            global_pos = self.surface.mapToGlobal(local_pos)
+        self.emptyCanvasContextMenuRequested.emit(global_pos)
+        try:
+            event.accept()
+        except Exception:
+            pass
         return True
 
     def _edit_relation(self, relation_id: str):

@@ -97,16 +97,23 @@ class ModelInteractionManager(QObject):
             return
 
         if payload.get("cleared") or not list(payload.get("values") or []):
-            self._active_filters.pop(filter_key, None)
-            self._apply_all_filters()
+            if self._active_filters:
+                self._active_filters.clear()
+                self._apply_all_filters()
             return
 
         normalized = self._normalize_selection_payload(payload, binding, chart_id, filter_key)
-        current = self._active_filters.get(filter_key)
+        current = self._active_filters.get(filter_key) if len(self._active_filters) == 1 else None
         if current and self._selection_equals(current, normalized):
-            self._active_filters.pop(filter_key, None)
-        else:
-            self._active_filters[filter_key] = normalized
+            # Toggle behavior on repeated click of the same selection.
+            self._active_filters.clear()
+            self._apply_all_filters()
+            return
+
+        # Keep a single active filter in Model:
+        # selecting another chart/category replaces the previous one.
+        self._active_filters.clear()
+        self._active_filters[filter_key] = normalized
         self._apply_all_filters()
 
     def clear_filters(self):
@@ -218,8 +225,11 @@ class ModelInteractionManager(QObject):
         for chart_id, widget in list(self._widgets.items()):
             try:
                 widget_filters = {}
+                has_origin_filter = False
                 for filter_key, filter_data in active_filters.items():
                     origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
+                    if origin_chart_id and origin_chart_id == chart_id:
+                        has_origin_filter = True
                     if not origin_chart_id or origin_chart_id == chart_id:
                         continue
 
@@ -238,7 +248,10 @@ class ModelInteractionManager(QObject):
                         widget_filters[str(phase_filter["filter_key"])] = phase_filter
                 widget.set_external_filters(widget_filters)
                 try:
-                    widget.clear_local_selection()
+                    # Preserve the local "single category" state on the chart where
+                    # the selection originated; clear only sibling charts.
+                    if not has_origin_filter:
+                        widget.clear_local_selection()
                 except Exception:
                     pass
             except Exception:
