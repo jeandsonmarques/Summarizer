@@ -297,6 +297,10 @@ class DashboardItemWidget(QFrame):
         self._sync_chart_identity()
         self.chart_widget.set_payload(self._item.payload)
         self.chart_widget.chart_state = self._item.visual_state
+        try:
+            self.chart_widget.refresh_visual_state()
+        except Exception:
+            pass
         self.chart_widget.set_external_filters(self._external_filters)
         self.chart_widget.set_embedded_mode(True)
         self.chart_widget.clear_selection(emit_signal=False)
@@ -530,11 +534,21 @@ class DashboardItemWidget(QFrame):
         if not self._edit_mode:
             return
         menu = QMenu(self)
+        font_menu = menu.addMenu("Tamanho da fonte")
         palette_menu = menu.addMenu("Paleta")
         sort_menu = menu.addMenu("Ordenacao")
         corners_menu = menu.addMenu("Cantos")
 
         self.chart_widget._ensure_visual_state_compatibility()
+
+        font_group = QActionGroup(menu)
+        font_group.setExclusive(True)
+        for scale, label in list(self.chart_widget.FONT_SCALE_PRESETS or []):
+            action = QAction(label, menu, checkable=True)
+            action.setChecked(abs(float(getattr(self.chart_widget.chart_state, "font_scale", 1.0) or 1.0) - float(scale)) < 0.01)
+            action.triggered.connect(lambda checked=False, value=scale: self.chart_widget.set_font_scale(value))
+            font_group.addAction(action)
+            font_menu.addAction(action)
 
         palette_group = QActionGroup(menu)
         palette_group.setExclusive(True)

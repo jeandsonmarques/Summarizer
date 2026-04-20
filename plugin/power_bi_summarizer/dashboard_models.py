@@ -103,9 +103,14 @@ def serialize_chart_visual_state(state: Optional[ChartVisualState]) -> Dict[str,
 
 def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisualState:
     payload = dict(data or {})
+    try:
+        font_scale = float(payload.get("font_scale") or 1.0)
+    except Exception:
+        font_scale = 1.0
     return ChartVisualState(
         chart_type=str(payload.get("chart_type") or "bar"),
         palette=str(payload.get("palette") or "purple"),
+        font_scale=font_scale,
         show_legend=bool(payload.get("show_legend")),
         show_values=bool(payload.get("show_values", True)),
         show_percent=bool(payload.get("show_percent")),

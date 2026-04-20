@@ -13,7 +13,7 @@ from qgis.PyQt.QtWidgets import (
     QMenu,
     QWidget,
 )
-from qgis.core import QgsExpression, QgsFeatureRequest, QgsProject, QgsVectorLayer
+from qgis.core import QgsExpression, QgsFeatureRequest, QgsMessageLog, QgsProject, QgsVectorLayer, Qgis
 from qgis.utils import iface
 
 from ..slim_dialogs import slim_get_text
@@ -33,6 +33,7 @@ def _chart_popup_icon() -> QIcon:
 class ChartVisualState:
     chart_type: str = "bar"
     palette: str = "purple"
+    font_scale: float = 1.0
     show_legend: bool = False
     show_values: bool = True
     show_percent: bool = False
@@ -173,6 +174,15 @@ class ReportChartWidget(QWidget):
         "reduced": 0.72,
         "off": 0.0,
     }
+    FONT_SCALE_PRESETS = [
+        (0.82, "Pequena"),
+        (1.0, "Normal"),
+        (1.18, "Grande"),
+        (1.38, "Ampliada"),
+    ]
+    MAX_PIE_SLICES = 8
+    MAX_RENDER_ITEMS = 160
+    MAX_LABELS = 14
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -181,6 +191,8 @@ class ReportChartWidget(QWidget):
         self._embedded_mode = False
         self._display_scale = 1.0
         self._base_font = QFont(self.font())
+        self._ensure_base_font_scalable()
+        self._font_scale = 1.0
         self.chart_state = ChartVisualState()
         self._interactive_regions: List[Dict[str, object]] = []
         self._active_category_keys: List[str] = []
@@ -205,6 +217,9 @@ class ReportChartWidget(QWidget):
         self._interaction_start_levels: Dict[str, float] = {}
         self._interaction_target_map: Dict[str, float] = {}
         self._hovered_category_key: str = ""
+        self._external_filters_signature = ""
+        self._last_rerender_signature = ""
+        self._last_render_error_key = ""
         self._transition_animation = QVariantAnimation(self)
         self._transition_animation.setStartValue(0.0)
         self._transition_animation.setEndValue(1.0)
@@ -221,6 +236,30 @@ class ReportChartWidget(QWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._open_chart_menu)
         self.setMouseTracking(True)
+
+    def _ensure_base_font_scalable(self):
+        point_size = self._base_font.pointSizeF()
+        if point_size > 0:
+            return
+        pixel_size = self._base_font.pixelSize()
+        if pixel_size > 0:
+            # Rough conversion keeps visual parity while enabling point-based scaling.
+            self._base_font.setPointSizeF(max(7.0, float(pixel_size) * 0.75))
+        else:
+            self._base_font.setPointSizeF(10.0)
+
+    def _fallback_font_size(self) -> float:
+        widget_font = QFont(self.font())
+        point_size = float(widget_font.pointSizeF())
+        if point_size > 0.0:
+            return point_size
+        pixel_size = float(widget_font.pixelSize())
+        if pixel_size > 0.0:
+            return max(7.0, pixel_size * 0.75)
+        base_point_size = float(self._base_font.pointSizeF())
+        if base_point_size > 0.0:
+            return base_point_size
+        return 10.0
 
     def set_display_scale(self, scale: float):
         try:
@@ -241,15 +280,65 @@ class ReportChartWidget(QWidget):
             if pixel_size > 0:
                 base_font.setPixelSize(max(6, int(round(pixel_size * normalized))))
         self.setFont(base_font)
+        self._apply_font_scale_to_widget()
         self.setMinimumSize(max(120, int(round(220 * normalized))), max(90, int(round(180 * normalized))))
         self.update()
 
+    def _apply_font_scale_to_widget(self):
+        try:
+            self._font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+        except Exception:
+            self._font_scale = 1.0
+        self.setFont(self._resolved_scaled_font())
+
+    def _resolved_scaled_font(self, extra_scale: float = 1.0) -> QFont:
+        base_font = QFont(self._base_font)
+        base_size = float(base_font.pointSizeF())
+        if base_size <= 0.0:
+            base_size = self._fallback_font_size()
+        scale = float(self._display_scale or 1.0) * float(self._effective_font_scale()) * max(0.1, float(extra_scale))
+        base_font.setPointSizeF(max(6.0, base_size * scale))
+        return base_font
+
+    def refresh_visual_state(self):
+        self._apply_font_scale_to_widget()
+        self.updateGeometry()
+        self.update()
+
+    def _effective_font_scale(self) -> float:
+        raw_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+        # Make the visible response a little stronger so the user can feel the change
+        # without turning the charts into oversized UI.
+        adjusted = 1.0 + (raw_scale - 1.0) * 1.85
+        return max(0.72, min(1.72, adjusted))
+
     def _scaled_size(self, value: float, minimum: int = 6, maximum: Optional[int] = None) -> int:
-        scaled = int(round(float(value) * float(self._display_scale or 1.0)))
+        font_scale = float(self._effective_font_scale())
+        base_value = float(value)
+        if base_value <= 0.0:
+            base_value = self._fallback_font_size()
+        scaled = int(round(base_value * float(self._display_scale or 1.0) * font_scale))
         scaled = max(minimum, scaled)
         if maximum is not None:
             scaled = min(maximum, scaled)
         return scaled
+
+    def _normalize_font_scale(self, value: Any) -> float:
+        try:
+            normalized = float(value)
+        except Exception:
+            normalized = 1.0
+        return max(0.70, min(1.6, normalized))
+
+    def set_font_scale(self, scale: float):
+        normalized = self._normalize_font_scale(scale)
+        current = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+        if abs(normalized - current) < 1e-3:
+            return
+        self.chart_state.font_scale = normalized
+        self._apply_font_scale_to_widget()
+        self.updateGeometry()
+        self._rerender_chart(transition="data")
 
     @classmethod
     def set_global_animation_enabled(cls, enabled: bool):
@@ -341,6 +430,108 @@ class ReportChartWidget(QWidget):
 
     def _clamp01(self, value: float) -> float:
         return max(0.0, min(1.0, float(value)))
+
+    def _stable_value(self, value: Any):
+        if isinstance(value, dict):
+            return tuple((str(key), self._stable_value(item)) for key, item in sorted(value.items(), key=lambda pair: str(pair[0])))
+        if isinstance(value, (list, tuple, set)):
+            return tuple(self._stable_value(item) for item in list(value))
+        if isinstance(value, float):
+            return round(float(value), 6)
+        return value
+
+    def _make_signature(self, value: Any) -> str:
+        return repr(self._stable_value(value))
+
+    def _payload_signature(self) -> str:
+        if self._payload is None:
+            return "payload:none"
+        categories = list(getattr(self._payload, "categories", []) or [])
+        values = []
+        for raw in list(getattr(self._payload, "values", []) or []):
+            try:
+                values.append(float(raw))
+            except Exception:
+                values.append(0.0)
+        sample_size = min(16, max(len(categories), len(values)))
+        category_sample = [str(categories[index]) if index < len(categories) else "" for index in range(sample_size)]
+        value_sample = [round(values[index], 6) if index < len(values) else 0.0 for index in range(sample_size)]
+        return self._make_signature(
+            {
+                "chart_type": str(getattr(self._payload, "chart_type", "") or ""),
+                "title": str(getattr(self._payload, "title", "") or ""),
+                "value_label": str(getattr(self._payload, "value_label", "") or ""),
+                "count": len(values),
+                "sum": round(sum(values), 6),
+                "min": round(min(values), 6) if values else 0.0,
+                "max": round(max(values), 6) if values else 0.0,
+                "categories": category_sample,
+                "values": value_sample,
+                "truncated": bool(getattr(self._payload, "truncated", False)),
+            }
+        )
+
+    def _rerender_signature(self, transition: str) -> str:
+        return self._make_signature(
+            {
+                "transition": str(transition or "data"),
+                "payload": self._payload_signature(),
+                "chart_type": str(getattr(self.chart_state, "chart_type", "") or ""),
+                "palette": str(getattr(self.chart_state, "palette", "") or ""),
+                "show_legend": bool(getattr(self.chart_state, "show_legend", False)),
+                "show_values": bool(getattr(self.chart_state, "show_values", False)),
+                "show_percent": bool(getattr(self.chart_state, "show_percent", False)),
+                "show_grid": bool(getattr(self.chart_state, "show_grid", False)),
+                "show_border": bool(getattr(self.chart_state, "show_border", False)),
+                "sort_mode": str(getattr(self.chart_state, "sort_mode", "") or ""),
+                "corner": str(getattr(self.chart_state, "bar_corner_style", "") or ""),
+                "font_scale": round(self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0)), 3),
+                "selected": str(self._selected_category_key or ""),
+                "filtered": str(self._filtered_category_key or ""),
+                "external": str(self._external_filters_signature or ""),
+            }
+        )
+
+    def _log_render_issue(self, message: str, error: Optional[Exception] = None):
+        text = str(message or "").strip()
+        if not text:
+            return
+        if error is not None:
+            text = f"{text}: {error}"
+        issue_key = text[:320]
+        if issue_key == self._last_render_error_key:
+            return
+        self._last_render_error_key = issue_key
+        try:
+            QgsMessageLog.logMessage(issue_key, "PowerBISummarizer", Qgis.Warning)
+        except Exception:
+            pass
+
+    def _draw_fallback_state(self, painter: QPainter, rect: QRectF, title: str, detail: str = ""):
+        painter.save()
+        panel = rect.adjusted(8, 8, -8, -8)
+        painter.setPen(QPen(QColor("#E5E7EB"), 1))
+        painter.setBrush(QColor("#FFFFFF"))
+        painter.drawRoundedRect(panel, 10, 10)
+        painter.setPen(QPen(QColor("#374151")))
+        title_font = QFont(self.font())
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.drawText(panel.adjusted(14, 12, -14, -20), Qt.AlignLeft | Qt.AlignTop, str(title or "Visual indisponivel"))
+        if detail:
+            detail_font = QFont(self.font())
+            detail_font.setBold(False)
+            painter.setFont(detail_font)
+            painter.setPen(QPen(QColor("#6B7280")))
+            painter.drawText(panel.adjusted(14, 34, -14, -10), Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, str(detail))
+        painter.restore()
+
+    def _label_stride(self, count: int, max_labels: Optional[int] = None) -> int:
+        max_visible = max(1, int(max_labels or self.MAX_LABELS))
+        total = max(0, int(count))
+        if total <= max_visible:
+            return 1
+        return int(math.ceil(float(total) / float(max_visible)))
 
     def _blend_color(self, base: QColor, overlay: QColor, amount: float) -> QColor:
         ratio = self._clamp01(amount)
@@ -453,6 +644,11 @@ class ReportChartWidget(QWidget):
         if not self._animations_active():
             self.animation_progress = 1.0
             self._previous_frame_snapshot = None
+            return
+        if self.width() < 140 or self.height() < 110 or not self.isVisible():
+            self.animation_progress = 1.0
+            self._previous_frame_snapshot = None
+            self.current_visual_snapshot = self._capture_visual_snapshot()
             return
         self.previous_visual_snapshot = dict(self.current_visual_snapshot or {})
         if not self.previous_visual_snapshot:
@@ -667,6 +863,7 @@ class ReportChartWidget(QWidget):
         previous_payload = self._payload
         previous_type = self.chart_state.chart_type if previous_payload is not None else ""
         self._payload = payload
+        self._last_rerender_signature = ""
         if empty_text is not None:
             self._empty_text = empty_text
         self.chart_state = self._default_visual_state(payload)
@@ -701,6 +898,8 @@ class ReportChartWidget(QWidget):
         self._rerender_chart(transition="selection")
 
     def clear_selection(self, *, emit_signal: bool = False):
+        if not (self._selected_category_key or self._active_category_keys or self._filtered_category_key):
+            return
         self._selected_category_key = ""
         self._active_category_keys = []
         self._filtered_category_key = ""
@@ -760,11 +959,17 @@ class ReportChartWidget(QWidget):
         }
 
     def set_external_filters(self, filters: Optional[Dict[str, Dict[str, Any]]] = None):
-        self._external_filters = {
+        normalized_filters = {
             str(source_id or "").strip(): dict(filter_data or {})
             for source_id, filter_data in dict(filters or {}).items()
             if str(source_id or "").strip()
         }
+        next_signature = self._make_signature(normalized_filters)
+        if next_signature == self._external_filters_signature:
+            return
+        self._external_filters_signature = next_signature
+        self._external_filters = normalized_filters
+        self._last_rerender_signature = ""
         self._rerender_chart(transition="filter")
 
     def build_model_snapshot(self) -> Dict[str, Any]:
@@ -832,6 +1037,7 @@ class ReportChartWidget(QWidget):
             "visual_state": {
                 "chart_type": str(self.chart_state.chart_type or "bar"),
                 "palette": str(self.chart_state.palette or "purple"),
+                "font_scale": float(self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))),
                 "show_legend": bool(self.chart_state.show_legend),
                 "show_values": bool(self.chart_state.show_values),
                 "show_percent": bool(self.chart_state.show_percent),
@@ -857,6 +1063,7 @@ class ReportChartWidget(QWidget):
     def _default_visual_state(self, payload: Optional[ChartPayload]) -> ChartVisualState:
         chart_type = self._normalize_chart_type(getattr(payload, "chart_type", "bar"))
         state = ChartVisualState(chart_type=chart_type, palette=self._preferred_palette_for_chart_type(chart_type))
+        state.font_scale = 1.0
         state.bar_corner_style = "square"
         if chart_type in {"pie", "donut"}:
             state.show_legend = True
@@ -933,6 +1140,7 @@ class ReportChartWidget(QWidget):
         menu = QMenu(self)
         type_menu = menu.addMenu("Mudar tipo de gráfico")
         personalize_menu = menu.addMenu("Personalizar gráfico")
+        font_menu = personalize_menu.addMenu("Tamanho da fonte")
         palette_menu = personalize_menu.addMenu("Paleta")
         sort_menu = personalize_menu.addMenu("Ordenação")
         corners_menu = personalize_menu.addMenu("Cantos")
@@ -968,6 +1176,15 @@ class ReportChartWidget(QWidget):
             action.triggered.connect(lambda checked=False, value=palette_name: self._set_chart_palette(value))
             palette_group.addAction(action)
             palette_menu.addAction(action)
+
+        font_group = QActionGroup(menu)
+        font_group.setExclusive(True)
+        for scale, label in self.FONT_SCALE_PRESETS:
+            action = QAction(label, menu, checkable=True)
+            action.setChecked(abs(self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0)) - float(scale)) < 0.01)
+            action.triggered.connect(lambda checked=False, value=scale: self.set_font_scale(value))
+            font_group.addAction(action)
+            font_menu.addAction(action)
 
         legend_action = QAction("Mostrar legenda", menu, checkable=True)
         legend_action.setChecked(self.chart_state.show_legend)
@@ -1055,7 +1272,29 @@ class ReportChartWidget(QWidget):
     def _supported_chart_types(self) -> Dict[str, bool]:
         if self._payload is None:
             return {key: False for key in self.TYPE_LABELS}
-        return {key: True for key in self.TYPE_LABELS}
+        profile = self._chart_data_profile()
+        supports = {key: True for key in self.TYPE_LABELS}
+
+        supports["pie"] = self._supports_pie_family(profile)
+        supports["donut"] = self._supports_pie_family(profile)
+        supports["line"] = self._supports_line_family(profile)
+        supports["area"] = self._supports_area_family(profile)
+        supports["scatter"] = profile.count >= 2 and profile.unique_category_count >= 2
+        supports["combo"] = profile.count >= 2 and profile.unique_category_count >= 2
+        supports["column_clustered"] = profile.count >= 1
+        supports["column_stacked"] = profile.count >= 1
+        supports["bar100_stacked"] = profile.count >= 1 and profile.has_positive
+        supports["treemap"] = profile.count >= 2 and profile.has_positive
+        supports["gauge"] = profile.count >= 1
+        supports["kpi"] = profile.count >= 1
+        supports["waterfall"] = profile.count >= 1
+        supports["funnel"] = profile.count >= 2 and profile.has_positive
+        supports["matrix"] = profile.count >= 1
+        supports["slicer"] = profile.count >= 1
+        supports["card"] = profile.count >= 1
+        supports["bar"] = profile.count >= 1
+        supports["barh"] = profile.count >= 1
+        return supports
 
     def _supports_percentage(self) -> bool:
         profile = self._chart_data_profile()
@@ -1063,10 +1302,8 @@ class ReportChartWidget(QWidget):
 
     def _supports_pie_family(self, profile: ChartDataProfile) -> bool:
         return (
-            2 <= profile.count <= 8
-            and not profile.truncated
+            profile.count >= 2
             and not profile.has_negative
-            and not profile.sequential_hint
             and profile.positive_count >= 2
         )
 
@@ -1180,6 +1417,7 @@ class ReportChartWidget(QWidget):
     def _ensure_visual_state_compatibility(self):
         if self.chart_state.chart_type not in self.TYPE_LABELS:
             self.chart_state.chart_type = self._fallback_chart_type()
+        self.chart_state.font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
 
         if not self._supports_percentage():
             self.chart_state.show_percent = False
@@ -1285,6 +1523,11 @@ class ReportChartWidget(QWidget):
 
     def _rerender_chart(self, transition: str = "data"):
         self._ensure_visual_state_compatibility()
+        transition_key = str(transition or "data").strip().lower()
+        rerender_signature = self._rerender_signature(transition_key)
+        if transition_key in {"data", "filter", "selection"} and rerender_signature == self._last_rerender_signature:
+            return
+        self._last_rerender_signature = rerender_signature
         self._start_transition_animation(reason=transition)
         self.update()
 
@@ -1502,6 +1745,13 @@ class ReportChartWidget(QWidget):
         else:
             self.unsetCursor()
         super().mouseMoveEvent(event)
+
+    def resizeEvent(self, event):
+        if self._transition_animation.state() == QVariantAnimation.Running:
+            self._transition_animation.stop()
+            self.animation_progress = 1.0
+            self._previous_frame_snapshot = None
+        super().resizeEvent(event)
 
     def mousePressEvent(self, event):
         if getattr(event, "button", lambda: None)() == Qt.LeftButton:
@@ -1825,11 +2075,17 @@ class ReportChartWidget(QWidget):
         self._rerender_chart(transition="filter")
 
     def _clear_chart_filter(self):
+        if not self._filtered_category_key:
+            return
         self._filtered_category_key = ""
         self._start_interaction_animation("selection")
         self._rerender_chart(transition="filter")
 
     def _clear_chart_selection_feedback(self, emit_signal: bool = False):
+        if not (self._selected_category_key or self._active_category_keys or self._filtered_category_key or self._hovered_category_key):
+            if emit_signal:
+                self.selectionChanged.emit(None)
+            return
         self._selected_category_key = ""
         self._active_category_keys = []
         self._filtered_category_key = ""
@@ -1921,7 +2177,6 @@ class ReportChartWidget(QWidget):
                 }
             )
 
-        filter_key = self._current_filter_key()
         external_filter = self._resolve_external_filter()
         if external_filter:
             selected_feature_ids = {
@@ -1965,6 +2220,14 @@ class ReportChartWidget(QWidget):
         elif self.chart_state.sort_mode == "desc":
             pairs = sorted(pairs, key=lambda item: float(item["value"]), reverse=True)
 
+        if self.chart_state.chart_type in {"pie", "donut"}:
+            pairs = self._prepare_pie_family_pairs(pairs)
+
+        dense_truncated = False
+        if len(pairs) > self.MAX_RENDER_ITEMS:
+            pairs = pairs[: self.MAX_RENDER_ITEMS]
+            dense_truncated = True
+
         categories = [str(item["category"]) for item in pairs]
         values = [float(item["value"]) for item in pairs]
         positive_total = sum(max(0.0, value) for value in values)
@@ -1983,7 +2246,9 @@ class ReportChartWidget(QWidget):
             "value_label": self._payload.value_label,
             "series_legend_label": self._display_series_legend_label(self._payload.value_label),
             "legend_categories": [self._display_legend_item_label(category) for category in categories],
-            "truncated": self._payload.truncated,
+            "truncated": bool(self._payload.truncated or dense_truncated),
+            "empty": len(pairs) == 0,
+            "has_external_filter": bool(external_filter),
             "total": positive_total,
             "items": pairs,
             "selection_layer_id": getattr(self._payload, "selection_layer_id", None),
@@ -1993,9 +2258,36 @@ class ReportChartWidget(QWidget):
             "semantic_field_aliases": list(self._chart_identity.get("semantic_field_aliases") or []),
         }
 
+    def _prepare_pie_family_pairs(self, pairs: List[Dict[str, object]]) -> List[Dict[str, object]]:
+        if len(pairs) <= self.MAX_PIE_SLICES:
+            return pairs
+        visible_count = max(1, self.MAX_PIE_SLICES - 1)
+        visible_pairs = list(pairs[:visible_count])
+        remainder = list(pairs[visible_count:])
+        remainder_value = sum(max(0.0, float(item.get("value") or 0.0)) for item in remainder)
+        if remainder_value <= 0.0:
+            return visible_pairs
+        other_feature_ids = sorted({
+            int(fid)
+            for item in remainder
+            for fid in list(item.get("feature_ids") or [])
+            if fid is not None
+        })
+        aggregated = {
+            "category": "Outros",
+            "value": remainder_value,
+            "raw_category": [item.get("raw_category") for item in remainder],
+            "key": self._category_key("Outros"),
+            "feature_ids": other_feature_ids,
+            "is_aggregated": True,
+        }
+        visible_pairs.append(aggregated)
+        return visible_pairs
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        painter.setFont(self._resolved_scaled_font())
         painter.fillRect(self.rect(), QColor("#FFFFFF"))
         self._interactive_regions = []
         rect = QRectF(self.rect()).adjusted(12, 12, -12, -12)
@@ -2010,6 +2302,16 @@ class ReportChartWidget(QWidget):
                 painter.drawText(rect, Qt.AlignCenter, self._empty_text)
             return
 
+        if bool(render_payload.get("empty")):
+            self.current_visual_snapshot = {}
+            self._active_render_payload = None
+            self._paint_context = {}
+            detail = "Sem dados disponiveis para o filtro atual."
+            if not bool(render_payload.get("has_external_filter")) and not self._filtered_category_key:
+                detail = "Sem dados suficientes para renderizar este visual."
+            self._draw_fallback_state(painter, rect, "Sem dados para exibir", detail)
+            return
+
         chart_rect = rect.adjusted(0, 0, 0, 0)
         self._active_render_payload = dict(render_payload)
         self.current_visual_snapshot = self._capture_visual_snapshot(render_payload)
@@ -2017,16 +2319,29 @@ class ReportChartWidget(QWidget):
             "painter": painter,
             "chart_rect": chart_rect,
         }
+        try:
+            if self._is_transition_active():
+                self._paint_animated_frame(self.animation_progress)
+            else:
+                self._dispatch_chart_draw(painter, chart_rect, render_payload)
 
-        if self._is_transition_active():
-            self._paint_animated_frame(self.animation_progress)
-        else:
-            self._dispatch_chart_draw(painter, chart_rect, render_payload)
-
-        if bool(getattr(self.chart_state, "show_border", False)):
-            self._draw_chart_border(painter, chart_rect)
-        self._paint_context = {}
-        self._active_render_payload = None
+            if bool(getattr(self.chart_state, "show_border", False)):
+                self._draw_chart_border(painter, chart_rect)
+            self._last_render_error_key = ""
+        except Exception as exc:
+            self._log_render_issue(
+                f"Falha ao desenhar grafico ({render_payload.get('chart_type', 'desconhecido')})",
+                exc,
+            )
+            self._draw_fallback_state(
+                painter,
+                chart_rect,
+                "Falha ao renderizar visual",
+                "Tente trocar o tipo do grafico ou ajustar os filtros.",
+            )
+        finally:
+            self._paint_context = {}
+            self._active_render_payload = None
 
     def _dispatch_chart_draw(self, painter: QPainter, chart_rect: QRectF, render_payload: Dict[str, object]):
         chart_type = str(render_payload.get("chart_type") or "bar")
@@ -2254,6 +2569,7 @@ class ReportChartWidget(QWidget):
         row_height = chart_rect.height() / count
         bar_height = max(12.0, row_height * 0.5)
         metrics = QFontMetrics(self.font())
+        label_stride = self._label_stride(len(categories))
         radius = 0.0 if self._normalized_corner_style() == "square" else 4.0
 
         painter.save()
@@ -2280,14 +2596,15 @@ class ReportChartWidget(QWidget):
                 painter.drawRect(bar_rect)
             self._register_data_point_region(bar_rect.adjusted(-2, -2, 2, 2), item)
 
-            painter.setPen(QPen(QColor("#4B5563")))
-            label_rect = QRectF(rect.left(), y - 2, label_width, bar_height + 4)
-            painter.drawText(
-                label_rect,
-                Qt.AlignVCenter | Qt.AlignLeft,
-                metrics.elidedText(category, Qt.ElideRight, int(label_width) - 8),
-            )
-            self._register_data_point_region(label_rect, item)
+            if index % label_stride == 0 or index == len(categories) - 1:
+                painter.setPen(QPen(QColor("#4B5563")))
+                label_rect = QRectF(rect.left(), y - 2, label_width, bar_height + 4)
+                painter.drawText(
+                    label_rect,
+                    Qt.AlignVCenter | Qt.AlignLeft,
+                    metrics.elidedText(category, Qt.ElideRight, int(label_width) - 8),
+                )
+                self._register_data_point_region(label_rect, item)
 
             annotation = self._format_annotation(values[index], float(payload["total"]))
             if annotation:
@@ -2320,6 +2637,7 @@ class ReportChartWidget(QWidget):
         slot_width = chart_rect.width() / count
         bar_width = min(max(16.0, slot_width * 0.62), 72.0)
         metrics = QFontMetrics(self.font())
+        label_stride = self._label_stride(len(categories))
         radius = 0.0 if self._normalized_corner_style() == "square" else 4.0
 
         painter.save()
@@ -2357,14 +2675,15 @@ class ReportChartWidget(QWidget):
                 )
                 painter.setOpacity(1.0)
 
-            painter.setPen(QPen(QColor("#4B5563")))
-            label_rect = QRectF(x - 12, chart_rect.bottom() + 8, bar_width + 24, 36)
-            painter.drawText(
-                label_rect,
-                Qt.AlignHCenter | Qt.AlignTop,
-                metrics.elidedText(category, Qt.ElideRight, int(bar_width + 24)),
-            )
-            self._register_data_point_region(label_rect, item)
+            if index % label_stride == 0 or index == len(categories) - 1:
+                painter.setPen(QPen(QColor("#4B5563")))
+                label_rect = QRectF(x - 12, chart_rect.bottom() + 8, bar_width + 24, 36)
+                painter.drawText(
+                    label_rect,
+                    Qt.AlignHCenter | Qt.AlignTop,
+                    metrics.elidedText(category, Qt.ElideRight, int(bar_width + 24)),
+                )
+                self._register_data_point_region(label_rect, item)
         painter.restore()
 
     def _draw_pie_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object], donut: bool = False):
@@ -2378,7 +2697,13 @@ class ReportChartWidget(QWidget):
             return
 
         colors = self._palette_colors(len(values), "donut" if donut else "pie")
-        if self.chart_state.show_legend:
+        show_legend = bool(
+            self.chart_state.show_legend
+            and rect.width() >= 300
+            and rect.height() >= 180
+            and len(values) <= self.MAX_PIE_SLICES
+        )
+        if show_legend:
             diameter = min(rect.width() * 0.42, rect.height() * 0.75)
             pie_rect = QRectF(rect.left(), rect.top() + 10, diameter, diameter)
             legend_rect = QRectF(pie_rect.right() + 24, rect.top(), rect.right() - pie_rect.right() - 24, rect.height())
@@ -2435,7 +2760,7 @@ class ReportChartWidget(QWidget):
             painter.drawText(hole_rect, Qt.AlignCenter, payload["value_label"])
             painter.setOpacity(1.0)
 
-        if self.chart_state.show_legend:
+        if show_legend:
             metrics = QFontMetrics(self.font())
             line_height = 24
             legend_categories = list(payload.get("legend_categories") or categories)
@@ -2558,7 +2883,10 @@ class ReportChartWidget(QWidget):
         painter.setPen(QPen(QColor("#4B5563")))
         metrics = QFontMetrics(self.font())
         step = chart_rect.width() / max(1, len(categories))
+        label_stride = self._label_stride(len(categories))
         for index, category in enumerate(categories):
+            if index % label_stride != 0 and index != len(categories) - 1:
+                continue
             x = chart_rect.left() + step * index
             label_rect = QRectF(x - step / 2, chart_rect.bottom() + 8, step, 24)
             painter.drawText(
@@ -2640,7 +2968,12 @@ class ReportChartWidget(QWidget):
         painter.restore()
 
     def _chart_surface(self, rect: QRectF, left: float = 4.0, top: float = 4.0, right: float = 4.0, bottom: float = 4.0) -> QRectF:
-        return rect.adjusted(left, top, -right, -bottom)
+        try:
+            scale = self._effective_font_scale()
+        except Exception:
+            scale = 1.0
+        padding_factor = max(0.78, min(1.18, 1.12 / max(0.72, scale)))
+        return rect.adjusted(left * padding_factor, top * padding_factor, -(right * padding_factor), -(bottom * padding_factor))
 
     def _draw_surface_card(self, painter: QPainter, rect: QRectF, radius: float = 14.0):
         painter.save()
@@ -2985,6 +3318,8 @@ class ReportChartWidget(QWidget):
             row_opacity = (0.84 + 0.16 * staged) if reason in {"entry", "type"} else 1.0
             painter.setOpacity(row_opacity)
             y = frame.top() + header_h + 8 + row_index * row_h
+            if y > frame.bottom() - row_h:
+                break
 
             row_item = {
                 "category": row_label,
@@ -3095,6 +3430,8 @@ class ReportChartWidget(QWidget):
             if x + chip_width > max_x:
                 x = frame.left() + 14
                 y += row_height + 8
+            if y + row_height > frame.bottom() - 8:
+                break
             chip_rect = QRectF(x, y, chip_width, row_height)
             base = QColor(colors[index % len(colors)])
             _fill, _border, _border_width, level = self._item_interaction_style(base, item)
@@ -3335,7 +3672,10 @@ class ReportChartWidget(QWidget):
             painter.drawEllipse(point, 3.8 + progress * 0.8, 3.8 + progress * 0.8)
         painter.setPen(QPen(QColor("#4B5563")))
         metrics = QFontMetrics(self.font())
+        label_stride = self._label_stride(len(categories))
         for index, category in enumerate(categories):
+            if index % label_stride != 0 and index != len(categories) - 1:
+                continue
             x = chart_rect.left() + slot_width * index
             label_rect = QRectF(x, chart_rect.bottom() + 6, slot_width, 22)
             label_opacity = 0.92
@@ -3394,7 +3734,10 @@ class ReportChartWidget(QWidget):
                 painter.setOpacity(1.0)
         painter.setPen(QPen(QColor("#4B5563")))
         metrics = QFontMetrics(self.font())
+        label_stride = self._label_stride(len(categories))
         for index, category in enumerate(categories):
+            if index % label_stride != 0 and index != len(categories) - 1:
+                continue
             x = chart_rect.left() + step * index
             label_rect = QRectF(x - step / 2, chart_rect.bottom() + 6, step, 22)
             label_opacity = 0.92
@@ -3538,6 +3881,7 @@ class ReportChartWidget(QWidget):
         previous_x = None
         previous_y = None
         item_count = max(1, len(values))
+        label_stride = self._label_stride(len(categories))
         for index, value in enumerate(values):
             item = self._payload_item(payload, index)
             start = cumulative_values[index]
@@ -3572,12 +3916,13 @@ class ReportChartWidget(QWidget):
             painter.setPen(QPen(QColor("#111827")))
             label_y = bar_rect.top() - 20 if value >= 0 else bar_rect.bottom() + 4
             painter.drawText(QRectF(left - 8, label_y, bar_width + 16, 16), Qt.AlignHCenter | Qt.AlignBottom, self._format_value(value))
-            painter.setPen(QPen(QColor("#4B5563")))
-            painter.drawText(
-                QRectF(left - 12, chart_rect.bottom() + 8, bar_width + 24, 24),
-                Qt.AlignHCenter | Qt.AlignTop,
-                categories[index] if index < len(categories) else f"Item {index + 1}",
-            )
+            if index % label_stride == 0 or index == len(values) - 1:
+                painter.setPen(QPen(QColor("#4B5563")))
+                painter.drawText(
+                    QRectF(left - 12, chart_rect.bottom() + 8, bar_width + 24, 24),
+                    Qt.AlignHCenter | Qt.AlignTop,
+                    categories[index] if index < len(categories) else f"Item {index + 1}",
+                )
             painter.setOpacity(1.0)
 
         total_value = cumulative_values[-1] if cumulative_values else 0.0
