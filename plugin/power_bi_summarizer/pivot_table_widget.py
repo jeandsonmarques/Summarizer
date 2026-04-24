@@ -16,6 +16,7 @@ from qgis.PyQt.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -33,6 +34,7 @@ from qgis.PyQt.QtWidgets import (
     QScrollArea,
     QShortcut,
     QSizePolicy,
+    QSpinBox,
     QSplitter,
     QStackedWidget,
     QStyle,
@@ -194,6 +196,24 @@ _TOOLBAR_SVG_ICONS = {
 </svg>""",
     "back_arrow": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M14.5 6L8.5 12L14.5 18" stroke="__COLOR__" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>""",
+    "summary_sheet": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M6.75 3.75H14.25L18.75 8.25V20.25H6.75V3.75Z" stroke="__COLOR__" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M14.25 3.75V8.25H18.75" stroke="__COLOR__" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M9 11.25H16.5M9 14.25H16.5M9 17.25H16.5M11.25 9.75V18.75M14.25 9.75V18.75" stroke="__COLOR__" stroke-width="1.25" stroke-linecap="round"/>
+</svg>""",
+    "summary_image": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="4.5" y="5.25" width="15" height="13.5" rx="1.75" stroke="__COLOR__" stroke-width="1.6"/>
+<circle cx="8.75" cy="9.25" r="1.25" stroke="__COLOR__" stroke-width="1.5"/>
+<path d="M6.75 16.75L10.25 13.25L12.75 15.75L15.25 12.75L17.75 16.75" stroke="__COLOR__" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>""",
+    "summary_edit": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M5.25 18.75L9 18L18 9L15 6L6 15L5.25 18.75Z" stroke="__COLOR__" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M13.75 7.25L16.75 10.25" stroke="__COLOR__" stroke-width="1.6" stroke-linecap="round"/>
+</svg>""",
+    "summary_settings": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 8.25C14.0711 8.25 15.75 9.92893 15.75 12C15.75 14.0711 14.0711 15.75 12 15.75C9.92893 15.75 8.25 14.0711 8.25 12C8.25 9.92893 9.92893 8.25 12 8.25Z" stroke="__COLOR__" stroke-width="1.6"/>
+<path d="M12 3.75V5.25M12 18.75V20.25M20.25 12H18.75M5.25 12H3.75M17.8336 6.16637L16.773 7.22703M7.22703 16.773L6.16637 17.8336M17.8336 17.8336L16.773 16.773M7.22703 7.22703L6.16637 6.16637" stroke="__COLOR__" stroke-width="1.6" stroke-linecap="round"/>
 </svg>""",
 }
 
@@ -749,6 +769,14 @@ class PivotTableWidget(QWidget):
         self._layer_combo_widget = None
         self._field_specs_by_key: Dict[str, PivotFieldSpec] = {}
         self._saved_configurations: Dict[str, Dict[str, Any]] = {}
+        self._history_undo: List[Dict[str, Any]] = []
+        self._history_redo: List[Dict[str, Any]] = []
+        self._history_current: Optional[Dict[str, Any]] = None
+        self._history_restoring = False
+        self._history_limit = 80
+        self._table_row_height = 30
+        self._table_alternating_rows = True
+        self._table_header_compact = True
         self.pivot_engine = PivotEngine(iface=iface, logger=QgsMessageLog)
         self.pivot_selection_bridge = PivotSelectionBridge(iface)
         self.pivot_export_service = PivotExportService()
@@ -896,46 +924,142 @@ class PivotTableWidget(QWidget):
         self.toolbar_frame.setObjectName("summaryToolbar")
         toolbar = QHBoxLayout(self.toolbar_frame)
         toolbar.setContentsMargins(0, 0, 0, 0)
-        toolbar.setSpacing(2)
+        toolbar.setSpacing(8)
         self.toolbar_layout = toolbar
+
+        self.undo_btn = QPushButton(_rt("Desfazer"))
+        self.redo_btn = QPushButton(_rt("Refazer"))
+        self.import_sheet_btn = QPushButton(_rt("Importar planilha"))
+        self.clear_filters_btn = QPushButton(_rt("Limpar busca"))
+        self.export_btn = QPushButton(_rt("Exportar"))
+        self.edit_mode_btn = QPushButton(_rt("Edicao"))
+        self.settings_btn = QPushButton(_rt("Configuracoes"))
+        self.edit_mode_btn.setCheckable(True)
+        self.edit_mode_btn.setChecked(True)
+        self.sidebar_toggle_btn = self.edit_mode_btn
+
+        for button in (
+            self.undo_btn,
+            self.redo_btn,
+            self.import_sheet_btn,
+            self.clear_filters_btn,
+            self.export_btn,
+            self.edit_mode_btn,
+            self.settings_btn,
+        ):
+            button.setObjectName("summaryToolbarButton")
+            button.setProperty("toolbarMode", "icon")
+            button.setProperty("iconOnly", True)
+            button.setFixedSize(30, 30)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setText("")
+            button.setFlat(True)
+            button.setAutoDefault(False)
+            button.setDefault(False)
+
+        self._configure_toolbar_icon_button(self.undo_btn, "Walker-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
+        self._configure_toolbar_icon_button(self.redo_btn, "Walker-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
+        self._configure_toolbar_icon_button(self.import_sheet_btn, "Excel-Workbook.svg", _rt("Importar planilha"))
+        self._configure_toolbar_icon_button(self.export_btn, "Walker-Image.svg", _rt("Exportar"))
+        self._configure_toolbar_icon_button(self.edit_mode_btn, "Walker-Edit.svg", _rt("Mostrar ou ocultar camada e filtros"))
+        self._configure_toolbar_icon_button(self.settings_btn, "Walker-Settings.svg", _rt("Personalizar tabela"))
+        mono_icon_colors = {
+            QIcon.Normal: "#111827",
+            QIcon.Active: "#111827",
+            QIcon.Selected: "#111827",
+            QIcon.Disabled: "#C7CDD6",
+        }
+        self.import_sheet_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_sheet"], size=18, color_map=mono_icon_colors))
+        self.export_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_image"], size=18, color_map=mono_icon_colors))
+        self.edit_mode_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_edit"], size=18, color_map=mono_icon_colors))
+        self.settings_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_settings"], size=18, color_map=mono_icon_colors))
+
+        self.toolbar_strip = QFrame(self.toolbar_frame)
+        self.toolbar_strip.setObjectName("summaryToolbarStrip")
+        self.toolbar_strip.setAttribute(Qt.WA_StyledBackground, True)
+        self.toolbar_strip.setFrameShape(QFrame.StyledPanel)
+        self.toolbar_strip.setStyleSheet(
+            """
+            QFrame#summaryToolbarStrip {
+                background: #FFFFFF;
+                border: 1px solid #D6D9E0;
+                border-radius: 8px;
+            }
+            QFrame#summaryToolbarSeparator {
+                min-width: 1px;
+                max-width: 1px;
+                margin: 4px 6px;
+                background: #E5E7EB;
+                border: none;
+            }
+            QPushButton#summaryToolbarButton {
+                min-width: 30px;
+                max-width: 30px;
+                min-height: 30px;
+                max-height: 30px;
+                padding: 0px;
+                color: #111827;
+                background: transparent;
+                border: none;
+                border-radius: 6px;
+                text-align: center;
+            }
+            QPushButton#summaryToolbarButton:hover {
+                background: #F3F4F6;
+            }
+            QPushButton#summaryToolbarButton:checked,
+            QPushButton#summaryToolbarButton:pressed {
+                background: #E5E7EB;
+                color: #111827;
+            }
+            QPushButton#summaryToolbarButton:disabled {
+                color: #C7CDD6;
+            }
+            QLineEdit#summarySearch {
+                min-height: 30px;
+                padding: 0 9px;
+                color: #111827;
+                background: #FFFFFF;
+                border: 1px solid #D1D5DB;
+                border-radius: 6px;
+            }
+            QLineEdit#summarySearch:hover,
+            QLineEdit#summarySearch:focus {
+                background: #FFFFFF;
+                border: 1px solid #9CA3AF;
+            }
+            """
+        )
+        self.toolbar_strip_layout = QHBoxLayout(self.toolbar_strip)
+        self.toolbar_strip_layout.setContentsMargins(8, 5, 8, 5)
+        self.toolbar_strip_layout.setSpacing(2)
+        for button in (self.undo_btn, self.redo_btn):
+            self.toolbar_strip_layout.addWidget(button, 0)
+        self.toolbar_strip_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
+        for button in (self.import_sheet_btn, self.export_btn):
+            self.toolbar_strip_layout.addWidget(button, 0)
+        self.toolbar_strip_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
+        for button in (self.edit_mode_btn, self.settings_btn):
+            self.toolbar_strip_layout.addWidget(button, 0)
 
         self.search_input = QLineEdit()
         self.search_input.setObjectName("summarySearch")
-        self.search_input.setPlaceholderText(_rt("Pesquisar..."))
+        self.search_input.setPlaceholderText(_rt("Buscar"))
         self.search_input.setFixedHeight(30)
-        self.search_input.setMinimumWidth(134)
-        self.search_input.setMaximumWidth(178)
+        self.search_input.setMinimumWidth(166)
+        self.search_input.setMaximumWidth(220)
         self.search_input.textChanged.connect(self._on_search_text_changed)
-        toolbar.addWidget(self.search_input, 0)
-
-        self.clear_filters_btn = QPushButton(_rt("Limpar busca"))
-        self.clear_filters_btn.setObjectName("summarySecondaryButton")
-        self.clear_filters_btn.setProperty("iconOnly", False)
-        self.clear_filters_btn.setFixedHeight(32)
-        self.clear_filters_btn.setMinimumWidth(94)
-        self.clear_filters_btn.setMaximumWidth(108)
+        self.import_sheet_btn.clicked.connect(self._open_spreadsheet_source_menu)
         self.clear_filters_btn.clicked.connect(self._clear_filters)
-        toolbar.addWidget(self.clear_filters_btn, 0)
-
-        self.export_btn = QPushButton(_rt("Exportar"))
-        self.export_btn.setObjectName("summarySecondaryButton")
-        self.export_btn.setProperty("iconOnly", False)
-        self.export_btn.setFixedHeight(32)
-        self.export_btn.setMinimumWidth(98)
-        self.export_btn.setMaximumWidth(114)
         self.export_btn.clicked.connect(self._export_pivot_table)
-        toolbar.addWidget(self.export_btn, 0)
-
-        self.sidebar_toggle_btn = QPushButton(_rt("Ocultar campos"))
-        self.sidebar_toggle_btn.setObjectName("summaryGhostButton")
-        self.sidebar_toggle_btn.setProperty("iconOnly", False)
-        self.sidebar_toggle_btn.setFixedHeight(32)
-        self.sidebar_toggle_btn.setMinimumWidth(92)
-        self.sidebar_toggle_btn.setMaximumWidth(108)
-        self.sidebar_toggle_btn.setCheckable(True)
-        self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
-        toolbar.addWidget(self.sidebar_toggle_btn, 0)
-        toolbar.addStretch(1)
+        self.undo_btn.clicked.connect(self._undo_last_action)
+        self.redo_btn.clicked.connect(self._redo_last_action)
+        self.edit_mode_btn.clicked.connect(self._toggle_sidebar)
+        self.settings_btn.clicked.connect(self._open_table_settings_dialog)
+        self.toolbar_strip_layout.addStretch(1)
+        self.toolbar_strip_layout.addWidget(self.search_input, 0)
+        self.toolbar_strip_layout.addWidget(self.clear_filters_btn, 0)
+        toolbar.addWidget(self.toolbar_strip, 1)
 
         self.main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter.setObjectName("summaryMainSplitter")
@@ -993,7 +1117,7 @@ class PivotTableWidget(QWidget):
         self.fields_panel_icon = QLabel(self.fields_panel_header)
         self.fields_panel_icon.setObjectName("summaryPanelIcon")
         self.fields_panel_header_layout.addWidget(self.fields_panel_icon, 0, Qt.AlignVCenter)
-        self.fields_panel_title = QLabel(_rt("Field List"))
+        self.fields_panel_title = QLabel(_rt("Campos"))
         self.fields_panel_title.setObjectName("summaryPanelTitle")
         self.fields_panel_header_layout.addWidget(self.fields_panel_title, 1, Qt.AlignVCenter)
         self.fields_panel_toggle_btn = QToolButton(self.fields_panel_header)
@@ -1031,7 +1155,7 @@ class PivotTableWidget(QWidget):
         self.fields_panel_collapsed_btn.setFixedSize(22, 22)
         self.fields_panel_collapsed_btn.clicked.connect(self._toggle_fields_panel)
         fields_rail_layout.addWidget(self.fields_panel_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
-        self.fields_panel_collapsed_title = _VerticalPanelLabel(_rt("Field List"), self.fields_panel_collapsed_rail)
+        self.fields_panel_collapsed_title = _VerticalPanelLabel(_rt("Campos"), self.fields_panel_collapsed_rail)
         self.fields_panel_collapsed_title.setObjectName("summaryPanelCollapsedTitle")
         fields_rail_layout.addWidget(self.fields_panel_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
         fields_rail_layout.addStretch(1)
@@ -1054,7 +1178,7 @@ class PivotTableWidget(QWidget):
         self.filters_panel_icon = QLabel(self.filters_panel_header)
         self.filters_panel_icon.setObjectName("summaryPanelIcon")
         self.filters_panel_header_layout.addWidget(self.filters_panel_icon, 0, Qt.AlignVCenter)
-        self.filter_area_title = QLabel(_rt("Filters"))
+        self.filter_area_title = QLabel(_rt("Filtros"))
         self.filter_area_title.setObjectName("summaryPanelTitle")
         self.filters_panel_header_layout.addWidget(self.filter_area_title, 1, Qt.AlignVCenter)
         self.filters_panel_toggle_btn = QToolButton(self.filters_panel_header)
@@ -1079,7 +1203,7 @@ class PivotTableWidget(QWidget):
         self.filters_builder_scroll.setWidgetResizable(True)
         self.filters_builder_scroll.setFrameShape(QScrollArea.NoFrame)
         self.filters_builder_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.filters_builder_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.filters_builder_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.filters_builder_scroll.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.filters_builder_scroll.viewport().setObjectName("summaryFiltersViewport")
         self.filters_panel_body_layout.addWidget(self.filters_builder_scroll, 1)
@@ -1104,7 +1228,7 @@ class PivotTableWidget(QWidget):
         self.filters_panel_collapsed_btn.setFixedSize(22, 22)
         self.filters_panel_collapsed_btn.clicked.connect(self._toggle_filters_panel)
         filters_rail_layout.addWidget(self.filters_panel_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
-        self.filters_panel_collapsed_title = _VerticalPanelLabel(_rt("Filters"), self.filters_panel_collapsed_rail)
+        self.filters_panel_collapsed_title = _VerticalPanelLabel(_rt("Filtros"), self.filters_panel_collapsed_rail)
         self.filters_panel_collapsed_title.setObjectName("summaryPanelCollapsedTitle")
         filters_rail_layout.addWidget(self.filters_panel_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
         filters_rail_layout.addStretch(1)
@@ -1271,6 +1395,7 @@ class PivotTableWidget(QWidget):
         self.filter_fields_list.setMinimumHeight(78)
         self.filter_fields_list.setMaximumHeight(120)
         self.filter_fields_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.filter_fields_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.filter_fields_list.hide()
         self.value_fields_list = _PivotDropListWidget(self, "value", allow_multiple=False)
         self.value_fields_list.setObjectName("summaryValueList")
@@ -1278,6 +1403,7 @@ class PivotTableWidget(QWidget):
         self.value_fields_list.setSpacing(2)
         self.value_fields_list.setMinimumHeight(58)
         self.value_fields_list.setMaximumHeight(74)
+        self.value_fields_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.row_fields_list = _PivotDropListWidget(self, "row", allow_multiple=True)
         self.row_fields_list.setObjectName("summaryRowList")
@@ -1286,6 +1412,7 @@ class PivotTableWidget(QWidget):
         self.row_fields_list.setSpacing(2)
         self.row_fields_list.setMinimumHeight(58)
         self.row_fields_list.setMaximumHeight(80)
+        self.row_fields_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.column_fields_list = _PivotDropListWidget(self, "column", allow_multiple=True)
         self.column_fields_list.setObjectName("summaryColumnList")
@@ -1294,6 +1421,7 @@ class PivotTableWidget(QWidget):
         self.column_fields_list.setSpacing(2)
         self.column_fields_list.setMinimumHeight(58)
         self.column_fields_list.setMaximumHeight(80)
+        self.column_fields_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.row_area_card = QWidget()
         self.row_area_card.setProperty("sidebarSection", True)
@@ -1384,12 +1512,12 @@ class PivotTableWidget(QWidget):
         self.filters_panel_footer.setObjectName("summaryFiltersFooter")
         self.filters_panel_footer.setMinimumHeight(56)
         footer_layout = QVBoxLayout(self.filters_panel_footer)
-        footer_layout.setContentsMargins(0, 8, 0, 0)
+        footer_layout.setContentsMargins(8, 8, 8, 8)
         footer_layout.setSpacing(0)
 
-        self.apply_btn = QPushButton("Atualizar")
+        self.apply_btn = QPushButton(_rt("Atualizar"))
         self.apply_btn.setObjectName("summaryPrimaryButton")
-        self.apply_btn.setFixedHeight(36)
+        self.apply_btn.setFixedHeight(34)
         self.apply_btn.clicked.connect(self.refresh)
         footer_layout.addWidget(self.apply_btn)
         self.filters_panel_body_layout.addWidget(self.filters_panel_footer, 0)
@@ -1401,7 +1529,14 @@ class PivotTableWidget(QWidget):
         self.side_panel.setMinimumWidth(_SIDEBAR_MIN_WIDTH)
         self.side_panel.setMaximumWidth(_SIDEBAR_MAX_WIDTH)
         self.side_panel.hide()
+        self._shortcut_undo = QShortcut(QKeySequence("Ctrl+Z"), self)
+        self._shortcut_undo.activated.connect(self._undo_last_action)
+        self._shortcut_redo = QShortcut(QKeySequence("Ctrl+Shift+Z"), self)
+        self._shortcut_redo.activated.connect(self._redo_last_action)
+        self._shortcut_redo_alt = QShortcut(QKeySequence("Ctrl+Y"), self)
+        self._shortcut_redo_alt.activated.connect(self._redo_last_action)
         self._refresh_toolbar_chrome()
+        self._reset_history_state()
         self._set_content_mode(False)
 
     def _configure_compact_sizing(self):
@@ -1441,10 +1576,12 @@ class PivotTableWidget(QWidget):
         settings.setValue(_SIDEBAR_WIDTH_KEY, int(self._sidebar_last_width))
 
     def _toggle_sidebar(self, checked: bool):
-        self._apply_tools_panels_visibility(not checked)
+        self._apply_tools_panels_visibility(bool(checked))
+        self._commit_history_if_changed()
 
     def _toggle_sidebar_from_panel(self):
         self._apply_tools_panels_visibility(self._tools_panels_hidden)
+        self._commit_history_if_changed()
 
     def _clamp_sidebar_width(self, width: int) -> int:
         try:
@@ -1578,6 +1715,7 @@ class PivotTableWidget(QWidget):
                 self._tools_fields_width = int(sizes[0])
         self._fields_panel_collapsed = not self._fields_panel_collapsed
         self._apply_tools_panels_visibility(not self._tools_panels_hidden)
+        self._commit_history_if_changed()
 
     def _toggle_filters_panel(self):
         if hasattr(self, "analytics_splitter") and not self._filters_panel_collapsed:
@@ -1586,6 +1724,7 @@ class PivotTableWidget(QWidget):
                 self._tools_builder_width = int(sizes[1])
         self._filters_panel_collapsed = not self._filters_panel_collapsed
         self._apply_tools_panels_visibility(not self._tools_panels_hidden)
+        self._commit_history_if_changed()
 
     def _sync_tools_panel_chrome(self):
         panels = (
@@ -1599,7 +1738,7 @@ class PivotTableWidget(QWidget):
                 getattr(self, "_fields_panel_collapsed", False),
                 _TOOLS_FIELDS_MIN_WIDTH,
                 _TOOLS_FIELDS_MAX_WIDTH,
-                _rt("Field List"),
+                _rt("Campos"),
             ),
             (
                 getattr(self, "filters_panel", None),
@@ -1611,7 +1750,7 @@ class PivotTableWidget(QWidget):
                 getattr(self, "_filters_panel_collapsed", False),
                 _TOOLS_FILTERS_MIN_WIDTH,
                 _TOOLS_FILTERS_MAX_WIDTH,
-                _rt("Filters"),
+                _rt("Filtros"),
             ),
         )
 
@@ -1655,7 +1794,7 @@ class PivotTableWidget(QWidget):
         self._tools_panels_hidden = not visible
         if hasattr(self, "sidebar_toggle_btn"):
             self.sidebar_toggle_btn.blockSignals(True)
-            self.sidebar_toggle_btn.setChecked(not visible)
+            self.sidebar_toggle_btn.setChecked(bool(visible))
             self.sidebar_toggle_btn.blockSignals(False)
         self._refresh_toolbar_chrome()
 
@@ -1724,6 +1863,32 @@ class PivotTableWidget(QWidget):
         button.setDefault(False)
         button.setCursor(Qt.PointingHandCursor)
 
+    def _configure_toolbar_icon_button(self, button: Optional[QPushButton], icon_name: str, tooltip: str, icon_size: int = 18):
+        if button is None:
+            return
+        self._configure_toolbar_button(button)
+        button.setProperty("toolbarMode", "icon")
+        button.setProperty("iconOnly", True)
+        button.setFocusPolicy(Qt.NoFocus)
+        button.setToolTip(tooltip)
+        button.setStatusTip(tooltip)
+        try:
+            button.setAccessibleName(tooltip)
+        except Exception:
+            pass
+        icon = svg_icon(icon_name)
+        if not icon.isNull():
+            button.setIcon(icon)
+        button.setIconSize(QSize(icon_size, icon_size))
+
+    def _create_toolbar_separator(self, parent: QWidget) -> QFrame:
+        separator = QFrame(parent)
+        separator.setObjectName("summaryToolbarSeparator")
+        separator.setFrameShape(QFrame.NoFrame)
+        separator.setFrameShadow(QFrame.Plain)
+        separator.setFixedWidth(1)
+        return separator
+
     def _polish_toolbar_button(self, button: Optional[QPushButton]):
         if button is None:
             return
@@ -1733,13 +1898,241 @@ class PivotTableWidget(QWidget):
             style.polish(button)
         button.update()
 
+    def _history_snapshot(self) -> Dict[str, Any]:
+        snapshot = dict(self.get_current_configuration() or {})
+        snapshot["_tools_panels_hidden"] = bool(self._tools_panels_hidden)
+        snapshot["_fields_panel_collapsed"] = bool(self._fields_panel_collapsed)
+        snapshot["_filters_panel_collapsed"] = bool(self._filters_panel_collapsed)
+        return snapshot
+
+    def _history_snapshot_key(self, snapshot: Optional[Dict[str, Any]]) -> str:
+        payload = dict(snapshot or {})
+        try:
+            return json.dumps(payload, sort_keys=True, ensure_ascii=True)
+        except Exception:
+            return str(payload)
+
+    def _reset_history_state(self):
+        self._history_undo = []
+        self._history_redo = []
+        self._history_current = self._history_snapshot()
+        self._update_undo_redo_buttons()
+
+    def _commit_history_if_changed(self):
+        if self._history_restoring or self._block_updates:
+            return
+        snapshot = self._history_snapshot()
+        if self._history_current is None:
+            self._history_current = snapshot
+            self._update_undo_redo_buttons()
+            return
+        if self._history_snapshot_key(snapshot) == self._history_snapshot_key(self._history_current):
+            self._update_undo_redo_buttons()
+            return
+        self._history_undo.append(dict(self._history_current))
+        if len(self._history_undo) > self._history_limit:
+            self._history_undo = self._history_undo[-self._history_limit :]
+        self._history_current = snapshot
+        self._history_redo = []
+        self._update_undo_redo_buttons()
+
+    def _apply_history_snapshot(self, snapshot: Optional[Dict[str, Any]]):
+        payload = dict(snapshot or {})
+        config = dict(payload)
+        tools_hidden = bool(config.pop("_tools_panels_hidden", self._tools_panels_hidden))
+        self._fields_panel_collapsed = bool(config.pop("_fields_panel_collapsed", self._fields_panel_collapsed))
+        self._filters_panel_collapsed = bool(config.pop("_filters_panel_collapsed", self._filters_panel_collapsed))
+        self._history_restoring = True
+        self._block_updates = True
+        try:
+            self._apply_saved_configuration(config)
+        finally:
+            self._block_updates = False
+            self._history_restoring = False
+        self._apply_tools_panels_visibility(not tools_hidden)
+        self.refresh()
+        self._history_current = self._history_snapshot()
+        self._update_undo_redo_buttons()
+
+    def _undo_last_action(self):
+        if not self._history_undo:
+            self._update_undo_redo_buttons()
+            return
+        current_snapshot = self._history_snapshot()
+        target_snapshot = dict(self._history_undo.pop())
+        self._history_redo.append(current_snapshot)
+        self._apply_history_snapshot(target_snapshot)
+
+    def _redo_last_action(self):
+        if not self._history_redo:
+            self._update_undo_redo_buttons()
+            return
+        current_snapshot = self._history_snapshot()
+        target_snapshot = dict(self._history_redo.pop())
+        self._history_undo.append(current_snapshot)
+        self._apply_history_snapshot(target_snapshot)
+
+    def _update_undo_redo_buttons(self):
+        has_data = self.raw_df is not None and not self.raw_df.empty
+        if hasattr(self, "undo_btn") and self.undo_btn is not None:
+            self.undo_btn.setEnabled(bool(has_data and self._history_undo))
+        if hasattr(self, "redo_btn") and self.redo_btn is not None:
+            self.redo_btn.setEnabled(bool(has_data and self._history_redo))
+
+    def _restore_default_summary_layout(self):
+        self._fields_panel_collapsed = False
+        self._filters_panel_collapsed = False
+        self._tools_fields_width = _TOOLS_FIELDS_DEFAULT_WIDTH
+        self._tools_builder_width = _TOOLS_FILTERS_DEFAULT_WIDTH
+        self._apply_tools_panels_visibility(True)
+
+    def _open_summary_settings_menu(self):
+        menu = QMenu(self)
+        fields_text = _rt("Expandir campos") if self._fields_panel_collapsed else _rt("Recolher campos")
+        filters_text = _rt("Expandir filtros") if self._filters_panel_collapsed else _rt("Recolher filtros")
+        fields_action = menu.addAction(fields_text)
+        filters_action = menu.addAction(filters_text)
+        menu.addSeparator()
+        restore_action = menu.addAction(_rt("Restaurar layout"))
+        chosen = menu.exec_(self.settings_btn.mapToGlobal(self.settings_btn.rect().bottomLeft()))
+        if chosen == fields_action:
+            self._toggle_fields_panel()
+        elif chosen == filters_action:
+            self._toggle_filters_panel()
+        elif chosen == restore_action:
+            self._restore_default_summary_layout()
+            self._commit_history_if_changed()
+
+    def _open_table_settings_dialog(self):
+        dialog = QDialog(self)
+        dialog.setObjectName("SummaryTableSettingsDialog")
+        dialog.setWindowTitle(_rt("Personalizar tabela"))
+        dialog.setModal(True)
+        dialog.resize(360, 250)
+        dialog.setStyleSheet(
+            """
+            QDialog#SummaryTableSettingsDialog {
+                background: #FFFFFF;
+                border: 1px solid #D6D9E0;
+                border-radius: 8px;
+            }
+            QLabel#SummarySettingsTitle {
+                color: #111827;
+                font-size: 15px;
+                font-weight: 500;
+            }
+            QLabel#SummarySettingsLabel,
+            QCheckBox#SummarySettingsCheck {
+                color: #111827;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QSpinBox#SummarySettingsInput {
+                min-height: 30px;
+                padding: 0 8px;
+                background: #FFFFFF;
+                border: 1px solid #D1D5DB;
+                border-radius: 6px;
+            }
+            QPushButton#SummarySettingsPrimary,
+            QPushButton#SummarySettingsSecondary {
+                min-height: 32px;
+                border-radius: 6px;
+                padding: 0 14px;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QPushButton#SummarySettingsPrimary {
+                color: #FFFFFF;
+                background: #111827;
+                border: 1px solid #111827;
+            }
+            QPushButton#SummarySettingsPrimary:hover {
+                background: #1F2937;
+            }
+            QPushButton#SummarySettingsSecondary {
+                color: #111827;
+                background: #FFFFFF;
+                border: 1px solid #D1D5DB;
+            }
+            QPushButton#SummarySettingsSecondary:hover {
+                background: #F9FAFB;
+                border-color: #9CA3AF;
+            }
+            """
+        )
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 14)
+        layout.setSpacing(12)
+
+        title = QLabel(_rt("Personalizar tabela"), dialog)
+        title.setObjectName("SummarySettingsTitle")
+        layout.addWidget(title, 0)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(10)
+
+        row_label = QLabel(_rt("Altura da linha"), dialog)
+        row_label.setObjectName("SummarySettingsLabel")
+        row_spin = QSpinBox(dialog)
+        row_spin.setObjectName("SummarySettingsInput")
+        row_spin.setRange(24, 52)
+        row_spin.setValue(int(getattr(self, "_table_row_height", 30) or 30))
+        row_spin.setButtonSymbols(QSpinBox.NoButtons)
+        grid.addWidget(row_label, 0, 0)
+        grid.addWidget(row_spin, 0, 1)
+
+        alternating_check = QCheckBox(_rt("Linhas alternadas"), dialog)
+        alternating_check.setObjectName("SummarySettingsCheck")
+        alternating_check.setChecked(bool(getattr(self, "_table_alternating_rows", True)))
+        grid.addWidget(alternating_check, 1, 0, 1, 2)
+
+        compact_check = QCheckBox(_rt("Cabeçalho compacto"), dialog)
+        compact_check.setObjectName("SummarySettingsCheck")
+        compact_check.setChecked(bool(getattr(self, "_table_header_compact", True)))
+        grid.addWidget(compact_check, 2, 0, 1, 2)
+        layout.addLayout(grid)
+        layout.addStretch(1)
+
+        actions = QHBoxLayout()
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(8)
+        actions.addStretch(1)
+        cancel_btn = QPushButton(_rt("Cancelar"), dialog)
+        cancel_btn.setObjectName("SummarySettingsSecondary")
+        apply_btn = QPushButton(_rt("Aplicar"), dialog)
+        apply_btn.setObjectName("SummarySettingsPrimary")
+        actions.addWidget(cancel_btn, 0)
+        actions.addWidget(apply_btn, 0)
+        layout.addLayout(actions)
+
+        cancel_btn.clicked.connect(dialog.reject)
+
+        def _apply():
+            self._table_row_height = int(row_spin.value())
+            self._table_alternating_rows = bool(alternating_check.isChecked())
+            self._table_header_compact = bool(compact_check.isChecked())
+            self._apply_table_preferences()
+            dialog.accept()
+
+        apply_btn.clicked.connect(_apply)
+        dialog.exec_()
+
     def _refresh_toolbar_chrome(self):
         icon_size = QSize(18, 18)
         search_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["search"], size=18)
-        clear_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["clear"], size=18)
+        mono_icon_colors = {
+            QIcon.Normal: "#111827",
+            QIcon.Active: "#111827",
+            QIcon.Selected: "#111827",
+            QIcon.Disabled: "#C7CDD6",
+        }
+        clear_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["clear"], size=18, color_map=mono_icon_colors)
         dashboard_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["dashboard"], size=18)
-        export_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["export"], size=18)
-        fields_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["fields"], size=18)
+        edit_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_edit"], size=18, color_map=mono_icon_colors)
         panel_field_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["fields"], size=14)
         panel_filter_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["filter_panel"], size=14)
 
@@ -1756,7 +2149,6 @@ class PivotTableWidget(QWidget):
 
         if hasattr(self, "clear_filters_btn") and self.clear_filters_btn is not None:
             self._configure_toolbar_button(self.clear_filters_btn)
-            self.clear_filters_btn.setText(_rt("Limpar"))
             self.clear_filters_btn.setToolTip(_rt("Limpar busca"))
             self.clear_filters_btn.setIcon(clear_icon)
             self.clear_filters_btn.setIconSize(icon_size)
@@ -1764,31 +2156,43 @@ class PivotTableWidget(QWidget):
 
         if hasattr(self, "export_btn") and self.export_btn is not None:
             self._configure_toolbar_button(self.export_btn)
-            self.export_btn.setText(_rt("Exportar"))
             self.export_btn.setToolTip(_rt("Exportar"))
-            self.export_btn.setIcon(export_icon)
-            self.export_btn.setIconSize(icon_size)
             self._polish_toolbar_button(self.export_btn)
+
+        if hasattr(self, "undo_btn") and self.undo_btn is not None:
+            self.undo_btn.setToolTip(_rt("Desfazer (Ctrl+Z)"))
+            self._polish_toolbar_button(self.undo_btn)
+
+        if hasattr(self, "redo_btn") and self.redo_btn is not None:
+            self.redo_btn.setToolTip(_rt("Refazer (Ctrl+Shift+Z)"))
+            self._polish_toolbar_button(self.redo_btn)
+
+        if hasattr(self, "import_sheet_btn") and self.import_sheet_btn is not None:
+            self.import_sheet_btn.setToolTip(_rt("Importar planilha"))
+            self._polish_toolbar_button(self.import_sheet_btn)
 
         if hasattr(self, "sidebar_toggle_btn") and self.sidebar_toggle_btn is not None:
             collapsed = bool(getattr(self, "_tools_panels_hidden", False))
             self._configure_toolbar_button(self.sidebar_toggle_btn)
-            self.sidebar_toggle_btn.setText(_rt("Painéis"))
             self.sidebar_toggle_btn.setToolTip(
                 _rt("Mostrar campos e filtros") if collapsed else _rt("Ocultar campos e filtros")
             )
-            self.sidebar_toggle_btn.setIcon(fields_icon)
+            self.sidebar_toggle_btn.setIcon(edit_icon)
             self.sidebar_toggle_btn.setIconSize(icon_size)
             self._polish_toolbar_button(self.sidebar_toggle_btn)
 
+        if hasattr(self, "settings_btn") and self.settings_btn is not None:
+            self.settings_btn.setToolTip(_rt("Personalizar tabela"))
+            self._polish_toolbar_button(self.settings_btn)
+
         if self._external_dashboard_button is not None:
             self._configure_toolbar_button(self._external_dashboard_button)
-            self._external_dashboard_button.setProperty("toolbarPrimary", True)
-            self._external_dashboard_button.setProperty("iconOnly", False)
-            self._external_dashboard_button.setMinimumHeight(32)
-            self._external_dashboard_button.setMinimumWidth(116)
-            self._external_dashboard_button.setMaximumWidth(136)
-            self._external_dashboard_button.setText(_rt("Dashboard"))
+            self._external_dashboard_button.setObjectName("summaryToolbarButton")
+            self._external_dashboard_button.setProperty("toolbarMode", "icon")
+            self._external_dashboard_button.setProperty("iconOnly", True)
+            self._external_dashboard_button.setProperty("toolbarPrimary", False)
+            self._external_dashboard_button.setFixedSize(30, 30)
+            self._external_dashboard_button.setText("")
             self._external_dashboard_button.setToolTip(_rt("Dashboard interativo"))
             self._external_dashboard_button.setIcon(dashboard_icon)
             self._external_dashboard_button.setIconSize(icon_size)
@@ -1802,6 +2206,14 @@ class PivotTableWidget(QWidget):
             self.fields_panel_icon.setPixmap(panel_field_icon.pixmap(14, 14))
         if hasattr(self, "filters_panel_icon"):
             self.filters_panel_icon.setPixmap(panel_filter_icon.pixmap(14, 14))
+        if hasattr(self, "fields_panel_title"):
+            self.fields_panel_title.setText(_rt("Campos"))
+        if hasattr(self, "fields_panel_collapsed_title"):
+            self.fields_panel_collapsed_title.setText(_rt("Campos"))
+        if hasattr(self, "filter_area_title"):
+            self.filter_area_title.setText(_rt("Filtros"))
+        if hasattr(self, "filters_panel_collapsed_title"):
+            self.filters_panel_collapsed_title.setText(_rt("Filtros"))
         self._apply_runtime_i18n()
 
     def _handle_splitter_moved(self, pos: int, index: int):
@@ -1938,7 +2350,14 @@ class PivotTableWidget(QWidget):
         menu = QMenu(self)
         excel_action = menu.addAction(_rt("Importar Excel (.xlsx / .xls)"))
         csv_action = menu.addAction(_rt("Importar CSV (.csv)"))
-        chosen = menu.exec_(self.source_cards["sheet"].mapToGlobal(self.source_cards["sheet"].rect().bottomLeft()))
+        anchor = getattr(self, "import_sheet_btn", None)
+        if anchor is None:
+            anchor = (getattr(self, "source_cards", {}) or {}).get("sheet")
+        if anchor is not None:
+            menu_pos = anchor.mapToGlobal(anchor.rect().bottomLeft())
+        else:
+            menu_pos = QCursor.pos()
+        chosen = menu.exec_(menu_pos)
         if chosen == excel_action and hasattr(panel, "_handle_excel"):
             panel._handle_excel()
         elif chosen == csv_action and hasattr(panel, "_handle_delimited_file"):
@@ -2288,20 +2707,57 @@ class PivotTableWidget(QWidget):
                 font-size: __FONT_BUTTON_PX__px;
                 font-weight: __FONT_WEIGHT_MEDIUM__;
             }
+            #summaryPivotRoot QFrame#summaryToolbarStrip {
+                background: #FFFFFF;
+                border: 1px solid #D6D9E0;
+                border-radius: 8px;
+            }
+            #summaryPivotRoot QFrame#summaryToolbarSeparator {
+                min-width: 1px;
+                max-width: 1px;
+                margin: 4px 6px;
+                background: #E5E7EB;
+            }
             #summaryPivotRoot QWidget#summaryToolbar QPushButton {
                 background: transparent;
                 color: #111827;
-                border: 1px solid transparent;
-                border-radius: 10px;
-                padding: 0 10px;
+                border: none;
+                border-radius: 6px;
+                padding: 0 4px;
                 font-size: __FONT_BUTTON_PX__px;
                 font-weight: __FONT_WEIGHT_REGULAR__;
                 text-align: left;
             }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton:hover {
-                background: rgba(17, 24, 39, 0.045);
-                border-color: rgba(17, 24, 39, 0.08);
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton {
+                min-width: 30px;
+                max-width: 30px;
+                min-height: 30px;
+                max-height: 30px;
+                padding: 0px;
+            }
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton:checked {
+                background: #E5E7EB;
                 color: #111827;
+            }
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton:disabled {
+                color: #C7CDD6;
+            }
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton:hover {
+                background: #F3F4F6;
+                color: #111827;
+            }
+            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch {
+                min-height: 30px;
+                padding: 0 9px;
+                background: transparent;
+                border: none;
+                border-radius: 7px;
+                color: #111827;
+            }
+            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch:hover,
+            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch:focus {
+                background: #F9FAFB;
+                border: none;
             }
             #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryPrimaryButton[toolbarPrimary="true"] {
                 background: transparent;
@@ -2643,19 +3099,29 @@ class PivotTableWidget(QWidget):
             }
             #summaryPivotRoot QFrame#summarySidebarFooter QPushButton#summaryPrimaryButton,
             #summaryPivotRoot QFrame#summaryFiltersFooter QPushButton#summaryPrimaryButton {
-                background: #1f2937;
-                color: #ffffff;
-                border: 1px solid #111827;
-                border-radius: 8px;
-                padding: 0 14px;
-                min-height: 36px;
+                background: #FFFFFF;
+                color: #111827;
+                border: 1px solid #D1D5DB;
+                border-radius: 7px;
+                padding: 0 12px;
+                min-height: 34px;
                 font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
+                font-weight: __FONT_WEIGHT_REGULAR__;
             }
             #summaryPivotRoot QFrame#summarySidebarFooter QPushButton#summaryPrimaryButton:hover,
             #summaryPivotRoot QFrame#summaryFiltersFooter QPushButton#summaryPrimaryButton:hover {
-                background: #111827;
-                border-color: #0b1220;
+                background: #F9FAFB;
+                border-color: #9CA3AF;
+            }
+            #summaryPivotRoot QFrame#summaryFiltersFooter {
+                background: #FFFFFF;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 8px;
+            }
+            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar:vertical {
+                width: 0px;
+                background: transparent;
+                border: none;
             }
             #summaryPivotRoot QFrame#summaryTableFooter {
                 background: transparent;
@@ -2787,6 +3253,7 @@ class PivotTableWidget(QWidget):
 
         self._set_content_mode(True)
         self.refresh()
+        self._reset_history_state()
 
     def _update_meta_label(self, metadata: Dict, filter_desc: Optional[str]):
         self.meta_label.setText("")
@@ -3173,6 +3640,7 @@ class PivotTableWidget(QWidget):
             self.table_stack.setCurrentWidget(self.empty_state_frame)
             self._connect_selection_summary()
             self.proxy_model.invalidate()
+            self._apply_table_preferences()
             self._update_status_label()
             self._update_selection_summary()
             QgsMessageLog.logMessage(
@@ -3242,6 +3710,7 @@ class PivotTableWidget(QWidget):
         self._connect_selection_summary()
         self.proxy_model.invalidate()
         self.table_view.resizeColumnsToContents()
+        self._apply_table_preferences()
         self._update_status_label()
         self._update_selection_summary()
         QgsMessageLog.logMessage(
@@ -3303,6 +3772,7 @@ class PivotTableWidget(QWidget):
             auto_on = self.auto_update_check.isChecked()
         if auto_on:
             self.refresh()
+        self._commit_history_if_changed()
 
     def _clear_filters(self):
         self.search_input.blockSignals(True)
@@ -3637,6 +4107,26 @@ class PivotTableWidget(QWidget):
             self.table_view.setAlternatingRowColors(True)
             self.table_view.verticalHeader().setDefaultSectionSize(30)
             self.table_view.horizontalHeader().setMinimumHeight(34)
+        except Exception:
+            pass
+        self._apply_table_preferences()
+
+    def _apply_table_preferences(self):
+        table = getattr(self, "table_view", None)
+        if table is None:
+            return
+        try:
+            row_height = int(getattr(self, "_table_row_height", 30) or 30)
+        except Exception:
+            row_height = 30
+        row_height = max(24, min(52, row_height))
+        try:
+            table.setAlternatingRowColors(bool(getattr(self, "_table_alternating_rows", True)))
+            table.verticalHeader().setDefaultSectionSize(row_height)
+            header_height = 30 if bool(getattr(self, "_table_header_compact", True)) else 38
+            table.horizontalHeader().setMinimumHeight(header_height)
+            table.horizontalHeader().setDefaultSectionSize(max(96, int(table.horizontalHeader().defaultSectionSize() or 96)))
+            table.viewport().update()
         except Exception:
             pass
 
@@ -4149,36 +4639,34 @@ class PivotTableWidget(QWidget):
         if checkbox.parent() is not self:
             checkbox.setParent(self)
 
-        if self.toolbar_layout is not None:
-            # Remove any previously injected checkbox
+        if self.toolbar_strip_layout is not None:
             if self._external_auto_checkbox is not None:
-                self.toolbar_layout.removeWidget(self._external_auto_checkbox)
+                self.toolbar_strip_layout.removeWidget(self._external_auto_checkbox)
                 self._external_auto_checkbox.setVisible(False)
             checkbox.setObjectName("summaryAutoUpdateCheck")
             checkbox.setMinimumHeight(28)
             checkbox.setContentsMargins(0, 0, 0, 0)
-            self.toolbar_layout.addWidget(checkbox)
+            self.toolbar_strip_layout.addSpacing(10)
+            self.toolbar_strip_layout.addWidget(checkbox)
             checkbox.setVisible(True)
         self.auto_update_check = checkbox
         self._external_auto_checkbox = checkbox
         self._refresh_toolbar_chrome()
 
     def add_dashboard_button(self, button: QPushButton):
-        """Insert the dashboard trigger beside the export controls."""
-        if button is None or self.toolbar_layout is None:
+        """Insert the dashboard trigger into the icon toolbar."""
+        if button is None or self.toolbar_strip_layout is None:
             return
 
         if button.parent() is not self:
             button.setParent(self)
-        button.setMinimumHeight(32)
-        button.setMinimumWidth(116)
-        button.setMaximumWidth(136)
-        button.setObjectName("summaryPrimaryButton")
-
-        # Position immediately before the export button if possible
-        target_index = self.toolbar_layout.indexOf(self.export_btn)
-        insert_index = target_index if target_index != -1 else self.toolbar_layout.count()
-        self.toolbar_layout.insertWidget(insert_index, button)
+        button.setObjectName("summaryToolbarButton")
+        button.setProperty("toolbarMode", "icon")
+        button.setProperty("iconOnly", True)
+        button.setFixedSize(30, 30)
+        target_index = self.toolbar_strip_layout.indexOf(self.edit_mode_btn)
+        insert_index = target_index if target_index != -1 else self.toolbar_strip_layout.count()
+        self.toolbar_strip_layout.insertWidget(insert_index, button)
         button.setVisible(True)
         self._external_dashboard_button = button
         self._refresh_toolbar_chrome()
@@ -4227,11 +4715,13 @@ class PivotTableWidget(QWidget):
         self.table_model = QStandardItemModel(self)
         self.proxy_model.setSourceModel(self.table_model)
         self.table_view.setModel(self.proxy_model)
+        self._apply_table_preferences()
         self.table_stack.setCurrentWidget(self.empty_state_frame)
         self.initial_state_title.setText(title)
         self.initial_state_text.setText(text)
         self._sync_value_area_from_combo()
         self._update_context_summary()
+        self._reset_history_state()
         self._set_content_mode(False)
         self._apply_runtime_i18n()
 
