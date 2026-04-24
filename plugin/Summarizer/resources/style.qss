@@ -359,8 +359,8 @@ QDialogButtonBox QPushButton {
 
 QMessageBox QPushButton:default,
 QDialogButtonBox QPushButton:default {
-    background-color: #111827;
-    border: 1px solid #111827;
+    background-color: #252B33;
+    border: 1px solid #252B33;
     color: #FFFFFF;
     font-weight: 500;
 }
@@ -373,8 +373,8 @@ QDialogButtonBox QPushButton:hover {
 
 QMessageBox QPushButton:default:hover,
 QDialogButtonBox QPushButton:default:hover {
-    background-color: #1F2937;
-    border-color: #1F2937;
+    background-color: #2E3640;
+    border-color: #2E3640;
 }
 
 QMessageBox QPushButton:pressed,

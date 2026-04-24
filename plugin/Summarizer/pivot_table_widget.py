@@ -131,10 +131,11 @@ _SIDEBAR_COLLAPSED_WIDTH = 52
 _SIDEBAR_MIN_WIDTH = 304
 _SIDEBAR_DEFAULT_WIDTH = 320
 _SIDEBAR_MAX_WIDTH = 420
+_INK_COLOR = "#252B33"
 _TOOLS_PANEL_COLLAPSED_WIDTH = 40
 _TOOLS_FIELDS_MIN_WIDTH = 120
-_TOOLS_FIELDS_DEFAULT_WIDTH = 132
-_TOOLS_FIELDS_MAX_WIDTH = 260
+_TOOLS_FIELDS_DEFAULT_WIDTH = 148
+_TOOLS_FIELDS_MAX_WIDTH = 320
 _TOOLS_FILTERS_MIN_WIDTH = 164
 _TOOLS_FILTERS_DEFAULT_WIDTH = 188
 _TOOLS_FILTERS_MAX_WIDTH = 280
@@ -221,8 +222,8 @@ def _svg_icon_from_template(svg_template: str, size: int = 16, color_map: Option
     icon = QIcon()
     mode_colors = color_map or {
         QIcon.Normal: "#6b7280",
-        QIcon.Active: "#111827",
-        QIcon.Selected: "#111827",
+        QIcon.Active: _INK_COLOR,
+        QIcon.Selected: _INK_COLOR,
         QIcon.Disabled: "#c7cdd6",
     }
     for mode, color in mode_colors.items():
@@ -677,10 +678,10 @@ class _SummarySourceCard(QToolButton):
 
 
 class _PivotFieldListDelegate(QStyledItemDelegate):
-    _TEXT_COLOR = QColor("#111827")
+    _TEXT_COLOR = QColor(_INK_COLOR)
     _TEXT_SELECTED_COLOR = QColor("#1d4ed8")
     _TEXT_SELECTED_BG = QColor("#dbeafe")
-    _NUMERIC_COLOR = QColor("#111827")
+    _NUMERIC_COLOR = QColor(_INK_COLOR)
     _NUMERIC_SELECTED_COLOR = QColor("#9333ea")
     _NUMERIC_SELECTED_BG = QColor("#f3e8ff")
 
@@ -963,9 +964,9 @@ class PivotTableWidget(QWidget):
         self._configure_toolbar_icon_button(self.edit_mode_btn, "Walker-Edit.svg", _rt("Mostrar ou ocultar camada e filtros"))
         self._configure_toolbar_icon_button(self.settings_btn, "Walker-Settings.svg", _rt("Personalizar tabela"))
         mono_icon_colors = {
-            QIcon.Normal: "#111827",
-            QIcon.Active: "#111827",
-            QIcon.Selected: "#111827",
+            QIcon.Normal: _INK_COLOR,
+            QIcon.Active: _INK_COLOR,
+            QIcon.Selected: _INK_COLOR,
             QIcon.Disabled: "#C7CDD6",
         }
         self.import_sheet_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_sheet"], size=18, color_map=mono_icon_colors))
@@ -2124,9 +2125,9 @@ class PivotTableWidget(QWidget):
         icon_size = QSize(18, 18)
         search_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["search"], size=18)
         mono_icon_colors = {
-            QIcon.Normal: "#111827",
-            QIcon.Active: "#111827",
-            QIcon.Selected: "#111827",
+            QIcon.Normal: _INK_COLOR,
+            QIcon.Active: _INK_COLOR,
+            QIcon.Selected: _INK_COLOR,
             QIcon.Disabled: "#C7CDD6",
         }
         clear_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["clear"], size=18, color_map=mono_icon_colors)
@@ -3171,6 +3172,7 @@ class PivotTableWidget(QWidget):
             """
         for key, value in tokens.items():
             qss = qss.replace(key, value)
+        qss = qss.replace("#111827", _INK_COLOR)
         self.setStyleSheet(qss)
         self._enforce_filters_surface_backgrounds()
 
@@ -3379,6 +3381,7 @@ class PivotTableWidget(QWidget):
         self.value_field_combo.blockSignals(False)
         self._sync_value_area_from_combo()
         self._update_context_summary()
+        QTimer.singleShot(0, self._sync_fields_panel_width_to_content)
 
     def _configuration_key_from_metadata(self, metadata: Optional[Dict[str, Any]]) -> str:
         metadata = dict(metadata or {})
@@ -4150,6 +4153,56 @@ class PivotTableWidget(QWidget):
             widget.style().polish(widget)
             title.style().unpolish(title)
             title.style().polish(title)
+
+    def _desired_fields_panel_width(self) -> int:
+        width = _TOOLS_FIELDS_DEFAULT_WIDTH
+        try:
+            metrics = QFontMetrics(self.fields_list.font())
+            widest_text = 0
+            for index in range(self.fields_list.count()):
+                item = self.fields_list.item(index)
+                if item is None or item.data(Qt.UserRole) == "__placeholder__":
+                    continue
+                widest_text = max(widest_text, metrics.horizontalAdvance(str(item.text() or "")))
+            icon_width = int(self.fields_list.iconSize().width() or 14)
+            width = max(width, widest_text + icon_width + 54)
+        except Exception:
+            pass
+        for candidate in (
+            getattr(self, "fields_panel_header", None),
+            getattr(self, "fields_context_card", None),
+        ):
+            if candidate is None:
+                continue
+            try:
+                width = max(width, int(candidate.sizeHint().width() or 0))
+            except Exception:
+                pass
+        return max(_TOOLS_FIELDS_MIN_WIDTH, min(_TOOLS_FIELDS_MAX_WIDTH, width))
+
+    def _sync_fields_panel_width_to_content(self):
+        desired_width = self._desired_fields_panel_width()
+        self._tools_fields_width = desired_width
+        if getattr(self, "_tools_panels_hidden", False) or getattr(self, "_fields_panel_collapsed", False):
+            return
+        if not hasattr(self, "analytics_splitter"):
+            return
+        sizes = self.analytics_splitter.sizes()
+        if len(sizes) < 3:
+            return
+        total_width = sum(size for size in sizes if size > 0)
+        if total_width <= 0:
+            total_width = max(int(self.analytics_splitter.width() or 0), 1040)
+        builder_width = (
+            _TOOLS_PANEL_COLLAPSED_WIDTH
+            if getattr(self, "_filters_panel_collapsed", False)
+            else max(
+                _TOOLS_FILTERS_MIN_WIDTH,
+                int(getattr(self, "_tools_builder_width", _TOOLS_FILTERS_DEFAULT_WIDTH) or _TOOLS_FILTERS_DEFAULT_WIDTH),
+            )
+        )
+        table_width = max(1, total_width - desired_width - builder_width)
+        self.analytics_splitter.setSizes([desired_width, builder_width, table_width])
 
     def _placeholder_item(self) -> QListWidgetItem:
         item = QListWidgetItem(_rt("Nenhum campo"))
