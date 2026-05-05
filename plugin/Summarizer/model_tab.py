@@ -71,8 +71,8 @@ class ModelTab(QWidget):
         self._builder_panel_open = False
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(6)
+        root.setContentsMargins(4, 2, 4, 3)
+        root.setSpacing(4)
 
         header = QFrame(self)
         header.setObjectName("ModelHeader")
