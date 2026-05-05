@@ -317,7 +317,7 @@ class SummarizerVisualWidget(QWidget):
             return
         color_value = chosen.data()
         if chosen == custom:
-            color = QColorDialog.getColor(QColor(self.definition.opcoes.get("color") if self.definition.opcoes else "#4472C4"), self, "Escolher cor da sÃ©rie")
+            color = QColorDialog.getColor(QColor(self.definition.opcoes.get("color") if self.definition.opcoes else "#4472C4"), self, "Escolher cor da série")
             if color.isValid():
                 color_value = color.name()
         if color_value:
@@ -328,7 +328,7 @@ class SummarizerVisualWidget(QWidget):
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-        color_action = menu.addAction("Cor da sÃ©rie...")
+        color_action = menu.addAction("Cor da série...")
         chosen = menu.exec_(event.globalPos())
         if chosen == color_action:
             self._pick_series_color()

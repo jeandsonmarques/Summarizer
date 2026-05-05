@@ -61,13 +61,19 @@ Summarizer/
 ## O que o script faz
 
 1. valida `metadata.txt`;
-2. valida o `icon.png` e o caminho do icone referenciado no metadata;
+2. valida o `icon.svg` referenciado no metadata e o `icon.png` usado como ativo auxiliar do pacote;
 3. roda `compileall` em `plugin/Summarizer` e `tests`;
 4. limpa caches e artefatos gerados;
 5. monta o staging fora do repositorio;
 6. cria o ZIP final em `Summarizer_release`;
 7. verifica a estrutura interna do ZIP;
 8. remove o staging temporario ao final.
+
+## Icones
+
+O `metadata.txt` aponta para `resources/icon.svg`, que e o icone principal usado pelo QGIS na instalacao do plugin.
+O `scripts/build_release.ps1` tambem valida `resources/icon.png` porque o pacote de release mantem esse ativo auxiliar disponivel para o empacotamento.
+Os dois arquivos sao mantidos de proposito para nao quebrar o carregamento do plugin nem o fluxo de distribuicao.
 
 ## Checklist rapido
 

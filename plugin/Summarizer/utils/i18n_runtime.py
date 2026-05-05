@@ -1036,6 +1036,7 @@ def current_locale() -> str:
 
 
 def _looks_like_mojibake(text: str) -> bool:
+    # Intencional: estes marcadores detectam texto corrompido antes da tentativa de reparo.
     source = str(text or "")
     return any(marker in source for marker in ("Ã", "Â", "�", "ï¿½"))
 

@@ -153,6 +153,7 @@ $stagePluginRoot = Join-Path $stageRoot $pluginFolderName
 $zipPath = Join-Path $releaseDir "Summarizer-qgis-release.zip"
 
 Assert-FileExists -Path (Join-Path $sourcePlugin "metadata.txt") -Message "metadata.txt not found in $sourcePlugin."
+# Keep the raster companion alongside the SVG metadata icon so packaging stays compatible with the release flow.
 Assert-FileExists -Path (Join-Path $sourcePlugin "resources\icon.png") -Message "icon.png not found in $sourcePlugin\resources."
 
 $metadataText = Get-Content -LiteralPath (Join-Path $sourcePlugin "metadata.txt") -Raw

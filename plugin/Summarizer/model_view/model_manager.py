@@ -153,7 +153,7 @@ class ModelManager:
                 log_exception("falha opcional ignorada")
 
     def _place_only_new_tables(self, new_items: Optional[List[TableCardItem]] = None):
-        """Posiciona apenas itens explicitamente informados; nÃ£o altera cartÃµes existentes."""
+        """Posiciona apenas itens explicitamente informados; não altera cartões existentes."""
         if not new_items:
             return
         state = self._saved_state if isinstance(self._saved_state, dict) else {}
@@ -165,7 +165,7 @@ class ModelManager:
             name = getattr(item, "table_name", "")
             pos_info = saved_positions.get(name) if isinstance(saved_positions, dict) else None
             if isinstance(pos_info, dict) and "x" in pos_info and "y" in pos_info:
-                continue  # jÃ¡ tem posiÃ§Ã£o salva; nÃ£o mover
+                continue  # já tem posição salva; não mover
             pos = self._suggest_position_for_new_table(item, existing_items=anchored_items)
             item.setPos(pos)
             self._log(f"_place_only_new_tables posicionou '{name}' em ({pos.x():.1f}, {pos.y():.1f})")
@@ -1195,7 +1195,7 @@ class ModelManager:
         return {"name": str(name), "layer_id": str(name), "fields": fields}
 
     def _create_memory_layer_from_schema(self, table: Dict) -> Optional[QgsVectorLayer]:
-        """Cria camada de memÃ³ria vazia com campos do preset."""
+        """Cria camada de memória vazia com campos do preset."""
         name = table.get("name") or "Tabela"
         fields_def = table.get("fields") or []
         layer = QgsVectorLayer("None", name, "memory")
@@ -1713,7 +1713,7 @@ class ModelManager:
         self.save_layout_state()
 
     def auto_layout(self, force: bool = True):
-        # Mantido por compatibilidade; sempre forÃ§a novo layout.
+        # Mantido por compatibilidade; sempre força novo layout.
         self.auto_layout_model(ignore_saved=True, reason="auto_button")
 
     def handle_table_moved(self, table_item: TableCardItem):
@@ -1793,7 +1793,7 @@ class ModelManager:
         if create_empty_layers:
             for table in tables_data:
                 name = table.get("name")
-                # evita duplicar se jÃ¡ existir camada com mesmo nome
+                # evita duplicar se já existir camada com mesmo nome
                 exists = any(
                     isinstance(layer, QgsVectorLayer) and layer.name() == name
                     for layer in QgsProject.instance().mapLayers().values()
