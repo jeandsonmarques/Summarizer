@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
+from .report_logging import log_warning
+
 
 @dataclass
 class FieldSchema:
@@ -32,9 +34,9 @@ class LayerSchema:
     search_text: str = ""
 
     def field_by_name(self, field_name: str) -> Optional[FieldSchema]:
-        for field in self.fields:
-            if field.name == field_name:
-                return field
+        for field_item in self.fields:
+            if field_item.name == field_name:
+                return field_item
         return None
 
     @property
@@ -255,12 +257,17 @@ class InterpretationResult:
             "status": self.status,
             "message": self.message,
             "plan": self.plan.to_dict() if self.plan is not None else {},
-            "options": [item.to_overrides() | {"label": item.label, "reason": item.reason} for item in self.options],
+            "options": [
+                item.to_overrides() | {"label": item.label, "reason": item.reason}
+                for item in self.options
+            ],
             "confidence": self.confidence,
             "source": self.source,
             "needs_confirmation": self.needs_confirmation,
             "clarification_question": self.clarification_question,
-            "candidate_interpretations": [item.to_dict() for item in self.candidate_interpretations],
+            "candidate_interpretations": [
+                item.to_dict() for item in self.candidate_interpretations
+            ],
         }
 
 
@@ -314,9 +321,13 @@ class ChartPayload:
             try:
                 normalized_values.append(float(value))
             except Exception:
+                log_warning("[Relatorios] valor numerico invalido no resultado; usando 0.0")
                 normalized_values.append(0.0)
 
-        normalized_raw_categories = list(raw_categories) if raw_categories is not None else list(categories or [])
+        if raw_categories is not None:
+            normalized_raw_categories = list(raw_categories)
+        else:
+            normalized_raw_categories = list(categories or [])
         normalized_feature_groups = [list(group or []) for group in (category_feature_ids or [])]
         while len(normalized_feature_groups) < len(normalized_categories):
             normalized_feature_groups.append([])

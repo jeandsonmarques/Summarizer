@@ -809,7 +809,7 @@ class OllamaFallbackService:
         text = str(value).strip().lower()
         if text in {"1", "true", "yes", "sim", "on"}:
             return True
-        if text in {"0", "false", "no", "nao", "nÃ£o", "off"}:
+        if text in {"0", "false", "no", "nao", "não", "off"}:
             return False
         return default
 
