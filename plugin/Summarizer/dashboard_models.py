@@ -6,7 +6,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from .report_view.chart_factory import ChartVisualState
+from .report_view.charts import ChartVisualState
+from .report_view.report_logging import log_warning
 from .report_view.result_models import ChartPayload
 
 
@@ -106,6 +107,7 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
     try:
         font_scale = float(payload.get("font_scale") or 1.0)
     except Exception:
+        log_warning("[Dashboard] valor invalido de font_scale ao restaurar estado; usando 1.0")
         font_scale = 1.0
     return ChartVisualState(
         chart_type=str(payload.get("chart_type") or "bar"),

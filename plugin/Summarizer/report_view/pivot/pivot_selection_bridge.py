@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List
 
 from .pivot_models import PivotCell
+from ..report_logging import log_warning
 
 
 class PivotSelectionBridge:
@@ -20,6 +21,7 @@ class PivotSelectionBridge:
                 if canvas is not None and hasattr(canvas, "zoomToSelected"):
                     canvas.zoomToSelected(layer)
         except Exception:
+            log_warning("[Relatorios] falha ao selecionar feicoes no mapa; mantendo a interface responsiva")
             return
 
     def select_cell(self, layer, cell: PivotCell, zoom: bool = True):

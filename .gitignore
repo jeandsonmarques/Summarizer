@@ -21,6 +21,13 @@ build/
 _release/
 _release_stage/
 
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.temp
+*~
+
 # OS files
 .DS_Store
 Thumbs.db

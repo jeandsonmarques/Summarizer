@@ -9,6 +9,7 @@ from qgis.core import QgsFeatureRequest, QgsProject, QgsVectorLayer, QgsWkbTypes
 from .domain_packs import ProjectPack, aliases_for_target, project_pack_signature
 from .field_role_resolver import FieldRoleResolver
 from .report_logging import log_info
+from .report_logging import log_warning
 from .result_models import FieldSchema, FilterSpec, LayerSchema, ProjectSchema
 from .text_utils import contains_hint_tokens, normalize_compact, normalize_text, tokenize_text
 
@@ -1022,6 +1023,7 @@ class LayerSchemaService:
                 cleaned = cleaned.replace(".", "", cleaned.count(".") - 1)
             return float(cleaned)
         except Exception:
+            log_warning("[Relatorios] valor numerico invalido no schema da camada; ignorando campo")
             return None
 
     def _render_profile_value(self, value, field_kind: str) -> str:

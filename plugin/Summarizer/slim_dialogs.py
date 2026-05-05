@@ -26,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
 
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 
+from .utils.logging_utils import log_exception
 SLIM_DIALOG_STYLE = """
 QDialog#SlimDialog {
     background-color: #FFFFFF;
@@ -346,7 +347,7 @@ class SlimPopoverDialog(QDialog):
                 int(parent_center.y() - (self.height() / 2)),
             )
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
 
 class SlimTextInputDialog(SlimPopoverDialog):

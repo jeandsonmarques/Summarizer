@@ -5,8 +5,8 @@ import os
 import uuid
 from typing import Dict, List, Optional
 
-from qgis.PyQt.QtCore import QEasingCurve, QPoint, QRectF, QSize, Qt, QVariantAnimation, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QIcon, QKeySequence, QPainter, QPen
+from qgis.PyQt.QtCore import QSize, Qt
+from qgis.PyQt.QtGui import QColor, QKeySequence
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -36,278 +36,14 @@ from .dashboard_canvas import DashboardCanvas
 from .dashboard_models import DashboardChartBinding, DashboardChartItem, DashboardPage, DashboardProject
 from .dashboard_page_widget import DashboardPageWidget
 from .dashboard_project_store import DashboardProjectStore, PROJECT_EXTENSION
-from .report_view.chart_factory import ChartVisualState
+from .report_view.charts import ChartVisualState
 from .report_view.result_models import ChartPayload
+from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelModeToggle, _ModelRecentCard
 from .slim_dialogs import slim_message, slim_question
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.resources import svg_icon
-
-
-class _ModelCardAction(QFrame):
-    clicked = pyqtSignal()
-
-    def __init__(self, title: str, description: str, icon_name: str = "", parent=None):
-        super().__init__(parent)
-        self.setObjectName("ModelActionCard")
-        self.setCursor(Qt.PointingHandCursor)
-        self._description = str(description or "")
-        self._icon_name = str(icon_name or "")
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setMinimumHeight(132)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(10)
-
-        top_row = QHBoxLayout()
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(10)
-
-        self.icon_chip = QLabel("", self)
-        self.icon_chip.setObjectName("ModelActionCardIcon")
-        self.icon_chip.setFixedSize(34, 34)
-        icon = svg_icon(self._icon_name) if self._icon_name else QIcon()
-        if not icon.isNull():
-            self.icon_chip.setPixmap(icon.pixmap(18, 18))
-            self.icon_chip.setAlignment(Qt.AlignCenter)
-        top_row.addWidget(self.icon_chip, 0)
-        top_row.addStretch(1)
-        layout.addLayout(top_row)
-
-        self.title_label = QLabel(title, self)
-        self.title_label.setObjectName("ModelActionCardTitle")
-        self.title_label.setWordWrap(True)
-        layout.addWidget(self.title_label)
-
-        self.description_label = QLabel(description, self)
-        self.description_label.setObjectName("ModelActionCardText")
-        self.description_label.setWordWrap(True)
-        self.description_label.setVisible(False)
-        layout.addWidget(self.description_label)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit()
-            try:
-                event.accept()
-            except Exception:
-                pass
-            return
-        super().mouseReleaseEvent(event)
-
-    def enterEvent(self, event):
-        self.description_label.setVisible(True)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.description_label.setVisible(False)
-        super().leaveEvent(event)
-
-
-class _ModelRecentCard(QFrame):
-    clicked = pyqtSignal()
-
-    def __init__(self, title: str, description: str, parent=None):
-        super().__init__(parent)
-        self.setObjectName("ModelRecentCard")
-        self.setCursor(Qt.PointingHandCursor)
-        self.setAttribute(Qt.WA_StyledBackground, True)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(6)
-
-        title_label = QLabel(title, self)
-        title_label.setObjectName("ModelRecentCardTitle")
-        title_label.setWordWrap(True)
-        layout.addWidget(title_label)
-
-        text_label = QLabel(description, self)
-        text_label.setObjectName("ModelRecentCardText")
-        text_label.setWordWrap(True)
-        layout.addWidget(text_label)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit()
-            try:
-                event.accept()
-            except Exception:
-                pass
-            return
-        super().mouseReleaseEvent(event)
-
-
-class _DialogDragHandle(QFrame):
-    def __init__(self, target: QDialog, parent=None):
-        super().__init__(parent)
-        self._target = target
-        self._drag_active = False
-        self._drag_offset = QPoint()
-        self.setCursor(Qt.OpenHandCursor)
-
-    @staticmethod
-    def _global_pos(event) -> QPoint:
-        try:
-            pos = event.globalPosition()
-            return QPoint(int(pos.x()), int(pos.y()))
-        except Exception:
-            try:
-                return event.globalPos()
-            except Exception:
-                return QPoint()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._drag_active = True
-            self._drag_offset = self._global_pos(event) - self._target.frameGeometry().topLeft()
-            self.setCursor(Qt.ClosedHandCursor)
-            try:
-                event.accept()
-            except Exception:
-                pass
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._drag_active:
-            self._target.move(self._global_pos(event) - self._drag_offset)
-            try:
-                event.accept()
-            except Exception:
-                pass
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._drag_active = False
-            self.setCursor(Qt.OpenHandCursor)
-            try:
-                event.accept()
-            except Exception:
-                pass
-            return
-        super().mouseReleaseEvent(event)
-
-
-class _ModelModeToggle(QWidget):
-    toggled = pyqtSignal(bool)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._checked = True
-        self._thumb_pos = 1.0
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.StrongFocus)
-        self.setFixedSize(34, 18)
-
-        self._animation = QVariantAnimation(self)
-        self._animation.setDuration(170)
-        self._animation.setEasingCurve(QEasingCurve.OutCubic)
-        self._animation.valueChanged.connect(self._handle_animation_step)
-
-    @staticmethod
-    def _event_pos(event) -> QPoint:
-        try:
-            pos = event.position()
-            return QPoint(int(pos.x()), int(pos.y()))
-        except Exception:
-            try:
-                return event.pos()
-            except Exception:
-                return QPoint()
-
-    def _handle_animation_step(self, value):
-        try:
-            self._thumb_pos = float(value)
-        except Exception:
-            self._thumb_pos = 1.0 if self._checked else 0.0
-        self.update()
-
-    def isChecked(self) -> bool:
-        return bool(self._checked)
-
-    def setChecked(self, checked: bool, animated: bool = True):
-        checked = bool(checked)
-        changed = checked != self._checked
-        self._checked = checked
-        target = 1.0 if checked else 0.0
-        if animated and self.isVisible():
-            self._animation.stop()
-            self._animation.setStartValue(float(self._thumb_pos))
-            self._animation.setEndValue(target)
-            self._animation.start()
-        else:
-            self._thumb_pos = target
-            self.update()
-        if changed and not self.signalsBlocked():
-            self.toggled.emit(self._checked)
-
-    def _toggle(self):
-        self.setChecked(not self._checked, animated=True)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton and self.rect().contains(self._event_pos(event)):
-            self._toggle()
-            try:
-                event.accept()
-            except Exception:
-                pass
-            return
-        super().mouseReleaseEvent(event)
-
-    def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
-            self._toggle()
-            try:
-                event.accept()
-            except Exception:
-                pass
-            return
-        super().keyPressEvent(event)
-
-    def paintEvent(self, event):
-        del event
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        try:
-            painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
-        except Exception:
-            pass
-        painter.setPen(Qt.NoPen)
-        track_rect = QRectF(0.5, 0.5, float(max(1, self.width() - 1)), float(max(1, self.height() - 1)))
-        radius = track_rect.height() / 2.0
-
-        track_on = QColor("#111827")
-        track_off = QColor("#D1D5DB")
-        border_on = QColor("#111827")
-        border_off = QColor("#C7CDD6")
-        if not self.isEnabled():
-            track_on = QColor("#A3AAB5")
-            track_off = QColor("#E5E7EB")
-            border_on = QColor("#A3AAB5")
-            border_off = QColor("#D1D5DB")
-
-        active_track = track_on if self._checked else track_off
-        active_border = border_on if self._checked else border_off
-        if self.underMouse() and self.isEnabled() and not self._checked:
-            active_track = QColor("#C7CDD6")
-
-        painter.setPen(QPen(active_border, 1.0))
-        painter.setBrush(active_track)
-        painter.drawRoundedRect(track_rect, radius, radius)
-
-        thumb_margin = 2.0
-        thumb_diameter = track_rect.height() - (thumb_margin * 2.0)
-        thumb_travel = max(0.0, track_rect.width() - thumb_diameter - (thumb_margin * 2.0))
-        thumb_x = track_rect.left() + thumb_margin + (thumb_travel * float(self._thumb_pos))
-        thumb_y = track_rect.top() + thumb_margin
-
-        painter.setPen(QPen(QColor("#E5E7EB"), 0.8))
-        painter.setBrush(QColor("#FFFFFF"))
-        painter.drawEllipse(QRectF(thumb_x, thumb_y, thumb_diameter, thumb_diameter))
+from .utils.logging_utils import log_exception
 
 
 class ModelTab(QWidget):
@@ -916,7 +652,7 @@ class ModelTab(QWidget):
             project.layersRemoved.connect(lambda *_: self._refresh_builder_layers())
             project.layerWillBeRemoved.connect(lambda *_: self._refresh_builder_layers())
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _build_chart_builder_panel(self, parent: QWidget) -> QFrame:
         panel = QFrame(parent)
@@ -1009,7 +745,7 @@ class ModelTab(QWidget):
         try:
             return bool(field_def.isNumeric())
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
         return any(token in type_name for token in ("int", "double", "float", "real", "numeric", "decimal"))
 
@@ -1100,7 +836,7 @@ class ModelTab(QWidget):
                 if name and (name == candidate or name.lower() == lowered):
                     return name
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return ""
 
     def _configure_toolbar_icon_button(self, button, icon_name: str, tooltip: str, icon_size: int = 18):
@@ -1112,11 +848,11 @@ class ModelTab(QWidget):
         try:
             button.setAccessibleName(tooltip)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             button.setText("")
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         icon = svg_icon(icon_name)
         if not icon.isNull():
             button.setIcon(icon)
@@ -1131,7 +867,7 @@ class ModelTab(QWidget):
         try:
             button.setText(text)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _create_toolbar_separator(self, parent: QWidget) -> QFrame:
         separator = QFrame(parent)
@@ -1195,7 +931,7 @@ class ModelTab(QWidget):
                 grid_opacity=canvas_style["grid_opacity"],
             )
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _apply_canvas_style_to_pages(
         self,
@@ -1644,7 +1380,7 @@ class ModelTab(QWidget):
         try:
             self._sync_project_from_pages(self._current_page_id())
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         project = self.current_project
         pages = [page.normalized() for page in list(project.pages or [])]
         if not pages:
@@ -1853,7 +1589,7 @@ class ModelTab(QWidget):
                     widget.setParent(None)
                     widget.deleteLater()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             self._page_widgets = ordered_widgets
             self._selected_page_id = str(current_id or "").strip()
             self._set_active_page(str(current_id or ""), sync_project=False, update_tabs=True)
@@ -1879,11 +1615,11 @@ class ModelTab(QWidget):
             try:
                 self.current_project.set_active_page(widget.page_id)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         try:
             self._sync_zoom_controls(int(round(float(widget.zoom_value() or 1.0) * 100.0)))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._update_filters_bar()
 
     def _page_index_from_id(self, page_id: str) -> int:
@@ -1933,7 +1669,7 @@ class ModelTab(QWidget):
             try:
                 self._sync_zoom_controls(int(round(float(widget.zoom_value() or 1.0) * 100.0)))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _page_display_title(self, index: int) -> str:
         return _rt("Pagina {index}", index=max(1, int(index or 1)))
@@ -1967,7 +1703,7 @@ class ModelTab(QWidget):
                 widget.setParent(None)
                 widget.deleteLater()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self._page_widgets.clear()
 
     def _rebuild_page_stack(self, active_page_id: Optional[str] = None):
@@ -2012,7 +1748,7 @@ class ModelTab(QWidget):
                     widget.setParent(None)
                     widget.deleteLater()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
         finally:
             if hasattr(self, "page_stack"):
                 self.page_stack.blockSignals(stack_blocked)
@@ -2085,13 +1821,13 @@ class ModelTab(QWidget):
         try:
             self.current_project.set_active_page(widget.page_id)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         if sync_project:
             self._sync_project_from_pages(widget.page_id)
         try:
             self._sync_zoom_controls(int(round(float(widget.zoom_value() or 1.0) * 100.0)))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _page_state_by_id(self, page_id: str) -> Optional[DashboardPage]:
         key = str(page_id or "").strip()
@@ -2234,7 +1970,7 @@ class ModelTab(QWidget):
             try:
                 bucket["feature_ids"].append(int(feature.id()))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
             if value_field == "__count__":
                 value = 1.0
@@ -2517,7 +2253,7 @@ class ModelTab(QWidget):
                     project.active_page_id = legacy_page.page_id
                     project.set_active_page(legacy_page.page_id)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         source_meta = dict(getattr(project, "source_meta", {}) or {})
         source_meta["canvas_style"] = self._normalized_canvas_style(source_meta.get("canvas_style"))
         project.source_meta = source_meta
@@ -2623,7 +2359,7 @@ class ModelTab(QWidget):
             try:
                 self.builder_layer_combo.setFocus(Qt.TabFocusReason)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _handle_create_chart_toggle(self, checked: bool):
         self._set_builder_panel_open(bool(checked), focus=bool(checked))
@@ -2726,7 +2462,7 @@ class ModelTab(QWidget):
             self.open_btn.style().unpolish(self.open_btn)
             self.open_btn.style().polish(self.open_btn)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._update_undo_redo_buttons()
 
     def _handle_canvas_changed(self, page_id: Optional[str] = None):
@@ -2768,7 +2504,7 @@ class ModelTab(QWidget):
             if active_canvas is not None:
                 active_canvas.clear_filters()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _refresh_recents(self):
         while self.recents_layout.count():
@@ -2809,7 +2545,7 @@ class ModelTab(QWidget):
                 try:
                     self._sync_zoom_controls(int(round(float(active_widget.zoom_value() or 1.0) * 100.0)))
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
         else:
             self.canvas = None
         self.new_btn.setVisible(True)

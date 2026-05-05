@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
@@ -7,6 +7,7 @@ from qgis.PyQt.QtCore import QObject, pyqtSignal
 from .dashboard_models import DashboardChartBinding, DashboardChartRelation
 
 
+from .utils.logging_utils import log_exception
 class ModelInteractionManager(QObject):
     """Centraliza filtros ativos entre graficos do Model por campo comum."""
 
@@ -32,7 +33,7 @@ class ModelInteractionManager(QObject):
         try:
             widget.set_binding(normalized)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._apply_filters_to_widget(chart_id)
 
     def unregister_chart(self, chart_id: str):
@@ -263,7 +264,7 @@ class ModelInteractionManager(QObject):
                     if not has_origin_filter:
                         widget.clear_local_selection()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             except Exception:
                 continue
         self._emit_filters_changed()
@@ -292,7 +293,7 @@ class ModelInteractionManager(QObject):
                     widget_filters[str(phase_filter["filter_key"])] = phase_filter
             widget.set_external_filters(widget_filters)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _emit_filters_changed(self):
         self.filtersChanged.emit(self.active_filters_summary())

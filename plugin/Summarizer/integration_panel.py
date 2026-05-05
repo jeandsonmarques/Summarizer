@@ -50,7 +50,9 @@ from .browser_integration import connection_registry
 from .utils.fonts import harmonize_widget_fonts, ui_font, ui_font_stack
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.resources import svg_icon
+from .utils.security_utils import secure_connection_payload
 
+from .utils.logging_utils import log_exception
 _ICON_DIR = os.path.join(os.path.dirname(__file__), "resources", "icons")
 
 try:  # pragma: no cover - handles platforms without QtSql
@@ -265,7 +267,7 @@ class IntegrationPanel(QWidget):
         try:
             _apply_i18n_widgets(self)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -572,14 +574,14 @@ class IntegrationPanel(QWidget):
             if isinstance(data, list):
                 return data[:8]
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return []
 
     def _save_recents(self):
         try:
             self.settings.setValue(RECENTS_SETTINGS_KEY, json.dumps(self._recents))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _populate_recents(self):
         self.recents_list.clear()
@@ -678,7 +680,7 @@ class IntegrationPanel(QWidget):
             if isinstance(data, list):
                 return data
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return []
 
     def _save_connections(self):
@@ -686,9 +688,10 @@ class IntegrationPanel(QWidget):
             connection_registry.replace_saved_connections(self._saved_connections, persist=True)
         except Exception:
             try:
-                self.settings.setValue(SAVED_CONNECTIONS_KEY, json.dumps(self._saved_connections))
+                secured = [secure_connection_payload(conn, name=str(conn.get("name") or "Summarizer")) for conn in self._saved_connections]
+                self.settings.setValue(SAVED_CONNECTIONS_KEY, json.dumps(secured))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _on_registry_connections_changed(self):
         latest = connection_registry.saved_connections()
@@ -718,21 +721,23 @@ class IntegrationPanel(QWidget):
             or f"{connection.get('database', 'Summarizer')}_{connection.get('user', '').strip() or 'user'}"
         )
         base = f"{prefix}/{conn_name}"
-        password = connection.get("password", "")
-        save_password = bool(password)
+        secure_connection = secure_connection_payload(connection, name=conn_name)
+        password = secure_connection.get("password", "")
+        authcfg = str(secure_connection.get("authcfg") or "")
+        save_password = bool(password) and not authcfg
         save_username = bool(connection.get("user", ""))
         settings = QSettings()
         settings.setValue(f"{prefix}/selected", conn_name)
-        settings.setValue(f"{base}/service", connection.get("service", ""))
-        settings.setValue(f"{base}/host", connection.get("host", ""))
-        settings.setValue(f"{base}/port", connection.get("port") or 0)
-        settings.setValue(f"{base}/database", connection.get("database", ""))
-        settings.setValue(f"{base}/username", connection.get("user", ""))
+        settings.setValue(f"{base}/service", secure_connection.get("service", ""))
+        settings.setValue(f"{base}/host", secure_connection.get("host", ""))
+        settings.setValue(f"{base}/port", secure_connection.get("port") or 0)
+        settings.setValue(f"{base}/database", secure_connection.get("database", ""))
+        settings.setValue(f"{base}/username", secure_connection.get("user", ""))
         if save_password:
             settings.setValue(f"{base}/password", password)
         else:
             settings.remove(f"{base}/password")
-        settings.setValue(f"{base}/authcfg", connection.get("authcfg", ""))
+        settings.setValue(f"{base}/authcfg", authcfg)
         settings.setValue(f"{base}/sslmode", connection.get("sslmode", "SslDisable"))
         settings.setValue(f"{base}/publicOnly", False)
         settings.setValue(f"{base}/geometryColumnsOnly", False)
@@ -756,12 +761,12 @@ class IntegrationPanel(QWidget):
         try:
             model.addRootItems()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             model.connectionsChanged(provider_key)
             model.refresh()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _normalize_connection_name(self, raw: str) -> str:
         if not raw:
@@ -1000,7 +1005,7 @@ class IntegrationPanel(QWidget):
                 self.iface.messageBar().pushSuccess(_rt("Conexão"), message)
                 return
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         QMessageBox.information(self, _rt("Conexão"), message)
 
     def _format_timestamp(self, ts: Optional[str]) -> str:
@@ -1011,7 +1016,7 @@ class IntegrationPanel(QWidget):
             if dt.isValid():
                 return dt.toString("dd/MM/yyyy HH:mm")
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return ts
 
     # Excel helper used by recents
@@ -1432,7 +1437,7 @@ class DatabaseImportDialog(SlimDialogBase):
         try:
             _apply_i18n_widgets(self)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1588,7 +1593,7 @@ class DatabaseImportDialog(SlimDialogBase):
             if isinstance(data, dict):
                 return data
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return {}
 
     def _remember_last_params(self, params: Dict):
@@ -1607,9 +1612,13 @@ class DatabaseImportDialog(SlimDialogBase):
         if source_driver:
             self._last_params[source_driver] = record
         try:
-            self.settings.setValue(LAST_DB_PARAMS_KEY, json.dumps(self._last_params))
+            persisted = {
+                key: {k: v for k, v in value.items() if k != "password"}
+                for key, value in self._last_params.items()
+            }
+            self.settings.setValue(LAST_DB_PARAMS_KEY, json.dumps(persisted))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _apply_driver_defaults(self):
         driver = self.driver_combo.currentText()
@@ -1640,6 +1649,7 @@ class DatabaseImportDialog(SlimDialogBase):
             "user": params.get("user"),
             "password": params.get("password"),
         }
+        payload = secure_connection_payload(payload, name=str(params.get("display_name") or "Summarizer"))
         payload["name"] = f"{payload.get('database')} ({payload.get('driver')})"
         payload["fingerprint"] = f"{payload.get('driver')}::{payload.get('host')}::{payload.get('database')}::{payload.get('user')}"
         return payload
@@ -1871,6 +1881,7 @@ class DatabaseImportDialog(SlimDialogBase):
                 source_driver = params.get("source_driver") or params["driver"]
                 if source_driver in ("PostgreSQL", "PostGIS"):
                     spatial_meta = self._detect_postgres_geometry(db, table)
+                secure_connection = self._build_connection_payload(params)
                 self._df = df
                 self._metadata = {
                     "connector": source_driver,
@@ -1881,17 +1892,9 @@ class DatabaseImportDialog(SlimDialogBase):
                     "schema": spatial_meta.get("schema") or self._split_table_name(table)[0],
                     "geometry_column": spatial_meta.get("geometry_column", ""),
                     "geometry_type": spatial_meta.get("geometry_type", ""),
-                    "db_connection": {
-                        "driver": params["driver"],
-                        "source_driver": source_driver,
-                        "host": params.get("host", ""),
-                        "port": params.get("port", 5432),
-                        "database": params.get("database", ""),
-                        "user": params.get("user", ""),
-                        "password": params.get("password", ""),
-                    },
+                    "db_connection": secure_connection,
                 }
-                self._session_connection = self._build_connection_payload(params)
+                self._session_connection = secure_connection
                 if self.remember_box.isChecked():
                     self._connection_meta = dict(self._session_connection)
                 self.accept()
@@ -1949,7 +1952,7 @@ class GoogleSheetsDialog(SlimDialogBase):
         try:
             _apply_i18n_widgets(self)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def showEvent(self, event):
         super().showEvent(event)

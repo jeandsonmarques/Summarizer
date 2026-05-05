@@ -3,7 +3,6 @@ import inspect
 import os
 import uuid
 import traceback
-from string import Template
 from time import perf_counter
 from typing import Dict, List, Optional
 
@@ -17,7 +16,6 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -35,13 +33,27 @@ from qgis.PyQt.QtWidgets import (
 from qgis.core import QgsProject, QgsVectorLayer
 from qgis.utils import iface
 
-from ..palette import COLORS, TYPOGRAPHY
 from ..utils.fonts import ui_font
 from ..utils.i18n_runtime import tr_text as _rt
 from .chart_factory import ChartFactory, ReportChartWidget
 from .dictionary_service import build_dictionary_service
 from .hybrid_query_interpreter import HybridQueryInterpreter
 from .layer_schema_service import LayerSchemaService
+from .report_ui_helpers import apply_soft_shadow as _apply_soft_shadow
+from .report_ui_helpers import clear_layout as _clear_layout
+from .report_ui_helpers import reports_icon as _reports_icon
+from .report_ui_helpers import reports_icon_path as _reports_icon_path
+from .reports import (
+    EXAMPLE_QUERIES,
+    MAX_TABLE_ROWS,
+    PLUGIN_HELP_INTENT_TERMS,
+    PLUGIN_HELP_SUBJECT_TERMS,
+    PREVIEW_ROWS,
+    build_reports_stylesheet,
+    build_result_preview_model,
+    format_filter_chip,
+    format_result_value,
+)
 from .operational_memory_service import build_operational_memory_services
 from .report_ai_engine import ReportAIEngine
 from .report_context_memory import ReportContextMemory
@@ -50,103 +62,7 @@ from .report_logging import LOG_FILE, log_error, log_info, log_warning
 from .result_models import CandidateInterpretation, FilterSpec, MetricSpec, QueryPlan, QueryResult
 from .text_utils import normalize_text
 
-EXAMPLE_QUERIES = [
-    {"label": "Extensão por cidade", "query": "extensao por cidade"},
-    {"label": "Quantidade por município", "query": "quantidade por municipio"},
-    {"label": "Área por bairro", "query": "area por bairro"},
-    {"label": "Top 10 categorias", "query": "top 10 categorias"},
-]
-
-PLUGIN_HELP_INTENT_TERMS = (
-    "ajuda",
-    "como",
-    "configurar",
-    "ensina",
-    "explica",
-    "explicar",
-    "funciona",
-    "funcionalidade",
-    "o que e",
-    "passo a passo",
-    "pra que",
-    "para que",
-    "serve",
-    "tutorial",
-    "usar",
-    "use",
-    "what is",
-    "what does",
-    "how",
-    "help",
-    "explain",
-    "guide",
-    "tutorial",
-    "step by step",
-)
-
-PLUGIN_HELP_SUBJECT_TERMS = (
-    "plugin",
-    "summarizer",
-    "aba",
-    "abas",
-    "tab",
-    "tabs",
-    "relatorio",
-    "relatorios",
-    "reports",
-    "resumo",
-    "summary",
-    "tabela dinamica",
-    "pivot",
-    "chat",
-    "camada",
-    "camadas",
-    "layer",
-    "layers",
-    "postgres",
-    "postgresql",
-    "banco",
-    "conexao",
-    "conexoes",
-    "integracao",
-    "integracoes",
-    "integration",
-    "integrations",
-    "connection",
-    "connections",
-    "modelo",
-    "model",
-    "dashboard",
-    "grafico",
-    "graficos",
-    "chart",
-    "charts",
-    "tabela",
-    "table",
-    "filtro",
-    "filtros",
-    "filter",
-    "filters",
-    "exportar",
-    "exportacao",
-    "export",
-    "idioma",
-    "language",
-    "limpar",
-    "gerar",
-    "analisar",
-    "selecionar",
-    "botao",
-    "comando",
-    "sobre",
-    "about",
-)
-
-PREVIEW_ROWS = 6
-MAX_TABLE_ROWS = 50
-REPORTS_FONT_SCALE = 1.0
-
-
+from ..utils.logging_utils import log_exception
 class AnalysisCancelled(RuntimeError):
     pass
 
@@ -156,416 +72,6 @@ def _make_label_selectable(label: QLabel):
         return
     label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
     label.setCursor(Qt.IBeamCursor)
-
-
-REPORTS_STYLE_TEMPLATE = Template(
-    """
-    QWidget#reportsRoot,
-    QWidget#reportsWorkspace {
-        background: transparent;
-    }
-    QWidget#chatColumn,
-    QWidget#conversationViewportHost,
-    QWidget#conversationViewport,
-    QWidget#footerSuggestions,
-    QFrame#promptDock {
-        background: transparent;
-    }
-    QWidget#reportsRoot,
-    QWidget#reportsRoot * {
-        font-family: ${font_ui_stack};
-    }
-    QFrame#reportsHeader {
-        background: transparent;
-        border: none;
-    }
-    QToolButton#contextButton {
-        background: transparent;
-        border: none;
-        color: ${text_primary};
-        font-size: ${font_section_title_px}px;
-        font-weight: ${font_weight_semibold};
-        padding: 6px 8px;
-        border-radius: 10px;
-    }
-    QToolButton#contextButton:hover {
-        background: ${hover_tint};
-    }
-    QLabel#reportsStatusLabel {
-        color: ${text_muted};
-        font-size: ${font_secondary_px}px;
-        font-weight: ${font_weight_regular};
-        padding-right: 4px;
-    }
-    QLabel#reportsTitle {
-        color: ${text_primary};
-        font-size: ${font_page_title_px}px;
-        font-weight: ${font_weight_semibold};
-    }
-    QLabel#reportsSubtitle {
-        color: ${text_secondary};
-        font-size: ${font_secondary_px}px;
-        font-weight: ${font_weight_regular};
-    }
-    QFrame#chatShell {
-        background: transparent;
-        border: none;
-    }
-    QFrame#visualShell {
-        background: ${surface};
-        border: 1px solid ${border_subtle};
-        border-radius: 28px;
-    }
-    QFrame#visualTopBar {
-        background: transparent;
-        border: none;
-    }
-    QLabel#visualPanelBadge {
-        color: ${text_muted};
-        font-size: ${font_caption_px}px;
-        font-weight: ${font_weight_semibold};
-    }
-    QLabel#assistantBadge {
-        color: ${text_muted};
-        font-size: ${font_caption_px}px;
-        font-weight: ${font_weight_regular};
-    }
-    QLabel#visualPanelTitle {
-        color: ${text_primary};
-        font-size: ${font_section_title_px}px;
-        font-weight: ${font_weight_semibold};
-    }
-    QLabel#assistantSummary {
-        color: ${text_primary};
-        font-size: ${font_section_title_px}px;
-        font-weight: ${font_weight_regular};
-    }
-    QLabel#visualPanelSummary,
-    QLabel#assistantText,
-    QLabel#assistantStatus,
-    QLabel#userBubbleText {
-        color: ${text_primary};
-        font-size: ${font_body_px}px;
-        font-weight: ${font_weight_regular};
-    }
-    QLabel#visualPanelText,
-    QLabel#assistantHelper,
-    QLabel#reportsSubtitle {
-        color: ${text_secondary};
-        font-size: ${font_secondary_px}px;
-        font-weight: ${font_weight_regular};
-    }
-    QLabel#visualPanelMeta,
-    QLabel#chatToolbarLabel {
-        color: ${text_muted};
-        font-size: ${font_caption_px}px;
-        font-weight: ${font_weight_medium};
-    }
-    QFrame#visualPanelChartShell,
-    QFrame#assistantChartShell {
-        background: ${surface};
-        border: 1px solid ${border_soft};
-        border-radius: 18px;
-    }
-    QTableWidget#visualPanelTable,
-    QTableWidget#assistantTable {
-        background: transparent;
-        border: none;
-        color: ${text_primary};
-        font-size: ${font_body_px}px;
-        gridline-color: transparent;
-        selection-background-color: transparent;
-        alternate-background-color: transparent;
-    }
-    QTableWidget#visualPanelTable::item,
-    QTableWidget#assistantTable::item {
-        padding: 7px 8px;
-        border-bottom: 1px solid ${border_soft};
-    }
-    QHeaderView::section {
-        background: transparent;
-        color: ${text_muted};
-        border: none;
-        border-bottom: 1px solid ${border_soft};
-        padding: 8px 8px;
-        font-size: ${font_secondary_px}px;
-        font-weight: ${font_weight_semibold};
-    }
-    QFrame#chatToolbar {
-        background: transparent;
-        border: none;
-    }
-    QPushButton#visualPanelButton,
-    QPushButton[optionButton="true"] {
-        background: ${surface};
-        border: 1px solid ${border_soft};
-        color: ${text_primary};
-        min-height: 30px;
-        padding: 0 12px;
-        border-radius: 14px;
-        font-size: ${font_button_px}px;
-        font-weight: ${font_weight_regular};
-    }
-    QPushButton#clearChatButton {
-        background: ${surface};
-        border: 1px solid ${border_soft};
-        color: ${text_primary};
-        min-height: 30px;
-        padding: 0 12px;
-        border-radius: 14px;
-        font-size: ${font_button_px}px;
-        font-weight: ${font_weight_semibold};
-    }
-    QPushButton[actionButton="true"] {
-        background: rgba(255, 255, 255, 0.92);
-        border: 1px solid rgba(15, 23, 42, 0.07);
-        color: ${text_secondary};
-        min-height: 29px;
-        padding: 0 11px;
-        border-radius: 14px;
-        font-size: ${font_button_px}px;
-        font-weight: ${font_weight_regular};
-    }
-    QPushButton#visualPanelButton:hover,
-    QPushButton#clearChatButton:hover,
-    QPushButton[optionButton="true"]:hover {
-        background: ${surface_hover};
-        border-color: ${border_hover};
-    }
-    QPushButton[actionButton="true"]:hover {
-        background: ${surface_hover};
-        border-color: ${border_hover};
-        color: ${text_primary};
-    }
-    QPushButton#clearChatButton:disabled {
-        color: ${text_disabled};
-        border-color: ${border_soft};
-    }
-    QScrollArea#conversationScroll {
-        background: transparent;
-        border: none;
-    }
-    QFrame#emptyConversation {
-        background: transparent;
-        border: none;
-    }
-    QWidget#emptyContent {
-        background: transparent;
-    }
-    QLabel#emptyIcon {
-        padding-bottom: 8px;
-    }
-    QLabel#emptyTitle {
-        color: ${text_primary};
-        font-size: 24px;
-        font-weight: ${font_weight_semibold};
-    }
-    QLabel#emptySubtitle {
-        color: ${text_muted};
-        font-size: 14px;
-        font-weight: ${font_weight_regular};
-    }
-    QPushButton[chip="true"],
-    QPushButton[filterChip="true"] {
-        background: ${surface};
-        border: 1px solid ${border_soft};
-        color: ${text_secondary};
-        min-height: 30px;
-        padding: 0 12px;
-        border-radius: 15px;
-        font-size: ${font_chip_px}px;
-        font-weight: ${font_weight_regular};
-    }
-    QPushButton[chip="true"]:hover,
-    QPushButton[filterChip="true"]:hover {
-        background: ${surface_hover};
-        border-color: ${border_hover};
-        color: ${text_primary};
-    }
-    QFrame#userBubble {
-        background: ${user_bubble};
-        border: 1px solid ${border_soft};
-        border-radius: 18px;
-    }
-    QLabel#userBubbleText {
-        color: ${text_primary};
-    }
-    QFrame#assistantCard {
-        background: transparent;
-        border: none;
-        border-radius: 0px;
-    }
-    QFrame#promptShell {
-        background: ${surface};
-        border: 1px solid ${border_subtle};
-        border-radius: 22px;
-    }
-    QTextEdit#promptInput {
-        background: transparent;
-        border: none;
-        padding: 8px 4px 8px 4px;
-        min-height: 36px;
-        font-size: ${font_input_px}px;
-        font-weight: ${font_weight_regular};
-        color: #1E293B;
-        selection-background-color: ${selection_bg};
-    }
-    QTextEdit#promptInput:focus {
-        border: none;
-    }
-    QToolButton#plusButton,
-    QToolButton#engineButton {
-        background: ${surface};
-        border: 1px solid ${border_soft};
-        color: ${text_primary};
-        border-radius: 16px;
-        padding: 6px 12px;
-        font-size: ${font_chip_px}px;
-        min-height: 18px;
-    }
-    QToolButton#plusButton {
-        min-width: 32px;
-        max-width: 32px;
-        min-height: 32px;
-        max-height: 32px;
-        padding: 0;
-        border-radius: 16px;
-    }
-    QToolButton#plusButton:hover,
-    QToolButton#engineButton:hover {
-        background: ${surface_hover};
-        border-color: ${border_hover};
-    }
-    QPushButton#sendButton {
-        background: ${send_bg};
-        color: #FFFFFF;
-        border: none;
-        border-radius: 18px;
-        min-width: 92px;
-        min-height: 40px;
-        padding: 0 16px;
-        font-size: ${font_button_px}px;
-        font-weight: ${font_weight_semibold};
-    }
-    QPushButton#sendButton:hover {
-        background: ${send_bg_hover};
-    }
-    QPushButton#sendButton[stopMode="true"] {
-        background: ${send_bg};
-        border-radius: 20px;
-        min-width: 40px;
-        max-width: 40px;
-        min-height: 40px;
-        max-height: 40px;
-        padding: 0px;
-        font-size: 13px;
-        font-weight: ${font_weight_semibold};
-    }
-    QPushButton#sendButton[stopMode="true"]:hover {
-        background: ${send_bg_hover};
-    }
-    QMenu {
-        background: ${surface};
-        border: 1px solid ${border_subtle};
-        border-radius: 12px;
-        padding: 8px;
-    }
-    QMenu::item {
-        padding: 8px 12px;
-        border-radius: 8px;
-        color: ${text_primary};
-    }
-    QMenu::item:selected {
-        background: ${surface_hover};
-    }
-    QWidget#reportsRoot QScrollBar:vertical {
-        background: transparent;
-        width: 10px;
-        margin: 2px 0 2px 0;
-    }
-    QWidget#reportsRoot QScrollBar::handle:vertical {
-        background: ${scrollbar_handle};
-        border-radius: 5px;
-        min-height: 30px;
-    }
-    QWidget#reportsRoot QScrollBar::add-line:vertical,
-    QWidget#reportsRoot QScrollBar::sub-line:vertical {
-        height: 0;
-    }
-    """
-)
-
-
-def _reports_style_context() -> Dict[str, str]:
-    def _scaled_font(value: int) -> str:
-        return str(int(round(float(value) * REPORTS_FONT_SCALE)))
-
-    return {
-        "page_bg": "#F7F7F8",
-        "surface": COLORS.get("color_surface", "#FFFFFF"),
-        "surface_hover": "#F8FAFC",
-        "border_soft": "rgba(15, 23, 42, 0.08)",
-        "border_subtle": "rgba(15, 23, 42, 0.10)",
-        "border_hover": "#D7DEE8",
-        "hover_tint": "rgba(17, 24, 39, 0.06)",
-        "user_bubble": "#ECECF1",
-        "text_primary": "#0F172A",
-        "text_secondary": "#475569",
-        "text_muted": "#64748B",
-        "text_disabled": "#94A3B8",
-        "accent": COLORS.get("color_secondary", "#2B7DE9"),
-        "send_bg": "#10182B",
-        "send_bg_hover": "#1A2740",
-        "selection_bg": "#DBEAFE",
-        "scrollbar_handle": "rgba(100, 116, 139, 0.28)",
-        "font_ui_stack": TYPOGRAPHY.get(
-            "font_ui_stack",
-            '"Inter", sans-serif',
-        ),
-        "font_page_title_px": _scaled_font(TYPOGRAPHY.get("font_page_title_px", 24)),
-        "font_section_title_px": _scaled_font(TYPOGRAPHY.get("font_section_title_px", 16)),
-        "font_body_px": _scaled_font(TYPOGRAPHY.get("font_body_px", 13)),
-        "font_secondary_px": _scaled_font(TYPOGRAPHY.get("font_secondary_px", 12)),
-        "font_caption_px": _scaled_font(TYPOGRAPHY.get("font_caption_px", 11)),
-        "font_button_px": _scaled_font(TYPOGRAPHY.get("font_button_px", 13)),
-        "font_chip_px": _scaled_font(TYPOGRAPHY.get("font_chip_px", 12)),
-        "font_input_px": _scaled_font(13),
-        "font_weight_regular": str(TYPOGRAPHY.get("font_weight_regular", 400)),
-        "font_weight_medium": str(TYPOGRAPHY.get("font_weight_medium", 500)),
-        "font_weight_semibold": str(TYPOGRAPHY.get("font_weight_semibold", 600)),
-    }
-
-
-def _apply_soft_shadow(widget, blur_radius: int = 28, offset_y: int = 8, alpha: int = 26):
-    effect = QGraphicsDropShadowEffect(widget)
-    effect.setBlurRadius(blur_radius)
-    effect.setOffset(0, offset_y)
-    effect.setColor(QColor(15, 23, 42, alpha))
-    widget.setGraphicsEffect(effect)
-
-
-def _clear_layout(layout):
-    while layout.count():
-        item = layout.takeAt(0)
-        widget = item.widget()
-        child_layout = item.layout()
-        if widget is not None:
-            widget.deleteLater()
-        elif child_layout is not None:
-            _clear_layout(child_layout)
-
-
-def _reports_icon_path(filename: str) -> str:
-    return os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "resources", "icons", filename)
-    )
-
-
-def _reports_icon(filename: str) -> QIcon:
-    path = _reports_icon_path(filename)
-    if os.path.exists(path):
-        return QIcon(path)
-    return QIcon()
 
 
 class AutoResizeTextEdit(QTextEdit):
@@ -590,7 +96,7 @@ class AutoResizeTextEdit(QTextEdit):
         try:
             palette.setColor(QPalette.PlaceholderText, QColor("#94A3B8"))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self.setPalette(palette)
         self.textChanged.connect(self._update_height)
         self._update_height()
@@ -606,7 +112,7 @@ class AutoResizeTextEdit(QTextEdit):
         try:
             self.setFixedHeight(new_height)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Return, Qt.Key_Enter) and not (event.modifiers() & Qt.ShiftModifier):
@@ -1206,11 +712,7 @@ class AssistantMessageWidget(QWidget):
         self.content_layout.addLayout(filters_row)
 
     def _format_filter_chip(self, filter_spec) -> str:
-        field_label = str(filter_spec.field or "").replace("_", " ").strip()
-        value_label = str(filter_spec.value or "").strip()
-        if field_label and value_label:
-            return f"{field_label}: {value_label}"
-        return value_label or field_label or "Filtro"
+        return format_filter_chip(filter_spec)
 
     def _reset_content(self):
         _clear_layout(self.content_layout)
@@ -1460,7 +962,7 @@ class ActiveResultPanel(QFrame):
         title.setObjectName("visualPanelTitle")
         self.content_layout.addWidget(title)
 
-        summary = QLabel(result.summary.text or _rt("Visualizacao gerada."), self.content)
+        summary = QLabel(result.summary.text or _rt("Visualização gerada."), self.content)
         summary.setObjectName("visualPanelSummary")
         summary.setWordWrap(True)
         _make_label_selectable(summary)
@@ -1582,20 +1084,10 @@ class ActiveResultPanel(QFrame):
         self.details_label.setText(_rt("Mostrando {visible} de {total} linhas", visible=visible, total=total))
 
     def _helper_text(self, result: QueryResult) -> str:
-        parts = []
-        plan = result.plan
-        if plan is not None and plan.understanding_text:
-            parts.append(plan.understanding_text)
-        if result.total_records:
-            parts.append(f"{result.total_records} registros")
-        if result.rows:
-            parts.append(f"{len(result.rows)} categorias")
-        return "  |  ".join(parts)
+        return build_result_preview_model(result).helper_text
 
     def _format_value(self, value: float) -> str:
-        if abs(value - round(value)) < 1e-6:
-            return f"{int(round(value)):,}".replace(",", ".")
-        return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return format_result_value(value)
 
 
 class ReportsWidget(QWidget):
@@ -1836,12 +1328,12 @@ class ReportsWidget(QWidget):
                 try:
                     self.empty_state.stabilize_layout()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             self._set_history_started(self.history_count > 0)
             self._update_responsive_layout()
             self._initial_layout_stable = True
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _apply_local_icons(self):
         if getattr(self, "plus_button", None) is not None:
@@ -2009,12 +1501,12 @@ class ReportsWidget(QWidget):
         try:
             self.context_memory.clear()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             if self.conversation_memory_service is not None:
                 self.conversation_memory_service.clear_state(self.session_id)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _provider_name_for_layer(self, layer) -> str:
         try:
@@ -2023,20 +1515,20 @@ class ReportsWidget(QWidget):
             if provider_name:
                 return provider_name
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             provider = getattr(layer, "dataProvider", lambda: None)()
             provider_name = str(getattr(provider, "name", lambda: "")() or "").strip().lower()
             if provider_name:
                 return provider_name
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             source = str(getattr(layer, "source", lambda: "")() or "").lower()
             if "dbname=" in source or "postgres" in source or "postgresql" in source:
                 return "postgres"
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return ""
 
     def _scoped_layer_ids(self) -> Optional[List[str]]:
@@ -2091,7 +1583,7 @@ class ReportsWidget(QWidget):
                 if total:
                     return _rt("PostgreSQL ativo · {total} conexão(ões)", total=total)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return _rt("PostgreSQL ativo · sem conexão configurada")
 
         try:
@@ -2313,9 +1805,9 @@ class ReportsWidget(QWidget):
             "1. Se a pergunta for sobre uma funcionalidade, o chat responde com explicação e passo a passo.\n"
             "2. Se a pergunta for sobre dados, o chat solicita as camadas que devem ser analisadas.\n"
             "3. As camadas escolhidas permanecem em foco até você clicar em Limpar.\n"
-                "4. Você pode perguntar sobre Relatórios, Resumo, Modelo/Dashboard, Conexão, PostgreSQL ou Sobre.\n"
-                "Dica: para obter uma orientação mais precisa, cite o nome da aba ou do comando que deseja entender."
-            )
+            "4. Você pode perguntar sobre Relatórios, Resumo, Modelo/Dashboard, Conexão, PostgreSQL ou Sobre.\n"
+            "Dica: para obter uma orientação mais precisa, cite o nome da aba ou do comando que deseja entender."
+        )
 
     def _project_layers(self, source_filter: Optional[str] = None) -> List[Dict[str, str]]:
         source_filter = str(source_filter or "").strip().lower()
@@ -2769,7 +2261,7 @@ class ReportsWidget(QWidget):
     def _apply_local_styles(self):
         self.setObjectName("reportsRoot")
         self.setStyleSheet(
-            REPORTS_STYLE_TEMPLATE.safe_substitute(_reports_style_context())
+            build_reports_stylesheet()
         )
 
     def paintEvent(self, event):
@@ -3043,7 +2535,7 @@ class ReportsWidget(QWidget):
             try:
                 self.active_execution_job.cancel()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             self.active_execution_job = None
 
         target_widget = response_widget or self.active_response_widget
@@ -3287,7 +2779,7 @@ class ReportsWidget(QWidget):
             try:
                 self.active_execution_job.cancel()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             self.active_execution_job = None
             self._finish_ui_after_run()
             return
@@ -3375,7 +2867,7 @@ class ReportsWidget(QWidget):
             try:
                 self.history_scroll.verticalScrollBar().setValue(0)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _scroll_to_bottom(self):
         QTimer.singleShot(
@@ -3402,7 +2894,7 @@ class ReportsWidget(QWidget):
         self.generate_btn.setEnabled(True)
         self.generate_btn.setProperty("stopMode", running)
         if running:
-            self.generate_btn.setText("■")
+            self.generate_btn.setText("⏹")
             self.generate_btn.setToolTip(_rt("Parar análise"))
             self.generate_btn.setMinimumWidth(40)
             self.generate_btn.setMaximumWidth(40)
@@ -3421,7 +2913,7 @@ class ReportsWidget(QWidget):
             self.generate_btn.style().polish(self.generate_btn)
             self.generate_btn.update()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _prepare_ui_for_analysis(self):
         self.clear_chat_btn.setEnabled(False)
@@ -3764,7 +3256,7 @@ class ReportsWidget(QWidget):
                 action_name="retry_after_incorrect_feedback",
                 picker_message=_rt("Vamos tentar outra leitura da sua pergunta."),
                 fallback_message=_rt(
-                    "Nao encontrei outra interpretacao pronta. "
+                    "Não encontrei outra interpretação pronta. "
                     "Escolha a coluna que mais combina com a pergunta para eu recalcular."
                 ),
             ):
@@ -3891,4 +3383,7 @@ class ReportsWidget(QWidget):
         if enriched_result.status == "ambiguous" and enriched_result.candidate_interpretations:
             return enriched_result
         return base_result
+
+
+
 

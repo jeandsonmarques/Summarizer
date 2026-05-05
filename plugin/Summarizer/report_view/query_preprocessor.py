@@ -12,6 +12,7 @@ from .domain_packs import (
     build_semantic_catalog,
     collect_project_terms,
 )
+from .report_logging import log_warning
 from .text_utils import normalize_text
 
 
@@ -550,6 +551,7 @@ class QueryPreprocessor:
             try:
                 return max(1, int(match.group(1)))
             except Exception:
+                log_warning("[Relatorios] falha ao interpretar 'top N'; usando valor padrao")
                 return None
         if self._looks_like_top_one_question(text):
             return 1

@@ -16,6 +16,8 @@ from qgis.PyQt.QtWidgets import (
 
 from .slim_dialogs import SlimDialogBase
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
+from .utils.logging_utils import log_exception
+from .utils.security_utils import secure_connection_payload
 
 
 class PostgresQuickConnectDialog(SlimDialogBase):
@@ -103,9 +105,10 @@ class PostgresQuickConnectDialog(SlimDialogBase):
             "database": database,
             "user": user,
             "password": self.password_edit.text() if self.save_password_cb.isChecked() else "",
+            "savePassword": self.save_password_cb.isChecked(),
             "schema": "",
         }
-        self._payload = payload
+        self._payload = secure_connection_payload(payload, name=name or "Summarizer")
         self.accept()
 
     def connection_payload(self) -> Dict:
@@ -116,7 +119,7 @@ class PostgresQuickConnectDialog(SlimDialogBase):
         try:
             _apply_i18n_widgets(self)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
 
 __all__ = ["PostgresQuickConnectDialog"]

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Dict, List, Optional
 
@@ -19,6 +19,7 @@ from qgis.PyQt.QtWidgets import (
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 
 
+from .utils.logging_utils import log_exception
 class DashboardAddDialog(QDialog):
     def __init__(
         self,
@@ -222,4 +223,4 @@ class DashboardAddDialog(QDialog):
         try:
             _apply_i18n_widgets(self)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")

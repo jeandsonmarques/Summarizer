@@ -8,6 +8,7 @@ from qgis.PyQt.QtWidgets import QWidget, QToolTip, QColorDialog, QMenu
 from ..utils.fonts import ui_font
 
 
+from ..utils.logging_utils import log_exception
 @dataclass
 class VisualDefinition:
     tipo: str  # "colunas", "barra", "linha"
@@ -46,7 +47,7 @@ class _BaseChartRenderer(VisualRenderer):
             try:
                 return QColor(definition.opcoes.get("color"))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         return theme.series[index % len(theme.series)]
 
     def _draw_title(self, painter: QPainter, rect: QRectF, definition: VisualDefinition, theme: VisualTheme):

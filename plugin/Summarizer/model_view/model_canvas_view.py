@@ -1,4 +1,4 @@
-import math
+﻿import math
 from typing import Optional
 
 from qgis.PyQt.QtCore import QPoint, QPointF, QRectF, Qt, pyqtSignal
@@ -6,6 +6,7 @@ from qgis.PyQt.QtGui import QColor, QImage, QPainter, QPen
 from qgis.PyQt.QtWidgets import QGraphicsScene, QGraphicsView, QMenu
 
 
+from ..utils.logging_utils import log_exception
 class ModelCanvasView(QGraphicsView):
     """QGraphicsView com pan/zoom suave e grade ao estilo Power BI."""
 
@@ -41,7 +42,7 @@ class ModelCanvasView(QGraphicsView):
             try:
                 self._legend_widget.setParent(None)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self._legend_widget = widget
         if widget is not None:
             widget.setParent(self.viewport())
@@ -65,7 +66,7 @@ class ModelCanvasView(QGraphicsView):
         try:
             self._legend_widget.adjustSize()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         size = self._legend_widget.sizeHint()
         x = self.viewport().width() - size.width() - margin
         y = self.viewport().height() - size.height() - margin
@@ -271,7 +272,7 @@ class ModelCanvasView(QGraphicsView):
         try:
             self._position_legend()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     # --------------------------------------------------------------------- Access
     @property

@@ -26,6 +26,8 @@ from .quick_connect_dialogs import PostgresQuickConnectDialog
 from .utils.plugin_logging import log_info, log_warning
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.resources import svg_icon
+from .utils.logging_utils import log_exception
+from .utils.security_utils import secure_connection_payload
 SAVED_CONNECTIONS_KEY = "Summarizer/integration/saved_connections"
 SUPPORTED_DRIVERS = {
     "postgres",
@@ -89,7 +91,7 @@ class IntegrationConnectionRegistry(QObject):
             if isinstance(data, list):
                 return [self._sanitize(conn) for conn in data]
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return []
 
     def _sanitize(self, conn: Dict) -> Dict:
@@ -101,6 +103,8 @@ class IntegrationConnectionRegistry(QObject):
         sanitized.setdefault("database", "")
         sanitized.setdefault("user", "")
         sanitized.setdefault("password", "")
+        sanitized.setdefault("authcfg", "")
+        sanitized.setdefault("savePassword", bool(sanitized.get("password")))
         sanitized.setdefault("schema", "")
         if not sanitized.get("fingerprint"):
             sanitized["fingerprint"] = _fingerprint(sanitized)
@@ -120,9 +124,10 @@ class IntegrationConnectionRegistry(QObject):
         self._saved = [self._sanitize(conn) for conn in (connections or [])]
         if persist:
             try:
-                self._settings.setValue(SAVED_CONNECTIONS_KEY, json.dumps(self._saved))
+                persisted = [secure_connection_payload(conn, name=str(conn.get("name") or "Summarizer")) for conn in self._saved]
+                self._settings.setValue(SAVED_CONNECTIONS_KEY, json.dumps(persisted))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         saved_keys = {conn.get("fingerprint") for conn in self._saved}
         for fp in list(self._runtime.keys()):
             if fp in saved_keys:
@@ -141,9 +146,10 @@ class IntegrationConnectionRegistry(QObject):
                 return
         self._saved = updated
         try:
-            self._settings.setValue(SAVED_CONNECTIONS_KEY, json.dumps(self._saved))
+            persisted = [secure_connection_payload(conn, name=str(conn.get("name") or "Summarizer")) for conn in self._saved]
+            self._settings.setValue(SAVED_CONNECTIONS_KEY, json.dumps(persisted))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self.connectionsChanged.emit()
 
     def register_runtime_connection(self, connection: Dict) -> None:
@@ -239,7 +245,7 @@ class SummarizerRootItem(QgsDataCollectionItem):
         dialog = PostgresQuickConnectDialog(parent)
         if dialog.exec_() != QDialog.Accepted:
             return
-        payload = dialog.connection_payload()
+        payload = secure_connection_payload(dialog.connection_payload(), name=_rt("Summarizer"))
         if not payload:
             return
         payload["driver"] = "postgres"
@@ -507,7 +513,7 @@ def _refresh_browser_model():
                 model.addRootItems()
                 model.refresh()
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
 
 
 def register_browser_provider() -> SummarizerBrowserProvider:

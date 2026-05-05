@@ -21,6 +21,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 
+from ..utils.logging_utils import log_exception
 _RUNTIME_DIR = Path(__file__).resolve().parents[1] / "i18n"
 _RUNTIME_FILES = {
     "en": _RUNTIME_DIR / "runtime_en.json",
@@ -1200,7 +1201,7 @@ def tr_text(text: str, locale_code: str = "", **kwargs) -> str:
                 with missing_file.open("a", encoding="utf-8") as handler:
                     handler.write(source.replace("\n", "\\n") + "\n")
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
     if kwargs:
         try:
             return translated.format(**kwargs)
@@ -1220,7 +1221,7 @@ def _source_text(obj, key: str, current_value: str) -> str:
         try:
             obj.setProperty(prop_key, source)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return source
     return str(stored)
 
@@ -1248,21 +1249,21 @@ def apply_widget_translations(root: QWidget, locale_code: str = ""):
             if title:
                 widget.setWindowTitle(tr_text(_source_text(widget, "window_title", title), locale))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         try:
             tip = str(widget.toolTip() or "")
             if tip:
                 widget.setToolTip(tr_text(_source_text(widget, "tooltip", tip), locale))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         try:
             status = str(widget.statusTip() or "")
             if status:
                 widget.setStatusTip(tr_text(_source_text(widget, "status", status), locale))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         if isinstance(widget, QLabel):
             text = str(widget.text() or "")
@@ -1310,7 +1311,7 @@ def apply_widget_translations(root: QWidget, locale_code: str = ""):
                     src = _source_text(item, "text", text)
                     item.setText(tr_text(src, locale))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         if isinstance(widget, QListWidget):
             try:
@@ -1324,7 +1325,7 @@ def apply_widget_translations(root: QWidget, locale_code: str = ""):
                     src = _source_text(item, "text", text)
                     item.setText(tr_text(src, locale))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         if isinstance(widget, QTabWidget):
             for idx in range(widget.count()):
@@ -1343,19 +1344,19 @@ def apply_widget_translations(root: QWidget, locale_code: str = ""):
                     src = _source_text(button, "text", text)
                     button.setText(tr_text(src, locale))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         try:
             for action in widget.actions() or []:
                 if isinstance(action, QAction):
                     _translate_qaction(action, locale)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     try:
         _apply(root)
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
 
     try:
         for child in root.findChildren(QWidget):
@@ -1364,6 +1365,6 @@ def apply_widget_translations(root: QWidget, locale_code: str = ""):
             except Exception:
                 continue
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
 
 

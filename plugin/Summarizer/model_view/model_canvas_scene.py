@@ -1,4 +1,4 @@
-from typing import Optional
+﻿from typing import Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt
 from qgis.PyQt.QtGui import QColor, QPainterPath, QPen
@@ -7,6 +7,7 @@ from qgis.PyQt.QtWidgets import QGraphicsPathItem, QGraphicsScene
 from .field_item import FieldItem
 
 
+from ..utils.logging_utils import log_exception
 class ModelCanvasScene(QGraphicsScene):
     """Gerencia itens do diagrama: tabelas, campos e relacionamentos."""
 
@@ -43,7 +44,7 @@ class ModelCanvasScene(QGraphicsScene):
             if str(style_candidate).lower() in ("orthogonal", "curved", "straight"):
                 style = str(style_candidate).lower()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         if style == "orthogonal":
             mid_x = (start.x() + scene_pos.x()) / 2.0
@@ -70,7 +71,7 @@ class ModelCanvasScene(QGraphicsScene):
                 try:
                     self.manager.handle_connection(self._connection_start, target_field)
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
 
         self.clear_connection_preview()
 
@@ -79,7 +80,7 @@ class ModelCanvasScene(QGraphicsScene):
             try:
                 self.removeItem(self._connection_preview)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self._connection_preview = None
         self._connection_start = None
 
@@ -100,7 +101,7 @@ class ModelCanvasScene(QGraphicsScene):
             try:
                 self.manager.handle_table_moved(table_item)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     # ------------------------------------------------------------- Overrides
     def mouseMoveEvent(self, event):  # type: ignore[override]

@@ -1,5 +1,7 @@
 from typing import Any, Optional
 
+from ..report_logging import log_warning
+
 
 class PivotFormatter:
     @staticmethod
@@ -14,6 +16,7 @@ class PivotFormatter:
             try:
                 return str(int(round(float(value))))
             except Exception:
+                log_warning("[Relatorios] falha ao formatar valor numerico; mantendo texto original")
                 return str(value)
         if isinstance(value, float):
             rounded = round(value, 2)
