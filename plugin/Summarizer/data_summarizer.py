@@ -70,6 +70,7 @@ from .report_view import ReportsWidget
 from .utils.fonts import attach_ui_font_enforcer, ensure_ui_fonts_registered, harmonize_widget_fonts
 from .utils.plugin_logging import log_error
 
+from .utils.logging_utils import log_exception
 PROTECTED_COLUMNS_DEFAULT = {"__feature_id", "__geometry_wkb", "__target_feature_id"}
 
 
@@ -85,13 +86,13 @@ def __apply_theme_once(target):
             try:
                 qss = Template(qss).safe_substitute(palette_context())
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             if hasattr(target, "iface") and hasattr(target.iface, "mainWindow"):
                 target.iface.mainWindow().setStyleSheet(qss)
             elif hasattr(target, "setStyleSheet"):
                 target.setStyleSheet(qss)
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
 
 
 class Summarizer:
@@ -99,7 +100,7 @@ class Summarizer:
         try:
             __apply_theme_once(self)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
@@ -169,7 +170,7 @@ class Summarizer:
             if self.translator is not None:
                 QCoreApplication.removeTranslator(self.translator)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self.translator = None
         self._active_locale = ""
 
@@ -203,7 +204,7 @@ class Summarizer:
                 self.dlg.close()
                 self.dlg.deleteLater()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self.dlg = None
         QTimer.singleShot(0, self.run)
 
@@ -219,7 +220,7 @@ class Summarizer:
                 self.dlg.close()
                 self.dlg.deleteLater()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             self.dlg = None
         if self.dlg is None:
             self.dlg = SummarizerDialog(
@@ -278,7 +279,7 @@ class Summarizer:
         try:
             __apply_theme_once(self)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         self._ensure_dialog()
         self.dlg.show()
@@ -296,7 +297,7 @@ class Summarizer:
                 try:
                     self.dlg.sidebar.show_integration_page()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
         except Exception as exc:
             QMessageBox.critical(self.iface.mainWindow(), "Conexão", f"Falha ao abrir: {exc}")
 
@@ -344,7 +345,7 @@ class SummarizerDialog(QDialog):
                 minimize_btn.clicked.connect(self.showMinimized)
             self.ui.maximize_btn.clicked.connect(self.toggle_window_state)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._init_language_button()
 
         # External integration state (not used in main dialog anymore)
@@ -366,7 +367,7 @@ class SummarizerDialog(QDialog):
             self.dashboard_widget.primary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
             self.dashboard_widget.secondary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         # Inject QuickOSM-like sidebar navigation without altering the ui file
         try:
             self.sidebar = SidebarController(self)
@@ -375,7 +376,7 @@ class SummarizerDialog(QDialog):
         try:
             self._set_ribbon_visible(False)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         self.export_formats = {
             "Excel (.xlsx)": {"filter": "Excel (*.xlsx)", "extension": ".xlsx"},
@@ -405,19 +406,19 @@ class SummarizerDialog(QDialog):
             try:
                 self.pivot_widget.set_layer_combo(self.ui.layer_combo)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 self.pivot_widget.set_auto_update_checkbox(self.ui.auto_update_check)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 self.pivot_widget.add_dashboard_button(self.ui.dashboard_btn)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 self.ui.results_header_frame.setVisible(False)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
             self.summary_message_widget = QTextEdit(self.ui.results_body)
             self.summary_message_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -453,7 +454,7 @@ class SummarizerDialog(QDialog):
         try:
             self.show_summary_prompt()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         QTimer.singleShot(0, self._reset_initial_summary_layer_selection)
 
         self.model_manager = None
@@ -470,7 +471,7 @@ class SummarizerDialog(QDialog):
         try:
             self._init_ribbon_actions()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         self.reports_widget = None
         try:
@@ -543,7 +544,7 @@ class SummarizerDialog(QDialog):
         try:
             self._apply_runtime_translations()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
     def toggle_window_state(self):
         if self.isMaximized():
             self.showNormal()
@@ -551,14 +552,14 @@ class SummarizerDialog(QDialog):
                 self.ui.maximize_btn.setText("Max")
                 self.ui.maximize_btn.setToolTip(_rt_runtime("Maximizar"))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         else:
             self.showMaximized()
             try:
                 self.ui.maximize_btn.setText("Res")
                 self.ui.maximize_btn.setToolTip(_rt_runtime("Restaurar"))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _normalize_locale_choice(self, locale_code: str) -> str:
         code = str(locale_code or "").strip()
@@ -618,7 +619,7 @@ class SummarizerDialog(QDialog):
             btn.setIcon(svg_icon("Globe.svg"))
             btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         btn.setText(self._language_button_text(choice))
         btn.setToolTip(f"{_rt_runtime('Idioma')}: {self._language_label(choice)}")
 
@@ -664,7 +665,7 @@ class SummarizerDialog(QDialog):
         try:
             btn.clicked.connect(self._show_language_menu)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._refresh_language_button()
 
     def _apply_runtime_translations(self):
@@ -731,13 +732,13 @@ class SummarizerDialog(QDialog):
                 with open(style_path, "r", encoding="utf-8") as handler:
                     self.setStyleSheet(handler.read())
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         harmonize_widget_fonts(self)
         if getattr(self, "sidebar", None) is not None:
             try:
                 self.sidebar.refresh_styles()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self._apply_square_theme()
 
     def _apply_square_theme(self):
@@ -811,7 +812,7 @@ class SummarizerDialog(QDialog):
                 self._set_results_view("pivot")
                 return
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self.show_results_message(
             f"<p style='margin:8px 0;'>{_rt_runtime('Selecione uma camada e clique em Gerar Resumo.')}</p>"
         )
@@ -825,16 +826,16 @@ class SummarizerDialog(QDialog):
             try:
                 combo.setCurrentLayer(None)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 combo.setCurrentIndex(-1)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         finally:
             try:
                 combo.blockSignals(False)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self._active_numeric_field = None
 
     def show_integration_page(self):
@@ -842,45 +843,45 @@ class SummarizerDialog(QDialog):
         try:
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageIntegracao)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             self._apply_runtime_translations()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         scroll = getattr(self, "integration_scroll", None)
         if scroll is not None:
             try:
                 scroll.verticalScrollBar().setValue(0)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         panel = getattr(self, "integration_panel", None)
         if panel is not None:
             try:
                 panel.refresh_recents()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def show_reports_page(self):
         self._set_ribbon_visible(False)
         try:
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageRelatorios)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             self._apply_runtime_translations()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def show_model_page(self):
         self._set_ribbon_visible(False)
         try:
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageModel)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             self._apply_runtime_translations()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def handle_add_chart_to_model_request(self, snapshot):
         model_tab = getattr(self, "model_tab", None)
@@ -944,12 +945,12 @@ class SummarizerDialog(QDialog):
                 if self.model_manager is not None:
                     self.model_manager.refresh_model()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 if self.reports_widget is not None:
                     self.reports_widget.refresh_from_model()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         if import_target == "project":
             if not descriptor.get("layer_id"):
@@ -973,18 +974,18 @@ class SummarizerDialog(QDialog):
             try:
                 return self._load_integration_database_layer(descriptor)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if connector == "geopackage" and source_path and os.path.exists(source_path):
             try:
                 return self._load_integration_source_layer(source_path, descriptor)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         try:
             layer = self._materialize_integration_text_layer(df, descriptor)
             if layer is not None and layer.isValid():
                 return layer
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return self._create_memory_table_from_dataframe(df, descriptor)
 
     def _load_integration_source_layer(self, source_path: str, descriptor: Dict) -> Optional[QgsVectorLayer]:
@@ -1014,13 +1015,24 @@ class SummarizerDialog(QDialog):
             return None
 
         uri = QgsDataSourceUri()
-        uri.setConnection(
-            str(connection.get("host") or ""),
-            str(connection.get("port") or ""),
-            str(connection.get("database") or ""),
-            str(connection.get("user") or ""),
-            str(connection.get("password") or ""),
-        )
+        authcfg = str(connection.get("authcfg") or "")
+        if authcfg:
+            uri.setConnection(
+                str(connection.get("host") or ""),
+                str(connection.get("port") or ""),
+                str(connection.get("database") or ""),
+                str(connection.get("user") or ""),
+                "",
+            )
+            uri.setAuthConfigId(authcfg)
+        else:
+            uri.setConnection(
+                str(connection.get("host") or ""),
+                str(connection.get("port") or ""),
+                str(connection.get("database") or ""),
+                str(connection.get("user") or ""),
+                str(connection.get("password") or ""),
+            )
         uri.setDataSource(schema, table_name, geometry_column)
 
         base_name = (descriptor.get("display_name") or table_name or "Camada externa").strip()
@@ -1222,7 +1234,7 @@ class SummarizerDialog(QDialog):
                 try:
                     lookup[int(feature.id())] = feature.geometry().clone()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
         except Exception:
             return {}
         return lookup
@@ -1395,7 +1407,7 @@ class SummarizerDialog(QDialog):
             if ptypes.is_datetime64_any_dtype(series):
                 return QVariant.DateTime
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return QVariant.String
 
     def _python_value(self, value):
@@ -1496,14 +1508,14 @@ class SummarizerDialog(QDialog):
                     if field.isNumeric():
                         return field.name()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
                 try:
                     if QVariant.Double == field.type() or QVariant.Int == field.type():
                         return field.name()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return None
 
     def generate_summary(self):
@@ -1931,7 +1943,7 @@ class SummarizerDialog(QDialog):
         try:
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageResultados)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         if self.current_summary_data:
             self.prepare_export_tab_defaults(self.current_summary_data)
         else:
@@ -2190,7 +2202,7 @@ class SummarizerDialog(QDialog):
                     if os.path.exists(final_path):
                         os.remove(final_path)
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
 
         summary_lines = [
             f"{exported_count} de {len(selected_layers)} camada(s) exportada(s) para GeoPackage em:",
@@ -2479,7 +2491,7 @@ class SummarizerDialog(QDialog):
                 if exported_layer and exported_layer.isValid():
                     QgsProject.instance().addMapLayer(exported_layer)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
             final_message = f"Arquivo GeoPackage salvo em:\n{path}{fallback_note}"
             QMessageBox.information(
@@ -2493,7 +2505,7 @@ class SummarizerDialog(QDialog):
         try:
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageResultados)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         pivot_widget = getattr(self, "pivot_widget", None)
         if pivot_widget is None:
             QMessageBox.warning(
@@ -2648,12 +2660,12 @@ class GetDataDialog(QDialog):
             try:
                 connection_registry.replace_saved_connections([connection_meta], persist=True)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if session_connection:
             try:
                 connection_registry.register_runtime_connection(session_connection)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     # ------------------------------------------------------------------ API
     def results(self) -> List:
