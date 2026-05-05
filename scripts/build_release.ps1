@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$OutputZip = ""
+    [string]$OutputDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +56,21 @@ function Remove-GeneratedArtifacts {
         Remove-Item -Force
 }
 
+function Assert-OutsideRepository {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot
+    )
+
+    $normalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $normalizedRoot = ([System.IO.Path]::GetFullPath($RepositoryRoot)).TrimEnd('\') + '\'
+    if ($normalizedPath.StartsWith($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "OutputDir must be outside the repository root: $normalizedPath"
+    }
+}
+
 function Test-ZipStructure {
     param(
         [Parameter(Mandatory = $true)]
@@ -77,7 +92,7 @@ function Test-ZipStructure {
         )
 
         if ($topLevel.Count -ne 1 -or $topLevel[0] -ne $PluginFolderName) {
-            throw "ZIP root inválido. Esperado apenas '$PluginFolderName/', mas encontrado: $($topLevel -join ', ')"
+            throw "ZIP root invalid. Expected only '$PluginFolderName/', but found: $($topLevel -join ', ')"
         }
 
         $forbiddenPatterns = @(
@@ -93,7 +108,26 @@ function Test-ZipStructure {
 
         foreach ($pattern in $forbiddenPatterns) {
             if ($entryNames | Where-Object { $_ -match $pattern }) {
-                throw "ZIP contém artefato proibido correspondente a '$pattern'."
+                throw "ZIP contains forbidden artifact matching '$pattern'."
+            }
+        }
+
+        $requiredEntries = @(
+            "$PluginFolderName/__init__.py",
+            "$PluginFolderName/metadata.txt",
+            "$PluginFolderName/README.md",
+            "$PluginFolderName/CHANGELOG.md",
+            "$PluginFolderName/resources/",
+            "$PluginFolderName/i18n/",
+            "$PluginFolderName/model_view/",
+            "$PluginFolderName/report_view/",
+            "$PluginFolderName/utils/",
+            "$PluginFolderName/ui/"
+        )
+
+        foreach ($requiredEntry in $requiredEntries) {
+            if (-not ($entryNames | Where-Object { $_ -eq $requiredEntry -or $_.StartsWith($requiredEntry) })) {
+                throw "ZIP does not contain required entry '$requiredEntry'."
             }
         }
     }
@@ -105,69 +139,66 @@ function Test-ZipStructure {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sourcePlugin = Join-Path $repoRoot "plugin\Summarizer"
 $pluginFolderName = Split-Path $sourcePlugin -Leaf
-$releaseDir = Join-Path $repoRoot "_release"
-$stageRoot = Join-Path $releaseDir "_staging_release"
-$stagePluginRoot = Join-Path $stageRoot $pluginFolderName
-
-if ($OutputZip) {
-    $zipPath = if ([System.IO.Path]::IsPathRooted($OutputZip)) {
-        $OutputZip
-    }
-    else {
-        Join-Path $releaseDir $OutputZip
-    }
+$defaultReleaseDir = Join-Path $env:USERPROFILE "Documents\Summarizer_release"
+$releaseDir = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    $defaultReleaseDir
 }
 else {
-    $zipPath = Join-Path $releaseDir "Summarizer-qgis-release.zip"
+    $OutputDir
 }
+$releaseDir = [System.IO.Path]::GetFullPath($releaseDir)
+Assert-OutsideRepository -Path $releaseDir -RepositoryRoot $repoRoot
+$stageRoot = Join-Path $releaseDir "_staging_release"
+$stagePluginRoot = Join-Path $stageRoot $pluginFolderName
+$zipPath = Join-Path $releaseDir "Summarizer-qgis-release.zip"
 
-Assert-FileExists -Path (Join-Path $sourcePlugin "metadata.txt") -Message "metadata.txt não encontrado em $sourcePlugin."
-Assert-FileExists -Path (Join-Path $sourcePlugin "resources\icon.png") -Message "icon.png não encontrado em $sourcePlugin\resources."
+Assert-FileExists -Path (Join-Path $sourcePlugin "metadata.txt") -Message "metadata.txt not found in $sourcePlugin."
+Assert-FileExists -Path (Join-Path $sourcePlugin "resources\icon.png") -Message "icon.png not found in $sourcePlugin\resources."
 
 $metadataText = Get-Content -LiteralPath (Join-Path $sourcePlugin "metadata.txt") -Raw
 if ($metadataText -notmatch "(?m)^\[general\]\s*$") {
-    throw "metadata.txt não possui a seção [general]."
+    throw "metadata.txt does not contain the [general] section."
 }
 
 foreach ($key in @("name", "version", "icon")) {
     $value = Get-MetadataValue -Text $metadataText -Key $key
     if ([string]::IsNullOrWhiteSpace($value)) {
-        throw "metadata.txt não informa a chave obrigatória '$key'."
+        throw "metadata.txt does not define required key '$key'."
     }
 }
 
 $iconRelativePath = Get-MetadataValue -Text $metadataText -Key "icon"
 $iconPath = Join-Path $sourcePlugin $iconRelativePath
-Assert-FileExists -Path $iconPath -Message "Ícone referenciado no metadata não existe: $iconRelativePath"
+Assert-FileExists -Path $iconPath -Message "Icon referenced in metadata does not exist: $iconRelativePath"
 
-Write-Host "Rodando compileall em $sourcePlugin"
-py -3 -m compileall $sourcePlugin
+try {
+    Write-Host "Running compileall in $sourcePlugin"
+    py -3 -m compileall $sourcePlugin
 
-Remove-GeneratedArtifacts -Root $sourcePlugin
+    Remove-GeneratedArtifacts -Root $sourcePlugin
 
-if (Test-Path -LiteralPath $stageRoot) {
-    Remove-Item -LiteralPath $stageRoot -Recurse -Force
+    if (Test-Path -LiteralPath $zipPath) {
+        Remove-Item -LiteralPath $zipPath -Force
+    }
+    if (Test-Path -LiteralPath $stageRoot) {
+        Remove-Item -LiteralPath $stageRoot -Recurse -Force
+    }
+
+    New-Item -ItemType Directory -Path $stagePluginRoot -Force | Out-Null
+    Get-ChildItem -LiteralPath $sourcePlugin -Force | Copy-Item -Destination $stagePluginRoot -Recurse -Force
+    Remove-GeneratedArtifacts -Root $stageRoot
+
+    Compress-Archive -LiteralPath $stagePluginRoot -DestinationPath $zipPath -CompressionLevel Optimal -Force
+    Test-ZipStructure -ZipPath $zipPath -PluginFolderName $pluginFolderName
+
+    Write-Host "ZIP generated at $zipPath"
+    Write-Host "Expected structure: $pluginFolderName/..."
 }
-if (Test-Path -LiteralPath $zipPath) {
-    Remove-Item -LiteralPath $zipPath -Force
+finally {
+    Remove-GeneratedArtifacts -Root $sourcePlugin
+    Remove-GeneratedArtifacts -Root $stageRoot
+    if (Test-Path -LiteralPath $stageRoot) {
+        Remove-Item -LiteralPath $stageRoot -Recurse -Force
+    }
+    Write-Host "Temporary staging removed from $stageRoot"
 }
-
-New-Item -ItemType Directory -Path $stagePluginRoot -Force | Out-Null
-Get-ChildItem -LiteralPath $sourcePlugin -Force | Copy-Item -Destination $stagePluginRoot -Recurse -Force
-Remove-GeneratedArtifacts -Root $stageRoot
-
-if (-not (Test-Path -LiteralPath $zipPath)) {
-    New-Item -ItemType Directory -Path (Split-Path $zipPath -Parent) -Force | Out-Null
-}
-
-Compress-Archive -LiteralPath $stagePluginRoot -DestinationPath $zipPath -CompressionLevel Optimal -Force
-Test-ZipStructure -ZipPath $zipPath -PluginFolderName $pluginFolderName
-
-Remove-GeneratedArtifacts -Root $sourcePlugin
-Remove-GeneratedArtifacts -Root $stageRoot
-if (Test-Path -LiteralPath $stageRoot) {
-    Remove-Item -LiteralPath $stageRoot -Recurse -Force
-}
-
-Write-Host "ZIP gerado em $zipPath"
-Write-Host "Estrutura esperada: $pluginFolderName/..."
