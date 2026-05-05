@@ -321,7 +321,7 @@ class DashboardItemWidget(QFrame):
             normalized = float(scale)
         except Exception:
             normalized = 1.0
-        normalized = max(0.6, min(2.0, normalized))
+        normalized = max(0.35, min(3.0, normalized))
         if not force and abs(normalized - self._zoom_scale) < 1e-3:
             return
         self._zoom_scale = normalized
@@ -863,16 +863,11 @@ class DashboardItemWidget(QFrame):
         global_pos = self._event_global_pos(event)
 
         if event_type == QEvent.Wheel:
-            try:
-                modifiers = event.modifiers()
-            except Exception:
-                modifiers = Qt.NoModifier
-            if not (modifiers & Qt.ControlModifier):
-                return False
             canvas = self._find_canvas_host()
             if canvas is not None and hasattr(canvas, "_handle_wheel_zoom"):
                 try:
-                    return bool(canvas._handle_wheel_zoom(event))
+                    if canvas._handle_wheel_zoom(event):
+                        return True
                 except Exception:
                     return False
             return False

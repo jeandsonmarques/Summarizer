@@ -281,7 +281,7 @@ class ReportChartWidget(QWidget):
             normalized = float(scale)
         except Exception:
             normalized = 1.0
-        normalized = max(0.6, min(2.0, normalized))
+        normalized = max(0.35, min(3.0, normalized))
         if abs(normalized - self._display_scale) < 1e-3:
             return
         self._display_scale = normalized

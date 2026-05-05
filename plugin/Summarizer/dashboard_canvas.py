@@ -165,6 +165,7 @@ class DashboardCanvas(QWidget):
     itemsChanged = pyqtSignal()
     filtersChanged = pyqtSignal(dict)
     zoomChanged = pyqtSignal(float)
+    chartSelectionChanged = pyqtSignal(str, object)
     emptyCanvasContextMenuRequested = pyqtSignal(QPoint)
 
     def __init__(self, parent=None):
@@ -184,8 +185,8 @@ class DashboardCanvas(QWidget):
         self._link_preview: Optional[Dict[str, object]] = None
         self._selected_relation_id: str = ""
         self._zoom = 1.0
-        self._min_zoom = 0.6
-        self._max_zoom = 2.0
+        self._min_zoom = 0.35
+        self._max_zoom = 3.0
         self._zoom_step = 1.15
         self._background_color = QColor("#FFFFFF")
         self._grid_color = QColor("#E5E7EB")
@@ -345,12 +346,6 @@ class DashboardCanvas(QWidget):
             modifiers = event.modifiers()
         except Exception:
             modifiers = Qt.NoModifier
-        if not (modifiers & Qt.ControlModifier):
-            try:
-                event.ignore()
-            except Exception:
-                log_exception("falha opcional ignorada")
-            return False
         try:
             delta = event.angleDelta().y()
         except Exception:
@@ -361,6 +356,17 @@ class DashboardCanvas(QWidget):
             except Exception:
                 log_exception("falha opcional ignorada")
             return False
+
+        if modifiers & Qt.ShiftModifier:
+            step = max(1, int(abs(delta) / 2))
+            direction = -1 if delta > 0 else 1
+            hbar = self.scroll.horizontalScrollBar()
+            hbar.setValue(max(hbar.minimum(), min(hbar.maximum(), hbar.value() + (direction * step))))
+            try:
+                event.accept()
+            except Exception:
+                log_exception("falha opcional ignorada")
+            return True
 
         self._apply_zoom(self._zoom * (self._zoom_step ** (delta / 120.0)), self._event_pos_to_point(event))
         try:
@@ -390,6 +396,7 @@ class DashboardCanvas(QWidget):
         visual_links: Optional[List[DashboardVisualLink]] = None,
         chart_relations: Optional[List[DashboardChartRelation]] = None,
     ):
+        active_filters = self.interaction_manager.active_filters()
         self.interaction_manager.clear_registry()
         self._items = [item.clone() for item in list(items or [])]
         self._set_graph_state(visual_links=visual_links, chart_relations=chart_relations)
@@ -397,6 +404,26 @@ class DashboardCanvas(QWidget):
         self._normalize_layouts()
         self._zoom = 1.0
         self._apply_geometries()
+        if active_filters:
+            self.interaction_manager.set_active_filters(active_filters)
+
+    def update_items(
+        self,
+        items: List[DashboardChartItem],
+        visual_links: Optional[List[DashboardVisualLink]] = None,
+        chart_relations: Optional[List[DashboardChartRelation]] = None,
+    ):
+        current_zoom = self._zoom
+        active_filters = self.interaction_manager.active_filters()
+        self.interaction_manager.clear_registry()
+        self._items = [item.clone() for item in list(items or [])]
+        self._set_graph_state(visual_links=visual_links, chart_relations=chart_relations)
+        self._rebuild_widgets()
+        self._normalize_layouts()
+        self._zoom = self._clamp_zoom(current_zoom)
+        self._apply_geometries()
+        if active_filters:
+            self.interaction_manager.set_active_filters(active_filters)
 
     def items(self) -> List[DashboardChartItem]:
         return [item.clone() for item in self._items]
@@ -508,6 +535,20 @@ class DashboardCanvas(QWidget):
         self._rebuild_widgets()
         self._apply_geometries()
         self.itemsChanged.emit()
+
+    def set_selected_category(self, category_key: Optional[str], *, emit_signal: bool = False):
+        normalized = str(category_key or "").strip()
+        for widget in self._widgets.values():
+            chart_widget = getattr(widget, "chart_widget", None)
+            if chart_widget is None or not hasattr(chart_widget, "set_selected_category"):
+                continue
+            try:
+                chart_widget.set_selected_category(normalized, emit_signal=emit_signal)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def clear_selection(self, *, emit_signal: bool = False):
+        self.set_selected_category("", emit_signal=emit_signal)
 
     def clear_items(self):
         self._items = []
@@ -723,6 +764,9 @@ class DashboardCanvas(QWidget):
                 widget = DashboardItemWidget(item, self.surface)
                 widget.removeRequested.connect(self._remove_item)
                 widget.selectionChanged.connect(self.interaction_manager.handle_chart_selection)
+                widget.selectionChanged.connect(
+                    lambda payload, item_id=item.item_id: self._emit_chart_selection(item_id, payload)
+                )
                 widget.itemChanged.connect(self.itemsChanged.emit)
                 widget.dragStarted.connect(self._start_drag)
                 widget.dragMoved.connect(self._move_drag)
@@ -739,6 +783,9 @@ class DashboardCanvas(QWidget):
             widget.set_edit_mode(self._edit_mode)
             self.interaction_manager.register_chart(widget, item.binding)
         self.interaction_manager.set_chart_relations(self._chart_relations)
+
+    def _emit_chart_selection(self, item_id: str, payload):
+        self.chartSelectionChanged.emit(str(item_id or ""), payload)
 
     def _normalize_layouts(self):
         for item in self._items:
