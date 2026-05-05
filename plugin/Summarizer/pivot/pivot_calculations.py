@@ -7,6 +7,8 @@ from typing import Any, List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
+_NULL_TEXT_MARKERS = {"null", "none", "nan"}
+
 
 def normalize_field_token(value: Any) -> str:
     text = str(value or "").strip()
@@ -84,12 +86,24 @@ def coerce_python_value(value: Any) -> Any:
     return value
 
 
+def _normalize_unique_value(value: Any) -> Any:
+    coerced = coerce_python_value(value)
+    if coerced is None:
+        return None
+    if isinstance(coerced, str):
+        if coerced.strip().lower() in _NULL_TEXT_MARKERS:
+            return None
+        return coerced
+    return coerced
+
+
 def aggregate_series(series: pd.Series, agg_func: str, include_nulls: bool = False):
     numeric = pd.to_numeric(series, errors="coerce").dropna()
     if agg_func == "median":
         return float(numeric.median()) if not numeric.empty else None
     if agg_func == "unique":
-        return int(series.nunique(dropna=not include_nulls))
+        normalized = series.map(_normalize_unique_value)
+        return int(normalized.nunique(dropna=not include_nulls))
     if agg_func == "variance":
         return float(numeric.var(ddof=0)) if not numeric.empty else None
     if agg_func == "stddev":
