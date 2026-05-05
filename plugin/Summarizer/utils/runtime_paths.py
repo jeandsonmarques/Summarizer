@@ -5,6 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from .logging_utils import log_warning
+
 
 APP_NAME = "Summarizer"
 
@@ -42,6 +44,7 @@ def runtime_state_dir(app_name: str = APP_NAME) -> Path:
             target.mkdir(parents=True, exist_ok=True)
             return target
         except Exception:
+            log_warning("[Runtime] falha ao criar diretorio de estado; tentando proximo caminho")
             continue
 
     fallback = Path(tempfile.gettempdir()) / app_name

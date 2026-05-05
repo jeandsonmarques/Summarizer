@@ -7,6 +7,7 @@ from qgis.PyQt.QtWidgets import QVBoxLayout, QWidget
 
 from .dashboard_canvas import DashboardCanvas
 from .dashboard_models import DashboardPage
+from .report_view.report_logging import log_warning
 
 
 class DashboardPageWidget(QWidget):
@@ -59,6 +60,7 @@ class DashboardPageWidget(QWidget):
             try:
                 self.canvas.set_active_filters(normalized.filters)
             except Exception:
+                log_warning("[Dashboard] falha ao aplicar filtros ativos; limpando filtros da pagina")
                 self.canvas.clear_filters()
             self.canvas.set_edit_mode(True)
         finally:

@@ -60,6 +60,17 @@ from qgis.core import (
 )
 
 from .palette import TYPOGRAPHY
+from .pivot import (
+    aggregate_series as _pivot_aggregate_series,
+    coerce_python_value as _pivot_coerce_python_value,
+    flatten_pandas_columns as _pivot_flatten_pandas_columns,
+    format_header_tuple as _pivot_format_header_tuple,
+    normalize_field_token as _pivot_normalize_field_token,
+    pandas_aggfunc_name as _pivot_pandas_aggfunc_name,
+    resolve_available_field_name as _pivot_resolve_available_field_name,
+)
+from .pivot.pivot_models import PivotExportSpec
+from .pivot.pivot_export import export_dataframe_to_csv, export_dataframes_to_excel
 from .slim_dialogs import slim_message
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
@@ -73,6 +84,8 @@ from .report_view.pivot import (
     PivotValidationError,
 )
 
+
+from .utils.logging_utils import log_exception
 
 class _PivotFilterProxy(QSortFilterProxyModel):
     """Proxy that supports global search plus per-column filters."""
@@ -797,7 +810,7 @@ class PivotTableWidget(QWidget):
         try:
             _apply_i18n_widgets(self)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1616,7 +1629,7 @@ class PivotTableWidget(QWidget):
             try:
                 widget.setMinimumHeight(0)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _load_sidebar_state(self):
         settings = QSettings()
@@ -1841,7 +1854,7 @@ class PivotTableWidget(QWidget):
                 panel.style().unpolish(panel)
                 panel.style().polish(panel)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _handle_analytics_splitter_moved(self, pos: int, index: int):
         if getattr(self, "_tools_panels_hidden", False) or not hasattr(self, "analytics_splitter"):
@@ -1938,7 +1951,7 @@ class PivotTableWidget(QWidget):
         try:
             button.setAccessibleName(tooltip)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         icon = svg_icon(icon_name)
         if not icon.isNull():
             button.setIcon(icon)
@@ -2412,7 +2425,7 @@ class PivotTableWidget(QWidget):
             try:
                 QTimer.singleShot(0, combo.showPopup)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _integration_panel(self):
         host = self._plugin_host()
@@ -3270,7 +3283,7 @@ class PivotTableWidget(QWidget):
                 widget.setPalette(palette)
                 widget.setAutoFillBackground(True)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         for list_widget in (
             getattr(self, "filter_fields_list", None),
@@ -3292,7 +3305,7 @@ class PivotTableWidget(QWidget):
                     viewport.setAutoFillBackground(True)
                     viewport.setBackgroundRole(QPalette.Base)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     # ------------------------------------------------------------------ Data intake
     def set_summary_data(self, summary_data: Dict):
@@ -3600,7 +3613,7 @@ class PivotTableWidget(QWidget):
             try:
                 df[metric] = pd.to_numeric(df[metric], errors="coerce")
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         if not row_fields and not col_fields:
             if metric is None:
@@ -3634,7 +3647,7 @@ class PivotTableWidget(QWidget):
                     try:
                         working[values] = pd.to_numeric(working[values], errors="coerce")
                     except Exception:
-                        pass
+                        log_exception("falha opcional ignorada")
                 pivot = pd.pivot_table(
                     working,
                     index=row_fields,
@@ -3972,7 +3985,7 @@ class PivotTableWidget(QWidget):
         try:
             selection_model.selectionChanged.disconnect(self._on_table_selection_changed)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         selection_model.selectionChanged.connect(self._on_table_selection_changed)
 
     def _on_table_selection_changed(self, selected, deselected):
@@ -4314,7 +4327,7 @@ class PivotTableWidget(QWidget):
             self.table_view.verticalHeader().setDefaultSectionSize(30)
             self.table_view.horizontalHeader().setMinimumHeight(34)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._apply_table_preferences()
         harmonize_widget_fonts(self)
 
@@ -4335,7 +4348,7 @@ class PivotTableWidget(QWidget):
             table.horizontalHeader().setDefaultSectionSize(max(96, int(table.horizontalHeader().defaultSectionSize() or 96)))
             table.viewport().update()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _set_last_active_area(self, area: str):
         if area in {"row", "column", "value"}:
@@ -4372,7 +4385,7 @@ class PivotTableWidget(QWidget):
             icon_width = int(self.fields_list.iconSize().width() or 14)
             width = max(width, widest_text + icon_width + 54)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         for candidate in (
             getattr(self, "fields_panel_header", None),
             getattr(self, "fields_context_card", None),
@@ -4382,7 +4395,7 @@ class PivotTableWidget(QWidget):
             try:
                 width = max(width, int(candidate.sizeHint().width() or 0))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         return max(_TOOLS_FIELDS_MIN_WIDTH, min(_TOOLS_FIELDS_MAX_WIDTH, width))
 
     def _sync_fields_panel_width_to_content(self):
@@ -4760,26 +4773,10 @@ class PivotTableWidget(QWidget):
         return pd.DataFrame(records)
 
     def _aggregate_series(self, series: pd.Series, agg_func: str):
-        numeric = pd.to_numeric(series, errors="coerce").dropna()
-        if agg_func == "median":
-            return float(numeric.median()) if not numeric.empty else None
-        if agg_func == "unique":
-            return int(series.nunique(dropna=not self.include_nulls_check.isChecked()))
-        if agg_func == "variance":
-            return float(numeric.var(ddof=0)) if not numeric.empty else None
-        if agg_func == "stddev":
-            return float(numeric.std(ddof=0)) if not numeric.empty else None
-        if agg_func == "average":
-            return float(numeric.mean()) if not numeric.empty else None
-        return series.astype(float).agg(agg_func)
+        return _pivot_aggregate_series(series, agg_func, include_nulls=self.include_nulls_check.isChecked())
 
     def _pandas_aggfunc_name(self, agg_func: str) -> str:
-        mapping = {
-            "average": "mean",
-            "stddev": "std",
-            "unique": "nunique",
-        }
-        return mapping.get(agg_func, agg_func)
+        return _pivot_pandas_aggfunc_name(agg_func)
 
     def _map_variant_to_data_type(self, variant_type: int) -> str:
         if variant_type in {
@@ -4797,24 +4794,10 @@ class PivotTableWidget(QWidget):
         return "text"
 
     def _format_header_tuple(self, values: tuple) -> str:
-        if not values:
-            return "Total"
-        return " / ".join("Sem valor" if value in (None, "") else str(value) for value in values)
+        return _pivot_format_header_tuple(values)
 
     def _flatten_pandas_columns(self, df: pd.DataFrame, synthetic_row: bool = False) -> pd.DataFrame:
-        flattened = []
-        for column in df.columns:
-            if isinstance(column, tuple):
-                parts = [str(part) for part in column if part not in (None, "")]
-                if synthetic_row and parts and parts[0] == "__row_total__":
-                    flattened.append("Total")
-                else:
-                    flattened.append(" / ".join(parts) if parts else "Total")
-            else:
-                flattened.append("Total" if synthetic_row and column == "__row_total__" else column)
-        result = df.copy()
-        result.columns = flattened
-        return result
+        return _pivot_flatten_pandas_columns(df, synthetic_row=synthetic_row)
 
     # ------------------------------------------------------------------ Public API
     def get_visible_pivot_dataframe(self) -> pd.DataFrame:
@@ -5033,13 +5016,7 @@ class PivotTableWidget(QWidget):
         return pd.DataFrame(rows, columns=headers)
 
     def _normalize_field_token(self, value: Any) -> str:
-        text = str(value or "").strip()
-        if not text:
-            return ""
-        text = unicodedata.normalize("NFKD", text)
-        text = "".join(ch for ch in text if not unicodedata.combining(ch))
-        text = re.sub(r"\s+", " ", text).strip().lower()
-        return text
+        return _pivot_normalize_field_token(value)
 
     def _resolve_available_field_name(
         self,
@@ -5047,32 +5024,7 @@ class PivotTableWidget(QWidget):
         available_fields: List[str],
         fallback_candidates: Optional[List[Any]] = None,
     ) -> str:
-        candidate = str(field_name or "").strip()
-        if candidate and candidate in available_fields:
-            return candidate
-
-        available_lower = {name.lower(): name for name in available_fields}
-        if candidate:
-            by_lower = available_lower.get(candidate.lower())
-            if by_lower:
-                return by_lower
-
-        normalized_map: Dict[str, str] = {}
-        for name in available_fields:
-            token = self._normalize_field_token(name)
-            if token and token not in normalized_map:
-                normalized_map[token] = name
-
-        lookup_values: List[Any] = []
-        if candidate:
-            lookup_values.append(candidate)
-        lookup_values.extend(list(fallback_candidates or []))
-
-        for lookup in lookup_values:
-            token = self._normalize_field_token(lookup)
-            if token and token in normalized_map:
-                return normalized_map[token]
-        return ""
+        return _pivot_resolve_available_field_name(field_name, available_fields, fallback_candidates=fallback_candidates)
 
     def _resolve_layer_field_name(
         self,
@@ -5110,28 +5062,7 @@ class PivotTableWidget(QWidget):
         return ""
 
     def _qvariant_to_python(self, value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, QVariant):
-            try:
-                value = value.value()
-            except Exception:
-                value = str(value)
-        if hasattr(value, "isNull"):
-            try:
-                if value.isNull():
-                    return None
-            except Exception:
-                pass
-        if hasattr(value, "toPyDateTime"):
-            try:
-                return value.toPyDateTime()
-            except Exception:
-                return str(value)
-        if isinstance(value, str):
-            value = value.strip()
-            return value or None
-        return value
+        return _pivot_coerce_python_value(value)
 
     def _build_layer_dataframe_from_request(
         self,
@@ -5174,12 +5105,12 @@ class PivotTableWidget(QWidget):
             try:
                 feature_request.setSubsetOfAttributes(attribute_fields, layer.fields())
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if not geometry_value_name:
             try:
                 feature_request.setFlags(QgsFeatureRequest.NoGeometry)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         selected_ids = set()
         if request.only_selected:
@@ -5309,12 +5240,12 @@ class PivotTableWidget(QWidget):
             try:
                 feature_request.setSubsetOfAttributes(attribute_fields, layer.fields())
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if not geometry_value_name:
             try:
                 feature_request.setFlags(QgsFeatureRequest.NoGeometry)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         selected_ids = set()
         if bool(pivot_config.get("only_selected")):
@@ -5416,7 +5347,7 @@ class PivotTableWidget(QWidget):
                 if not layer_df.empty:
                     return layer_df
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         for candidate in (self.filtered_df, self.raw_df):
             if isinstance(candidate, pd.DataFrame) and not candidate.empty:
@@ -5434,11 +5365,35 @@ class PivotTableWidget(QWidget):
         layer_df: pd.DataFrame,
         pivot_config: Optional[Dict[str, Any]] = None,
     ) -> str:
-        with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
-            pivot_df.to_excel(writer, sheet_name="Tabela_Dinamica", index=False)
-            layer_df.to_excel(writer, sheet_name="Dados_Camada", index=False)
         if pivot_config is None:
+            export_dataframes_to_excel(
+                pivot_df,
+                layer_df,
+                PivotExportSpec(
+                    file_path=file_path,
+                    pivot_sheet_name="Tabela_Dinamica",
+                    data_sheet_name="Dados_Camada",
+                    sheet_name="Tabela_Dinamica",
+                ),
+            )
             return ""
+        export_dataframes_to_excel(
+            pivot_df,
+            layer_df,
+            PivotExportSpec(
+                file_path=file_path,
+                pivot_sheet_name="Tabela_Dinamica",
+                data_sheet_name="Dados_Camada",
+                sheet_name="Tabela_Dinamica",
+                aggregation=str(pivot_config.get("aggregation") or "count"),
+                value_field=str(pivot_config.get("value_field") or ""),
+                value_label=str(pivot_config.get("value_label") or ""),
+                row_fields=list(pivot_config.get("row_fields") or []),
+                column_fields=list(pivot_config.get("column_fields") or []),
+                filter_fields=list(pivot_config.get("filter_fields") or []),
+                metadata=dict(pivot_config or {}),
+            ),
+        )
         _, note = self._try_create_native_excel_pivot(file_path, layer_df, pivot_config)
         return note
 
@@ -5557,15 +5512,15 @@ class PivotTableWidget(QWidget):
                 try:
                     workbook.Worksheets("Resumo_Pivot").Delete()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
                 ws_snapshot.Name = "Resumo_Pivot"
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
             try:
                 workbook.Worksheets("Tabela_Dinamica").Delete()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
             ws_pivot = workbook.Worksheets.Add()
             ws_pivot.Name = "Tabela_Dinamica"
@@ -5609,12 +5564,12 @@ class PivotTableWidget(QWidget):
                 try:
                     workbook.Close(SaveChanges=True)
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             if excel is not None:
                 try:
                     excel.Quit()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
 
     def _export_pivot_table(self):
         if self.pivot_df is None or self.pivot_df.empty:
@@ -5637,13 +5592,7 @@ class PivotTableWidget(QWidget):
             if "csv" in selected_filter.lower():
                 if not path.lower().endswith(".csv"):
                     path += ".csv"
-                pivot_export_df.to_csv(
-                    path,
-                    index=False,
-                    sep=";",
-                    encoding="utf-8-sig",
-                    decimal=",",
-                )
+                export_dataframe_to_csv(pivot_export_df, path, sep=";")
             elif "xlsx" in selected_filter.lower():
                 if not path.lower().endswith(".xlsx"):
                     path += ".xlsx"

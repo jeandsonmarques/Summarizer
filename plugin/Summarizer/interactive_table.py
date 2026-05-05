@@ -12,6 +12,7 @@ from qgis.PyQt.QtGui import QStandardItemModel, QStandardItem
 from qgis.core import QgsMessageLog, Qgis
 
 
+from .utils.logging_utils import log_exception
 class _AllColumnsFilter(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -104,7 +105,7 @@ class InteractiveTable(QWidget):
                                 it.setFont(font)
                                 it.setBackground(Qt.yellow)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         self._rowcount = len(rows)
         self._refresh_status()

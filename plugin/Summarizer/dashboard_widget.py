@@ -1,4 +1,4 @@
-import os
+﻿import os
 import random
 from typing import Any, Dict, List, Optional
 
@@ -31,6 +31,7 @@ from .report_view.result_models import ChartPayload
 from .utils.fonts import ui_font
 
 
+from .utils.logging_utils import log_exception
 class DashboardWidget(QWidget):
     """Dashboard that reuses the same chart system used by the Reports tab."""
 
@@ -1011,7 +1012,7 @@ class DashboardWidget(QWidget):
         try:
             self.primary_chart.set_selected_category(category_key, emit_signal=False)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _handle_chart_selection(self, source_chart, payload):
         if not payload or not isinstance(payload, dict):

@@ -70,6 +70,7 @@ class ConversationMemoryService:
         try:
             payload = json.loads(row["state_json"] or "{}")
         except Exception:
+            log_warning("[Relatorios] JSON invalido no estado conversacional; usando estado vazio")
             payload = {}
         state = ConversationState.from_payload(payload, session_id=resolved_session)
         self._cache[resolved_session] = state

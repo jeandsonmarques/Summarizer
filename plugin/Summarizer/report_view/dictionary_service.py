@@ -61,6 +61,7 @@ class DictionaryService:
                     try:
                         weight = float(row.get("weight") or 0.0)
                     except Exception:
+                        log_warning("[Relatorios] peso invalido no dicionario semantico; usando 0.0")
                         weight = 0.0
                     size = max(1, len(alias.split()))
                     bucket = alias_by_size.setdefault(size, {})

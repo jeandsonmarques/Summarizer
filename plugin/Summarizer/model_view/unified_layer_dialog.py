@@ -1,4 +1,4 @@
-import os
+﻿import os
 from typing import List, Optional
 
 from qgis.PyQt.QtCore import Qt
@@ -19,6 +19,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 
+from ..utils.logging_utils import log_exception
 class UnifiedLayerDialog(QDialog):
     """Dialogo para gerar camada unificada a partir de uma relacao."""
 
@@ -96,7 +97,7 @@ class UnifiedLayerDialog(QDialog):
                 item.setCheckState(Qt.Checked)
                 self.fields_list.addItem(item)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _browse_gpkg(self):
         start = self.path_edit.text().strip() or os.path.expanduser("~")

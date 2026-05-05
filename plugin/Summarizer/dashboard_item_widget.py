@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import copy
 import os
@@ -26,6 +26,7 @@ from .utils.fonts import ui_font
 from .utils.i18n_runtime import tr_text as _rt
 
 
+from .utils.logging_utils import log_exception
 def _icon_from_resource(name: str) -> QIcon:
     path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "resources", "icons", str(name or "").strip())
@@ -197,7 +198,7 @@ class DashboardItemWidget(QFrame):
             try:
                 widget.setMouseTracking(True)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         self._apply_styles()
         self.refresh(item)
@@ -226,13 +227,13 @@ class DashboardItemWidget(QFrame):
         try:
             self.chart_widget.clear_selection(emit_signal=False)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _sync_chart_identity(self):
         try:
             self.chart_widget.set_chart_identity(self._binding.to_dict())
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _handle_chart_selection(self, payload):
         normalized = self._normalize_selection_payload(payload)
@@ -306,7 +307,7 @@ class DashboardItemWidget(QFrame):
         try:
             self.chart_widget.refresh_visual_state()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self.chart_widget.set_external_filters(self._external_filters)
         self.chart_widget.set_embedded_mode(True)
         self.chart_widget.clear_selection(emit_signal=False)
@@ -339,7 +340,7 @@ class DashboardItemWidget(QFrame):
             self.header.layout().setContentsMargins(header_margin, header_margin, header_margin, header_margin)
             self.header.layout().setSpacing(header_spacing)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         self.model_edit_btn.setFixedSize(button_side, button_side)
         self.personalize_btn.setFixedSize(button_side, button_side)
@@ -357,7 +358,7 @@ class DashboardItemWidget(QFrame):
             try:
                 self.chart_widget.set_display_scale(normalized)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         title_font = ui_font()
         title_font.setPixelSize(max(11, min(18, int(round(13 * normalized)))))
@@ -396,13 +397,13 @@ class DashboardItemWidget(QFrame):
                 self.card.layout().setContentsMargins(margin, margin, margin, margin)
                 self.card.layout().setSpacing(spacing)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         else:
             try:
                 self.card.layout().setContentsMargins(0, 0, 0, 0)
                 self.card.layout().setSpacing(0)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if not self._edit_mode:
             self.unsetCursor()
         self._apply_styles()
@@ -411,7 +412,7 @@ class DashboardItemWidget(QFrame):
             self._overlay.setGeometry(self.rect())
             self._overlay.raise_()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self.update()
 
     def set_highlight_mode(self, mode: str):
@@ -979,4 +980,4 @@ class DashboardItemWidget(QFrame):
             self._overlay.setGeometry(self.rect())
             self._overlay.raise_()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")

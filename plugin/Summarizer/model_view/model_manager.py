@@ -1,5 +1,4 @@
-﻿import json
-import uuid
+﻿import uuid
 from collections import deque
 from typing import Dict, List, Optional, Tuple
 
@@ -33,12 +32,20 @@ from qgis.core import (
 
 from .model_canvas_scene import ModelCanvasScene
 from .model_canvas_view import ModelCanvasView
+from .model_persistence import (
+    build_export_preset,
+    build_layout_state,
+    dump_state_payload,
+    load_state_payload,
+    snapshot_custom_relationships,
+    snapshot_table_positions,
+)
+from .model_relations import deduplicate_relationships, default_selected_fields, ensure_field_selections, normalize_direction
 from .relationship_item import RelationshipItem
 from .table_card_item import TableCardItem
 from ..utils.fonts import harmonize_font_family
 from ..utils.plugin_logging import log_info
-
-
+from ..utils.logging_utils import log_exception
 class ModelManager:
     """Converte dados do plugin em itens graficos e gerencia layout/persistencia."""
 
@@ -77,11 +84,11 @@ class ModelManager:
         try:
             self.view.zoomChanged.connect(self._on_zoom_changed)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             self.scene.selectionChanged.connect(self._handle_selection_changed)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     # ------------------------------------------------------------------ Data load
     def refresh_model(self, restore_visible: bool = True):
@@ -107,7 +114,7 @@ class ModelManager:
 
         relationships_data = self._collect_relationships()
         relationships_data.extend(self._saved_state.get("relationships", []))
-        self.available_relationships = relationships_data
+        self.available_relationships = deduplicate_relationships(relationships_data)
 
         visible_tables = self._saved_state.get("visible_tables", []) if restore_visible else []
 
@@ -115,7 +122,7 @@ class ModelManager:
         try:
             self.recompute_all_virtual_fields()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def restore_layout_state(self, visible_tables: Optional[List[str]] = None):
         self._log("restore_layout_state() chamado")
@@ -134,7 +141,7 @@ class ModelManager:
             try:
                 self.add_table_to_canvas(name, use_saved_position=True, persist=False)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         saved_zoom = state.get("zoom") if isinstance(state, dict) else None
         if isinstance(saved_zoom, (int, float)) and saved_zoom > 0:
@@ -143,7 +150,7 @@ class ModelManager:
                 self.view._zoom = 1.0  # sync internal zoom state
                 self.view.set_zoom(float(saved_zoom))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _place_only_new_tables(self, new_items: Optional[List[TableCardItem]] = None):
         """Posiciona apenas itens explicitamente informados; nÃ£o altera cartÃµes existentes."""
@@ -278,7 +285,7 @@ class ModelManager:
         try:
             self.scene.removeItem(item)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._rebuild_relationships_for_canvas()
         self._save_state()
 
@@ -291,7 +298,7 @@ class ModelManager:
             try:
                 self.add_table_to_canvas(name, use_saved_position=True, persist=False)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self._save_state()
 
     def relationship_item_by_id(self, rel_id: Optional[str]) -> Optional[RelationshipItem]:
@@ -310,7 +317,7 @@ class ModelManager:
         try:
             self.ensure_tables_on_canvas([source, target])
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         rel_id = metadata.get("id")
         self._create_relationship(metadata)
@@ -325,7 +332,7 @@ class ModelManager:
                 try:
                     self.recompute_all_virtual_fields()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
                 return item
         # fallback: return any recent relationship matching tables
         for item in self.relationships.values():
@@ -340,7 +347,7 @@ class ModelManager:
                 try:
                     self.recompute_all_virtual_fields()
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
                 return item
         return None
 
@@ -377,31 +384,19 @@ class ModelManager:
         return names
 
     def _normalize_direction(self, direction: Optional[str]) -> str:
-        direction = str(direction or "both").lower()
-        if direction in ("forward", "origem", "source", "single", "source_to_target"):
-            return "forward"
-        if direction in ("backward", "destino", "target", "target_to_source", "reverse"):
-            return "backward"
-        return "both"
+        return normalize_direction(direction)
 
     def _default_selected_fields(self, table_name: Optional[str], exclude_field: Optional[str]) -> List[str]:
         names = self._fields_for_table(table_name or "")
-        exclude = str(exclude_field or "").lower()
-        return [n for n in names if str(n).lower() != exclude]
+        return default_selected_fields(names, exclude_field)
 
     def _ensure_field_selections(self, metadata: Dict, persist: bool = False):
-        direction = self._normalize_direction(metadata.get("direction") or metadata.get("flow_direction"))
-        if "selected_fields_origin_to_dest" not in metadata:
-            metadata["selected_fields_origin_to_dest"] = self._default_selected_fields(
-                metadata.get("source_table"), metadata.get("source_field")
-            )
-        if "selected_fields_dest_to_origin" not in metadata:
-            metadata["selected_fields_dest_to_origin"] = self._default_selected_fields(
-                metadata.get("target_table"), metadata.get("target_field")
-            )
-        metadata["direction"] = direction
-        if persist:
-            self._update_available_relationship_metadata(metadata.get("id"), metadata)
+        ensure_field_selections(
+            metadata,
+            self._fields_for_table,
+            persist=persist,
+            update_callback=self._update_available_relationship_metadata,
+        )
 
     def _update_available_relationship_metadata(self, rel_id: Optional[str], metadata: Dict):
         if not rel_id:
@@ -517,7 +512,7 @@ class ModelManager:
             try:
                 table.clear_virtual_fields()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self._virtual_fields_cache = {}
 
     def recompute_all_virtual_fields(self):
@@ -562,7 +557,7 @@ class ModelManager:
                 try:
                     table_item.set_virtual_fields(virtual_fields.get(table_name, []))
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
         except Exception as exc:
             self._log(f"Erro ao recalcular campos virtuais: {exc}")
 
@@ -580,35 +575,35 @@ class ModelManager:
         try:
             table_a.set_virtual_fields(preview_a)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             table_b.set_virtual_fields(preview_b)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         try:
             self.refresh_relationship_paths(table_a)
             self.refresh_relationship_paths(table_b)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _handle_selection_changed(self):
         try:
             self.recompute_all_virtual_fields()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     # ----------------------------------------------------------- Simple join (nivel 2)
     def _log(self, message: str):
         try:
             log_info(message)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _warn_user(self, title: str, message: str):
         try:
             QMessageBox.warning(self.view, title, message)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _add_layer_to_project_async(self, layer: QgsVectorLayer):
         if not isinstance(layer, QgsVectorLayer) or not layer.isValid():
@@ -818,7 +813,7 @@ class ModelManager:
             try:
                 result_layer.setName(layer_name)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         return result_layer
 
     def simple_join_from_relationship(
@@ -1006,7 +1001,7 @@ class ModelManager:
         try:
             result_layer.setName(output_name)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return result_layer
 
     def export_table_layer_with_inheritance(self, table_item: TableCardItem) -> Optional[QgsVectorLayer]:
@@ -1175,7 +1170,7 @@ class ModelManager:
                 for key, df in (host.integration_datasets or {}).items():
                     tables.append(self._build_table_from_dataframe(key, df))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         return tables
 
     def _build_table_from_dataframe(self, name: str, df: pd.DataFrame) -> Dict:
@@ -1225,7 +1220,7 @@ class ModelManager:
         try:
             QgsProject.instance().addMapLayer(layer, addToLegend=False)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return layer
 
     def _collect_relationships(self) -> List[Dict]:
@@ -1269,7 +1264,7 @@ class ModelManager:
                         "origin": "project",
                     }
                 )
-        return relationships
+        return deduplicate_relationships(relationships)
 
     # --------------------------------------------------------------- Relationships
     def _clear_relation_flags(self):
@@ -1326,7 +1321,7 @@ class ModelManager:
             try:
                 self.scene.removeItem(rel_item)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self.relationships.clear()
         self._clear_relation_flags()
 
@@ -1335,7 +1330,7 @@ class ModelManager:
         try:
             self.recompute_all_virtual_fields()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _find_field(self, table_item: TableCardItem, field_name: str):
         if field_name is None:
@@ -1389,7 +1384,7 @@ class ModelManager:
             if geom:
                 dialog.restoreGeometry(geom)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         grid = QGridLayout(dialog)
         grid.setVerticalSpacing(8)
@@ -1525,7 +1520,7 @@ class ModelManager:
             try:
                 settings.setValue(geom_key, dialog.saveGeometry())
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return
 
         data["cardinality"] = card_combo.currentText()
@@ -1558,7 +1553,7 @@ class ModelManager:
         try:
             settings.setValue(geom_key, dialog.saveGeometry())
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def delete_relationship(self, rel_item: RelationshipItem):
         rel_to_remove = None
@@ -1732,7 +1727,7 @@ class ModelManager:
             try:
                 table_item.setPos(pos)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         for rel in self.relationships.values():
             if rel.source_field.parentItem() is table_item or rel.target_field.parentItem() is table_item:
                 rel.update_path()
@@ -1755,37 +1750,25 @@ class ModelManager:
     def _load_state(self) -> Dict:
         settings = QSettings()
         raw = settings.value(self._state_key, "", type=str)
-        if not raw:
-            return {}
-        try:
-            return json.loads(raw)
-        except Exception:
-            return {}
+        return load_state_payload(raw)
 
     def _save_state(self):
-        tables_state = {
-            name: {"x": item.pos().x(), "y": item.pos().y()} for name, item in self.tables.items()
-        }
+        tables_state = snapshot_table_positions(self.tables)
         if tables_state:
             self._needs_initial_layout = False
-        custom_relationships = []
-        for item in self.relationships.values():
-            if item.metadata.get("origin") == "custom":
-                custom_relationships.append(dict(item.metadata))
-
-        state = {
-            "tables": tables_state,
-            "relationships": custom_relationships,
-            "zoom": self.view.zoom_level,
-            "order": list(self.tables.keys()),
-            "visible_tables": list(self.tables.keys()),
-            "connection_style": self._connection_style,
-            "legend_visible": self._legend_visible,
-        }
+        state = build_layout_state(
+            table_positions=tables_state,
+            relationships=snapshot_custom_relationships(self.relationships),
+            zoom=self.view.zoom_level,
+            order=list(self.tables.keys()),
+            visible_tables=list(self.tables.keys()),
+            connection_style=self._connection_style,
+            legend_visible=self._legend_visible,
+        )
         try:
-            QSettings().setValue(self._state_key, json.dumps(state))
+            QSettings().setValue(self._state_key, dump_state_payload(state))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._saved_state = state
 
     def save_layout_state(self):
@@ -1794,11 +1777,11 @@ class ModelManager:
     # ------------------------------------------------------------ Presets / snapshots
     def export_preset(self) -> Dict:
         """Exporta tabelas, relacoes e layout para um payload serializavel."""
-        return {
-            "tables": list(self.available_tables.values()),
-            "relationships": list(self.available_relationships),
-            "layout_state": self._saved_state if isinstance(self._saved_state, dict) else {},
-        }
+        return build_export_preset(
+            available_tables=list(self.available_tables.values()),
+            available_relationships=list(self.available_relationships),
+            layout_state=self._saved_state if isinstance(self._saved_state, dict) else {},
+        )
 
     def import_preset(self, payload: Dict, create_empty_layers: bool = True):
         """Importa preset JSON, recriando tabelas vazias, relacoes e layout."""
@@ -1819,7 +1802,7 @@ class ModelManager:
                     try:
                         self._create_memory_layer_from_schema(table)
                     except Exception:
-                        pass
+                        log_exception("falha opcional ignorada")
 
         # Reconstruir colecoes internas
         self.scene.clear()
@@ -1833,7 +1816,7 @@ class ModelManager:
         state_copy = dict(layout_state) if isinstance(layout_state, dict) else {}
         state_copy["relationships"] = relationships
         self._saved_state = state_copy
-        self.available_relationships = list(relationships)
+        self.available_relationships = deduplicate_relationships(list(relationships))
 
         visible = state_copy.get("visible_tables", [])
         if not isinstance(visible, list) or not visible:
@@ -1843,7 +1826,7 @@ class ModelManager:
         try:
             self.recompute_all_virtual_fields()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._save_state()
 
     def _on_zoom_changed(self, value: float):

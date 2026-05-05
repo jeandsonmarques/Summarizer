@@ -1,10 +1,11 @@
-import os
+﻿import os
 from typing import List, Optional
 
 from qgis.PyQt.QtCore import QEvent, QObject, QTimer
 from qgis.PyQt.QtGui import QFont, QFontDatabase
 from qgis.PyQt.QtWidgets import QWidget
 
+from ..utils.logging_utils import log_exception
 _FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources", "fonts", "Inter")
 _FONT_FILES = (
     "Inter-Regular.ttf",
@@ -73,7 +74,7 @@ def harmonize_widget_fonts(root: Optional[QObject]) -> None:
     try:
         widgets.extend(root.findChildren(QWidget))
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
     for widget in widgets:
         try:
             widget.setFont(harmonize_font_family(widget.font()))

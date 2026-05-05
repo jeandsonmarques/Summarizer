@@ -1,4 +1,4 @@
-import copy
+﻿import copy
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
@@ -18,6 +18,7 @@ from .result_models import CompositeOperandSpec, FilterSpec, MetricSpec, QueryPl
 from .text_utils import normalize_compact, normalize_text
 
 
+from ..utils.logging_utils import log_exception
 class ReportExecutionJob:
     def __init__(self, executor: "ReportExecutor", plan: QueryPlan):
         self.executor = executor
@@ -1576,7 +1577,7 @@ class ReportExecutor:
             try:
                 distance_area.setEllipsoid(ellipsoid)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         return distance_area
 
     def _prepare_boundary_filter_context(
@@ -1667,7 +1668,7 @@ class ReportExecutor:
                     try:
                         clipped_geometry = clipped_geometry.union(intersection)
                     except Exception:
-                        pass
+                        log_exception("falha opcional ignorada")
         return clipped_geometry
 
     def _summary_scope_text(self, plan: QueryPlan) -> str:

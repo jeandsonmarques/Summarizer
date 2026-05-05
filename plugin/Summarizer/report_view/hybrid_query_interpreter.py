@@ -1,4 +1,4 @@
-import copy
+﻿import copy
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -26,6 +26,7 @@ from .schema_linker_service import SchemaLinkResult, SchemaLinkerService
 from .text_utils import contains_hint_tokens, normalize_text
 
 
+from ..utils.logging_utils import log_exception
 STOP_TERMS = {
     "a",
     "ao",
@@ -3234,7 +3235,7 @@ class HybridQueryInterpreter:
                 plan.top_n = max(1, int(top_match.group(1)))
                 updated = True
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         chart_type = None
         if "pizza" in normalized:

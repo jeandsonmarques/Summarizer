@@ -9,6 +9,7 @@ from .field_item import FieldItem
 from ..utils.fonts import ui_font
 
 
+from ..utils.logging_utils import log_exception
 class TableCardItem(QGraphicsRectItem):
     """Card de tabela inspirado no diagrama de modelo do Power BI."""
 
@@ -55,7 +56,7 @@ class TableCardItem(QGraphicsRectItem):
             shadow.setColor(QColor(0, 0, 0, 38))
             self.setGraphicsEffect(shadow)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _measure_width(self) -> float:
         metrics = QFontMetrics(self.title_font)
@@ -93,7 +94,7 @@ class TableCardItem(QGraphicsRectItem):
                 if self.scene() is not None:
                     self.scene().removeItem(item)  # type: ignore[operator]
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def set_virtual_fields(self, virtual_fields: List[str]):
         self._virtual_fields = list(virtual_fields or [])
@@ -166,7 +167,7 @@ class TableCardItem(QGraphicsRectItem):
                 if manager is not None:
                     manager.refresh_relationship_paths(self)  # type: ignore[attr-defined]
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def _update_rect(self):
         self._build_fields(rebuild_real=False)
@@ -219,7 +220,7 @@ class TableCardItem(QGraphicsRectItem):
                     snapped = QPointF(round(pos.x() / snap) * snap, round(pos.y() / snap) * snap)
                     return snapped
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if change == self.ItemPositionHasChanged:
             scene = self.scene()
             manager = getattr(scene, "manager", None) if scene is not None else None
@@ -228,12 +229,12 @@ class TableCardItem(QGraphicsRectItem):
                     new_pos = value if isinstance(value, QPointF) else self.pos()
                     manager.on_table_position_changed(self, new_pos)  # type: ignore[attr-defined]
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             elif scene is not None:
                 try:
                     scene.table_moved(self)  # type: ignore[attr-defined]
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
         return super().itemChange(change, value)
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent):  # type: ignore[override]
@@ -252,7 +253,7 @@ class TableCardItem(QGraphicsRectItem):
                     try:
                         manager.export_table_layer_with_inheritance(self)  # type: ignore[attr-defined]
                     except Exception:
-                        pass
+                        log_exception("falha opcional ignorada")
             event.accept()
             return
         super().contextMenuEvent(event)

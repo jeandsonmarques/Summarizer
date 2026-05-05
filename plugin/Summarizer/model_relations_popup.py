@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from dataclasses import dataclass
@@ -23,6 +23,7 @@ from .dashboard_models import DashboardChartItem, DashboardChartRelation
 from .slim_dialogs import slim_message
 
 
+from .utils.logging_utils import log_exception
 def _normalize_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
@@ -382,7 +383,7 @@ class ModelRelationsPopup(QDialog):
                     for field in layer.fields():
                         _append(field.name(), field.typeName())
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
 
         _append(item.binding.dimension_field)
         _append(item.binding.semantic_field_key)

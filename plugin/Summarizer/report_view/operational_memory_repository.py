@@ -4,6 +4,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+from .report_logging import log_warning
 from .operational_memory_models import (
     ApprovedExampleRecord,
     QueryFeedbackRecord,
@@ -23,6 +24,7 @@ def _json_loads(payload: Any, fallback):
     try:
         return json.loads(payload)
     except Exception:
+        log_warning("[Relatorios] JSON invalido no armazenamento de memoria operacional; usando fallback")
         return fallback
 
 

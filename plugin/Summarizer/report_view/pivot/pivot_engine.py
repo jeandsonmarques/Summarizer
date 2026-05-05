@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import statistics
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
@@ -11,6 +11,7 @@ from .pivot_models import PivotBucket, PivotCell, PivotFieldSpec, PivotRequest, 
 from .pivot_validators import PivotValidator
 
 
+from ...utils.logging_utils import log_exception
 class PivotEngine:
     SIMPLE_AGGREGATIONS = {"count", "sum", "average", "min", "max"}
     HEAVY_AGGREGATIONS = {"median", "variance", "stddev", "unique"}
@@ -81,13 +82,13 @@ class PivotEngine:
             try:
                 feature_request.setSubsetOfAttributes(needed_attributes, layer.fields())
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         geometry_required = any(spec.source_type == "geometry" for spec in self._iter_specs(request))
         if not geometry_required:
             try:
                 feature_request.setFlags(QgsFeatureRequest.NoGeometry)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         return feature_request
 
     def _collect_needed_attributes(self, request: PivotRequest):
@@ -144,7 +145,7 @@ class PivotEngine:
                 if value.isNull():
                     return None
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if isinstance(value, QVariant):
             try:
                 value = value.value()

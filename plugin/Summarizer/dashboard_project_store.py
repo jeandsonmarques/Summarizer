@@ -10,6 +10,7 @@ from qgis.PyQt.QtCore import QSettings
 from .dashboard_models import DashboardProject
 
 
+from .utils.logging_utils import log_exception
 RECENTS_SETTINGS_KEY = "Summarizer/model/recent_projects"
 LAST_DIR_SETTINGS_KEY = "Summarizer/model/last_dir"
 PROJECT_EXTENSION = ".pbsdash"
@@ -49,7 +50,7 @@ class DashboardProjectStore:
             try:
                 project.name = str(base_name)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         payload = project.to_dict()
         with open(final_path, "w", encoding="utf-8") as handler:
             json.dump(payload, handler, ensure_ascii=False, indent=2)

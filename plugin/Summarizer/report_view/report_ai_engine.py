@@ -1,4 +1,4 @@
-import traceback
+﻿import traceback
 from dataclasses import dataclass, field
 import inspect
 from time import perf_counter
@@ -24,6 +24,7 @@ from .schema_linker_service import SchemaLinkResult, SchemaLinkerService
 from .text_utils import normalize_compact, normalize_text
 
 
+from ..utils.logging_utils import log_exception
 @dataclass
 class EngineInterpretationPayload:
     interpretation: InterpretationResult
@@ -145,7 +146,7 @@ class ReportAIEngine:
             light_schema,
             light_context,
         )
-        self._emit_status(status_callback, "Pensando na melhor interpretacao...")
+        self._emit_status(status_callback, "Pensando na melhor interpretação...")
         brief = self.operation_planner.build_brief(
             question=effective_question,
             schema_context=light_context,
@@ -175,7 +176,7 @@ class ReportAIEngine:
             interface_mode == "analytic" or self._should_retry_with_enriched_schema(interpretation)
         )
         if should_enrich:
-            self._emit_status(status_callback, "Aprofundando a analise dos dados...")
+            self._emit_status(status_callback, "Aprofundando a análise dos dados...")
             layer_ids = list(runtime_layer_ids) or self._candidate_layer_ids_from_interpretation(interpretation, brief)
             log_info(
                 "[Relatorios] ai-engine retry=enriched "
@@ -221,7 +222,7 @@ class ReportAIEngine:
                 active_context = enriched_context
                 schema_level = "enriched"
 
-        self._emit_status(status_callback, "Validando a melhor interpretacao...")
+        self._emit_status(status_callback, "Validando a melhor interpretação...")
         interpretation = self._merge_followup_interpretation(conversation_context, interpretation)
         interpretation = self._rerank_interpretation(raw_question, interpretation)
         interpretation = self.operation_planner.refine_interpretation(
@@ -320,7 +321,7 @@ class ReportAIEngine:
                 )
                 if result.summary.text:
                     result.summary.text = (
-                        f"{result.summary.text} Nao foi possivel montar o grafico, mas a tabela foi gerada."
+                        f"{result.summary.text} Não foi possível montar o gráfico, mas a tabela foi gerada."
                     )
             self.context_memory.remember_result(question, plan, result)
             self._safe_mark_query_success(
@@ -339,7 +340,7 @@ class ReportAIEngine:
         except Exception as exc:
             detail = self._format_error_detail(exc)
             log_error(
-                "[Relatorios] falha durante a execucao "
+                "[Relatórios] falha durante a execução "
                 f"question='{question}' plan={plan.to_dict()} error={exc}\n{traceback.format_exc()}"
             )
             self._safe_mark_query_failure(
@@ -393,7 +394,7 @@ class ReportAIEngine:
             )
             if result.summary.text:
                 result.summary.text = (
-                    f"{result.summary.text} Nao foi possivel montar o grafico, mas a tabela foi gerada."
+                    f"{result.summary.text} Não foi possível montar o gráfico, mas a tabela foi gerada."
                 )
         self.context_memory.remember_result(question, job.plan, result)
         self._safe_mark_query_success(
@@ -481,7 +482,7 @@ class ReportAIEngine:
         try:
             status_callback(message)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _load_schema(self, include_profiles: bool = False, layer_ids: Optional[Sequence[str]] = None):
         try:
@@ -755,9 +756,9 @@ class ReportAIEngine:
         boundary_layer_name = str(plan.boundary_layer_name or "outra camada selecionada").strip()
         location_text = ", ".join(explicit_locations[:2]).strip() or "o local pedido"
         message = (
-            f"Nao encontrei um campo de localizacao confiavel na camada {primary_layer_name}. "
+            f"Não encontrei um campo de localização confiável na camada {primary_layer_name}. "
             f"Posso usar a camada poligonal {boundary_layer_name} para localizar {location_text} "
-            "e aplicar esse filtro na analise?"
+            "e aplicar esse filtro na análise?"
         ).strip()
 
         interpretation.status = "confirm"

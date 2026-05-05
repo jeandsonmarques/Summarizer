@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
@@ -28,6 +28,7 @@ from .model_interaction_manager import ModelInteractionManager
 from .model_relations_popup import ModelRelationsPopup
 
 
+from .utils.logging_utils import log_exception
 class _DashboardCanvasSurface(QWidget):
     def __init__(self, canvas, parent=None):
         super().__init__(parent)
@@ -49,7 +50,7 @@ class _DashboardCanvasSurface(QWidget):
             try:
                 grid_color.setAlphaF(max(0.1, min(1.0, float(self._canvas._grid_opacity))))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             grid_pen = QPen(grid_color)
             grid_pen.setWidth(1)
             painter.setPen(grid_pen)
@@ -116,7 +117,7 @@ class _DashboardCanvasSurface(QWidget):
             try:
                 event.accept()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return
         super().mousePressEvent(event)
 
@@ -131,7 +132,7 @@ class _DashboardCanvasSurface(QWidget):
             try:
                 event.accept()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return
         super().mouseMoveEvent(event)
 
@@ -142,7 +143,7 @@ class _DashboardCanvasSurface(QWidget):
             try:
                 event.accept()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return
         super().mouseReleaseEvent(event)
 
@@ -152,7 +153,7 @@ class _DashboardCanvasSurface(QWidget):
         try:
             event.ignore()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def contextMenuEvent(self, event):
         if self._canvas._handle_surface_context_menu(event):
@@ -348,7 +349,7 @@ class DashboardCanvas(QWidget):
             try:
                 event.ignore()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return False
         try:
             delta = event.angleDelta().y()
@@ -358,14 +359,14 @@ class DashboardCanvas(QWidget):
             try:
                 event.ignore()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return False
 
         self._apply_zoom(self._zoom * (self._zoom_step ** (delta / 120.0)), self._event_pos_to_point(event))
         try:
             event.accept()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return True
 
     def set_zoom(self, value: float, anchor_viewport_pos: Optional[QPoint] = None):
@@ -561,12 +562,12 @@ class DashboardCanvas(QWidget):
                 parsed_grid_size = int(round(float(grid_size)))
                 self.grid_size = max(4, min(48, parsed_grid_size))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if grid_opacity is not None:
             try:
                 self._grid_opacity = max(0.1, min(1.0, float(grid_opacity)))
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         self.surface.update()
 
     def canvas_style(self) -> Dict[str, object]:
@@ -712,7 +713,7 @@ class DashboardCanvas(QWidget):
             try:
                 self.interaction_manager.unregister_chart(item_id)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             widget.setParent(None)
             widget.deleteLater()
 
@@ -794,7 +795,7 @@ class DashboardCanvas(QWidget):
                     # Propagate the real zoom so headers, charts and labels reflow together.
                     widget.set_zoom_scale(self._zoom)
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             rect = self._scaled_rect(self._rect_from_layout(item.layout))
             widget.setGeometry(rect)
             widget.raise_()
@@ -828,7 +829,7 @@ class DashboardCanvas(QWidget):
         try:
             self.interaction_manager.unregister_chart(item_id)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._prune_graph_state()
         self._rebuild_widgets()
         self._apply_geometries()
@@ -1225,7 +1226,7 @@ class DashboardCanvas(QWidget):
         try:
             event.accept()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return True
 
     def _edit_relation(self, relation_id: str):

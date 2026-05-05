@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+﻿from typing import Dict, Optional
 
 from qgis.PyQt.QtCore import QPointF, Qt, QRectF
 from qgis.PyQt.QtGui import QColor, QPainterPath, QPen, QFont, QPolygonF
@@ -8,6 +8,7 @@ from .field_item import FieldItem
 from ..utils.fonts import ui_font
 
 
+from ..utils.logging_utils import log_exception
 class RelationshipItem(QGraphicsPathItem):
     """Liga dois FieldItem e atualiza a geometria quando os cards se movem."""
 
@@ -85,7 +86,7 @@ class RelationshipItem(QGraphicsPathItem):
             if str(style_candidate).lower() in ("orthogonal", "curved", "straight"):
                 style = str(style_candidate).lower()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         if style == "orthogonal":
             mid_x = (start.x() + end.x()) / 2.0
@@ -130,7 +131,7 @@ class RelationshipItem(QGraphicsPathItem):
                 try:
                     self.manager.open_relationship_dialog(self)
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             event.accept()
             return
         super().mousePressEvent(event)

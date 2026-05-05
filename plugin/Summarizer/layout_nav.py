@@ -1,4 +1,4 @@
-import os
+﻿import os
 from typing import Dict, Optional
 
 from qgis.PyQt.QtCore import QEasingCurve, QEvent, QObject, QRect, QSize, Qt, QTimer, QVariantAnimation
@@ -8,6 +8,7 @@ from qgis.PyQt.QtWidgets import QFrame, QPushButton, QToolTip, QVBoxLayout, QWid
 from .utils.resources import svg_icon
 
 
+from .utils.logging_utils import log_exception
 class SidebarController(QObject):
     """Slim icon-only navigation for the Summarizer dialog."""
 
@@ -120,7 +121,7 @@ class SidebarController(QObject):
                 btn.style().unpolish(btn)
                 btn.style().polish(btn)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
         stacked = getattr(self.ui, "stackedWidget", None)
         if stacked is not None:
@@ -146,7 +147,7 @@ class SidebarController(QObject):
             elif mode == "integracao":
                 host.show_integration_page()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         self._refresh_nav_styles()
         self._animate_indicator(mode)
 
@@ -154,7 +155,7 @@ class SidebarController(QObject):
             if hasattr(host, "set_model_toolbar_visible"):
                 host.set_model_toolbar_visible(False)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def show_integration_page(self):
         self._set_mode("integracao")
@@ -179,7 +180,7 @@ class SidebarController(QObject):
                 btn.style().unpolish(btn)
                 btn.style().polish(btn)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     def eventFilter(self, watched, event):
         if watched is self._sidebar_container or watched in self._all_nav_buttons:

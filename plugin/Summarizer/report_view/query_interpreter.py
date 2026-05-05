@@ -11,6 +11,7 @@ from .result_models import (
     ProjectSchema,
     QueryPlan,
 )
+from .report_logging import log_warning
 from .text_utils import normalize_text
 from ..utils.i18n_runtime import tr_text as _rt
 
@@ -143,6 +144,7 @@ class QueryInterpreter:
             try:
                 top_n = max(1, int(match.group(1)))
             except Exception:
+                log_warning("[Relatorios] falha ao interpretar 'top N'; usando valor padrao")
                 top_n = None
 
         parts = normalized.split(" por ", 1)
