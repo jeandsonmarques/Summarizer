@@ -7,18 +7,21 @@ import pandas as pd
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QFont
 from qgis.PyQt.QtWidgets import (
+    QAction,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSplitter,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -32,6 +35,33 @@ from .utils.fonts import ui_font
 
 
 from .utils.logging_utils import log_exception
+
+
+class _ZoomableChartScrollArea(QScrollArea):
+    def __init__(self, widget: QWidget, parent=None):
+        super().__init__(parent)
+        self._chart_widget = widget
+
+    def wheelEvent(self, event):
+        modifiers = event.modifiers()
+        if modifiers & Qt.ControlModifier and hasattr(self._chart_widget, "set_display_scale"):
+            delta = event.angleDelta().y()
+            if delta:
+                current = float(getattr(self._chart_widget, "_display_scale", 1.0) or 1.0)
+                step = 1.08 if delta > 0 else 0.92
+                new_scale = max(0.72, min(1.6, current * step))
+                try:
+                    self._chart_widget.set_display_scale(new_scale)
+                except Exception:
+                    log_exception("falha opcional ignorada")
+                try:
+                    event.accept()
+                except Exception:
+                    pass
+                return
+        super().wheelEvent(event)
+
+
 class DashboardWidget(QWidget):
     """Dashboard that reuses the same chart system used by the Reports tab."""
 
@@ -52,6 +82,8 @@ class DashboardWidget(QWidget):
         self.active_category_keys: List[str] = []
         self._category_filters: Dict[str, Dict[str, Any]] = {}
         self._updating_filter_chips = False
+        self._secondary_chart_type: str = ""
+        self._secondary_chart_title: str = ""
 
         self._build_ui()
         self._apply_styles()
@@ -72,31 +104,25 @@ class DashboardWidget(QWidget):
         helper_font = ui_font()
         helper_font.setPixelSize(int(TYPOGRAPHY.get("font_caption_px", 11)))
 
-        hero_frame = QFrame()
-        hero_frame.setObjectName("HeroFrame")
-        hero_layout = QVBoxLayout(hero_frame)
-        hero_layout.setContentsMargins(16, 14, 16, 14)
-        hero_layout.setSpacing(6)
-
         self.title_label = QLabel("Dashboard Interativo")
         self.title_label.setFont(header_font)
         self.title_label.setProperty("role", "title")
         self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        hero_layout.addWidget(self.title_label)
+        layout.addWidget(self.title_label)
 
         self.subtitle_label = QLabel("Selecione uma camada e gere um resumo para visualizar o dashboard.")
         self.subtitle_label.setObjectName("Subtitle")
         self.subtitle_label.setProperty("role", "helper")
         self.subtitle_label.setFont(body_font)
-        hero_layout.addWidget(self.subtitle_label)
+        layout.addWidget(self.subtitle_label)
 
         self.summary_line_label = QLabel("")
         self.summary_line_label.setObjectName("SummaryLine")
         self.summary_line_label.setProperty("role", "helper")
         self.summary_line_label.setWordWrap(True)
         self.summary_line_label.setFont(helper_font)
-        hero_layout.addWidget(self.summary_line_label)
-        layout.addWidget(hero_frame)
+        self.summary_line_label.hide()
+        layout.addWidget(self.summary_line_label)
 
         toolbar_frame = QFrame()
         toolbar_frame.setObjectName("ToolbarFrame")
@@ -125,6 +151,17 @@ class DashboardWidget(QWidget):
         self.export_dashboard_btn.setObjectName("DashboardPrimaryButton")
         self.export_dashboard_btn.setFont(body_font)
         toolbar_layout.addWidget(self.export_dashboard_btn, 0)
+
+        self.add_chart_btn = QToolButton()
+        self.add_chart_btn.setObjectName("AddChartButton")
+        self.add_chart_btn.setText("Novo gráfico")
+        self.add_chart_btn.setPopupMode(QToolButton.InstantPopup)
+        self.add_chart_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.add_chart_btn.setCursor(Qt.PointingHandCursor)
+        self.add_chart_menu = QMenu(self.add_chart_btn)
+        self._populate_add_chart_menu(self.add_chart_menu)
+        self.add_chart_btn.setMenu(self.add_chart_menu)
+        toolbar_layout.addWidget(self.add_chart_btn, 0)
         layout.addWidget(toolbar_frame)
 
         self.filter_chip_container = QWidget(self)
@@ -165,7 +202,7 @@ class DashboardWidget(QWidget):
         self.secondary_chart = ReportChartWidget(self)
         self.secondary_chart.hide()
 
-        self.chart_scroll = QScrollArea(self)
+        self.chart_scroll = _ZoomableChartScrollArea(self.primary_chart, self)
         self.chart_scroll.setWidgetResizable(True)
         self.chart_scroll.setFrameShape(QFrame.NoFrame)
         self.chart_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -175,8 +212,35 @@ class DashboardWidget(QWidget):
         self.chart_canvas.setObjectName("ChartCanvas")
         chart_canvas_layout = QVBoxLayout(self.chart_canvas)
         chart_canvas_layout.setContentsMargins(20, 20, 20, 20)
-        chart_canvas_layout.setSpacing(0)
+        chart_canvas_layout.setSpacing(12)
         chart_canvas_layout.addWidget(self.primary_chart)
+
+        self.secondary_chart_card = QFrame(self.chart_canvas)
+        self.secondary_chart_card.setObjectName("SecondaryChartCard")
+        self.secondary_chart_card.setVisible(False)
+        secondary_layout = QVBoxLayout(self.secondary_chart_card)
+        secondary_layout.setContentsMargins(14, 14, 14, 14)
+        secondary_layout.setSpacing(10)
+
+        secondary_header = QHBoxLayout()
+        secondary_header.setContentsMargins(0, 0, 0, 0)
+        secondary_header.setSpacing(8)
+        self.secondary_chart_title = QLabel("Novo gráfico")
+        self.secondary_chart_title.setObjectName("SectionTitle")
+        secondary_header.addWidget(self.secondary_chart_title, 0)
+        secondary_header.addStretch(1)
+        self.remove_secondary_chart_btn = QPushButton("Remover")
+        self.remove_secondary_chart_btn.setObjectName("DashboardGhostButton")
+        self.remove_secondary_chart_btn.clicked.connect(self._remove_secondary_chart)
+        secondary_header.addWidget(self.remove_secondary_chart_btn, 0)
+        secondary_layout.addLayout(secondary_header)
+
+        self.secondary_chart = ReportChartWidget(self.chart_canvas)
+        self.secondary_chart.setMinimumHeight(420)
+        self.secondary_chart.set_payload(None, empty_text="Sem dados para exibir")
+        secondary_layout.addWidget(self.secondary_chart)
+        chart_canvas_layout.addWidget(self.secondary_chart_card)
+
         self.chart_scroll.setWidget(self.chart_canvas)
         charts_layout.addWidget(self.chart_scroll, stretch=1)
 
@@ -200,6 +264,7 @@ class DashboardWidget(QWidget):
 
         self.refresh_btn.clicked.connect(self._refresh_current)
         self.export_dashboard_btn.clicked.connect(self._export_dashboard)
+        self.add_chart_btn.setMenu(self.add_chart_menu)
 
         self._render_empty_state()
 
@@ -217,6 +282,67 @@ class DashboardWidget(QWidget):
         card_layout.addWidget(label)
         return card, value_label, label
 
+    def _populate_add_chart_menu(self, menu: QMenu):
+        menu.clear()
+        chart_types = [
+            ("Card", "card"),
+            ("Barras", "bar"),
+            ("Rosca", "donut"),
+            ("Linha", "line"),
+            ("Área", "area"),
+            ("Funil", "funnel"),
+        ]
+        for label, chart_type in chart_types:
+            action = QAction(label, menu)
+            action.triggered.connect(lambda checked=False, value=chart_type, title=label: self._add_secondary_chart(value, title))
+            menu.addAction(action)
+
+    def _set_chart_widget_payload(
+        self,
+        chart_widget: ReportChartWidget,
+        payload: Optional[ChartPayload],
+        *,
+        empty_text: str,
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        chart_widget.set_payload(payload, empty_text=empty_text)
+        chart_widget.set_chart_context(context or {})
+
+    def _add_secondary_chart(self, chart_type: str, title: str):
+        chart_df = self._build_chart_dataset()
+        if chart_df.empty or float(chart_df["Valor"].fillna(0).sum()) == 0.0:
+            QMessageBox.information(self, "Novo gráfico", "Nao ha dados suficientes para criar outro grafico.")
+            return
+
+        payload = self._build_chart_payload(
+            chart_df,
+            title=f"Novo gráfico | {title}",
+            chart_type=chart_type,
+            limit=max(1, min(12, int(len(chart_df.index)))),
+        )
+        if payload is None:
+            return
+        self._secondary_chart_type = chart_type
+        self._secondary_chart_title = payload.title
+        self.secondary_chart_title.setText(payload.title)
+        self.secondary_chart_card.setVisible(True)
+        self._set_chart_widget_payload(
+            self.secondary_chart,
+            payload,
+            empty_text="Sem dados para o grafico secundario",
+            context=self._chart_context_for_model(payload),
+        )
+        self._adjust_chart_height(len(self.primary_chart._payload.categories) if self.primary_chart._payload is not None else 0)
+        self.chart_canvas.adjustSize()
+
+    def _remove_secondary_chart(self):
+        self._secondary_chart_type = ""
+        self._secondary_chart_title = ""
+        self.secondary_chart_card.setVisible(False)
+        self._set_chart_widget_payload(self.secondary_chart, None, empty_text="Sem dados para o grafico secundario")
+        self._adjust_chart_height(len(self.primary_chart._payload.categories) if self.primary_chart._payload is not None else 0)
+        self.chart_canvas.adjustSize()
+
     def _apply_styles(self):
         surface = COLORS["color_surface"]
         border = COLORS["color_border"]
@@ -230,21 +356,19 @@ class DashboardWidget(QWidget):
             QWidget#DashboardRoot {{
                 background-color: #F6F8FC;
             }}
-            QFrame#HeroFrame {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F8FBFF, stop:1 #F3FBF8);
-                border: 1px solid #DCE6F2;
-                border-radius: 12px;
-            }}
             QFrame#ToolbarFrame,
             QFrame#CanvasShell {{
                 background-color: {surface};
                 border-radius: 12px;
                 border: 1px solid {border};
             }}
-            QWidget#ChartCanvas {{
-                background-color: #FFFFFF;
-                border: 1px solid #E6EBF2;
+            QFrame#SecondaryChartCard {{
+                background: #FFFFFF;
+                border: 1px solid #DCE6F2;
                 border-radius: 14px;
+            }}
+            QWidget#ChartCanvas {{
+                background-color: transparent;
             }}
             QLabel#Subtitle {{
                 color: {helper};
@@ -285,6 +409,18 @@ class DashboardWidget(QWidget):
             QPushButton#DashboardPrimaryButton:hover {{
                 background: #1F2937;
                 border-color: #1F2937;
+            }}
+            QToolButton#AddChartButton {{
+                border: 1px solid #CBD5E1;
+                border-radius: 8px;
+                background: #FFFFFF;
+                color: #0F172A;
+                padding: 6px 12px;
+                font-weight: 500;
+            }}
+            QToolButton#AddChartButton:hover {{
+                background: #F8FAFC;
+                border-color: #94A3B8;
             }}
             QPushButton[dashboardChip=\"true\"] {{
                 border: 1px solid #D1D9E6;
@@ -471,8 +607,11 @@ class DashboardWidget(QWidget):
         self.subtitle_label.setText(message or "Selecione uma camada e gere um resumo para visualizar o dashboard.")
         self.summary_line_label.setText("")
         self.chart_kind_label.setText("Canvas livre")
-        self.primary_chart.set_payload(None, empty_text="Sem dados para exibir")
-        self.primary_chart.set_chart_context({})
+        self._set_chart_widget_payload(self.primary_chart, None, empty_text="Sem dados para exibir")
+        self._set_chart_widget_payload(self.secondary_chart, None, empty_text="Sem dados para exibir")
+        self.secondary_chart_card.setVisible(False)
+        self._secondary_chart_type = ""
+        self._secondary_chart_title = ""
         self._adjust_chart_height(0)
         self.current_source_df = pd.DataFrame()
         self.current_view_df = pd.DataFrame()
@@ -524,7 +663,7 @@ class DashboardWidget(QWidget):
     def _update_charts(self):
         chart_df = self._build_chart_dataset()
         if chart_df.empty or float(chart_df["Valor"].fillna(0).sum()) == 0.0:
-            self.primary_chart.set_payload(None, empty_text="Sem metricas numericas")
+            self._set_chart_widget_payload(self.primary_chart, None, empty_text="Sem metricas numericas")
             self._adjust_chart_height(0)
             self.chart_kind_label.setText("Canvas livre")
             return chart_df
@@ -546,10 +685,30 @@ class DashboardWidget(QWidget):
             limit=max(1, min(12, int(len(chart_df.index)))),
         )
 
-        self.primary_chart.set_payload(primary_payload, empty_text="Sem dados para o grafico principal")
-        self.primary_chart.set_chart_context(self._chart_context_for_model(primary_payload))
+        self._set_chart_widget_payload(
+            self.primary_chart,
+            primary_payload,
+            empty_text="Sem dados para o grafico principal",
+            context=self._chart_context_for_model(primary_payload),
+        )
         self.chart_kind_label.setText(primary_payload.title if primary_payload is not None else "Canvas livre")
         self._adjust_chart_height(len(primary_payload.categories) if primary_payload is not None else 0)
+        if self._secondary_chart_type:
+            secondary_payload = self._build_chart_payload(
+                chart_df,
+                title=self._secondary_chart_title or f"Novo gráfico | {self._secondary_chart_type}",
+                chart_type=self._secondary_chart_type,
+                limit=max(1, min(12, int(len(chart_df.index)))),
+            )
+            if secondary_payload is not None:
+                self.secondary_chart_card.setVisible(True)
+                self.secondary_chart_title.setText(secondary_payload.title)
+                self._set_chart_widget_payload(
+                    self.secondary_chart,
+                    secondary_payload,
+                    empty_text="Sem dados para o grafico secundario",
+                    context=self._chart_context_for_model(secondary_payload),
+                )
         return chart_df
 
     def _build_chart_dataset(self) -> pd.DataFrame:
@@ -824,7 +983,13 @@ class DashboardWidget(QWidget):
         self.primary_chart.setMinimumHeight(bounded)
         self.primary_chart.setMaximumHeight(bounded)
         self.primary_chart.resize(self.primary_chart.width(), bounded)
-        self.chart_canvas.setMinimumHeight(bounded + 8)
+        secondary_extra = 0
+        if self.secondary_chart_card.isVisible():
+            try:
+                secondary_extra = int(self.secondary_chart_card.sizeHint().height())
+            except Exception:
+                secondary_extra = 460
+        self.chart_canvas.setMinimumHeight(bounded + 16 + max(0, secondary_extra))
 
     def _clear_filter_chips(self):
         while self.filter_chip_layout.count() > 0:

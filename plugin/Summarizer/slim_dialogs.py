@@ -364,12 +364,16 @@ class SlimTextInputDialog(SlimPopoverDialog):
         accept_label: str = "Salvar",
         cancel_label: str = "Cancelar",
         icon: Optional[QIcon] = None,
+        preferred_width: int = 420,
         geometry_key: str = "",
     ):
         super().__init__(parent, geometry_key=geometry_key)
         self.setWindowTitle(title)
-        self.setMinimumWidth(420)
-        self.setMaximumWidth(420)
+        width = max(360, int(preferred_width or 420))
+        if icon is None or icon.isNull():
+            width = max(width, 520)
+        self.setMinimumWidth(width)
+        self.setMaximumWidth(max(width, 640))
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -943,6 +947,7 @@ def slim_get_text(
     helper_text: str = "",
     accept_label: str = "Salvar",
     icon: Optional[QIcon] = None,
+    preferred_width: int = 420,
 ) -> Tuple[str, bool]:
     dialog = SlimTextInputDialog(
         title=title,
@@ -953,6 +958,7 @@ def slim_get_text(
         helper_text=helper_text,
         accept_label=accept_label,
         icon=icon,
+        preferred_width=preferred_width,
         geometry_key=geometry_key,
     )
     accepted = dialog.exec_() == QDialog.Accepted

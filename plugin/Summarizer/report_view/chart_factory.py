@@ -1868,7 +1868,16 @@ class ReportChartWidget(QWidget):
         self.unsetCursor()
         super().leaveEvent(event)
 
-    def _prompt_for_text(self, dialog_title: str, field_label: str, current_text: str) -> Optional[str]:
+    def _prompt_for_text(
+        self,
+        dialog_title: str,
+        field_label: str,
+        current_text: str,
+        *,
+        icon: Optional[QIcon] = None,
+        show_icon: bool = True,
+        preferred_width: int = 420,
+    ) -> Optional[str]:
         helper_text = _rt("Atualize apenas o texto exibido neste gráfico.")
         if _rt("Legenda") in field_label or "Legenda" in field_label:
             helper_text = _rt("Atualize apenas o texto exibido na legenda deste gráfico.")
@@ -1882,7 +1891,8 @@ class ReportChartWidget(QWidget):
                 geometry_key="",
                 helper_text=helper_text,
                 accept_label=_rt("Salvar"),
-                icon=chart_popup_icon(),
+                icon=(icon if icon is not None else chart_popup_icon()) if show_icon else None,
+                preferred_width=preferred_width,
             )
         except Exception:
             return None
@@ -1914,7 +1924,13 @@ class ReportChartWidget(QWidget):
             category_key = str(target.get("key") or "")
             if not category_key:
                 return
-            new_text = self._prompt_for_text(_rt("Editar item da legenda"), _rt("Legenda:"), current_text)
+            new_text = self._prompt_for_text(
+                _rt("Editar item da legenda"),
+                _rt("Legenda:"),
+                current_text,
+                show_icon=False,
+                preferred_width=560,
+            )
             if new_text is None:
                 return
             if new_text:
