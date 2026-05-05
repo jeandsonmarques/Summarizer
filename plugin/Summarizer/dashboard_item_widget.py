@@ -127,7 +127,7 @@ class DashboardItemWidget(QFrame):
         self.model_edit_btn.setObjectName("ModelDashboardHeaderIconButton")
         self.model_edit_btn.setCursor(Qt.PointingHandCursor)
         self.model_edit_btn.setToolTip(_rt("Alterar tipo de grafico"))
-        model_icon = _icon_from_resource("model_chart_type.svg")
+        model_icon = _icon_from_resource("walker_chart_type.svg")
         self.model_edit_btn.setIcon(model_icon)
         self.model_edit_btn.setIconSize(QSize(16, 16))
         if model_icon.isNull():
@@ -139,7 +139,7 @@ class DashboardItemWidget(QFrame):
         self.personalize_btn.setObjectName("ModelDashboardHeaderIconButton")
         self.personalize_btn.setCursor(Qt.PointingHandCursor)
         self.personalize_btn.setToolTip(_rt("Personalizar visual do grafico"))
-        personalize_icon = _icon_from_resource("model_chart_brush.svg")
+        personalize_icon = _icon_from_resource("walker_chart_brush.svg")
         self.personalize_btn.setIcon(personalize_icon)
         self.personalize_btn.setIconSize(QSize(16, 16))
         if personalize_icon.isNull():
@@ -154,6 +154,7 @@ class DashboardItemWidget(QFrame):
         self.link_command_btn.setFont(ui_font())
         self.link_command_btn.clicked.connect(lambda: self.linkCommandRequested.emit(self.item_id))
         header_layout.addWidget(self.link_command_btn, 0)
+        self.link_command_btn.hide()
 
         self.remove_btn = QToolButton(self.header)
         self.remove_btn.setObjectName("ModelDashboardRemoveButton")
@@ -305,6 +306,10 @@ class DashboardItemWidget(QFrame):
         self.chart_widget.set_payload(self._item.payload)
         self.chart_widget.chart_state = self._item.visual_state
         try:
+            self.chart_widget.chart_state.show_border = True
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
             self.chart_widget.refresh_visual_state()
         except Exception:
             log_exception("falha opcional ignorada")
@@ -386,9 +391,9 @@ class DashboardItemWidget(QFrame):
         self.remove_btn.setVisible(self._edit_mode)
         self.model_edit_btn.setVisible(self._edit_mode)
         self.personalize_btn.setVisible(self._edit_mode)
-        self.link_command_btn.setVisible(self._edit_mode)
-        self.subtitle_label.setVisible(self._edit_mode)
-        self.footer_label.setVisible(self._edit_mode)
+        self.link_command_btn.setVisible(False)
+        self.subtitle_label.setVisible(False)
+        self.footer_label.setVisible(False)
         self.title_label.setToolTip(_rt("Duplo clique para renomear") if self._edit_mode else "")
         if self._edit_mode:
             try:
@@ -604,7 +609,8 @@ class DashboardItemWidget(QFrame):
         menu.addAction(grid_action)
 
         border_action = QAction(_rt("Mostrar borda"), menu, checkable=True)
-        border_action.setChecked(bool(getattr(self.chart_widget.chart_state, "show_border", False)))
+        border_action.setChecked(True)
+        border_action.setEnabled(False)
         border_action.triggered.connect(self.chart_widget._toggle_show_border)
         menu.addAction(border_action)
 
@@ -864,6 +870,16 @@ class DashboardItemWidget(QFrame):
 
         if event_type == QEvent.Wheel:
             canvas = self._find_canvas_host()
+            if canvas is not None and hasattr(canvas, "is_edit_mode"):
+                try:
+                    if not canvas.is_edit_mode():
+                        try:
+                            event.accept()
+                        except Exception:
+                            log_exception("falha opcional ignorada")
+                        return True
+                except Exception:
+                    log_exception("falha opcional ignorada")
             if canvas is not None and hasattr(canvas, "_handle_wheel_zoom"):
                 try:
                     if canvas._handle_wheel_zoom(event):

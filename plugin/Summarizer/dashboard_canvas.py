@@ -165,6 +165,7 @@ class DashboardCanvas(QWidget):
     itemsChanged = pyqtSignal()
     filtersChanged = pyqtSignal(dict)
     zoomChanged = pyqtSignal(float)
+    editModeChanged = pyqtSignal(bool)
     chartSelectionChanged = pyqtSignal(str, object)
     emptyCanvasContextMenuRequested = pyqtSignal(QPoint)
 
@@ -190,7 +191,7 @@ class DashboardCanvas(QWidget):
         self._zoom_step = 1.15
         self._background_color = QColor("#FFFFFF")
         self._grid_color = QColor("#E5E7EB")
-        self._show_grid = True
+        self._show_grid = False
         self._grid_opacity = 0.72
         self.interaction_manager = ModelInteractionManager(self)
         self.interaction_manager.filtersChanged.connect(self.filtersChanged.emit)
@@ -342,6 +343,12 @@ class DashboardCanvas(QWidget):
         self.zoomChanged.emit(self._zoom)
 
     def _handle_wheel_zoom(self, event) -> bool:
+        if not self._edit_mode:
+            try:
+                event.ignore()
+            except Exception:
+                log_exception("falha opcional ignorada")
+            return False
         try:
             modifiers = event.modifiers()
         except Exception:
@@ -424,6 +431,36 @@ class DashboardCanvas(QWidget):
         self._apply_geometries()
         if active_filters:
             self.interaction_manager.set_active_filters(active_filters)
+
+    def center_items(self):
+        if not self._items:
+            return
+        viewport = self.scroll.viewport()
+        min_x = min(item.layout.normalized().x for item in self._items)
+        min_y = min(item.layout.normalized().y for item in self._items)
+        max_right = max(item.layout.normalized().x + item.layout.normalized().width for item in self._items)
+        max_bottom = max(item.layout.normalized().y + item.layout.normalized().height for item in self._items)
+        content_width = max(1, max_right - min_x)
+        content_height = max(1, max_bottom - min_y)
+        padding = 56.0
+        target_zoom = min(
+            (float(viewport.width()) - padding * 2.0) / float(content_width),
+            (float(viewport.height()) - padding * 2.0) / float(content_height),
+        )
+        target_zoom = self._clamp_zoom(target_zoom)
+        self._apply_zoom(target_zoom, viewport.rect().center())
+        self._apply_geometries()
+        hbar = self.scroll.horizontalScrollBar()
+        vbar = self.scroll.verticalScrollBar()
+        scaled_left = min(item.layout.normalized().x * self._zoom for item in self._items)
+        scaled_top = min(item.layout.normalized().y * self._zoom for item in self._items)
+        scaled_right = max((item.layout.normalized().x + item.layout.normalized().width) * self._zoom for item in self._items)
+        scaled_bottom = max((item.layout.normalized().y + item.layout.normalized().height) * self._zoom for item in self._items)
+        center_x = int(round((scaled_left + scaled_right) / 2.0))
+        center_y = int(round((scaled_top + scaled_bottom) / 2.0))
+        hbar.setValue(max(hbar.minimum(), min(hbar.maximum(), center_x - int(viewport.width() / 2))))
+        vbar.setValue(max(vbar.minimum(), min(vbar.maximum(), center_y - int(viewport.height() / 2))))
+        self.surface.update()
 
     def items(self) -> List[DashboardChartItem]:
         return [item.clone() for item in self._items]
@@ -574,10 +611,18 @@ class DashboardCanvas(QWidget):
         self.interaction_manager.set_active_filters(filters)
 
     def set_edit_mode(self, enabled: bool):
-        self._edit_mode = bool(enabled)
+        enabled = bool(enabled)
+        if self._edit_mode == enabled:
+            self.surface.update()
+            return
+        self._edit_mode = enabled
         for widget in self._widgets.values():
             widget.set_edit_mode(self._edit_mode)
         self.surface.update()
+        self.editModeChanged.emit(self._edit_mode)
+
+    def is_edit_mode(self) -> bool:
+        return bool(self._edit_mode)
 
     def set_canvas_style(
         self,
