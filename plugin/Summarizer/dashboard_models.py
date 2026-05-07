@@ -60,6 +60,145 @@ def _first_text(values: Any) -> str:
     return texts[0] if texts else ""
 
 
+SLOT_CATEGORY = "category"
+SLOT_VALUES = "values"
+SLOT_LEGEND = "legend"
+SLOT_FILTERS = "filters"
+SLOT_TOOLTIP = "tooltip"
+SLOT_X = "x"
+SLOT_Y = "y"
+SLOT_SIZE = "size"
+SLOT_ROWS = "rows"
+SLOT_COLUMNS = "columns"
+
+
+SLOT_DEFINITIONS: Dict[str, List[Dict[str, Any]]] = {
+    "card": [{"name": SLOT_VALUES, "label": "Valor", "multiple": False, "groups": {"measure"}}],
+    "bar": [
+        {"name": SLOT_CATEGORY, "label": "Categoria", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
+        {"name": SLOT_LEGEND, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+    ],
+    "barh": [
+        {"name": SLOT_CATEGORY, "label": "Categoria", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
+        {"name": SLOT_LEGEND, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+    ],
+    "line": [
+        {"name": SLOT_CATEGORY, "label": "Eixo", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
+        {"name": SLOT_LEGEND, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+    ],
+    "pie": [
+        {"name": SLOT_CATEGORY, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
+        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+    ],
+    "donut": [
+        {"name": SLOT_CATEGORY, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
+        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+    ],
+    "scatter": [
+        {"name": SLOT_X, "label": "X", "multiple": False, "groups": {"measure"}},
+        {"name": SLOT_Y, "label": "Y", "multiple": False, "groups": {"measure"}},
+        {"name": SLOT_SIZE, "label": "Tamanho", "multiple": False, "groups": {"measure"}},
+        {"name": SLOT_LEGEND, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+    ],
+    "matrix": [
+        {"name": SLOT_ROWS, "label": "Linhas", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_COLUMNS, "label": "Colunas", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": SLOT_VALUES, "label": "Valores", "multiple": True, "groups": {"measure"}},
+        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+    ],
+}
+SLOT_DEFINITIONS["table"] = SLOT_DEFINITIONS["matrix"]
+
+
+def normalize_chart_type(chart_type: str) -> str:
+    normalized = str(chart_type or "bar").strip().lower()
+    if normalized in {"column", "columns"}:
+        return "bar"
+    if normalized == "table":
+        return "matrix"
+    return normalized or "bar"
+
+
+def binding_slot_definitions(chart_type: str) -> List[Dict[str, Any]]:
+    return [dict(item) for item in SLOT_DEFINITIONS.get(normalize_chart_type(chart_type), SLOT_DEFINITIONS["bar"])]
+
+
+def binding_slot_names(chart_type: str) -> List[str]:
+    return [str(item.get("name") or "") for item in binding_slot_definitions(chart_type)]
+
+
+def is_binding_slot_compatible(chart_type: str, slot_name: str, field_group: str) -> bool:
+    slot_name = str(slot_name or "").strip().lower()
+    field_group = str(field_group or "other").strip().lower() or "other"
+    for slot in binding_slot_definitions(chart_type):
+        if str(slot.get("name") or "") == slot_name:
+            return field_group in set(slot.get("groups") or [])
+    return False
+
+
+def suggest_binding_slot(chart_type: str, field_group: str, binding: Optional["DashboardChartBinding"] = None) -> str:
+    chart_type = normalize_chart_type(chart_type)
+    field_group = str(field_group or "other").strip().lower() or "other"
+    binding = (binding or DashboardChartBinding(chart_type=chart_type)).normalized()
+    if chart_type == "card":
+        return SLOT_VALUES if field_group == "measure" else ""
+    if chart_type == "scatter":
+        if field_group == "measure":
+            if not binding.x_field:
+                return SLOT_X
+            if not binding.y_field:
+                return SLOT_Y
+            if not binding.size_field:
+                return SLOT_SIZE
+            return SLOT_TOOLTIP
+        if not binding.legend_field:
+            return SLOT_LEGEND
+        return SLOT_TOOLTIP
+    if chart_type == "matrix":
+        if field_group == "measure":
+            return SLOT_VALUES
+        if not binding.row_fields:
+            return SLOT_ROWS
+        return SLOT_COLUMNS
+    if field_group == "measure":
+        return SLOT_VALUES
+    if not binding.dimension_field:
+        return SLOT_CATEGORY
+    if not binding.legend_field:
+        return SLOT_LEGEND
+    return SLOT_TOOLTIP
+
+
+def empty_binding_message(chart_type: str, binding: Optional["DashboardChartBinding"] = None) -> str:
+    chart_type = normalize_chart_type(chart_type)
+    binding = (binding or DashboardChartBinding(chart_type=chart_type)).normalized()
+    if chart_type == "card":
+        return "Arraste uma medida para Valor."
+    if chart_type == "scatter":
+        return "Arraste campos numericos para X e Y."
+    if chart_type == "matrix":
+        return "Arraste campos para Linhas e Valores."
+    if chart_type in {"bar", "barh", "line", "pie", "donut"}:
+        return "Arraste uma categoria e uma medida."
+    return "Arraste campos para configurar este visual."
+
+
 def serialize_chart_payload(payload: Optional[ChartPayload]) -> Dict[str, Any]:
     if payload is None:
         return {}
@@ -75,6 +214,9 @@ def serialize_chart_payload(payload: Optional[ChartPayload]) -> Dict[str, Any]:
         "category_field": str(payload.category_field or ""),
         "raw_categories": _json_safe(list(payload.raw_categories or [])),
         "category_feature_ids": _json_safe(list(payload.category_feature_ids or [])),
+        "x_values": _json_safe(list(getattr(payload, "x_values", []) or [])),
+        "size_values": _json_safe(list(getattr(payload, "size_values", []) or [])),
+        "series_labels": _json_safe(list(getattr(payload, "series_labels", []) or [])),
     }
 
 
@@ -92,6 +234,9 @@ def deserialize_chart_payload(data: Optional[Dict[str, Any]]) -> ChartPayload:
         category_field=payload.get("category_field") or "",
         raw_categories=list(payload.get("raw_categories") or []),
         category_feature_ids=list(payload.get("category_feature_ids") or []),
+        x_values=list(payload.get("x_values") or []),
+        size_values=list(payload.get("size_values") or []),
+        series_labels=list(payload.get("series_labels") or []),
     )
 
 
@@ -109,6 +254,75 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
     except Exception:
         log_warning("[Dashboard] valor invalido de font_scale ao restaurar estado; usando 1.0")
         font_scale = 1.0
+    try:
+        border_radius = int(payload.get("border_radius", 8) or 8)
+    except Exception:
+        border_radius = 8
+    try:
+        border_width = int(payload.get("border_width", 1) or 1)
+    except Exception:
+        border_width = 1
+    try:
+        padding = int(payload.get("padding", 8) or 8)
+    except Exception:
+        padding = 8
+    try:
+        background_opacity = int(payload.get("background_opacity", 100) if payload.get("background_opacity", 100) != "" else 100)
+    except Exception:
+        background_opacity = 100
+    try:
+        shadow_opacity = int(payload.get("shadow_opacity", 18) if payload.get("shadow_opacity", 18) != "" else 18)
+    except Exception:
+        shadow_opacity = 18
+    try:
+        grid_width = int(payload.get("grid_width", 1) or 1)
+    except Exception:
+        grid_width = 1
+    try:
+        grid_opacity = int(payload.get("grid_opacity", 100) if payload.get("grid_opacity", 100) != "" else 100)
+    except Exception:
+        grid_opacity = 100
+    try:
+        title_size = int(payload.get("title_size", 0) or 0)
+    except Exception:
+        title_size = 0
+    try:
+        label_size = int(payload.get("label_size", 0) or 0)
+    except Exception:
+        label_size = 0
+    try:
+        axis_label_size = int(payload.get("axis_label_size", 0) or 0)
+    except Exception:
+        axis_label_size = 0
+    try:
+        decimal_places = int(payload.get("decimal_places", 2))
+    except Exception:
+        decimal_places = 2
+    try:
+        bar_width_percent = int(payload.get("bar_width_percent", 62) or 62)
+    except Exception:
+        bar_width_percent = 62
+    try:
+        line_width = int(payload.get("line_width", 2) or 2)
+    except Exception:
+        line_width = 2
+    try:
+        marker_size = int(payload.get("marker_size", 4) or 4)
+    except Exception:
+        marker_size = 4
+    try:
+        value_size = int(payload.get("value_size", 0) or 0)
+    except Exception:
+        value_size = 0
+    card_density = str(payload.get("card_density") or "normal").strip().lower()
+    if card_density not in {"compact", "normal", "expanded"}:
+        card_density = "normal"
+    data_label_position = str(payload.get("data_label_position") or "outside").strip().lower()
+    if data_label_position not in {"auto", "inside", "outside"}:
+        data_label_position = "outside"
+    display_units = str(payload.get("display_units") or "none").strip().lower()
+    if display_units not in {"none", "auto", "thousand", "million"}:
+        display_units = "none"
     return ChartVisualState(
         chart_type=str(payload.get("chart_type") or "bar"),
         palette=str(payload.get("palette") or "purple"),
@@ -117,40 +331,140 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
         show_values=bool(payload.get("show_values", True)),
         show_percent=bool(payload.get("show_percent")),
         show_grid=bool(payload.get("show_grid")),
+        show_title=bool(payload.get("show_title", True)),
         show_border=bool(payload.get("show_border")),
         sort_mode=str(payload.get("sort_mode") or "default"),
         bar_corner_style=str(payload.get("bar_corner_style") or "square"),
         title_override=str(payload.get("title_override") or ""),
         legend_label_override=str(payload.get("legend_label_override") or ""),
         legend_item_overrides=dict(payload.get("legend_item_overrides") or {}),
+        show_background=bool(payload.get("show_background", True)),
+        background_color=str(payload.get("background_color") or "#FFFFFF"),
+        background_opacity=max(0, min(100, background_opacity)),
+        border_color=str(payload.get("border_color") or "#CBD5E1"),
+        border_width=max(1, min(6, border_width)),
+        border_radius=max(0, min(32, border_radius)),
+        padding=max(0, min(40, padding)),
+        shadow_enabled=bool(payload.get("shadow_enabled")),
+        shadow_opacity=max(0, min(60, shadow_opacity)),
+        grid_color=str(payload.get("grid_color") or "#E5E7EB"),
+        grid_width=max(1, min(4, grid_width)),
+        grid_opacity=max(0, min(100, grid_opacity)),
+        show_axis_labels=bool(payload.get("show_axis_labels", True)),
+        axis_label_color=str(payload.get("axis_label_color") or "#4B5563"),
+        axis_label_size=max(0, min(36, axis_label_size)),
+        show_zero_line=bool(payload.get("show_zero_line", True)),
+        zero_line_color=str(payload.get("zero_line_color") or "#CBD5E1"),
+        title_color=str(payload.get("title_color") or "#1F2937"),
+        title_size=max(0, min(48, title_size)),
+        label_color=str(payload.get("label_color") or "#4B5563"),
+        label_size=max(0, min(36, label_size)),
+        data_label_position=data_label_position,
+        text_align=str(payload.get("text_align") or "left"),
+        number_prefix=str(payload.get("number_prefix") or ""),
+        number_suffix=str(payload.get("number_suffix") or ""),
+        decimal_places=max(0, min(8, decimal_places)),
+        display_units=display_units,
+        null_value=str(payload.get("null_value") or "-"),
+        primary_color=str(payload.get("primary_color") or "#5A3FE6"),
+        category_palette=[str(item) for item in list(payload.get("category_palette") or [])],
+        bar_width_percent=max(20, min(100, bar_width_percent)),
+        line_width=max(1, min(8, line_width)),
+        show_markers=bool(payload.get("show_markers", True)),
+        marker_size=max(2, min(12, marker_size)),
+        value_color=str(payload.get("value_color") or "#111827"),
+        value_size=max(0, min(72, value_size)),
+        value_align=str(payload.get("value_align") or "left"),
+        card_density=card_density,
+        show_card_accent=bool(payload.get("show_card_accent", True)),
+        show_card_sparkline=bool(payload.get("show_card_sparkline", True)),
+        alt_text=str(payload.get("alt_text") or ""),
     )
 
 
 @dataclass
 class DashboardChartBinding:
     chart_id: str = ""
+    chart_type: str = ""
     source_id: str = ""
     dimension_field: str = ""
     semantic_field_key: str = ""
     semantic_field_aliases: List[str] = field(default_factory=list)
     measure_field: str = ""
+    x_field: str = ""
+    y_field: str = ""
+    size_field: str = ""
+    row_fields: List[str] = field(default_factory=list)
+    column_fields: List[str] = field(default_factory=list)
+    value_fields: List[str] = field(default_factory=list)
+    value_aggregations: Dict[str, str] = field(default_factory=dict)
     aggregation: str = ""
+    legend_field: str = ""
+    filter_fields: List[str] = field(default_factory=list)
+    tooltip_fields: List[str] = field(default_factory=list)
+    top_n: int = 12
+    title_override: str = ""
     base_filters: List[Dict[str, Any]] = field(default_factory=list)
     source_name: str = ""
 
     def normalized(self) -> "DashboardChartBinding":
+        chart_type = normalize_chart_type(self.chart_type)
+        row_fields = _unique_normalized_texts(self.row_fields or [])
+        column_fields = _unique_normalized_texts(self.column_fields or [])
+        value_fields = _unique_normalized_texts(self.value_fields or [])
+        dimension_field = str(self.dimension_field or "").strip()
+        measure_field = str(self.measure_field or "").strip()
+        x_field = str(self.x_field or "").strip()
+        y_field = str(self.y_field or "").strip()
+        size_field = str(self.size_field or "").strip()
+        if chart_type == "scatter":
+            x_field = x_field or measure_field
+            y_field = y_field or ""
+        elif chart_type == "matrix":
+            if dimension_field and dimension_field not in row_fields:
+                row_fields = [dimension_field, *row_fields]
+            if measure_field and measure_field not in value_fields:
+                value_fields = [measure_field, *value_fields]
+        else:
+            if value_fields and not measure_field:
+                measure_field = value_fields[0]
+            if row_fields and not dimension_field:
+                dimension_field = row_fields[0]
+            if measure_field and measure_field not in value_fields:
+                value_fields = [measure_field]
         semantic_key = str(self.semantic_field_key or "").strip()
         if not semantic_key:
-            semantic_key = str(self.dimension_field or "").strip()
-        aliases = _unique_normalized_texts([semantic_key, self.dimension_field, *list(self.semantic_field_aliases or [])])
+            semantic_key = dimension_field or (row_fields[0] if row_fields else "")
+        aliases = _unique_normalized_texts([semantic_key, dimension_field, *row_fields, *list(self.semantic_field_aliases or [])])
+        aggregation = str(self.aggregation or "").strip().lower()
+        value_aggs = {
+            str(key or "").strip(): str(value or aggregation or "sum").strip().lower()
+            for key, value in dict(self.value_aggregations or {}).items()
+            if str(key or "").strip()
+        }
+        for field_name in value_fields:
+            value_aggs.setdefault(field_name, aggregation or "sum")
         return DashboardChartBinding(
             chart_id=str(self.chart_id or "").strip(),
+            chart_type=chart_type,
             source_id=str(self.source_id or "").strip(),
-            dimension_field=str(self.dimension_field or "").strip(),
+            dimension_field=dimension_field,
             semantic_field_key=semantic_key,
             semantic_field_aliases=aliases,
-            measure_field=str(self.measure_field or "").strip(),
-            aggregation=str(self.aggregation or "").strip(),
+            measure_field=measure_field,
+            x_field=x_field,
+            y_field=y_field,
+            size_field=size_field,
+            row_fields=row_fields,
+            column_fields=column_fields,
+            value_fields=value_fields,
+            value_aggregations=value_aggs,
+            aggregation=aggregation,
+            legend_field=str(self.legend_field or "").strip(),
+            filter_fields=_unique_normalized_texts(self.filter_fields or []),
+            tooltip_fields=_unique_normalized_texts(self.tooltip_fields or []),
+            top_n=max(1, min(100, int(self.top_n or 12))),
+            title_override=str(self.title_override or "").strip(),
             base_filters=[dict(item or {}) for item in list(self.base_filters or [])],
             source_name=str(self.source_name or "").strip(),
         )
@@ -159,12 +473,25 @@ class DashboardChartBinding:
         normalized = self.normalized()
         return {
             "chart_id": normalized.chart_id,
+            "chart_type": normalized.chart_type,
             "source_id": normalized.source_id,
             "dimension_field": normalized.dimension_field,
             "semantic_field_key": normalized.semantic_field_key,
             "semantic_field_aliases": _json_safe(normalized.semantic_field_aliases),
             "measure_field": normalized.measure_field,
+            "x_field": normalized.x_field,
+            "y_field": normalized.y_field,
+            "size_field": normalized.size_field,
+            "row_fields": _json_safe(normalized.row_fields),
+            "column_fields": _json_safe(normalized.column_fields),
+            "value_fields": _json_safe(normalized.value_fields),
+            "value_aggregations": _json_safe(normalized.value_aggregations),
             "aggregation": normalized.aggregation,
+            "legend_field": normalized.legend_field,
+            "filter_fields": _json_safe(normalized.filter_fields),
+            "tooltip_fields": _json_safe(normalized.tooltip_fields),
+            "top_n": normalized.top_n,
+            "title_override": normalized.title_override,
             "base_filters": _json_safe(normalized.base_filters),
             "source_name": normalized.source_name,
         }
@@ -174,12 +501,25 @@ class DashboardChartBinding:
         payload = dict(data or {})
         return cls(
             chart_id=str(payload.get("chart_id") or "").strip(),
+            chart_type=str(payload.get("chart_type") or "").strip().lower(),
             source_id=str(payload.get("source_id") or "").strip(),
             dimension_field=str(payload.get("dimension_field") or "").strip(),
             semantic_field_key=str(payload.get("semantic_field_key") or "").strip(),
             semantic_field_aliases=_unique_normalized_texts(payload.get("semantic_field_aliases") or []),
             measure_field=str(payload.get("measure_field") or "").strip(),
+            x_field=str(payload.get("x_field") or "").strip(),
+            y_field=str(payload.get("y_field") or "").strip(),
+            size_field=str(payload.get("size_field") or "").strip(),
+            row_fields=_unique_normalized_texts(payload.get("row_fields") or []),
+            column_fields=_unique_normalized_texts(payload.get("column_fields") or []),
+            value_fields=_unique_normalized_texts(payload.get("value_fields") or []),
+            value_aggregations=dict(payload.get("value_aggregations") or {}),
             aggregation=str(payload.get("aggregation") or "").strip(),
+            legend_field=str(payload.get("legend_field") or "").strip(),
+            filter_fields=_unique_normalized_texts(payload.get("filter_fields") or []),
+            tooltip_fields=_unique_normalized_texts(payload.get("tooltip_fields") or []),
+            top_n=int(payload.get("top_n") or 12),
+            title_override=str(payload.get("title_override") or "").strip(),
             base_filters=[dict(item or {}) for item in list(payload.get("base_filters") or [])],
             source_name=str(payload.get("source_name") or "").strip(),
         ).normalized()
@@ -237,12 +577,30 @@ class DashboardChartBinding:
             or chart_payload.get("value_label")
             or ""
         )
+        x_field = str(binding.get("x_field") or config.get("x_field") or "").strip()
+        y_field = str(binding.get("y_field") or config.get("y_field") or "").strip()
+        size_field = str(binding.get("size_field") or config.get("size_field") or "").strip()
+        row_fields = _unique_normalized_texts(binding.get("row_fields") or config.get("row_fields") or [])
+        column_fields = _unique_normalized_texts(binding.get("column_fields") or config.get("column_fields") or [])
+        value_fields = _unique_normalized_texts(binding.get("value_fields") or config.get("value_fields") or [])
+        value_aggregations = dict(binding.get("value_aggregations") or config.get("value_aggregations") or {})
+        chart_type = (
+            binding.get("chart_type")
+            or chart_payload.get("chart_type")
+            or config.get("chart_type")
+            or ""
+        )
         aggregation = (
             binding.get("aggregation")
             or config.get("aggregation")
             or chart_payload.get("chart_type")
             or ""
         )
+        legend_field = str(binding.get("legend_field") or config.get("legend_field") or "").strip()
+        filter_fields = _unique_normalized_texts(binding.get("filter_fields") or config.get("filter_fields") or [])
+        tooltip_fields = _unique_normalized_texts(binding.get("tooltip_fields") or config.get("tooltip_fields") or [])
+        top_n = binding.get("top_n") or config.get("top_n") or 12
+        title_override = str(binding.get("title_override") or payload.get("title") or chart_payload.get("title") or "").strip()
         base_filters = list(binding.get("base_filters") or payload.get("filters") or [])
         source_name = (
             binding.get("source_name")
@@ -252,12 +610,25 @@ class DashboardChartBinding:
         )
         return cls(
             chart_id=str(chart_id or binding.get("chart_id") or payload.get("chart_id") or payload.get("item_id") or "").strip(),
+            chart_type=str(chart_type).strip().lower(),
             source_id=str(source_id).strip(),
             dimension_field=str(dimension_field).strip(),
             semantic_field_key=str(semantic_field_key).strip(),
             semantic_field_aliases=semantic_field_aliases,
             measure_field=str(measure_field).strip(),
+            x_field=x_field,
+            y_field=y_field,
+            size_field=size_field,
+            row_fields=row_fields,
+            column_fields=column_fields,
+            value_fields=value_fields,
+            value_aggregations=value_aggregations,
             aggregation=str(aggregation).strip(),
+            legend_field=legend_field,
+            filter_fields=filter_fields,
+            tooltip_fields=tooltip_fields,
+            top_n=int(top_n or 12),
+            title_override=title_override,
             base_filters=[dict(item or {}) for item in list(base_filters or [])],
             source_name=str(source_name).strip(),
         ).normalized()
@@ -265,6 +636,19 @@ class DashboardChartBinding:
     def match_keys(self) -> List[str]:
         keys = [self.semantic_field_key, self.dimension_field, *list(self.semantic_field_aliases or [])]
         return _unique_normalized_texts(keys)
+
+    def has_minimum_fields(self) -> bool:
+        chart_type = normalize_chart_type(self.chart_type)
+        if chart_type == "card":
+            return bool(self.measure_field or self.value_fields)
+        if chart_type == "scatter":
+            return bool(self.x_field and self.y_field)
+        if chart_type == "matrix":
+            return bool(self.row_fields and self.value_fields)
+        return bool(self.dimension_field and (self.measure_field or self.aggregation == "count"))
+
+    def empty_message(self) -> str:
+        return empty_binding_message(self.chart_type, self)
 
 
 @dataclass

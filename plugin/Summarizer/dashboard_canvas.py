@@ -167,6 +167,9 @@ class DashboardCanvas(QWidget):
     zoomChanged = pyqtSignal(float)
     editModeChanged = pyqtSignal(bool)
     chartSelectionChanged = pyqtSignal(str, object)
+    itemSelectionChanged = pyqtSignal(str, object)
+    fieldBindingDropRequested = pyqtSignal(str, str, object)
+    visualPanelRequested = pyqtSignal(str)
     emptyCanvasContextMenuRequested = pyqtSignal(QPoint)
 
     def __init__(self, parent=None):
@@ -181,6 +184,7 @@ class DashboardCanvas(QWidget):
         self._visual_links: List[DashboardVisualLink] = []
         self._chart_relations: List[DashboardChartRelation] = []
         self._widgets: Dict[str, DashboardItemWidget] = {}
+        self._selected_item_id: str = ""
         self._interaction: Dict[str, object] = {}
         self._preview_rect: Optional[QRect] = None
         self._link_preview: Optional[Dict[str, object]] = None
@@ -409,8 +413,14 @@ class DashboardCanvas(QWidget):
         self._set_graph_state(visual_links=visual_links, chart_relations=chart_relations)
         self._rebuild_widgets()
         self._normalize_layouts()
+        selection_removed = self._selected_item_id and self._selected_item_id not in {item.item_id for item in self._items}
+        if selection_removed:
+            self._selected_item_id = ""
         self._zoom = 1.0
         self._apply_geometries()
+        self._sync_item_selection_highlights()
+        if selection_removed:
+            self.itemSelectionChanged.emit("", None)
         if active_filters:
             self.interaction_manager.set_active_filters(active_filters)
 
@@ -427,8 +437,14 @@ class DashboardCanvas(QWidget):
         self._set_graph_state(visual_links=visual_links, chart_relations=chart_relations)
         self._rebuild_widgets()
         self._normalize_layouts()
+        selection_removed = self._selected_item_id and self._selected_item_id not in {item.item_id for item in self._items}
+        if selection_removed:
+            self._selected_item_id = ""
         self._zoom = self._clamp_zoom(current_zoom)
         self._apply_geometries()
+        self._sync_item_selection_highlights()
+        if selection_removed:
+            self.itemSelectionChanged.emit("", None)
         if active_filters:
             self.interaction_manager.set_active_filters(active_filters)
 
@@ -464,6 +480,29 @@ class DashboardCanvas(QWidget):
 
     def items(self) -> List[DashboardChartItem]:
         return [item.clone() for item in self._items]
+
+    def selected_item_id(self) -> str:
+        return str(self._selected_item_id or "")
+
+    def selected_item(self) -> Optional[DashboardChartItem]:
+        item = self._layout_by_id(self._selected_item_id)
+        return item.clone() if item is not None else None
+
+    def selected_item_widget(self) -> Optional[DashboardItemWidget]:
+        return self._widgets.get(self._selected_item_id)
+
+    def select_item(self, item_id: Optional[str], *, emit_signal: bool = True):
+        normalized = str(item_id or "").strip()
+        if normalized and self._layout_by_id(normalized) is None:
+            normalized = ""
+        if normalized == self._selected_item_id:
+            if emit_signal:
+                self.itemSelectionChanged.emit(normalized, self._widgets.get(normalized))
+            return
+        self._selected_item_id = normalized
+        self._sync_item_selection_highlights()
+        if emit_signal:
+            self.itemSelectionChanged.emit(normalized, self._widgets.get(normalized))
 
     def visual_links(self) -> List[DashboardVisualLink]:
         return [DashboardVisualLink.from_dict(link.to_dict()) for link in self._visual_links]
@@ -571,6 +610,7 @@ class DashboardCanvas(QWidget):
         self._items.append(new_item)
         self._rebuild_widgets()
         self._apply_geometries()
+        self.select_item(new_item.item_id, emit_signal=True)
         self.itemsChanged.emit()
 
     def set_selected_category(self, category_key: Optional[str], *, emit_signal: bool = False):
@@ -595,10 +635,12 @@ class DashboardCanvas(QWidget):
         self._preview_rect = None
         self._link_preview = None
         self._selected_relation_id = ""
+        self._selected_item_id = ""
         self.interaction_manager.clear_registry()
         self._rebuild_widgets()
         self._zoom = 1.0
         self._apply_geometries()
+        self.itemSelectionChanged.emit("", None)
         self.itemsChanged.emit()
 
     def clear_filters(self):
@@ -812,6 +854,9 @@ class DashboardCanvas(QWidget):
                 widget.selectionChanged.connect(
                     lambda payload, item_id=item.item_id: self._emit_chart_selection(item_id, payload)
                 )
+                widget.itemSelected.connect(self._handle_item_selected)
+                widget.visualPanelRequested.connect(self._handle_visual_panel_requested)
+                widget.fieldBindingDropRequested.connect(self.fieldBindingDropRequested.emit)
                 widget.itemChanged.connect(self.itemsChanged.emit)
                 widget.dragStarted.connect(self._start_drag)
                 widget.dragMoved.connect(self._move_drag)
@@ -828,9 +873,23 @@ class DashboardCanvas(QWidget):
             widget.set_edit_mode(self._edit_mode)
             self.interaction_manager.register_chart(widget, item.binding)
         self.interaction_manager.set_chart_relations(self._chart_relations)
+        self._sync_item_selection_highlights()
 
     def _emit_chart_selection(self, item_id: str, payload):
         self.chartSelectionChanged.emit(str(item_id or ""), payload)
+
+    def _handle_item_selected(self, item_id: str):
+        self.select_item(item_id, emit_signal=True)
+
+    def _handle_visual_panel_requested(self, item_id: str):
+        self.select_item(item_id, emit_signal=True)
+        self.visualPanelRequested.emit(str(item_id or ""))
+
+    def _sync_item_selection_highlights(self):
+        for item_id, widget in self._widgets.items():
+            if self._interaction and self._interaction.get("item_id") == item_id:
+                continue
+            widget.set_highlight_mode("selected" if item_id == self._selected_item_id else "idle")
 
     def _normalize_layouts(self):
         for item in self._items:
@@ -915,6 +974,9 @@ class DashboardCanvas(QWidget):
 
     def _remove_item(self, item_id: str):
         self._items = [item for item in self._items if item.item_id != item_id]
+        removed_selected = self._selected_item_id == str(item_id or "")
+        if removed_selected:
+            self._selected_item_id = ""
         self._interaction = {}
         self._set_preview_rect(None)
         self._link_preview = None
@@ -925,6 +987,8 @@ class DashboardCanvas(QWidget):
         self._prune_graph_state()
         self._rebuild_widgets()
         self._apply_geometries()
+        if removed_selected:
+            self.itemSelectionChanged.emit("", None)
         self.itemsChanged.emit()
 
     def _start_drag(self, item_id: str, payload):
@@ -981,6 +1045,7 @@ class DashboardCanvas(QWidget):
         self._apply_geometries()
         if widget is not None:
             widget.set_highlight_mode("idle")
+        self._sync_item_selection_highlights()
         self.itemsChanged.emit()
 
     def _resize_rect(self, start_layout: DashboardItemLayout, resize_mode: str, delta: QPoint) -> QRect:
@@ -1062,6 +1127,7 @@ class DashboardCanvas(QWidget):
         self._apply_geometries()
         if widget is not None:
             widget.set_highlight_mode("idle")
+        self._sync_item_selection_highlights()
         self.itemsChanged.emit()
 
     def _start_link_drag(self, item_id: str, payload):

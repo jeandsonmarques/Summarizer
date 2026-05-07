@@ -1,25 +1,45 @@
 ﻿from __future__ import annotations
 
 import copy
+import json
 import os
 from typing import Optional
 
 from qgis.PyQt.QtCore import QEvent, QPoint, QRect, QSize, Qt, pyqtSignal
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QColor, QIcon
 from qgis.PyQt.QtWidgets import (
     QAction,
     QActionGroup,
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QFrame,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMenu,
     QPushButton,
+    QSpinBox,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from .dashboard_models import DashboardChartBinding, DashboardChartItem
+from .dashboard_models import (
+    DashboardChartBinding,
+    DashboardChartItem,
+    binding_slot_definitions,
+    empty_binding_message,
+    suggest_binding_slot,
+    deserialize_chart_visual_state,
+    serialize_chart_visual_state,
+)
+from .report_view.charts import ChartVisualState
 from .report_view.chart_factory import ReportChartWidget
 from .slim_dialogs import slim_get_text
 from .utils.fonts import ui_font
@@ -27,6 +47,8 @@ from .utils.i18n_runtime import tr_text as _rt
 
 
 from .utils.logging_utils import log_exception
+
+_MODEL_FIELD_MIME = "application/x-summarizer-model-field"
 def _icon_from_resource(name: str) -> QIcon:
     path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "resources", "icons", str(name or "").strip())
@@ -51,10 +73,483 @@ class _DashboardConnectorOverlay(QWidget):
         return
 
 
+def _read_model_field_payload(mime_data) -> Optional[dict]:
+    try:
+        if mime_data is None or not mime_data.hasFormat(_MODEL_FIELD_MIME):
+            return None
+        raw = bytes(mime_data.data(_MODEL_FIELD_MIME)).decode("utf-8")
+        payload = json.loads(raw)
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        log_exception("falha opcional ignorada")
+        return None
+
+
+class _VisualDropSlot(QFrame):
+    fieldDropped = pyqtSignal(str, object)
+
+    def __init__(self, slot_name: str, label: str, parent=None):
+        super().__init__(parent)
+        self.slot_name = str(slot_name or "").strip()
+        self.setObjectName("ModelVisualDropSlot")
+        self.setAcceptDrops(True)
+        self._active = False
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+        self.title_label = QLabel(label, self)
+        self.title_label.setObjectName("ModelVisualDropSlotLabel")
+        layout.addWidget(self.title_label, 1)
+
+    def set_active(self, active: bool):
+        self._active = bool(active)
+        self.setProperty("dropActive", self._active)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def dragEnterEvent(self, event):
+        if _read_model_field_payload(event.mimeData()) is None:
+            event.ignore()
+            return
+        self.set_active(True)
+        event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if _read_model_field_payload(event.mimeData()) is None:
+            event.ignore()
+            return
+        self.set_active(True)
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event):
+        self.set_active(False)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event):
+        payload = _read_model_field_payload(event.mimeData())
+        self.set_active(False)
+        if payload is None:
+            event.ignore()
+            return
+        self.fieldDropped.emit(self.slot_name, payload)
+        event.acceptProposedAction()
+
+
+class _DashboardVisualDropOverlay(QFrame):
+    fieldDropped = pyqtSignal(str, object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ModelDashboardDropOverlay")
+        self.setAcceptDrops(True)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(8)
+        layout.addStretch(1)
+
+        self.icon_label = QLabel("[]", self)
+        self.icon_label.setObjectName("ModelDashboardEmptyVisualIcon")
+        self.icon_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.icon_label, 0, Qt.AlignHCenter)
+
+        self.message_label = QLabel(_rt("Arraste campos para configurar este visual"), self)
+        self.message_label.setObjectName("ModelDashboardEmptyVisualText")
+        self.message_label.setWordWrap(True)
+        self.message_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.message_label, 0)
+
+        self.slots_row = QWidget(self)
+        slots_layout = QGridLayout(self.slots_row)
+        slots_layout.setContentsMargins(0, 4, 0, 0)
+        slots_layout.setHorizontalSpacing(8)
+        slots_layout.setVerticalSpacing(8)
+        self._slots = {}
+        self._slot_layout = slots_layout
+        self._chart_type = "bar"
+        for index, slot_def in enumerate(binding_slot_definitions("bar")):
+            slot_name = str(slot_def.get("name") or "")
+            label = str(slot_def.get("label") or slot_name)
+            slot = _VisualDropSlot(slot_name, _rt(label), self.slots_row)
+            slot.fieldDropped.connect(self.fieldDropped.emit)
+            if index < 2:
+                slots_layout.addWidget(slot, 0, index, 1, 1)
+            else:
+                slots_layout.addWidget(slot, 1, index - 2, 1, 1)
+            self._slots[slot_name] = slot
+        layout.addWidget(self.slots_row, 0)
+        layout.addStretch(1)
+
+    def set_chart_context(self, chart_type: str, binding: Optional[DashboardChartBinding] = None):
+        self._chart_type = str(chart_type or "bar").strip().lower() or "bar"
+        compact = str(chart_type or "").strip().upper()[:3] or "[]"
+        self.icon_label.setText(compact)
+        self.message_label.setText(_rt(empty_binding_message(chart_type, binding)))
+        wanted = binding_slot_definitions(chart_type)
+        wanted_names = [str(slot.get("name") or "") for slot in wanted]
+        for slot_name, slot in self._slots.items():
+            slot.setVisible(slot_name in wanted_names)
+        for index, slot_def in enumerate(wanted):
+            slot_name = str(slot_def.get("name") or "")
+            slot = self._slots.get(slot_name)
+            if slot is None:
+                continue
+            self._slot_layout.removeWidget(slot)
+            row = 0 if index < 3 else 1
+            column = index if index < 3 else index - 3
+            self._slot_layout.addWidget(slot, row, column, 1, 1)
+
+    def dragEnterEvent(self, event):
+        if _read_model_field_payload(event.mimeData()) is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if _read_model_field_payload(event.mimeData()) is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        payload = _read_model_field_payload(event.mimeData())
+        if payload is None:
+            event.ignore()
+            return
+        suggested = suggest_binding_slot(self._chart_type, str(payload.get("field_group") or "other"))
+        target_slot = suggested if suggested in self._slots else "category"
+        self.fieldDropped.emit(target_slot, payload)
+        event.acceptProposedAction()
+
+
+_VISUAL_STYLE_CLIPBOARD = {}
+
+
+class _ColorButton(QPushButton):
+    def __init__(self, color: str, parent=None):
+        super().__init__(parent)
+        self._color = "#FFFFFF"
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumWidth(92)
+        self.set_color(color)
+        self.clicked.connect(self._pick_color)
+
+    def color(self) -> str:
+        return self._color
+
+    def set_color(self, color: str):
+        candidate = QColor(str(color or ""))
+        if not candidate.isValid():
+            candidate = QColor("#FFFFFF")
+        self._color = candidate.name().upper()
+        self.setText(self._color)
+        text_color = "#FFFFFF" if candidate.lightness() < 120 else "#111827"
+        self.setStyleSheet(
+            f"QPushButton {{ background: {self._color}; color: {text_color}; border: 1px solid #CBD5E1; border-radius: 6px; padding: 4px 8px; }}"
+        )
+
+    def _pick_color(self):
+        color = QColorDialog.getColor(QColor(self._color), self, _rt("Escolher cor"))
+        if color.isValid():
+            self.set_color(color.name())
+
+
+class VisualPropertiesDialog(QDialog):
+    STYLE_PRESETS = {
+        "clean": {
+            "label": "Limpo",
+            "show_background": True,
+            "background_color": "#FFFFFF",
+            "show_border": True,
+            "border_color": "#E2E8F0",
+            "border_width": 1,
+            "border_radius": 8,
+            "padding": 8,
+            "title_color": "#0F172A",
+            "label_color": "#475569",
+            "primary_color": "#2563EB",
+            "category_palette": ["#2563EB", "#14B8A6", "#F59E0B", "#64748B"],
+        },
+        "executive": {
+            "label": "Executivo",
+            "show_background": True,
+            "background_color": "#F8FAFC",
+            "show_border": True,
+            "border_color": "#CBD5E1",
+            "border_width": 1,
+            "border_radius": 10,
+            "padding": 12,
+            "title_color": "#111827",
+            "label_color": "#4B5563",
+            "primary_color": "#1D4ED8",
+            "category_palette": ["#1D4ED8", "#0F766E", "#B45309", "#7C3AED"],
+        },
+        "focus": {
+            "label": "Destaque",
+            "show_background": True,
+            "background_color": "#FEFCE8",
+            "show_border": True,
+            "border_color": "#FACC15",
+            "border_width": 2,
+            "border_radius": 12,
+            "padding": 12,
+            "title_color": "#713F12",
+            "label_color": "#854D0E",
+            "primary_color": "#CA8A04",
+            "category_palette": ["#CA8A04", "#0284C7", "#16A34A", "#DC2626"],
+        },
+        "graphite": {
+            "label": "Grafite",
+            "show_background": True,
+            "background_color": "#F3F4F6",
+            "show_border": True,
+            "border_color": "#9CA3AF",
+            "border_width": 1,
+            "border_radius": 6,
+            "padding": 10,
+            "title_color": "#111827",
+            "label_color": "#374151",
+            "primary_color": "#374151",
+            "category_palette": ["#111827", "#4B5563", "#6B7280", "#9CA3AF"],
+        },
+    }
+
+    def __init__(self, state: ChartVisualState, default_state: ChartVisualState, apply_callback, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(_rt("Propriedades visuais"))
+        self._state = copy.deepcopy(state)
+        self._default_state = copy.deepcopy(default_state)
+        self._apply_callback = apply_callback
+        self._loading = True
+        self._controls = {}
+        self._palette_buttons = []
+        self._build_ui()
+        self._load_state(self._state)
+        self._loading = False
+
+    def _build_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(10)
+
+        preset_row = QHBoxLayout()
+        preset_row.addWidget(QLabel(_rt("Preset"), self), 0)
+        self.preset_combo = QComboBox(self)
+        for preset_key, preset in self.STYLE_PRESETS.items():
+            self.preset_combo.addItem(_rt(str(preset.get("label") or preset_key)), preset_key)
+        self.apply_preset_btn = QPushButton(_rt("Aplicar preset"), self)
+        preset_row.addWidget(self.preset_combo, 1)
+        preset_row.addWidget(self.apply_preset_btn, 0)
+        root.addLayout(preset_row)
+
+        general = QGroupBox(_rt("Geral"), self)
+        general_form = QFormLayout(general)
+        general_form.setContentsMargins(10, 12, 10, 10)
+        self._controls["show_background"] = QCheckBox(_rt("Mostrar fundo"), general)
+        self._controls["background_color"] = _ColorButton("#FFFFFF", general)
+        self._controls["show_border"] = QCheckBox(_rt("Mostrar borda"), general)
+        self._controls["border_color"] = _ColorButton("#CBD5E1", general)
+        self._controls["border_width"] = self._spin(1, 6, general)
+        self._controls["border_radius"] = self._spin(0, 32, general)
+        self._controls["padding"] = self._spin(0, 40, general)
+        general_form.addRow("", self._controls["show_background"])
+        general_form.addRow(_rt("Cor de fundo"), self._controls["background_color"])
+        general_form.addRow("", self._controls["show_border"])
+        general_form.addRow(_rt("Cor da borda"), self._controls["border_color"])
+        general_form.addRow(_rt("Espessura da borda"), self._controls["border_width"])
+        general_form.addRow(_rt("Raio da borda"), self._controls["border_radius"])
+        general_form.addRow(_rt("Padding"), self._controls["padding"])
+        root.addWidget(general)
+
+        text_group = QGroupBox(_rt("Texto"), self)
+        text_form = QFormLayout(text_group)
+        text_form.setContentsMargins(10, 12, 10, 10)
+        self._controls["title_color"] = _ColorButton("#1F2937", text_group)
+        self._controls["title_size"] = self._spin(0, 48, text_group)
+        self._controls["label_color"] = _ColorButton("#4B5563", text_group)
+        self._controls["label_size"] = self._spin(0, 36, text_group)
+        align_combo = QComboBox(text_group)
+        align_combo.addItem(_rt("Esquerda"), "left")
+        align_combo.addItem(_rt("Centro"), "center")
+        align_combo.addItem(_rt("Direita"), "right")
+        self._controls["text_align"] = align_combo
+        text_form.addRow(_rt("Cor do titulo"), self._controls["title_color"])
+        text_form.addRow(_rt("Tamanho do titulo"), self._controls["title_size"])
+        text_form.addRow(_rt("Cor dos rotulos"), self._controls["label_color"])
+        text_form.addRow(_rt("Tamanho dos rotulos"), self._controls["label_size"])
+        text_form.addRow(_rt("Alinhamento"), align_combo)
+        root.addWidget(text_group)
+
+        number_group = QGroupBox(_rt("Numero"), self)
+        number_form = QFormLayout(number_group)
+        number_form.setContentsMargins(10, 12, 10, 10)
+        self._controls["number_prefix"] = QLineEdit(number_group)
+        self._controls["number_suffix"] = QLineEdit(number_group)
+        self._controls["decimal_places"] = self._spin(0, 8, number_group)
+        self._controls["null_value"] = QLineEdit(number_group)
+        number_form.addRow(_rt("Prefixo"), self._controls["number_prefix"])
+        number_form.addRow(_rt("Sufixo"), self._controls["number_suffix"])
+        number_form.addRow(_rt("Casas decimais"), self._controls["decimal_places"])
+        number_form.addRow(_rt("Valor nulo"), self._controls["null_value"])
+        root.addWidget(number_group)
+
+        colors_group = QGroupBox(_rt("Cores"), self)
+        colors_layout = QGridLayout(colors_group)
+        colors_layout.setContentsMargins(10, 12, 10, 10)
+        self._controls["primary_color"] = _ColorButton("#5A3FE6", colors_group)
+        colors_layout.addWidget(QLabel(_rt("Cor principal"), colors_group), 0, 0)
+        colors_layout.addWidget(self._controls["primary_color"], 0, 1)
+        palette_defaults = ["#2B7DE9", "#F2C811", "#2FB26A", "#F2994A"]
+        for index, color in enumerate(palette_defaults):
+            button = _ColorButton(color, colors_group)
+            self._palette_buttons.append(button)
+            colors_layout.addWidget(QLabel(f"{_rt('Paleta')} {index + 1}", colors_group), index + 1, 0)
+            colors_layout.addWidget(button, index + 1, 1)
+        root.addWidget(colors_group)
+
+        action_row = QHBoxLayout()
+        self.copy_btn = QPushButton(_rt("Copiar estilo"), self)
+        self.paste_btn = QPushButton(_rt("Colar estilo"), self)
+        self.reset_btn = QPushButton(_rt("Restaurar padrao"), self)
+        action_row.addWidget(self.copy_btn)
+        action_row.addWidget(self.paste_btn)
+        action_row.addStretch(1)
+        action_row.addWidget(self.reset_btn)
+        root.addLayout(action_row)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Cancel, self)
+        buttons.button(QDialogButtonBox.Apply).setText(_rt("Aplicar"))
+        buttons.button(QDialogButtonBox.Cancel).setText(_rt("Cancelar"))
+        buttons.button(QDialogButtonBox.Apply).clicked.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+        self.reset_btn.clicked.connect(self._restore_defaults)
+        self.copy_btn.clicked.connect(self._copy_style)
+        self.paste_btn.clicked.connect(self._paste_style)
+        self.apply_preset_btn.clicked.connect(self._apply_selected_preset)
+        self._connect_live_updates()
+
+    def _spin(self, minimum: int, maximum: int, parent) -> QSpinBox:
+        spin = QSpinBox(parent)
+        spin.setRange(minimum, maximum)
+        spin.setSingleStep(1)
+        return spin
+
+    def _connect_live_updates(self):
+        for key, control in self._controls.items():
+            if isinstance(control, _ColorButton):
+                control.clicked.connect(self._preview)
+            elif isinstance(control, QCheckBox):
+                control.toggled.connect(self._preview)
+            elif isinstance(control, QSpinBox):
+                control.valueChanged.connect(self._preview)
+            elif isinstance(control, QLineEdit):
+                control.textChanged.connect(self._preview)
+            elif isinstance(control, QComboBox):
+                control.currentIndexChanged.connect(self._preview)
+        for button in self._palette_buttons:
+            button.clicked.connect(self._preview)
+
+    def _load_state(self, state: ChartVisualState):
+        self._controls["show_background"].setChecked(bool(getattr(state, "show_background", True)))
+        self._controls["background_color"].set_color(getattr(state, "background_color", "#FFFFFF"))
+        self._controls["show_border"].setChecked(bool(getattr(state, "show_border", False)))
+        self._controls["border_color"].set_color(getattr(state, "border_color", "#CBD5E1"))
+        self._controls["border_width"].setValue(int(getattr(state, "border_width", 1) or 1))
+        self._controls["border_radius"].setValue(int(getattr(state, "border_radius", 8) or 8))
+        self._controls["padding"].setValue(int(getattr(state, "padding", 8) or 8))
+        self._controls["title_color"].set_color(getattr(state, "title_color", "#1F2937"))
+        self._controls["title_size"].setValue(int(getattr(state, "title_size", 0) or 0))
+        self._controls["label_color"].set_color(getattr(state, "label_color", "#4B5563"))
+        self._controls["label_size"].setValue(int(getattr(state, "label_size", 0) or 0))
+        align = str(getattr(state, "text_align", "left") or "left")
+        index = self._controls["text_align"].findData(align)
+        self._controls["text_align"].setCurrentIndex(index if index >= 0 else 0)
+        self._controls["number_prefix"].setText(str(getattr(state, "number_prefix", "") or ""))
+        self._controls["number_suffix"].setText(str(getattr(state, "number_suffix", "") or ""))
+        self._controls["decimal_places"].setValue(int(getattr(state, "decimal_places", 2)))
+        self._controls["null_value"].setText(str(getattr(state, "null_value", "-") or "-"))
+        self._controls["primary_color"].set_color(getattr(state, "primary_color", "#5A3FE6"))
+        palette = list(getattr(state, "category_palette", []) or [])
+        fallback = ["#2B7DE9", "#F2C811", "#2FB26A", "#F2994A"]
+        for index, button in enumerate(self._palette_buttons):
+            button.set_color(palette[index] if index < len(palette) else fallback[index])
+
+    def _current_state(self) -> ChartVisualState:
+        state = copy.deepcopy(self._state)
+        state.show_background = bool(self._controls["show_background"].isChecked())
+        state.background_color = self._controls["background_color"].color()
+        state.show_border = bool(self._controls["show_border"].isChecked())
+        state.border_color = self._controls["border_color"].color()
+        state.border_width = int(self._controls["border_width"].value())
+        state.border_radius = int(self._controls["border_radius"].value())
+        state.padding = int(self._controls["padding"].value())
+        state.title_color = self._controls["title_color"].color()
+        state.title_size = int(self._controls["title_size"].value())
+        state.label_color = self._controls["label_color"].color()
+        state.label_size = int(self._controls["label_size"].value())
+        state.text_align = str(self._controls["text_align"].currentData() or "left")
+        state.number_prefix = self._controls["number_prefix"].text()
+        state.number_suffix = self._controls["number_suffix"].text()
+        state.decimal_places = int(self._controls["decimal_places"].value())
+        state.null_value = self._controls["null_value"].text() or "-"
+        state.primary_color = self._controls["primary_color"].color()
+        state.category_palette = [button.color() for button in self._palette_buttons]
+        return state
+
+    def _preview(self, *args):
+        if self._loading:
+            return
+        self._apply_callback(self._current_state())
+
+    def _restore_defaults(self):
+        self._loading = True
+        self._load_state(self._default_state)
+        self._loading = False
+        self._preview()
+
+    def _apply_selected_preset(self):
+        preset_key = str(self.preset_combo.currentData() or "clean")
+        preset = dict(self.STYLE_PRESETS.get(preset_key) or {})
+        state = self._current_state()
+        for attr, value in preset.items():
+            if attr == "label":
+                continue
+            setattr(state, attr, copy.deepcopy(value))
+        self._loading = True
+        self._load_state(state)
+        self._loading = False
+        self._preview()
+
+    def _copy_style(self):
+        global _VISUAL_STYLE_CLIPBOARD
+        _VISUAL_STYLE_CLIPBOARD = serialize_chart_visual_state(self._current_state())
+
+    def _paste_style(self):
+        if not _VISUAL_STYLE_CLIPBOARD:
+            return
+        pasted = deserialize_chart_visual_state(_VISUAL_STYLE_CLIPBOARD)
+        pasted.chart_type = self._state.chart_type
+        self._loading = True
+        self._load_state(pasted)
+        self._loading = False
+        self._preview()
+
+    def visual_state(self) -> ChartVisualState:
+        return self._current_state()
+
+
 class DashboardItemWidget(QFrame):
     removeRequested = pyqtSignal(str)
     itemChanged = pyqtSignal()
+    itemSelected = pyqtSignal(str)
+    visualPanelRequested = pyqtSignal(str)
     selectionChanged = pyqtSignal(object)
+    fieldBindingDropRequested = pyqtSignal(str, str, object)
     dragStarted = pyqtSignal(str, object)
     dragMoved = pyqtSignal(str, object)
     dragFinished = pyqtSignal(str, object)
@@ -144,7 +639,7 @@ class DashboardItemWidget(QFrame):
         self.personalize_btn.setIconSize(QSize(16, 16))
         if personalize_icon.isNull():
             self.personalize_btn.setText("P")
-        self.personalize_btn.clicked.connect(self._open_chart_personalize_menu)
+        self.personalize_btn.clicked.connect(self._request_visual_panel)
         header_layout.addWidget(self.personalize_btn, 0)
 
         self.link_command_btn = QPushButton(_rt("+ Relacao"), self.header)
@@ -175,6 +670,10 @@ class DashboardItemWidget(QFrame):
         self.chart_widget.set_embedded_mode(True)
         self.chart_widget.selectionChanged.connect(self._handle_chart_selection)
         card_layout.addWidget(self.chart_widget, 1)
+
+        self.drop_overlay = _DashboardVisualDropOverlay(self.card)
+        self.drop_overlay.fieldDropped.connect(self._handle_field_drop)
+        self.drop_overlay.hide()
 
         self.footer_label = QLabel("", self.card)
         self.footer_label.setObjectName("ModelDashboardItemFooter")
@@ -220,6 +719,25 @@ class DashboardItemWidget(QFrame):
         self._binding = (binding or DashboardChartBinding()).normalized()
         self._sync_chart_identity()
 
+    def _has_minimum_binding(self) -> bool:
+        return bool(self._binding.has_minimum_fields())
+
+    def _drop_overlay_visible(self) -> bool:
+        return bool(self._edit_mode and self._highlight_mode == "selected")
+
+    def _sync_drop_overlay(self):
+        try:
+            chart_rect = self.chart_widget.geometry()
+            self.drop_overlay.setGeometry(chart_rect)
+            self.drop_overlay.raise_()
+            self.drop_overlay.setVisible(self._drop_overlay_visible())
+            self.drop_overlay.set_chart_context(str(getattr(self._item.visual_state, "chart_type", "") or ""), self._binding)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _handle_field_drop(self, slot_name: str, payload):
+        self.fieldBindingDropRequested.emit(self.item_id, str(slot_name or "").strip(), dict(payload or {}))
+
     def set_external_filters(self, filters):
         self._external_filters = dict(filters or {})
         self.chart_widget.set_external_filters(self._external_filters)
@@ -229,6 +747,14 @@ class DashboardItemWidget(QFrame):
             self.chart_widget.clear_selection(emit_signal=False)
         except Exception:
             log_exception("falha opcional ignorada")
+
+    def visual_state(self) -> ChartVisualState:
+        return copy.deepcopy(getattr(self._item, "visual_state", ChartVisualState()) or ChartVisualState())
+
+    def apply_visual_state(self, state: ChartVisualState, *, emit_changed: bool = True):
+        self._apply_visual_state_preview(state)
+        if emit_changed:
+            self.itemChanged.emit()
 
     def _sync_chart_identity(self):
         try:
@@ -303,16 +829,16 @@ class DashboardItemWidget(QFrame):
         self.title_label.setText(self._item.display_title())
         self.subtitle_label.setText(self._item.subtitle or "")
         self._sync_chart_identity()
-        self.chart_widget.set_payload(self._item.payload)
+        empty_text = None
+        if not self._has_minimum_binding():
+            empty_text = _rt(empty_binding_message(str(getattr(self._item.visual_state, "chart_type", "") or ""), self._binding))
+        self.chart_widget.set_payload(self._item.payload, empty_text=empty_text)
         self.chart_widget.chart_state = self._item.visual_state
-        try:
-            self.chart_widget.chart_state.show_border = True
-        except Exception:
-            log_exception("falha opcional ignorada")
         try:
             self.chart_widget.refresh_visual_state()
         except Exception:
             log_exception("falha opcional ignorada")
+        self._sync_accessibility_tooltip()
         self.chart_widget.set_external_filters(self._external_filters)
         self.chart_widget.set_embedded_mode(True)
         self.chart_widget.clear_selection(emit_signal=False)
@@ -320,6 +846,7 @@ class DashboardItemWidget(QFrame):
         self.footer_label.setText(f"{self._item.origin} | {layout.width}x{layout.height}")
         self.set_zoom_scale(self._zoom_scale, force=True)
         self.set_edit_mode(self._edit_mode)
+        self._sync_drop_overlay()
 
     def set_zoom_scale(self, scale: float, force: bool = False):
         try:
@@ -391,9 +918,10 @@ class DashboardItemWidget(QFrame):
         self.remove_btn.setVisible(self._edit_mode)
         self.model_edit_btn.setVisible(self._edit_mode)
         self.personalize_btn.setVisible(self._edit_mode)
-        self.link_command_btn.setVisible(False)
+        self.link_command_btn.setVisible(self._edit_mode)
         self.subtitle_label.setVisible(False)
         self.footer_label.setVisible(False)
+        self._sync_title_visibility()
         self.title_label.setToolTip(_rt("Duplo clique para renomear") if self._edit_mode else "")
         if self._edit_mode:
             try:
@@ -412,6 +940,7 @@ class DashboardItemWidget(QFrame):
         if not self._edit_mode:
             self.unsetCursor()
         self._apply_styles()
+        self._sync_drop_overlay()
         try:
             self._overlay.setVisible(self._edit_mode)
             self._overlay.setGeometry(self.rect())
@@ -419,6 +948,23 @@ class DashboardItemWidget(QFrame):
         except Exception:
             log_exception("falha opcional ignorada")
         self.update()
+
+    def _sync_title_visibility(self):
+        visual_state = getattr(self._item, "visual_state", None)
+        show_title = bool(getattr(visual_state, "show_title", True))
+        try:
+            self.title_label.setVisible(show_title)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _sync_accessibility_tooltip(self):
+        visual_state = getattr(self._item, "visual_state", None)
+        alt_text = str(getattr(visual_state, "alt_text", "") or "").strip()
+        try:
+            self.chart_widget.setToolTip(alt_text)
+            self.card.setToolTip(alt_text)
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def set_highlight_mode(self, mode: str):
         normalized = str(mode or "idle").strip().lower() or "idle"
@@ -430,11 +976,38 @@ class DashboardItemWidget(QFrame):
 
     def _apply_styles(self):
         zoom = max(0.6, min(2.0, float(self._zoom_scale or 1.0)))
-        border = "#D6D9E0"
-        header_bg = "#F8FAFC"
-        header_border = "#E5E7EB"
-        card_bg = "#FFFFFF"
-        card_border = f"1px solid {border}"
+        visual_state = getattr(self._item, "visual_state", None)
+        border = "#D9E1EA"
+        header_bg = "#FBFCFD"
+        header_border = "#EDF2F7"
+        card_bg = str(getattr(visual_state, "background_color", "#FFFFFF") or "#FFFFFF")
+        if not bool(getattr(visual_state, "show_background", True)):
+            card_bg = "transparent"
+        title_color = str(getattr(visual_state, "title_color", "#1F2937") or "#1F2937")
+        label_color = str(getattr(visual_state, "label_color", "#64748B") or "#64748B")
+        try:
+            border_radius = int(getattr(visual_state, "border_radius", 12) or 12)
+        except Exception:
+            border_radius = 12
+        try:
+            configured_title_size = int(getattr(visual_state, "title_size", 0) or 0)
+        except Exception:
+            configured_title_size = 0
+        try:
+            configured_label_size = int(getattr(visual_state, "label_size", 0) or 0)
+        except Exception:
+            configured_label_size = 0
+        border_radius = max(0, min(32, border_radius))
+        title_size = configured_title_size if configured_title_size > 0 else max(11, min(18, int(round(13 * zoom))))
+        label_size = configured_label_size if configured_label_size > 0 else max(9, min(15, int(round(11 * zoom))))
+        if bool(getattr(visual_state, "show_border", False)):
+            border = str(getattr(visual_state, "border_color", border) or border)
+        try:
+            border_width = int(getattr(visual_state, "border_width", 1) or 1)
+        except Exception:
+            border_width = 1
+        border_width = max(1, min(6, border_width))
+        card_border = f"{border_width}px solid {border}"
         header_border_rule = f"1px solid {header_border}"
         if not self._edit_mode:
             card_bg = "transparent"
@@ -442,10 +1015,13 @@ class DashboardItemWidget(QFrame):
             header_bg = "transparent"
             header_border_rule = "none"
         elif self._highlight_mode == "drag":
-            border = "#6D79FF"
+            border = "#A5B4FC"
             card_border = f"1px solid {border}"
         elif self._highlight_mode == "resize":
-            border = "#4F46E5"
+            border = "#818CF8"
+            card_border = f"1px solid {border}"
+        elif self._highlight_mode == "selected":
+            border = "#93C5FD"
             card_border = f"1px solid {border}"
 
         self.setStyleSheet(
@@ -457,31 +1033,31 @@ class DashboardItemWidget(QFrame):
             QFrame#ModelDashboardCard {{
                 background: {card_bg};
                 border: {card_border};
-                border-radius: 12px;
+                border-radius: {max(8, min(16, border_radius))}px;
             }}
             QFrame#ModelDashboardHeader {{
                 background: {header_bg};
                 border: {header_border_rule};
-                border-radius: 10px;
+                border-radius: 8px;
             }}
             QLabel#ModelDashboardItemTitle {{
-                color: #1F2937;
-                font-size: {max(11, min(18, int(round(13 * zoom))))}px;
+                color: {title_color};
+                font-size: {title_size}px;
                 font-weight: 600;
             }}
             QLabel#ModelDashboardItemSubtitle,
             QLabel#ModelDashboardItemFooter,
             QLabel#ModelDashboardDragHandle {{
-                color: #6B7280;
-                font-size: {max(9, min(15, int(round(11 * zoom))))}px;
+                color: {label_color};
+                font-size: {label_size}px;
                 font-weight: 400;
             }}
             QToolButton#ModelDashboardRemoveButton,
             QToolButton#ModelDashboardHeaderIconButton {{
-                min-height: {max(20, int(round(28 * zoom)))}px;
-                max-height: {max(20, int(round(28 * zoom)))}px;
-                min-width: {max(20, int(round(28 * zoom)))}px;
-                max-width: {max(20, int(round(28 * zoom)))}px;
+                min-height: {max(18, int(round(24 * zoom)))}px;
+                max-height: {max(18, int(round(24 * zoom)))}px;
+                min-width: {max(18, int(round(24 * zoom)))}px;
+                max-width: {max(18, int(round(24 * zoom)))}px;
                 padding: 0;
                 color: #374151;
                 background: #FFFFFF;
@@ -495,8 +1071,8 @@ class DashboardItemWidget(QFrame):
                 border-color: #9CA3AF;
             }}
             QPushButton#ModelDashboardLinkCommandButton {{
-                min-height: {max(18, int(round(28 * zoom)))}px;
-                max-height: {max(18, int(round(28 * zoom)))}px;
+                min-height: {max(18, int(round(24 * zoom)))}px;
+                max-height: {max(18, int(round(24 * zoom)))}px;
                 padding: 0 {max(4, int(round(8 * zoom)))}px;
                 color: #3730A3;
                 background: #EEF2FF;
@@ -509,8 +1085,38 @@ class DashboardItemWidget(QFrame):
                 background: #E0E7FF;
                 border-color: #6366F1;
             }}
+            QFrame#ModelDashboardDropOverlay {{
+                background: rgba(255, 255, 255, 228);
+                border: 1px dashed #CBD5E1;
+                border-radius: {max(8, int(round(10 * zoom)))}px;
+            }}
+            QLabel#ModelDashboardEmptyVisualIcon {{
+                color: #3B82F6;
+                font-size: {max(12, min(22, int(round(16 * zoom))))}px;
+                font-weight: 600;
+            }}
+            QLabel#ModelDashboardEmptyVisualText {{
+                color: #475569;
+                font-size: {max(10, min(16, int(round(11 * zoom))))}px;
+                font-weight: 400;
+            }}
+            QFrame#ModelVisualDropSlot {{
+                background: rgba(255, 255, 255, 235);
+                border: 1px dashed #D6DEE8;
+                border-radius: {max(6, int(round(8 * zoom)))}px;
+            }}
+            QFrame#ModelVisualDropSlot[dropActive="true"] {{
+                background: #F8FBFF;
+                border: 1px solid #93C5FD;
+            }}
+            QLabel#ModelVisualDropSlotLabel {{
+                color: #334155;
+                font-size: {max(9, min(14, int(round(10 * zoom))))}px;
+                font-weight: 500;
+            }}
             """
         )
+        self._sync_drop_overlay()
 
     def _header_button_anchor(self, button: QWidget) -> QPoint:
         try:
@@ -609,10 +1215,26 @@ class DashboardItemWidget(QFrame):
         menu.addAction(grid_action)
 
         border_action = QAction(_rt("Mostrar borda"), menu, checkable=True)
-        border_action.setChecked(True)
-        border_action.setEnabled(False)
+        border_action.setChecked(bool(getattr(self.chart_widget.chart_state, "show_border", False)))
         border_action.triggered.connect(self.chart_widget._toggle_show_border)
         menu.addAction(border_action)
+
+        background_action = QAction(_rt("Cor de fundo..."), menu)
+        background_action.triggered.connect(lambda checked=False: self.chart_widget._pick_visual_color("background_color", "#FFFFFF"))
+        menu.addAction(background_action)
+
+        primary_action = QAction(_rt("Cor principal..."), menu)
+        primary_action.triggered.connect(lambda checked=False: self.chart_widget._pick_visual_color("primary_color", "#5A3FE6"))
+        menu.addAction(primary_action)
+
+        border_color_action = QAction(_rt("Cor da borda..."), menu)
+        border_color_action.setEnabled(bool(getattr(self.chart_widget.chart_state, "show_border", False)))
+        border_color_action.triggered.connect(lambda checked=False: self.chart_widget._pick_visual_color("border_color", "#CBD5E1"))
+        menu.addAction(border_color_action)
+
+        properties_action = QAction(_rt("Propriedades visuais..."), menu)
+        properties_action.triggered.connect(self._open_visual_properties_dialog)
+        menu.addAction(properties_action)
 
         sort_group = QActionGroup(menu)
         sort_group.setExclusive(True)
@@ -646,7 +1268,45 @@ class DashboardItemWidget(QFrame):
         menu.exec_(self._header_button_anchor(self.personalize_btn))
         if before != self.chart_widget.chart_state:
             self._item.visual_state = copy.deepcopy(self.chart_widget.chart_state)
+            self._sync_title_visibility()
+            self._apply_styles()
             self.itemChanged.emit()
+
+    def _request_visual_panel(self):
+        if not self._edit_mode:
+            return
+        self.itemSelected.emit(self.item_id)
+        self.visualPanelRequested.emit(self.item_id)
+
+    def _apply_visual_state_preview(self, state: ChartVisualState):
+        self._item.visual_state = copy.deepcopy(state)
+        self.chart_widget.chart_state = self._item.visual_state
+        self.chart_widget._ensure_visual_state_compatibility()
+        self.chart_widget.refresh_visual_state()
+        self.chart_widget._rerender_chart(transition="data")
+        self._sync_accessibility_tooltip()
+        self._sync_title_visibility()
+        self._apply_styles()
+
+    def _open_visual_properties_dialog(self):
+        if not self._edit_mode:
+            return
+        self.chart_widget._ensure_visual_state_compatibility()
+        original = copy.deepcopy(self.chart_widget.chart_state)
+        default_state = self.chart_widget._default_visual_state(self.chart_widget._payload)
+        default_state.chart_type = original.chart_type
+        dialog = VisualPropertiesDialog(
+            original,
+            default_state,
+            self._apply_visual_state_preview,
+            self,
+        )
+        result = dialog.exec_()
+        if result == QDialog.Accepted:
+            self._apply_visual_state_preview(dialog.visual_state())
+            self.itemChanged.emit()
+            return
+        self._apply_visual_state_preview(original)
 
     def _event_global_pos(self, event) -> QPoint:
         try:
@@ -911,6 +1571,7 @@ class DashboardItemWidget(QFrame):
             return False
 
         if event_type == QEvent.MouseButtonPress and getattr(event, "button", lambda: None)() == Qt.LeftButton:
+            self.itemSelected.emit(self.item_id)
             link_side = self.connector_hit_side(local_pos)
             if link_side:
                 self._start_link(link_side, global_pos)
@@ -992,3 +1653,4 @@ class DashboardItemWidget(QFrame):
             self._overlay.raise_()
         except Exception:
             log_exception("falha opcional ignorada")
+        self._sync_drop_overlay()

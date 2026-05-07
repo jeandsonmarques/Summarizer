@@ -5,9 +5,11 @@ import os
 import uuid
 from typing import Dict, List, Optional
 
-from qgis.PyQt.QtCore import QSize, Qt
-from qgis.PyQt.QtGui import QColor, QKeySequence
+from qgis.PyQt.QtCore import QSize, Qt, QMimeData, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QDrag, QKeySequence
 from qgis.PyQt.QtWidgets import (
+    QListWidget,
+    QListWidgetItem,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -22,20 +24,34 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QPushButton,
     QShortcut,
+    QScrollArea,
     QSlider,
+    QSplitter,
     QSpinBox,
     QToolButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
-from qgis.core import QgsProject, QgsVectorLayer
+from qgis.core import QgsMapLayerProxyModel, QgsProject, QgsVectorLayer
+from qgis.gui import QgsMapLayerComboBox
 
 from .dashboard_add_dialog import DashboardAddDialog
 from .dashboard_canvas import DashboardCanvas
-from .dashboard_models import DashboardChartBinding, DashboardChartItem, DashboardPage, DashboardProject
+from .dashboard_models import (
+    DashboardChartBinding,
+    DashboardChartItem,
+    DashboardPage,
+    DashboardProject,
+    binding_slot_definitions,
+    empty_binding_message,
+    is_binding_slot_compatible,
+    normalize_chart_type,
+    suggest_binding_slot,
+)
 from .dashboard_page_widget import DashboardPageWidget
 from .dashboard_project_store import DashboardProjectStore, PROJECT_EXTENSION
+from .field_list_helpers import configure_field_item, field_kind_from_field_def
 from .report_view.charts import ChartVisualState
 from .report_view.result_models import ChartPayload
 from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelModeToggle, _ModelRecentCard
@@ -44,6 +60,160 @@ from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_fon
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.resources import svg_icon
 from .utils.logging_utils import log_exception
+from .visual_format_panel import VisualFormatPanel
+
+_MODEL_FIELD_MIME = "application/x-summarizer-model-field"
+_MODEL_FIELD_ROLE = Qt.UserRole + 41
+
+
+class _ModelFieldList(QListWidget):
+    fieldActivated = pyqtSignal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragEnabled(True)
+        self.setSelectionMode(QListWidget.SingleSelection)
+        self.itemDoubleClicked.connect(self._emit_activated)
+
+    def _emit_activated(self, item):
+        payload = item.data(_MODEL_FIELD_ROLE) if item is not None else None
+        if isinstance(payload, dict):
+            self.fieldActivated.emit(dict(payload))
+
+    def startDrag(self, supportedActions):
+        item = self.currentItem()
+        if item is None:
+            return
+        payload = item.data(_MODEL_FIELD_ROLE)
+        if not isinstance(payload, dict):
+            return
+        mime = QMimeData()
+        mime.setData(_MODEL_FIELD_MIME, json.dumps(payload).encode("utf-8"))
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.exec_(Qt.CopyAction)
+
+
+class _ModelBindingSlot(QFrame):
+    fieldDropped = pyqtSignal(str, object)
+    removeRequested = pyqtSignal(str, str)
+
+    def __init__(self, slot_name: str, label: str, parent=None):
+        super().__init__(parent)
+        self.slot_name = str(slot_name or "").strip()
+        self.setObjectName("ModelBindingSlot")
+        self.setAcceptDrops(True)
+        self._active = False
+
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(8, 6, 8, 6)
+        self._layout.setSpacing(6)
+
+        self.label_widget = QLabel(label, self)
+        self.label_widget.setObjectName("ModelBindingSlotLabel")
+        self._layout.addWidget(self.label_widget, 0)
+
+        self.value_widget = QLabel(_rt("Solte um campo aqui"), self)
+        self.value_widget.setObjectName("ModelBindingSlotValue")
+        self.value_widget.setWordWrap(True)
+        self._layout.addWidget(self.value_widget, 1)
+
+        self.remove_btn = QToolButton(self)
+        self.remove_btn.setObjectName("ModelBindingSlotRemove")
+        self.remove_btn.setText("x")
+        self.remove_btn.clicked.connect(lambda: self.removeRequested.emit(self.slot_name, ""))
+        self._layout.addWidget(self.remove_btn, 0)
+        self.remove_btn.hide()
+
+    def set_value(self, text: str, *, placeholder: str = ""):
+        self.set_values([text] if str(text or "").strip() else [], placeholder=placeholder)
+
+    def set_label(self, text: str):
+        self.label_widget.setText(str(text or ""))
+
+    def set_values(self, values, *, placeholder: str = ""):
+        clean_values = [str(value or "").strip() for value in list(values or []) if str(value or "").strip()]
+        for widget in list(getattr(self, "_chip_widgets", []) or []):
+            self._layout.removeWidget(widget)
+            widget.deleteLater()
+        self._chip_widgets = []
+        self.remove_btn.hide()
+        if clean_values:
+            self.value_widget.hide()
+            insert_at = max(1, self._layout.count() - 1)
+            for value in clean_values:
+                chip = QFrame(self)
+                chip.setObjectName("ModelBindingSlotChip")
+                chip_layout = QHBoxLayout(chip)
+                chip_layout.setContentsMargins(6, 1, 4, 1)
+                chip_layout.setSpacing(4)
+                label = QLabel(value, chip)
+                label.setObjectName("ModelBindingSlotChipLabel")
+                label.setToolTip(value)
+                chip_layout.addWidget(label, 1)
+                remove = QToolButton(chip)
+                remove.setObjectName("ModelBindingSlotRemove")
+                remove.setText("x")
+                remove.setToolTip(_rt("Remover campo"))
+                remove.clicked.connect(lambda checked=False, item=value: self.removeRequested.emit(self.slot_name, item))
+                chip_layout.addWidget(remove, 0)
+                self._layout.insertWidget(insert_at, chip, 0)
+                insert_at += 1
+                self._chip_widgets.append(chip)
+            self.setProperty("filled", True)
+        else:
+            self.value_widget.show()
+            self.value_widget.setText(str(placeholder or _rt("Solte um campo aqui")))
+            self.setProperty("filled", False)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def set_active(self, active: bool):
+        self._active = bool(active)
+        self.setProperty("dropActive", self._active)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def dragEnterEvent(self, event):
+        try:
+            if event.mimeData().hasFormat(_MODEL_FIELD_MIME):
+                self.set_active(True)
+                event.acceptProposedAction()
+                return
+        except Exception:
+            log_exception("falha opcional ignorada")
+        event.ignore()
+
+    def dragMoveEvent(self, event):
+        try:
+            if event.mimeData().hasFormat(_MODEL_FIELD_MIME):
+                self.set_active(True)
+                event.acceptProposedAction()
+                return
+        except Exception:
+            log_exception("falha opcional ignorada")
+        event.ignore()
+
+    def dragLeaveEvent(self, event):
+        self.set_active(False)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event):
+        self.set_active(False)
+        try:
+            if not event.mimeData().hasFormat(_MODEL_FIELD_MIME):
+                event.ignore()
+                return
+            payload = json.loads(bytes(event.mimeData().data(_MODEL_FIELD_MIME)).decode("utf-8"))
+        except Exception:
+            payload = None
+        if not isinstance(payload, dict):
+            event.ignore()
+            return
+        self.fieldDropped.emit(self.slot_name, payload)
+        event.acceptProposedAction()
 
 
 class ModelTab(QWidget):
@@ -69,6 +239,9 @@ class ModelTab(QWidget):
         self._history_restoring = False
         self._history_limit = 80
         self._builder_panel_open = False
+        self._visual_panel_open = False
+        self._builder_selected_item_id: str = ""
+        self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 2, 4, 3)
@@ -92,10 +265,13 @@ class ModelTab(QWidget):
         self.undo_btn = QPushButton(_rt("Desfazer"))
         self.redo_btn = QPushButton(_rt("Refazer"))
         self.create_chart_btn = QPushButton(_rt("Criar grafico"))
+        self.format_visual_btn = QPushButton(_rt("Formatar visual"))
         self.edit_mode_btn = QPushButton(_rt("Edicao"))
         self.settings_btn = QPushButton(_rt("Configuracoes"))
         self.create_chart_btn.setCheckable(True)
         self.create_chart_btn.setChecked(False)
+        self.format_visual_btn.setCheckable(True)
+        self.format_visual_btn.setChecked(False)
         self.edit_mode_btn.setCheckable(True)
         self.edit_mode_btn.setChecked(True)
         self.close_project_btn = QToolButton()
@@ -108,6 +284,7 @@ class ModelTab(QWidget):
         self._configure_toolbar_icon_button(self.save_as_btn, "Walker-SaveAs.svg", _rt("Salvar como"))
         self._configure_toolbar_icon_button(self.export_btn, "Walker-Image.svg", _rt("Exportar imagem"))
         self._configure_toolbar_icon_button(self.create_chart_btn, "Walker-Chart.svg", _rt("Criar grafico"))
+        self._configure_toolbar_icon_button(self.format_visual_btn, "Walker-Format.svg", _rt("Formatar visual"))
         self._configure_toolbar_icon_button(self.edit_mode_btn, "Walker-Edit.svg", _rt("Edicao"))
         self._configure_toolbar_icon_button(
             self.settings_btn,
@@ -130,6 +307,7 @@ class ModelTab(QWidget):
             self.save_as_btn,
             self.export_btn,
             self.create_chart_btn,
+            self.format_visual_btn,
             self.edit_mode_btn,
             self.settings_btn,
             self.close_project_btn,
@@ -148,7 +326,7 @@ class ModelTab(QWidget):
         for button in (self.new_btn, self.open_btn, self.save_btn, self.save_as_btn, self.export_btn):
             toolbar_layout.addWidget(button, 0)
         toolbar_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
-        for button in (self.create_chart_btn, self.edit_mode_btn, self.settings_btn):
+        for button in (self.create_chart_btn, self.format_visual_btn, self.edit_mode_btn, self.settings_btn):
             toolbar_layout.addWidget(button, 0)
         toolbar_layout.addStretch(1)
         self.mode_switch_wrap = QWidget(self.toolbar_strip)
@@ -169,6 +347,7 @@ class ModelTab(QWidget):
         self.clear_filters_btn.setVisible(False)
         self.clear_filters_btn.clicked.connect(self._clear_model_filters)
         toolbar_layout.addWidget(self.clear_filters_btn, 0)
+        toolbar_layout.addSpacing(8)
         toolbar_layout.addWidget(self.mode_switch_wrap, 0)
         toolbar_layout.addSpacing(8)
         toolbar_layout.addWidget(self.close_project_btn, 0)
@@ -256,16 +435,77 @@ class ModelTab(QWidget):
         self.canvas_page = QWidget(self.body_stack)
         canvas_page_layout = QHBoxLayout(self.canvas_page)
         canvas_page_layout.setContentsMargins(0, 0, 0, 0)
-        canvas_page_layout.setSpacing(10)
+        canvas_page_layout.setSpacing(0)
 
-        self.page_stack = QStackedWidget(self.canvas_page)
+        self.canvas_splitter = QSplitter(Qt.Horizontal, self.canvas_page)
+        self.canvas_splitter.setObjectName("ModelCanvasSplitter")
+        self.canvas_splitter.setChildrenCollapsible(False)
+        canvas_page_layout.addWidget(self.canvas_splitter, 1)
+
+        self.page_stack = QStackedWidget(self.canvas_splitter)
         self.page_stack.setObjectName("ModelPageStack")
         self.page_stack.currentChanged.connect(self._handle_page_stack_current_changed)
-        canvas_page_layout.addWidget(self.page_stack, 1)
+        self.canvas_splitter.addWidget(self.page_stack)
 
-        self.builder_panel = self._build_chart_builder_panel(self.canvas_page)
-        self.builder_panel.setFixedWidth(300)
-        canvas_page_layout.addWidget(self.builder_panel, 0)
+        self.visual_side_panel = QFrame(self.canvas_splitter)
+        self.visual_side_panel.setObjectName("ModelVisualSidePanel")
+        self.visual_side_panel.setAttribute(Qt.WA_StyledBackground, True)
+        self.visual_side_panel.setMinimumWidth(260)
+        self.visual_side_panel.setMaximumWidth(520)
+        visual_side_layout = QVBoxLayout(self.visual_side_panel)
+        visual_side_layout.setContentsMargins(8, 8, 8, 8)
+        visual_side_layout.setSpacing(6)
+
+        visual_tab_bar = QFrame(self.visual_side_panel)
+        visual_tab_bar.setObjectName("ModelVisualPanelTabBar")
+        visual_tab_layout = QHBoxLayout(visual_tab_bar)
+        visual_tab_layout.setContentsMargins(4, 4, 4, 4)
+        visual_tab_layout.setSpacing(4)
+        self.visual_data_tab_btn = QPushButton(_rt("Adicionar dados"), visual_tab_bar)
+        self.visual_data_tab_btn.setObjectName("ModelVisualPanelTabButton")
+        self.visual_data_tab_btn.setCheckable(True)
+        self.visual_data_tab_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_data_tab_btn.setToolTip("")
+        self.visual_data_tab_btn.setStatusTip("")
+        self.visual_data_tab_btn.setWhatsThis("")
+        self.visual_data_tab_btn.clicked.connect(lambda checked=False: self._set_visual_side_tab("build"))
+        visual_tab_layout.addWidget(self.visual_data_tab_btn, 1)
+        self.visual_format_tab_btn = QPushButton(_rt("Formatar visual"), visual_tab_bar)
+        self.visual_format_tab_btn.setObjectName("ModelVisualPanelTabButton")
+        self.visual_format_tab_btn.setCheckable(True)
+        self.visual_format_tab_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_format_tab_btn.setToolTip("")
+        self.visual_format_tab_btn.setStatusTip("")
+        self.visual_format_tab_btn.setWhatsThis("")
+        self.visual_format_tab_btn.clicked.connect(lambda checked=False: self._set_visual_side_tab("format"))
+        visual_tab_layout.addWidget(self.visual_format_tab_btn, 1)
+        visual_side_layout.addWidget(visual_tab_bar, 0)
+
+        self.visual_side_stack = QStackedWidget(self.visual_side_panel)
+        self.visual_side_stack.setObjectName("ModelVisualSideStack")
+        self.builder_panel = self._build_chart_builder_panel(self.visual_side_stack)
+        self.visual_side_stack.addWidget(self.builder_panel)
+        self.visual_panel = VisualFormatPanel(self.visual_side_stack)
+        self.visual_panel.setMinimumWidth(240)
+        self.visual_panel.setMaximumWidth(16777215)
+        self.visual_panel.closeRequested.connect(lambda: self._set_visual_panel_open(False))
+        self.visual_side_stack.addWidget(self.visual_panel)
+        visual_side_layout.addWidget(self.visual_side_stack, 1)
+        self._active_visual_side_tab = "build"
+        self._sync_visual_side_tab_buttons()
+        self._apply_visual_side_panel_styles()
+        self.visual_side_panel.setVisible(False)
+        self.canvas_splitter.addWidget(self.visual_side_panel)
+
+        self.data_panel = self._build_data_panel(self.canvas_splitter)
+        self.data_panel.setMinimumWidth(260)
+        self.data_panel.setMaximumWidth(520)
+        self.data_panel.setVisible(False)
+        self.canvas_splitter.addWidget(self.data_panel)
+        self.canvas_splitter.setStretchFactor(0, 1)
+        self.canvas_splitter.setStretchFactor(1, 0)
+        self.canvas_splitter.setStretchFactor(2, 0)
+        self.canvas_splitter.setSizes([900, 292, 292])
 
         self.body_stack.addWidget(self.empty_page)
         self.body_stack.addWidget(self.canvas_page)
@@ -316,6 +556,7 @@ class ModelTab(QWidget):
         self.undo_btn.clicked.connect(self._undo_last_action)
         self.redo_btn.clicked.connect(self._redo_last_action)
         self.create_chart_btn.toggled.connect(self._handle_create_chart_toggle)
+        self.format_visual_btn.toggled.connect(self._handle_format_visual_toggle)
         self.settings_btn.clicked.connect(self._open_canvas_style_settings)
         self.zoom_out_btn.clicked.connect(self._zoom_canvas_out)
         self.zoom_reset_btn.clicked.connect(self._zoom_canvas_reset)
@@ -476,33 +717,290 @@ class ModelTab(QWidget):
                 background: #E5E7EB;
             }
             QFrame#ModelBuilderPanel {
+                background: transparent;
+                border: none;
+                border-radius: 0px;
+            }
+            QFrame#ModelVisualSidePanel {
+                background: #FFFFFF;
+                border: 1px solid #DCE3EC;
+                border-radius: 6px;
+            }
+            QSplitter#ModelCanvasSplitter {
+                background: transparent;
+            }
+            QSplitter#ModelCanvasSplitter::handle {
+                background: transparent;
+                width: 8px;
+                margin: 0px 2px;
+            }
+            QSplitter#ModelCanvasSplitter::handle:hover {
+                background: #E2E8F0;
+            }
+            QFrame#ModelVisualPanelTabBar {
+                background: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                border-radius: 6px;
+            }
+            QStackedWidget#ModelVisualSideStack {
+                background: transparent;
+                border: none;
+            }
+            QPushButton#ModelVisualPanelTabButton {
+                min-height: 28px;
+                max-height: 28px;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                background: transparent;
+                color: #334155;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton#ModelVisualPanelTabButton:hover {
                 background: #F8FAFC;
-                border: 1px solid #D6D9E0;
-                border-radius: 12px;
+                border-color: #D7DEE8;
+            }
+            QPushButton#ModelVisualPanelTabButton:checked {
+                background: #EAF4FF;
+                border-color: #93C5FD;
+            }
+            QScrollArea#ModelBuilderScroll {
+                border: none;
+                background: transparent;
+            }
+            QWidget#ModelBuilderHost {
+                background: transparent;
             }
             QLabel#ModelBuilderTitle {
-                color: #111827;
-                font-size: 13px;
-                font-weight: 600;
+                color: #0F172A;
+                font-size: 14px;
+                font-weight: 500;
             }
             QLabel#ModelBuilderHint {
+                color: #64748B;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QToolButton#ModelBuilderCloseButton {
+                min-width: 22px;
+                max-width: 22px;
+                min-height: 22px;
+                max-height: 22px;
+                border: 1px solid #CBD5E1;
+                border-radius: 6px;
+                background: #FFFFFF;
+                color: #334155;
+            }
+            QToolButton#ModelBuilderCloseButton:hover {
+                background: #F8FAFC;
+                border-color: #94A3B8;
+            }
+            QFrame#ModelBuilderSection {
+                background: #FFFFFF;
+                border: 1px solid rgba(15, 23, 42, 0.06);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderPlainSection {
+                background: transparent;
+                border: none;
+                border-radius: 0px;
+            }
+            QFrame#ModelBuilderVisualsSection {
+                background: #FFFFFF;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderVisualsSection:hover {
+                border-color: rgba(17, 24, 39, 0.14);
+            }
+            QFrame#ModelBuilderSoftDividerSection {
+                background: #FFFFFF;
+                border: 1px solid #E5EAF1;
+                border-radius: 5px;
+            }
+            QFrame#ModelBuilderFieldsPanel {
+                background: #FFFFFF;
+                border: 1px solid rgba(15, 23, 42, 0.06);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderDataPanel {
+                background: #FFFFFF;
+                border: 1px solid rgba(15, 23, 42, 0.06);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderDataSection {
+                background: transparent;
+                border: none;
+            }
+            QFrame#ModelBuilderFieldsHeader {
+                background: #FFFFFF;
+                border: none;
+                border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+            }
+            QLabel#ModelBuilderSectionTitle {
+                color: #0F172A;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            QToolButton#ModelVisualTypeButton {
+                min-width: 30px;
+                max-width: 30px;
+                min-height: 28px;
+                max-height: 28px;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                background: transparent;
+                color: #475569;
+                padding: 0px;
+                font-size: 10px;
+                font-weight: 500;
+            }
+            QToolButton#ModelVisualTypeButton:hover {
+                background: #F3F4F6;
+                border-color: rgba(17, 24, 39, 0.10);
+            }
+            QToolButton#ModelVisualTypeButton:checked {
+                background: #E8EEF6;
+                color: #0F172A;
+                border-color: rgba(17, 24, 39, 0.12);
+            }
+            QToolButton#ModelVisualTypeButton:checked:hover {
+                background: #E8EEF6;
+            }
+            QFrame#ModelBuilderEmptyState {
+                background: rgba(255, 255, 255, 0.88);
+                border: 1px dashed rgba(17, 24, 39, 0.12);
+                border-radius: 6px;
+            }
+            QLabel#ModelBuilderEmptyStateLabel {
+                color: #64748B;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QListWidget#ModelBuilderFieldList {
+                border: 1px solid rgba(17, 24, 39, 0.06);
+                border-radius: 6px;
+                background: #FFFFFF;
+                color: #0F172A;
+                padding: 4px;
+                outline: 0;
+                font-size: 12px;
+            }
+            QListWidget#ModelBuilderFieldList::item {
+                padding: 2px 6px;
+                margin: 0;
+                border-radius: 2px;
+            }
+            QListWidget#ModelBuilderFieldList::item:hover {
+                background: rgba(17, 24, 39, 0.035);
+            }
+            QListWidget#ModelBuilderFieldList::item:selected {
+                background: rgba(81, 96, 116, 0.12);
+                color: #111827;
+            }
+            QLabel#ModelBuilderFieldLabel {
                 color: #6B7280;
-                font-size: 11px;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QFrame#ModelBindingSlot {
+                background: #FFFFFF;
+                border: 1px dashed #DDE5EF;
+                border-radius: 4px;
+            }
+            QFrame#ModelBindingSlot[filled="true"] {
+                border-style: solid;
+                border-color: #CBD5E1;
+                background: #F8FAFC;
+            }
+            QFrame#ModelBindingSlot[dropActive="true"] {
+                border-style: solid;
+                border-color: rgba(96, 165, 250, 0.42);
+                background: rgba(248, 250, 252, 0.98);
+            }
+            QLabel#ModelBindingSlotLabel {
+                color: #374151;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QFrame#ModelBindingSlotChip {
+                background: rgba(241, 245, 249, 0.98);
+                border: 1px solid rgba(148, 163, 184, 0.24);
+                border-radius: 999px;
+            }
+            QLabel#ModelBindingSlotChipLabel {
+                color: #0F172A;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QLabel#ModelBindingSlotValue {
+                color: #6B7280;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QToolButton#ModelBindingSlotRemove {
+                min-width: 16px;
+                max-width: 16px;
+                min-height: 16px;
+                max-height: 16px;
+                border: 1px solid #CBD5E1;
+                border-radius: 8px;
+                background: #FFFFFF;
+                color: #334155;
+                padding: 0;
+                font-size: 10px;
+            }
+            QToolButton#ModelBindingSlotRemove:hover {
+                background: #F8FAFC;
+                border-color: #94A3B8;
             }
             QComboBox#ModelBuilderCombo,
             QLineEdit#ModelBuilderLineEdit,
             QSpinBox#ModelBuilderSpin {
-                min-height: 30px;
-                border: 1px solid #D1D5DB;
-                border-radius: 8px;
-                padding: 0 8px;
-                background: #FFFFFF;
+                min-height: 24px;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 2px;
+                padding: 2px 6px;
+                background: rgba(255, 255, 255, 0.96);
                 color: #111827;
+                font-size: 12px;
             }
             QComboBox#ModelBuilderCombo:focus,
             QLineEdit#ModelBuilderLineEdit:focus,
             QSpinBox#ModelBuilderSpin:focus {
-                border-color: #818CF8;
+                border-color: rgba(81, 96, 116, 0.48);
+            }
+            QSpinBox#ModelBuilderSpin::up-button,
+            QSpinBox#ModelBuilderSpin::down-button {
+                width: 14px;
+                background: #F8FAFC;
+                border-left: 1px solid #E2E8F0;
+            }
+            QSpinBox#ModelBuilderSpin::up-button {
+                border-top-right-radius: 6px;
+                border-bottom: 1px solid #E2E8F0;
+            }
+            QSpinBox#ModelBuilderSpin::down-button {
+                border-bottom-right-radius: 6px;
+            }
+            QSpinBox#ModelBuilderSpin::up-button:hover,
+            QSpinBox#ModelBuilderSpin::down-button:hover {
+                background: #EEF2F7;
+            }
+            QPushButton#ModelBuilderPrimaryButton {
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 2px;
+                background: #FFFFFF;
+                color: #111827;
+                padding: 4px 8px;
+                min-height: 24px;
+                font-size: 10px;
+                font-weight: 500;
+            }
+            QPushButton#ModelBuilderPrimaryButton:hover {
+                background: #FFFFFF;
+                border-color: rgba(17, 24, 39, 0.12);
             }
             QLabel#ModelWelcomeTitle,
             QLabel#ModelRecentsTitle {
@@ -570,7 +1068,7 @@ class ModelTab(QWidget):
             }
             QPushButton#ModelToolbarButton:checked,
             QToolButton#ModelToolbarButton:checked {
-                background: #E5E7EB;
+                background: #E8EEF6;
                 color: #111827;
             }
             QPushButton#ModelToolbarButton:pressed,
@@ -579,10 +1077,10 @@ class ModelTab(QWidget):
             }
             QPushButton#ModelToolbarButton[toolbarMode="icon"],
             QToolButton#ModelToolbarButton[toolbarMode="icon"] {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 30px;
-                max-height: 30px;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
                 padding: 0;
             }
             QPushButton#ModelToolbarButton[toolbarMode="label"] {
@@ -654,41 +1152,284 @@ class ModelTab(QWidget):
         except Exception:
             log_exception("falha opcional ignorada")
 
+    def _apply_visual_side_panel_styles(self):
+        self.visual_side_panel.setStyleSheet(
+            """
+            QFrame#ModelVisualSidePanel {
+                background: #FFFFFF;
+                border: 1px solid #DCE3EC;
+                border-radius: 6px;
+            }
+            QFrame#ModelVisualPanelTabBar {
+                background: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                border-radius: 6px;
+            }
+            QPushButton#ModelVisualPanelTabButton {
+                min-height: 28px;
+                max-height: 28px;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                background: transparent;
+                color: #334155;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton#ModelVisualPanelTabButton:hover {
+                background: #F8FAFC;
+                border-color: #D7DEE8;
+            }
+            QPushButton#ModelVisualPanelTabButton:checked {
+                background: #EAF4FF;
+                border-color: #93C5FD;
+            }
+            QFrame#ModelBuilderPanel {
+                background: transparent;
+                border: none;
+            }
+            QScrollArea#ModelBuilderScroll,
+            QWidget#ModelBuilderHost {
+                background: transparent;
+                border: none;
+            }
+            QFrame#ModelBuilderPlainSection {
+                background: transparent;
+                border: none;
+            }
+            QFrame#ModelBuilderVisualsSection {
+                background: #FFFFFF;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderVisualsSection:hover {
+                border-color: rgba(17, 24, 39, 0.14);
+            }
+            QFrame#ModelBuilderSoftDividerSection {
+                background: #FFFFFF;
+                border: 1px solid #E5EAF1;
+                border-radius: 5px;
+            }
+            QToolButton#ModelVisualTypeButton {
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                color: #475569;
+                padding: 0px;
+            }
+            QToolButton#ModelVisualTypeButton:hover {
+                background: #F3F4F6;
+                border-color: rgba(17, 24, 39, 0.10);
+            }
+            QToolButton#ModelVisualTypeButton:checked {
+                background: #E8EEF6;
+                color: #0F172A;
+                border-color: rgba(17, 24, 39, 0.12);
+            }
+            QFrame#ModelBindingSlot {
+                background: #FFFFFF;
+                border: 1px dashed #DDE5EF;
+                border-radius: 4px;
+            }
+            QFrame#ModelBindingSlot[filled="true"] {
+                border-style: solid;
+                border-color: #CBD5E1;
+                background: #F8FAFC;
+            }
+            QFrame#ModelBindingSlotChip {
+                background: #F1F5F9;
+                border: 1px solid #CBD5E1;
+                border-radius: 9px;
+            }
+            """
+        )
+
     def _build_chart_builder_panel(self, parent: QWidget) -> QFrame:
         panel = QFrame(parent)
         panel.setObjectName("ModelBuilderPanel")
         panel.setAttribute(Qt.WA_StyledBackground, True)
 
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(4)
 
-        title = QLabel(_rt("Camada e campos"))
-        title.setObjectName("ModelBuilderTitle")
-        layout.addWidget(title, 0)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(0)
+        header.addStretch(1)
 
-        helper = QLabel(_rt("Selecione a camada, campos e crie um grafico direto no canvas."))
-        helper.setObjectName("ModelBuilderHint")
-        helper.setWordWrap(True)
-        layout.addWidget(helper, 0)
+        self.builder_panel_close_btn = QToolButton(panel)
+        self.builder_panel_close_btn.setObjectName("ModelBuilderCloseButton")
+        self.builder_panel_close_btn.setText("x")
+        self.builder_panel_close_btn.setToolTip(_rt("Recolher painel"))
+        self.builder_panel_close_btn.clicked.connect(lambda: self._set_builder_panel_open(False))
+        header.addWidget(self.builder_panel_close_btn, 0, Qt.AlignTop)
+        layout.addLayout(header, 0)
 
-        form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(8)
-        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        form.setFormAlignment(Qt.AlignTop)
+        scroll = QScrollArea(panel)
+        scroll.setObjectName("ModelBuilderScroll")
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        layout.addWidget(scroll, 1)
 
-        self.builder_layer_combo = QComboBox(panel)
-        self.builder_layer_combo.setObjectName("ModelBuilderCombo")
-        form.addRow(_rt("Camada"), self.builder_layer_combo)
+        host = QWidget(scroll)
+        host.setObjectName("ModelBuilderHost")
+        host_layout = QVBoxLayout(host)
+        host_layout.setContentsMargins(0, 0, 0, 0)
+        host_layout.setSpacing(6)
+        scroll.setWidget(host)
 
-        self.builder_dimension_combo = QComboBox(panel)
-        self.builder_dimension_combo.setObjectName("ModelBuilderCombo")
-        form.addRow(_rt("Categoria"), self.builder_dimension_combo)
+        visuals_card = QFrame(panel)
+        visuals_card.setObjectName("ModelBuilderVisualsSection")
+        visuals_card.setAttribute(Qt.WA_StyledBackground, True)
+        visuals_card.setStyleSheet(
+            """
+            QFrame#ModelBuilderVisualsSection {
+                background: #FFFFFF;
+                border: 1px solid #DCE3EC;
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderVisualsSection:hover {
+                border-color: #CBD5E1;
+            }
+            QToolButton#ModelVisualTypeButton {
+                min-width: 30px;
+                max-width: 30px;
+                min-height: 28px;
+                max-height: 28px;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                background: transparent;
+                color: #475569;
+                padding: 0px;
+            }
+            QToolButton#ModelVisualTypeButton:hover {
+                background: #F3F4F6;
+                border-color: #D7DEE8;
+            }
+            QToolButton#ModelVisualTypeButton:checked {
+                background: #E8EEF6;
+                border-color: #CBD5E1;
+                color: #0F172A;
+            }
+            """
+        )
+        visuals_layout = QVBoxLayout(visuals_card)
+        visuals_layout.setContentsMargins(8, 8, 8, 8)
+        visuals_layout.setSpacing(6)
+        visuals_title = QLabel(_rt("Visualizações"), visuals_card)
+        visuals_title.setObjectName("ModelBuilderSectionTitle")
+        visuals_layout.addWidget(visuals_title, 0)
+        visuals_grid = QGridLayout()
+        visuals_grid.setContentsMargins(0, 0, 0, 0)
+        visuals_grid.setHorizontalSpacing(4)
+        visuals_grid.setVerticalSpacing(4)
+        self._builder_visual_specs = [
+            (_rt("Colunas"), "bar", "ModelVisual-Column.svg", _rt("Colunas - compara valores por categoria.")),
+            (_rt("Barras"), "barh", "ModelVisual-Bar.svg", _rt("Barras - compara categorias em eixo horizontal.")),
+            (_rt("Linha"), "line", "ModelVisual-Line.svg", _rt("Linha - mostra tendência ao longo do tempo.")),
+            (_rt("Pizza"), "pie", "ModelVisual-Pie.svg", _rt("Pizza - mostra composição entre partes.")),
+            (_rt("Rosca"), "donut", "ModelVisual-Donut.svg", _rt("Rosca - composição com foco no total.")),
+            (_rt("Dispersao"), "scatter", "ModelVisual-Scatter.svg", _rt("Dispersão - compara X, Y e tamanho.")),
+            (_rt("Tabela"), "matrix", "ModelVisual-Matrix.svg", _rt("Tabela - cruza linhas, colunas e valores.")),
+        ]
+        self.builder_visual_buttons = {}
+        for index, (label_text, chart_type, icon_name, tooltip_text) in enumerate(self._builder_visual_specs):
+            button = QToolButton(visuals_card)
+            button.setObjectName("ModelVisualTypeButton")
+            button.setCheckable(True)
+            button.setText("")
+            button.setIcon(svg_icon(icon_name))
+            button.setToolTip(label_text)
+            button.setStatusTip("")
+            button.setWhatsThis("")
+            button.setAccessibleName(label_text)
+            button.setAccessibleDescription(tooltip_text)
+            button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            button.setAutoRaise(True)
+            button.setFixedSize(30, 28)
+            button.setIconSize(QSize(18, 18))
+            button.clicked.connect(lambda checked=False, value=chart_type: self._create_blank_visual_from_type(value))
+            button.setProperty("visualType", chart_type)
+            self.builder_visual_buttons[chart_type] = button
+            visuals_grid.addWidget(button, index // 6, index % 6)
+        visuals_layout.addLayout(visuals_grid)
+        host_layout.addWidget(visuals_card, 0)
 
-        self.builder_value_combo = QComboBox(panel)
-        self.builder_value_combo.setObjectName("ModelBuilderCombo")
-        form.addRow(_rt("Metrica"), self.builder_value_combo)
+        self.builder_empty_label = QFrame(panel)
+        self.builder_empty_label.setObjectName("ModelBuilderEmptyState")
+        empty_layout = QVBoxLayout(self.builder_empty_label)
+        empty_layout.setContentsMargins(8, 6, 8, 6)
+        empty_layout.setSpacing(0)
+        empty_text = QLabel(_rt("Selecione um visual para configurar os campos e as opções."), self.builder_empty_label)
+        empty_text.setObjectName("ModelBuilderEmptyStateLabel")
+        empty_text.setWordWrap(True)
+        empty_layout.addWidget(empty_text)
+        host_layout.addWidget(self.builder_empty_label, 0)
+
+        self.builder_construct_card = QFrame(panel)
+        self.builder_construct_card.setObjectName("ModelBuilderSoftDividerSection")
+        construct_layout = QVBoxLayout(self.builder_construct_card)
+        construct_layout.setContentsMargins(8, 8, 8, 8)
+        construct_layout.setSpacing(6)
+        construct_title = QLabel(_rt("Construir visual"), self.builder_construct_card)
+        construct_title.setObjectName("ModelBuilderSectionTitle")
+        construct_layout.addWidget(construct_title, 0)
+        self.builder_selected_visual_label = QLabel(_rt("Nenhum visual selecionado"), self.builder_construct_card)
+        self.builder_selected_visual_label.setObjectName("ModelBuilderHint")
+        self.builder_selected_visual_label.setWordWrap(True)
+        construct_layout.addWidget(self.builder_selected_visual_label, 0)
+        self._builder_selection_widgets = []
+
+        self.builder_binding_slots = {}
+        for slot_name, slot_label in (
+            ("category", _rt("Categoria / Eixo")),
+            ("values", _rt("Valores")),
+            ("legend", _rt("Legenda")),
+            ("filters", _rt("Filtros")),
+            ("tooltip", _rt("Tooltip")),
+            ("x", _rt("X")),
+            ("y", _rt("Y")),
+            ("size", _rt("Tamanho")),
+            ("rows", _rt("Linhas")),
+            ("columns", _rt("Colunas")),
+        ):
+            slot = _ModelBindingSlot(slot_name, slot_label, self.builder_construct_card)
+            slot.fieldDropped.connect(self._apply_dropped_field_to_selected_visual)
+            slot.removeRequested.connect(self._remove_selected_visual_slot_field)
+            self.builder_binding_slots[slot_name] = slot
+            construct_layout.addWidget(slot, 0)
+            self._builder_selection_widgets.append(slot)
+
+        host_layout.addWidget(self.builder_construct_card, 0)
+
+        self.builder_format_card = QFrame(panel)
+        self.builder_format_card.setObjectName("ModelBuilderSoftDividerSection")
+        format_layout = QVBoxLayout(self.builder_format_card)
+        format_layout.setContentsMargins(8, 8, 8, 8)
+        format_layout.setSpacing(6)
+        format_title = QLabel(_rt("Opções de dados"), self.builder_format_card)
+        format_title.setObjectName("ModelBuilderSectionTitle")
+        format_layout.addWidget(format_title, 0)
+
+        options_form = QFormLayout()
+        options_form.setContentsMargins(0, 2, 0, 0)
+        options_form.setSpacing(5)
+        options_form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        options_form.setFormAlignment(Qt.AlignTop)
+        options_form.setHorizontalSpacing(6)
+
+        self.builder_option_labels = {}
+
+        def add_selected_row(text: str, widget: QWidget, key: str = ""):
+            label = QLabel(text, self.builder_format_card)
+            label.setObjectName("ModelBuilderFieldLabel")
+            options_form.addRow(label, widget)
+            if key:
+                self.builder_option_labels[key] = label
+            self._builder_selection_widgets.extend([label, widget])
 
         self.builder_agg_combo = QComboBox(panel)
         self.builder_agg_combo.setObjectName("ModelBuilderCombo")
@@ -697,46 +1438,169 @@ class ModelTab(QWidget):
         self.builder_agg_combo.addItem(_rt("Media"), "avg")
         self.builder_agg_combo.addItem(_rt("Minimo"), "min")
         self.builder_agg_combo.addItem(_rt("Maximo"), "max")
-        form.addRow(_rt("Agregacao"), self.builder_agg_combo)
-
-        self.builder_chart_type_combo = QComboBox(panel)
-        self.builder_chart_type_combo.setObjectName("ModelBuilderCombo")
-        self.builder_chart_type_combo.addItem(_rt("Colunas"), "bar")
-        self.builder_chart_type_combo.addItem(_rt("Barras"), "barh")
-        self.builder_chart_type_combo.addItem(_rt("Linha"), "line")
-        self.builder_chart_type_combo.addItem(_rt("Pizza"), "pie")
-        self.builder_chart_type_combo.addItem(_rt("Rosca"), "donut")
-        self.builder_chart_type_combo.addItem(_rt("Card"), "card")
-        form.addRow(_rt("Tipo"), self.builder_chart_type_combo)
+        self.builder_agg_combo.addItem(_rt("Contagem distinta"), "count_distinct")
+        add_selected_row(_rt("Agregacao"), self.builder_agg_combo, "aggregation")
 
         self.builder_topn_spin = QSpinBox(panel)
         self.builder_topn_spin.setObjectName("ModelBuilderSpin")
-        self.builder_topn_spin.setRange(3, 50)
+        self.builder_topn_spin.setRange(1, 50)
         self.builder_topn_spin.setValue(12)
-        form.addRow(_rt("Top N"), self.builder_topn_spin)
+        add_selected_row(_rt("Top N"), self.builder_topn_spin, "top_n")
 
         self.builder_title_edit = QLineEdit(panel)
         self.builder_title_edit.setObjectName("ModelBuilderLineEdit")
         self.builder_title_edit.setPlaceholderText(_rt("Titulo do grafico (opcional)"))
-        form.addRow(_rt("Titulo"), self.builder_title_edit)
-        layout.addLayout(form, 0)
+        add_selected_row(_rt("Titulo"), self.builder_title_edit, "title")
+        format_layout.addLayout(options_form)
+        self._builder_selection_widgets.extend([self.builder_agg_combo, self.builder_topn_spin, self.builder_title_edit])
 
-        actions = QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(8)
-        self.builder_refresh_btn = QPushButton(_rt("Atualizar"))
-        self.builder_refresh_btn.setObjectName("ModelActionButton")
-        self.builder_add_btn = QPushButton(_rt("Adicionar grafico"))
-        self.builder_add_btn.setObjectName("ModelActionButton")
-        actions.addWidget(self.builder_refresh_btn, 0)
-        actions.addWidget(self.builder_add_btn, 1)
-        layout.addLayout(actions, 0)
-        layout.addStretch(1)
+        host_layout.addWidget(self.builder_format_card, 0)
 
-        self.builder_layer_combo.currentIndexChanged.connect(self._on_builder_layer_changed)
+        self.builder_dimension_combo = QComboBox(panel)
+        self.builder_dimension_combo.setObjectName("ModelBuilderCombo")
+        self.builder_value_combo = QComboBox(panel)
+        self.builder_value_combo.setObjectName("ModelBuilderCombo")
+        self.builder_dimension_combo.hide()
+        self.builder_value_combo.hide()
+        self.builder_empty_label.setVisible(True)
+        self.builder_construct_card.setVisible(False)
+        self.builder_format_card.setVisible(False)
+        host_layout.addStretch(1)
+
         self.builder_value_combo.currentIndexChanged.connect(self._on_builder_value_changed)
-        self.builder_refresh_btn.clicked.connect(self._refresh_builder_layers)
-        self.builder_add_btn.clicked.connect(self._add_chart_from_builder)
+        self.builder_agg_combo.currentIndexChanged.connect(self._update_selected_visual_binding_controls)
+        self.builder_topn_spin.valueChanged.connect(self._update_selected_visual_binding_controls)
+        self.builder_title_edit.editingFinished.connect(self._update_selected_visual_binding_controls)
+        for slot in self.builder_binding_slots.values():
+            slot.set_value("")
+        return panel
+
+    def _build_data_panel(self, parent: QWidget) -> QFrame:
+        panel = QFrame(parent)
+        panel.setObjectName("ModelBuilderDataPanel")
+        panel.setAttribute(Qt.WA_StyledBackground, True)
+        panel.setStyleSheet(
+            """
+            QFrame#ModelBuilderDataPanel {
+                background: #FFFFFF;
+                border: 1px solid rgba(17, 24, 39, 0.09);
+                border-radius: 2px;
+            }
+            QFrame#ModelBuilderDataSection {
+                background: transparent;
+                border: none;
+            }
+            QComboBox#ModelBuilderCombo {
+                min-height: 28px;
+                border: 1px solid rgba(17, 24, 39, 0.09);
+                border-radius: 6px;
+                background: #FFFFFF;
+                padding: 3px 8px;
+                color: #111827;
+                font-size: 12px;
+            }
+            QListWidget#ModelBuilderFieldList {
+                border: 1px solid rgba(17, 24, 39, 0.09);
+                border-radius: 2px;
+                background: rgba(255, 255, 255, 0.96);
+                padding: 2px;
+                color: #111827;
+                font-size: 12px;
+                outline: 0px;
+            }
+            QListWidget#ModelBuilderFieldList::item {
+                padding: 4px 6px;
+                margin: 0px;
+                border-radius: 2px;
+            }
+            QListWidget#ModelBuilderFieldList::item:hover {
+                background: rgba(17, 24, 39, 0.035);
+            }
+            QListWidget#ModelBuilderFieldList::item:selected {
+                background: rgba(81, 96, 116, 0.12);
+                color: #111827;
+            }
+            QListWidget#ModelBuilderFieldList QScrollBar:vertical {
+                background: transparent;
+                width: 10px;
+                margin: 4px 0px;
+            }
+            QListWidget#ModelBuilderFieldList QScrollBar::handle:vertical {
+                background: rgba(107, 114, 128, 0.28);
+                border-radius: 5px;
+                min-height: 24px;
+            }
+            QListWidget#ModelBuilderFieldList QScrollBar::handle:vertical:hover {
+                background: rgba(107, 114, 128, 0.40);
+            }
+            QListWidget#ModelBuilderFieldList QScrollBar::add-line:vertical,
+            QListWidget#ModelBuilderFieldList QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QListWidget#ModelBuilderFieldList QScrollBar::add-page:vertical,
+            QListWidget#ModelBuilderFieldList QScrollBar::sub-page:vertical {
+                background: transparent;
+            }
+            QLabel#ModelBuilderTitle {
+                color: #4B5563;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QLabel#ModelBuilderFieldLabel {
+                color: #6B7280;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            """
+        )
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
+        title = QLabel(_rt("Painel dados"), panel)
+        title.setObjectName("ModelBuilderTitle")
+        header.addWidget(title, 1, Qt.AlignVCenter)
+        layout.addLayout(header, 0)
+
+        layer_card = QFrame(panel)
+        layer_card.setObjectName("ModelBuilderDataSection")
+        layer_layout = QHBoxLayout(layer_card)
+        layer_layout.setContentsMargins(0, 0, 0, 0)
+        layer_layout.setSpacing(8)
+        layer_title = QLabel(_rt("Camada"), layer_card)
+        layer_title.setObjectName("ModelBuilderFieldLabel")
+        layer_layout.addWidget(layer_title, 0, Qt.AlignVCenter)
+        self.builder_layer_combo = QgsMapLayerComboBox(panel)
+        self.builder_layer_combo.setObjectName("ModelBuilderCombo")
+        self.builder_layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
+        self.builder_layer_combo.layerChanged.connect(self._on_builder_layer_changed)
+        layer_layout.addWidget(self.builder_layer_combo, 1)
+        layout.addWidget(layer_card, 0)
+
+        fields_card = QFrame(panel)
+        fields_card.setObjectName("ModelBuilderDataSection")
+        fields_layout = QVBoxLayout(fields_card)
+        fields_layout.setContentsMargins(0, 0, 0, 0)
+        fields_layout.setSpacing(0)
+        fields_body = QWidget(fields_card)
+        fields_body_layout = QVBoxLayout(fields_body)
+        fields_body_layout.setContentsMargins(0, 4, 0, 0)
+        fields_body_layout.setSpacing(0)
+        self.builder_fields_list = _ModelFieldList(fields_body)
+        self.builder_fields_list.setObjectName("ModelBuilderFieldList")
+        self.builder_fields_list.setMinimumHeight(220)
+        self.builder_fields_list.setUniformItemSizes(True)
+        self.builder_fields_list.setSpacing(1)
+        self.builder_fields_list.setIconSize(QSize(16, 16))
+        self.builder_fields_list.fieldActivated.connect(self._handle_field_list_activation)
+        fields_body_layout.addWidget(self.builder_fields_list, 1)
+        fields_layout.addWidget(fields_body, 1)
+        layout.addWidget(fields_card, 1)
+
         return panel
 
     def _field_is_numeric(self, field_def) -> bool:
@@ -749,32 +1613,480 @@ class ModelTab(QWidget):
         type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
         return any(token in type_name for token in ("int", "double", "float", "real", "numeric", "decimal"))
 
+    def _field_is_date_like(self, field_def) -> bool:
+        if field_def is None:
+            return False
+        type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
+        return any(token in type_name for token in ("date", "time"))
+
+    def _field_group_for_def(self, field_def) -> str:
+        if self._field_is_numeric(field_def):
+            return "measure"
+        if self._field_is_date_like(field_def):
+            return "date"
+        type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
+        if any(token in type_name for token in ("string", "text", "char")):
+            return "dimension"
+        return "other"
+
+    def _suggested_role_for_group(self, group: str) -> str:
+        mapping = {
+            "dimension": "category",
+            "measure": "values",
+            "date": "category",
+            "other": "tooltip",
+        }
+        return mapping.get(str(group or "").strip().lower(), "category")
+
+    def _slot_values_for_binding(self, binding: DashboardChartBinding, slot_name: str) -> List[str]:
+        slot_name = str(slot_name or "").strip().lower()
+        if slot_name == "category":
+            return [binding.dimension_field] if binding.dimension_field else []
+        if slot_name == "values":
+            fields = list(binding.value_fields or [])
+            if binding.measure_field and binding.measure_field not in fields:
+                fields.insert(0, binding.measure_field)
+            if not fields and binding.aggregation == "count":
+                return [_rt("Contagem")]
+            return fields
+        if slot_name == "legend":
+            return [binding.legend_field] if binding.legend_field else []
+        if slot_name == "filters":
+            return list(binding.filter_fields or [])
+        if slot_name == "tooltip":
+            return list(binding.tooltip_fields or [])
+        if slot_name == "x":
+            return [binding.x_field] if binding.x_field else []
+        if slot_name == "y":
+            return [binding.y_field] if binding.y_field else []
+        if slot_name == "size":
+            return [binding.size_field] if binding.size_field else []
+        if slot_name == "rows":
+            return list(binding.row_fields or [])
+        if slot_name == "columns":
+            return list(binding.column_fields or [])
+        return []
+
+    def _chart_type_label(self, chart_type: str) -> str:
+        labels = {
+            "card": _rt("Card"),
+            "bar": _rt("Colunas"),
+            "barh": _rt("Barras"),
+            "line": _rt("Linha"),
+            "pie": _rt("Pizza"),
+            "donut": _rt("Rosca"),
+            "scatter": _rt("Dispersao"),
+            "matrix": _rt("Tabela"),
+        }
+        return labels.get(str(chart_type or "").strip().lower(), _rt("Grafico"))
+
+    def _empty_chart_payload(self, chart_type: str, title: str = "") -> ChartPayload:
+        return ChartPayload.build(
+            chart_type=str(chart_type or "bar"),
+            title=str(title or ""),
+            categories=[],
+            values=[],
+            value_label=_rt("Valor"),
+        )
+
+    def _selected_canvas_item(self) -> Optional[DashboardChartItem]:
+        active_canvas = self._active_canvas()
+        if active_canvas is None:
+            return None
+        return active_canvas.selected_item()
+
+    def _selected_canvas_item_widget(self):
+        active_canvas = self._active_canvas()
+        if active_canvas is None:
+            return None
+        return active_canvas.selected_item_widget()
+
+    def _replace_canvas_item(self, updated_item: DashboardChartItem, *, page_id: Optional[str] = None, select: bool = True):
+        active_widget = self._active_page_widget()
+        if active_widget is None:
+            return
+        if page_id and str(active_widget.page_id or "").strip() != str(page_id or "").strip():
+            active_widget = self._page_widget_for_id(page_id)
+        if active_widget is None:
+            return
+        canvas = active_widget.canvas
+        items = canvas.items()
+        replaced = False
+        for index, item in enumerate(items):
+            if str(item.item_id or "") == str(updated_item.item_id or ""):
+                items[index] = updated_item.clone()
+                replaced = True
+                break
+        if not replaced:
+            return
+        canvas.update_items(items, canvas.visual_links(), canvas.chart_relations())
+        if select:
+            canvas.select_item(updated_item.item_id, emit_signal=True)
+        self._sync_project_from_pages(active_widget.page_id)
+        self._dirty = True
+        self._commit_history_if_changed()
+        self._refresh_ui_state()
+
+    def _create_blank_visual_from_type(self, chart_type: str):
+        if self.current_project is None:
+            self._create_blank_project(_rt("Novo painel"))
+        active_canvas = self._active_canvas()
+        active_widget = self._active_page_widget()
+        if active_canvas is None or active_widget is None:
+            return
+        item_id = uuid.uuid4().hex
+        binding = DashboardChartBinding(
+            chart_id=item_id,
+            chart_type=str(chart_type or "bar").strip().lower(),
+            aggregation="count",
+            top_n=max(1, int(self.builder_topn_spin.value() or 12)),
+        ).normalized()
+        title = self._chart_type_label(chart_type)
+        item = DashboardChartItem(
+            item_id=item_id,
+            origin="model_builder_v2",
+            payload=self._empty_chart_payload(chart_type, title=""),
+            visual_state=ChartVisualState(chart_type=str(chart_type or "bar").strip().lower()),
+            binding=binding,
+            title="",
+            subtitle=_rt("Arraste campos para configurar este visual"),
+            source_meta={"builder_version": "v2", "empty_visual": True},
+        )
+        active_canvas.add_item(item)
+        self._sync_project_from_pages(active_widget.page_id)
+        self._dirty = True
+        self._commit_history_if_changed()
+        self._refresh_ui_state()
+        self._set_builder_panel_open(True, focus=False)
+        self._sync_builder_selection_state()
+
+    def _field_catalog_for_layer(self, layer: Optional[QgsVectorLayer]) -> Dict[str, List[Dict[str, str]]]:
+        catalog = {"all": []}
+        if layer is None:
+            return catalog
+        try:
+            field_defs = list(layer.fields())
+        except Exception:
+            field_defs = []
+        for field_def in field_defs:
+            field_name = str(field_def.name() or "").strip()
+            if not field_name:
+                continue
+            group = self._field_group_for_def(field_def)
+            type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip()
+            field_kind = field_kind_from_field_def(field_def)
+            catalog["all"].append(
+                {
+                    "layer_name": layer.name(),
+                    "layer_id": layer.id(),
+                    "field_name": field_name,
+                    "field_type": type_name,
+                    "field_kind": field_kind,
+                    "field_group": group,
+                    "suggested_role": self._suggested_role_for_group(group),
+                }
+            )
+        return catalog
+
+    def _refresh_builder_field_lists(self, layer: Optional[QgsVectorLayer]):
+        self._builder_field_catalog = self._field_catalog_for_layer(layer)
+        self.builder_fields_list.clear()
+        for payload in list(self._builder_field_catalog.get("all") or []):
+            label = str(payload.get("field_name") or "")
+            field_kind = str(payload.get("field_kind") or "other")
+            tooltip = _rt("{name}\nTipo: {kind}", name=label, kind=str(payload.get("field_type") or field_kind).strip() or field_kind)
+            item = QListWidgetItem()
+            configure_field_item(
+                item,
+                display_name=label,
+                kind=field_kind,
+                tooltip=tooltip,
+                payload=dict(payload),
+                role=_MODEL_FIELD_ROLE,
+                include_badge=True,
+            )
+            self.builder_fields_list.addItem(item)
+
+    def _active_selected_binding(self) -> Optional[DashboardChartBinding]:
+        item = self._selected_canvas_item()
+        if item is None:
+            return None
+        return item.binding.normalized()
+
+    def _sync_builder_selection_state(self):
+        item = self._selected_canvas_item()
+        binding = item.binding.normalized() if item is not None else None
+        if item is None or binding is None:
+            self._builder_selected_item_id = ""
+            if hasattr(self, "builder_empty_label"):
+                self.builder_empty_label.setVisible(True)
+            if hasattr(self, "builder_construct_card"):
+                self.builder_construct_card.setVisible(False)
+            if hasattr(self, "builder_format_card"):
+                self.builder_format_card.setVisible(False)
+            self.builder_selected_visual_label.setText(_rt("Selecione um visual para começar."))
+            for button in self.builder_visual_buttons.values():
+                button.blockSignals(True)
+                button.setChecked(False)
+                button.blockSignals(False)
+            for widget in list(getattr(self, "_builder_selection_widgets", []) or []):
+                widget.setVisible(False)
+            for slot in self.builder_binding_slots.values():
+                slot.set_value("")
+            self.builder_agg_combo.setEnabled(False)
+            self.builder_topn_spin.setEnabled(False)
+            self.builder_title_edit.setEnabled(False)
+            return
+        self._builder_selected_item_id = str(item.item_id or "")
+        if hasattr(self, "builder_empty_label"):
+            self.builder_empty_label.setVisible(False)
+        if hasattr(self, "builder_construct_card"):
+            self.builder_construct_card.setVisible(True)
+        if hasattr(self, "builder_format_card"):
+            self.builder_format_card.setVisible(True)
+        active_chart_type = normalize_chart_type(binding.chart_type or getattr(item.visual_state, "chart_type", ""))
+        layer_name = binding.source_name or _rt("Sem camada")
+        visual_label = self._chart_type_label(binding.chart_type or getattr(item.visual_state, "chart_type", "bar"))
+        self.builder_selected_visual_label.setText(_rt("{visual} · {layer}", visual=visual_label, layer=layer_name))
+        for widget in list(getattr(self, "_builder_selection_widgets", []) or []):
+            widget.setVisible(True)
+        slot_defs = binding_slot_definitions(binding.chart_type or getattr(item.visual_state, "chart_type", "bar"))
+        visible_slots = {str(slot.get("name") or "") for slot in slot_defs}
+        labels_by_slot = {str(slot.get("name") or ""): str(slot.get("label") or "") for slot in slot_defs}
+        for slot_name, slot in self.builder_binding_slots.items():
+            slot.setVisible(slot_name in visible_slots)
+            if slot_name in visible_slots:
+                label = labels_by_slot.get(slot_name) or slot_name
+                slot.set_label(_rt(label))
+                slot.set_values(self._slot_values_for_binding(binding, slot_name), placeholder=_rt("Opcional"))
+        self.builder_agg_combo.setEnabled(True)
+        self.builder_topn_spin.setEnabled(True)
+        self.builder_title_edit.setEnabled(True)
+        self.builder_agg_combo.setVisible(True)
+        label = self.builder_option_labels.get("aggregation")
+        if label is not None:
+            label.setVisible(True)
+        topn_visible = active_chart_type not in {"card", "scatter"}
+        self.builder_topn_spin.setVisible(topn_visible)
+        label = self.builder_option_labels.get("top_n")
+        if label is not None:
+            label.setVisible(topn_visible)
+        label = self.builder_option_labels.get("title")
+        if label is not None:
+            label.setVisible(True)
+        agg_index = self.builder_agg_combo.findData(binding.aggregation or "count")
+        if agg_index < 0:
+            agg_index = self.builder_agg_combo.findData("count")
+        self.builder_agg_combo.blockSignals(True)
+        self.builder_agg_combo.setCurrentIndex(max(0, agg_index))
+        self.builder_agg_combo.blockSignals(False)
+        self.builder_topn_spin.blockSignals(True)
+        self.builder_topn_spin.setValue(max(1, int(binding.top_n or 12)))
+        self.builder_topn_spin.blockSignals(False)
+        self.builder_title_edit.blockSignals(True)
+        self.builder_title_edit.setText(str(binding.title_override or item.title or ""))
+        self.builder_title_edit.blockSignals(False)
+        for chart_type, button in self.builder_visual_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(chart_type == active_chart_type)
+            button.blockSignals(False)
+
+    def _selected_layer(self) -> Optional[QgsVectorLayer]:
+        return self._current_builder_layer()
+
+    def _current_builder_layer(self) -> Optional[QgsVectorLayer]:
+        try:
+            layer = self.builder_layer_combo.currentLayer()
+        except Exception:
+            layer = None
+        if isinstance(layer, QgsVectorLayer) and layer.isValid():
+            return layer
+        layer_id = str(getattr(self.builder_layer_combo, "currentData", lambda: "")() or "")
+        return self._builder_layers.get(layer_id)
+
+    def _current_builder_layer_id(self) -> str:
+        layer = self._current_builder_layer()
+        if layer is not None:
+            return str(layer.id() or "")
+        return ""
+
+    def _current_builder_chart_type(self) -> str:
+        item = self._selected_canvas_item()
+        if item is not None:
+            binding = item.binding.normalized() if item.binding is not None else None
+            selected_type = normalize_chart_type(
+                (binding.chart_type if binding is not None else "")
+                or getattr(item.visual_state, "chart_type", "")
+            )
+            if selected_type:
+                return selected_type
+        for chart_type, button in getattr(self, "builder_visual_buttons", {}).items():
+            try:
+                if button.isChecked():
+                    return normalize_chart_type(chart_type)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        return "bar"
+
+    def _apply_field_payload_to_binding(self, binding: DashboardChartBinding, slot_name: str, payload: Dict[str, object]) -> DashboardChartBinding:
+        slot_name = str(slot_name or "").strip().lower()
+        field_name = str(payload.get("field_name") or "").strip()
+        field_group = str(payload.get("field_group") or "other").strip().lower() or "other"
+        layer_id = str(payload.get("layer_id") or "").strip()
+        layer_name = str(payload.get("layer_name") or "").strip()
+        if not field_name:
+            return binding.normalized()
+        updated = binding.normalized()
+        updated.source_id = layer_id or updated.source_id
+        updated.source_name = layer_name or updated.source_name
+        if not updated.chart_type:
+            updated.chart_type = "bar"
+        if not slot_name or slot_name == "auto":
+            slot_name = suggest_binding_slot(updated.chart_type, field_group, updated)
+        if not slot_name or not is_binding_slot_compatible(updated.chart_type, slot_name, field_group):
+            self.builder_selected_visual_label.setText(_rt("Campo incompativel com este slot"))
+            return updated.normalized()
+        if slot_name == "category":
+            updated.dimension_field = field_name
+            updated.semantic_field_key = field_name
+            updated.semantic_field_aliases = [field_name]
+        elif slot_name == "values":
+            if normalize_chart_type(updated.chart_type) == "matrix":
+                if field_name not in updated.value_fields:
+                    updated.value_fields = list(updated.value_fields or []) + [field_name]
+                updated.measure_field = updated.value_fields[0] if updated.value_fields else field_name
+            else:
+                updated.measure_field = field_name
+                updated.value_fields = [field_name]
+            if updated.aggregation in {"", "count"}:
+                updated.aggregation = "sum"
+        elif slot_name == "legend":
+            updated.legend_field = field_name
+        elif slot_name == "x":
+            updated.x_field = field_name
+        elif slot_name == "y":
+            updated.y_field = field_name
+        elif slot_name == "size":
+            updated.size_field = field_name
+        elif slot_name == "rows":
+            if field_name not in updated.row_fields:
+                updated.row_fields = list(updated.row_fields or []) + [field_name]
+            updated.dimension_field = updated.row_fields[0] if updated.row_fields else field_name
+            updated.semantic_field_key = updated.dimension_field
+            updated.semantic_field_aliases = list(updated.row_fields or [])
+        elif slot_name == "columns":
+            if field_name not in updated.column_fields:
+                updated.column_fields = list(updated.column_fields or []) + [field_name]
+        elif slot_name == "filters":
+            if field_name not in updated.filter_fields:
+                updated.filter_fields = list(updated.filter_fields) + [field_name]
+        elif slot_name == "tooltip":
+            if field_name not in updated.tooltip_fields:
+                updated.tooltip_fields = list(updated.tooltip_fields) + [field_name]
+        return updated.normalized()
+
+    def _remove_binding_slot_value(self, binding: DashboardChartBinding, slot_name: str, field_name: str = "") -> DashboardChartBinding:
+        updated = binding.normalized()
+        slot_name = str(slot_name or "").strip().lower()
+        field_name = str(field_name or "").strip()
+        if slot_name == "category":
+            updated.dimension_field = ""
+            updated.semantic_field_key = ""
+            updated.semantic_field_aliases = []
+        elif slot_name == "values":
+            if field_name:
+                updated.value_fields = [item for item in list(updated.value_fields or []) if item != field_name]
+            else:
+                updated.value_fields = []
+            updated.measure_field = updated.value_fields[0] if updated.value_fields else ""
+            if not updated.measure_field:
+                updated.aggregation = "count"
+        elif slot_name == "legend":
+            updated.legend_field = ""
+        elif slot_name == "x":
+            updated.x_field = ""
+        elif slot_name == "y":
+            updated.y_field = ""
+        elif slot_name == "size":
+            updated.size_field = ""
+        elif slot_name == "rows":
+            updated.row_fields = [item for item in list(updated.row_fields or []) if item != field_name] if field_name else []
+            updated.dimension_field = updated.row_fields[0] if updated.row_fields else ""
+            updated.semantic_field_key = updated.dimension_field
+            updated.semantic_field_aliases = list(updated.row_fields or [])
+        elif slot_name == "columns":
+            updated.column_fields = [item for item in list(updated.column_fields or []) if item != field_name] if field_name else []
+        elif slot_name == "filters":
+            updated.filter_fields = [item for item in list(updated.filter_fields or []) if item != field_name] if field_name else []
+        elif slot_name == "tooltip":
+            updated.tooltip_fields = [item for item in list(updated.tooltip_fields or []) if item != field_name] if field_name else []
+        return updated.normalized()
+
+    def _update_selected_visual_binding_controls(self):
+        item = self._selected_canvas_item()
+        if item is None:
+            return
+        binding = item.binding.normalized()
+        binding.aggregation = str(self.builder_agg_combo.currentData() or "count").strip().lower() or "count"
+        binding.top_n = max(1, int(self.builder_topn_spin.value()))
+        binding.title_override = str(self.builder_title_edit.text() or "").strip()
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _apply_dropped_field_to_selected_visual(self, slot_name: str, payload):
+        item = self._selected_canvas_item()
+        if item is None or not isinstance(payload, dict):
+            return
+        binding = self._apply_field_payload_to_binding(item.binding, slot_name, payload)
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _remove_selected_visual_slot_field(self, slot_name: str, field_name: str = ""):
+        item = self._selected_canvas_item()
+        if item is None:
+            return
+        binding = self._remove_binding_slot_value(item.binding, slot_name, field_name)
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _handle_field_list_activation(self, payload):
+        if not isinstance(payload, dict):
+            return
+        binding = self._active_selected_binding() or DashboardChartBinding(chart_type="bar")
+        suggested = suggest_binding_slot(binding.chart_type or "bar", str(payload.get("field_group") or "other"), binding)
+        self._apply_dropped_field_to_selected_visual(suggested, payload)
+
     def _refresh_builder_layers(self):
-        previous_layer_id = str(self.builder_layer_combo.currentData() or "")
+        previous_layer_id = self._current_builder_layer_id()
+        selected_binding = self._active_selected_binding()
+        if selected_binding is not None and selected_binding.source_id:
+            previous_layer_id = str(selected_binding.source_id or previous_layer_id)
         self._builder_layers = {}
         self.builder_layer_combo.blockSignals(True)
-        self.builder_layer_combo.clear()
         project = QgsProject.instance()
         for layer in list(project.mapLayers().values()):
             if not isinstance(layer, QgsVectorLayer) or not layer.isValid():
                 continue
             self._builder_layers[layer.id()] = layer
-            self.builder_layer_combo.addItem(layer.name(), layer.id())
-        self.builder_layer_combo.blockSignals(False)
         if previous_layer_id and previous_layer_id in self._builder_layers:
-            index = self.builder_layer_combo.findData(previous_layer_id)
-            if index >= 0:
-                self.builder_layer_combo.setCurrentIndex(index)
+            try:
+                self.builder_layer_combo.setLayer(self._builder_layers[previous_layer_id])
+            except Exception:
+                log_exception("falha opcional ignorada")
+        self.builder_layer_combo.blockSignals(False)
         self._on_builder_layer_changed()
+        self._sync_builder_selection_state()
 
-    def _on_builder_layer_changed(self):
-        layer_id = str(self.builder_layer_combo.currentData() or "")
-        layer = self._builder_layers.get(layer_id)
+    def _on_builder_layer_changed(self, *_args):
+        layer = self._current_builder_layer()
         self.builder_dimension_combo.blockSignals(True)
         self.builder_value_combo.blockSignals(True)
         self.builder_dimension_combo.clear()
         self.builder_value_combo.clear()
-        self.builder_value_combo.addItem(_rt("Contagem de registros"), "__count__")
+        self.builder_value_combo.addItem(_rt("Contagem"), "__count__")
         if layer is not None:
             for field_def in list(layer.fields()):
                 field_name = str(field_def.name() or "").strip()
@@ -785,9 +2097,17 @@ class ModelTab(QWidget):
                     self.builder_value_combo.addItem(field_name, field_name)
         self.builder_dimension_combo.blockSignals(False)
         self.builder_value_combo.blockSignals(False)
+        self._refresh_builder_field_lists(layer)
         self._on_builder_value_changed()
-        has_layer = layer is not None and self.builder_dimension_combo.count() > 0
-        self.builder_add_btn.setEnabled(has_layer)
+        selected_item = self._selected_canvas_item()
+        if selected_item is not None:
+            binding = selected_item.binding.normalized()
+            if layer is not None and binding.source_id != layer.id():
+                binding.source_id = layer.id()
+                binding.source_name = layer.name()
+                updated_item = self._rebuild_chart_item_from_binding(selected_item, binding)
+                if updated_item is not None:
+                    self._replace_canvas_item(updated_item)
 
     def _on_builder_value_changed(self):
         value_key = str(self.builder_value_combo.currentData() or "__count__")
@@ -838,6 +2158,343 @@ class ModelTab(QWidget):
         except Exception:
             log_exception("falha opcional ignorada")
         return ""
+
+    def _rebuild_scatter_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding, layer: QgsVectorLayer) -> DashboardChartItem:
+        updated_item = item.clone()
+        updated_binding = binding.normalized()
+        points = []
+        for feature in layer.getFeatures():
+            x_value = self._safe_float(feature.attribute(updated_binding.x_field))
+            y_value = self._safe_float(feature.attribute(updated_binding.y_field))
+            if x_value is None or y_value is None:
+                continue
+            size_value = self._safe_float(feature.attribute(updated_binding.size_field)) if updated_binding.size_field else None
+            legend_value = feature.attribute(updated_binding.legend_field) if updated_binding.legend_field else None
+            try:
+                feature_ids = [int(feature.id())]
+            except Exception:
+                feature_ids = []
+            category = str(legend_value).strip() if legend_value not in (None, "") else str(x_value)
+            points.append({"category": category, "x": float(x_value), "y": float(y_value), "size": float(size_value) if size_value is not None else 1.0, "feature_ids": feature_ids})
+        if not points:
+            updated_item.binding = updated_binding
+            updated_item.payload = self._empty_chart_payload("scatter", updated_binding.title_override)
+            updated_item.subtitle = _rt("Sem pares numericos validos para X e Y")
+            updated_item.source_meta = {"builder_version": "v2", "empty_visual": True}
+            return updated_item
+        top_n = max(1, int(updated_binding.top_n or 50))
+        truncated = len(points) > top_n
+        points = points[:top_n]
+        title_text = str(updated_binding.title_override or "").strip() or _rt("{y_field} por {x_field}", y_field=updated_binding.y_field, x_field=updated_binding.x_field)
+        updated_item.binding = updated_binding
+        updated_item.title = title_text if updated_binding.title_override else ""
+        updated_item.subtitle = f"{layer.name()} - X: {updated_binding.x_field} - Y: {updated_binding.y_field}"
+        updated_item.payload = ChartPayload.build(
+            chart_type="scatter",
+            title=title_text,
+            categories=[point["category"] for point in points],
+            values=[point["y"] for point in points],
+            value_label=updated_binding.y_field,
+            truncated=truncated,
+            selection_layer_id=layer.id(),
+            selection_layer_name=layer.name(),
+            category_field=updated_binding.legend_field or updated_binding.x_field,
+            raw_categories=[point["category"] for point in points],
+            category_feature_ids=[point["feature_ids"] for point in points],
+            x_values=[point["x"] for point in points],
+            size_values=[point["size"] for point in points],
+            series_labels=[point["category"] for point in points],
+        )
+        updated_item.source_meta = {
+            "builder_version": "v2",
+            "empty_visual": False,
+            "metadata": {"layer_id": layer.id(), "layer_name": layer.name()},
+            "config": {
+                "chart_type": "scatter",
+                "x_field": updated_binding.x_field,
+                "y_field": updated_binding.y_field,
+                "size_field": updated_binding.size_field,
+                "legend_field": updated_binding.legend_field,
+                "filter_fields": list(updated_binding.filter_fields or []),
+                "tooltip_fields": list(updated_binding.tooltip_fields or []),
+            },
+        }
+        return updated_item
+
+    def _rebuild_matrix_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding, layer: QgsVectorLayer) -> DashboardChartItem:
+        updated_item = item.clone()
+        updated_binding = binding.normalized()
+        rows = list(updated_binding.row_fields or [])
+        columns = list(updated_binding.column_fields or [])
+        values = list(updated_binding.value_fields or [])
+        value_field = values[0] if values else ""
+        aggregation = str(updated_binding.aggregation or "sum").strip().lower() or "sum"
+        grouped: Dict[str, Dict[str, object]] = {}
+        has_numeric_values = False
+        for feature in layer.getFeatures():
+            row_parts = [str(feature.attribute(field) or _rt("(vazio)")).strip() for field in rows]
+            column_parts = [str(feature.attribute(field) or _rt("(vazio)")).strip() for field in columns[:1]]
+            category = " / ".join([part for part in [*row_parts, *column_parts] if part]) or _rt("(vazio)")
+            bucket = grouped.setdefault(category, {"sum": 0.0, "count": 0, "feature_ids": []})
+            try:
+                bucket["feature_ids"].append(int(feature.id()))
+            except Exception:
+                log_exception("falha opcional ignorada")
+            numeric = self._safe_float(feature.attribute(value_field)) if value_field else None
+            if numeric is None:
+                continue
+            has_numeric_values = True
+            bucket["sum"] = float(bucket.get("sum") or 0.0) + float(numeric)
+            bucket["count"] = int(bucket.get("count") or 0) + 1
+        if not grouped or not has_numeric_values:
+            updated_item.binding = updated_binding
+            updated_item.payload = self._empty_chart_payload("matrix", updated_binding.title_override)
+            updated_item.subtitle = _rt("Sem valores numericos para a matriz")
+            updated_item.source_meta = {"builder_version": "v2", "empty_visual": True}
+            return updated_item
+        matrix_rows = []
+        for category, bucket in grouped.items():
+            count = int(bucket.get("count") or 0)
+            value = float(bucket.get("sum") or 0.0)
+            if aggregation == "avg":
+                value = value / float(max(1, count))
+            matrix_rows.append({"category": category, "value": value, "feature_ids": list(bucket.get("feature_ids") or [])})
+        matrix_rows.sort(key=lambda row: float(row.get("value") or 0.0), reverse=True)
+        top_n = max(1, int(updated_binding.top_n or 50))
+        truncated = len(matrix_rows) > top_n
+        matrix_rows = matrix_rows[:top_n]
+        title_text = str(updated_binding.title_override or "").strip() or _rt("Matriz - {layer_name}", layer_name=layer.name())
+        updated_item.binding = updated_binding
+        updated_item.title = title_text if updated_binding.title_override else ""
+        updated_item.subtitle = f"{layer.name()} - {', '.join(rows)} - {value_field}"
+        updated_item.payload = ChartPayload.build(
+            chart_type="matrix",
+            title=title_text,
+            categories=[str(row.get("category") or "") for row in matrix_rows],
+            values=[float(row.get("value") or 0.0) for row in matrix_rows],
+            value_label=value_field,
+            truncated=truncated,
+            selection_layer_id=layer.id(),
+            selection_layer_name=layer.name(),
+            category_field=rows[0] if rows else "",
+            raw_categories=[str(row.get("category") or "") for row in matrix_rows],
+            category_feature_ids=[list(row.get("feature_ids") or []) for row in matrix_rows],
+        )
+        updated_item.source_meta = {
+            "builder_version": "v2",
+            "empty_visual": False,
+            "metadata": {"layer_id": layer.id(), "layer_name": layer.name()},
+            "config": {
+                "chart_type": "matrix",
+                "row_fields": list(rows),
+                "column_fields": list(columns),
+                "value_fields": list(values),
+                "aggregation": aggregation,
+                "filter_fields": list(updated_binding.filter_fields or []),
+                "tooltip_fields": list(updated_binding.tooltip_fields or []),
+            },
+        }
+        return updated_item
+
+    def _rebuild_chart_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding) -> Optional[DashboardChartItem]:
+        if item is None:
+            return None
+        updated_item = item.clone()
+        updated_binding = binding.normalized()
+        chart_type = str(updated_binding.chart_type or getattr(updated_item.visual_state, "chart_type", "bar") or "bar").strip().lower() or "bar"
+        updated_binding.chart_type = chart_type
+        updated_item.visual_state.chart_type = chart_type
+
+        layer = self._builder_layers.get(str(updated_binding.source_id or ""))
+        if layer is None:
+            layer = self._selected_layer()
+        if layer is None or not layer.isValid():
+            updated_item.binding = updated_binding
+            updated_item.payload = self._empty_chart_payload(chart_type, updated_binding.title_override)
+            updated_item.subtitle = _rt("Selecione uma camada para continuar")
+            updated_item.source_meta = {"builder_version": "v2", "empty_visual": True}
+            return updated_item
+
+        updated_binding.source_id = layer.id()
+        updated_binding.source_name = layer.name()
+        dimension_field = self._resolve_layer_field_name(layer, updated_binding.dimension_field)
+        measure_field = self._resolve_layer_field_name(layer, updated_binding.measure_field) if updated_binding.measure_field else ""
+        legend_field = self._resolve_layer_field_name(layer, updated_binding.legend_field) if updated_binding.legend_field else ""
+        x_field = self._resolve_layer_field_name(layer, updated_binding.x_field) if updated_binding.x_field else ""
+        y_field = self._resolve_layer_field_name(layer, updated_binding.y_field) if updated_binding.y_field else ""
+        size_field = self._resolve_layer_field_name(layer, updated_binding.size_field) if updated_binding.size_field else ""
+        row_fields = [name for name in (self._resolve_layer_field_name(layer, item) for item in list(updated_binding.row_fields or [])) if name]
+        column_fields = [name for name in (self._resolve_layer_field_name(layer, item) for item in list(updated_binding.column_fields or [])) if name]
+        value_fields = [name for name in (self._resolve_layer_field_name(layer, item) for item in list(updated_binding.value_fields or [])) if name]
+        aggregation = str(updated_binding.aggregation or "count").strip().lower() or "count"
+        top_n = max(1, int(updated_binding.top_n or 12))
+
+        updated_binding.dimension_field = dimension_field
+        updated_binding.measure_field = measure_field
+        updated_binding.legend_field = legend_field
+        updated_binding.x_field = x_field
+        updated_binding.y_field = y_field
+        updated_binding.size_field = size_field
+        updated_binding.row_fields = row_fields
+        updated_binding.column_fields = column_fields
+        updated_binding.value_fields = value_fields
+        if dimension_field:
+            updated_binding.semantic_field_key = dimension_field
+            updated_binding.semantic_field_aliases = [dimension_field]
+
+        if not updated_binding.has_minimum_fields():
+            updated_item.binding = updated_binding
+            updated_item.payload = self._empty_chart_payload(chart_type, updated_binding.title_override)
+            updated_item.subtitle = _rt(empty_binding_message(chart_type, updated_binding))
+            updated_item.source_meta = {
+                "builder_version": "v2",
+                "empty_visual": True,
+                "metadata": {"layer_id": layer.id(), "layer_name": layer.name()},
+            }
+            return updated_item
+
+        if chart_type == "scatter":
+            return self._rebuild_scatter_item_from_binding(updated_item, updated_binding, layer)
+
+        if chart_type == "matrix":
+            return self._rebuild_matrix_item_from_binding(updated_item, updated_binding, layer)
+
+        grouped: Dict[str, Dict[str, object]] = {}
+        has_numeric_values = False
+        for feature in layer.getFeatures():
+            raw_category = feature.attribute(dimension_field) if dimension_field else None
+            category = str(raw_category).strip() if raw_category is not None else ""
+            if not category:
+                category = _rt("(vazio)")
+            bucket = grouped.setdefault(
+                category,
+                {
+                    "raw_category": raw_category if raw_category is not None else category,
+                    "feature_ids": [],
+                    "sum": 0.0,
+                    "count": 0,
+                    "distinct": set(),
+                    "min": None,
+                    "max": None,
+                },
+            )
+            try:
+                bucket["feature_ids"].append(int(feature.id()))
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+            if aggregation == "count":
+                value = 1.0
+            else:
+                target_field = measure_field or dimension_field
+                raw_value = feature.attribute(target_field) if target_field else None
+                if aggregation == "count_distinct":
+                    if raw_value is not None and str(raw_value).strip():
+                        bucket["distinct"].add(str(raw_value).strip())
+                    bucket["count"] = int(bucket.get("count") or 0) + 1
+                    continue
+                value = self._safe_float(raw_value)
+                if value is None:
+                    continue
+                has_numeric_values = True
+
+            bucket["sum"] = float(bucket.get("sum") or 0.0) + float(value)
+            bucket["count"] = int(bucket.get("count") or 0) + 1
+            current_min = bucket.get("min")
+            current_max = bucket.get("max")
+            bucket["min"] = float(value) if current_min is None else min(float(current_min), float(value))
+            bucket["max"] = float(value) if current_max is None else max(float(current_max), float(value))
+
+        if aggregation not in {"count", "count_distinct"} and not has_numeric_values:
+            updated_item.binding = updated_binding
+            updated_item.payload = self._empty_chart_payload(chart_type, updated_binding.title_override)
+            updated_item.subtitle = _rt("Sem valores numericos para o campo selecionado")
+            updated_item.source_meta = {"builder_version": "v2", "empty_visual": True}
+            return updated_item
+
+        rows: List[Dict[str, object]] = []
+        for category, bucket in grouped.items():
+            count = int(bucket.get("count") or 0)
+            if aggregation == "avg":
+                metric_value = float(bucket.get("sum") or 0.0) / float(max(1, count))
+            elif aggregation == "min":
+                metric_value = float(bucket.get("min") or 0.0)
+            elif aggregation == "max":
+                metric_value = float(bucket.get("max") or 0.0)
+            elif aggregation == "sum":
+                metric_value = float(bucket.get("sum") or 0.0)
+            elif aggregation == "count_distinct":
+                metric_value = float(len(bucket.get("distinct") or set()))
+            else:
+                metric_value = float(count)
+            rows.append(
+                {
+                    "category": str(category),
+                    "value": metric_value,
+                    "raw_category": bucket.get("raw_category"),
+                    "feature_ids": list(bucket.get("feature_ids") or []),
+                }
+            )
+
+        rows.sort(key=lambda row: float(row.get("value") or 0.0), reverse=True)
+        truncated = len(rows) > top_n
+        rows = rows[:top_n]
+        categories = [str(row.get("category") or "") for row in rows]
+        values = [float(row.get("value") or 0.0) for row in rows]
+        raw_categories = [row.get("raw_category") for row in rows]
+        feature_groups = [list(row.get("feature_ids") or []) for row in rows]
+
+        agg_label = {
+            "count": _rt("Contagem"),
+            "sum": _rt("Soma"),
+            "avg": _rt("Media"),
+            "min": _rt("Minimo"),
+            "max": _rt("Maximo"),
+            "count_distinct": _rt("Contagem distinta"),
+        }.get(aggregation, _rt("Contagem"))
+        value_target = measure_field or dimension_field
+        value_label = _rt("Contagem") if aggregation == "count" else _rt("{agg_label} de {field_name}", agg_label=agg_label, field_name=value_target)
+
+        title_text = str(updated_binding.title_override or "").strip()
+        if not title_text:
+            if chart_type == "card":
+                title_text = _rt("{agg_label} - {layer_name}", agg_label=agg_label, layer_name=layer.name())
+            else:
+                title_text = _rt("{agg_label} por {dimension_field}", agg_label=agg_label, dimension_field=dimension_field)
+
+        updated_item.binding = updated_binding
+        updated_item.title = title_text if updated_binding.title_override else ""
+        updated_item.subtitle = f"{layer.name()} - {dimension_field} - {value_label}"
+        updated_item.payload = ChartPayload.build(
+            chart_type=chart_type,
+            title=title_text,
+            categories=categories,
+            values=values,
+            value_label=value_label,
+            truncated=truncated,
+            selection_layer_id=layer.id(),
+            selection_layer_name=layer.name(),
+            category_field=dimension_field,
+            raw_categories=raw_categories,
+            category_feature_ids=feature_groups,
+        )
+        updated_item.source_meta = {
+            "builder_version": "v2",
+            "empty_visual": False,
+            "metadata": {"layer_id": layer.id(), "layer_name": layer.name()},
+            "config": {
+                "chart_type": chart_type,
+                "row_field": dimension_field,
+                "semantic_field_key": dimension_field,
+                "value_field": measure_field,
+                "legend_field": legend_field,
+                "aggregation": aggregation,
+                "top_n": top_n,
+                "filter_fields": list(updated_binding.filter_fields or []),
+                "tooltip_fields": list(updated_binding.tooltip_fields or []),
+            },
+        }
+        return updated_item
 
     def _configure_toolbar_icon_button(self, button, icon_name: str, tooltip: str, icon_size: int = 18):
         button.setProperty("toolbarMode", "icon")
@@ -1682,6 +3339,15 @@ class ModelTab(QWidget):
             lambda page_id, summary, self=self: self._handle_canvas_filters_changed(summary, page_id)
         )
         widget.zoomChanged.connect(lambda page_id, zoom, self=self: self._handle_canvas_zoom_changed(zoom, page_id))
+        widget.itemSelectionChanged.connect(
+            lambda page_id, item_id, item_widget, self=self: self._handle_canvas_item_selection(page_id, item_id, item_widget)
+        )
+        widget.fieldBindingDropRequested.connect(
+            lambda page_id, item_id, slot_name, payload, self=self: self._handle_canvas_field_binding_drop(page_id, item_id, slot_name, payload)
+        )
+        widget.visualPanelRequested.connect(
+            lambda page_id, item_id, self=self: self._handle_canvas_visual_panel_requested(page_id, item_id)
+        )
         widget.canvas.emptyCanvasContextMenuRequested.connect(
             lambda pos, page_id=widget.page_id, self=self: self._open_canvas_context_menu(pos, page_id)
         )
@@ -1925,8 +3591,7 @@ class ModelTab(QWidget):
         self._refresh_ui_state()
 
     def _build_model_chart_item_from_builder(self) -> Optional[DashboardChartItem]:
-        layer_id = str(self.builder_layer_combo.currentData() or "")
-        layer = self._builder_layers.get(layer_id)
+        layer = self._current_builder_layer()
         if layer is None or not layer.isValid():
             slim_message(self, _rt("Model"), _rt("Selecione uma camada valida para criar o grafico."))
             return None
@@ -1936,7 +3601,7 @@ class ModelTab(QWidget):
             return None
         value_field = str(self.builder_value_combo.currentData() or "__count__").strip() or "__count__"
         aggregation = str(self.builder_agg_combo.currentData() or "count").strip().lower() or "count"
-        chart_type = str(self.builder_chart_type_combo.currentData() or "bar").strip().lower() or "bar"
+        chart_type = self._current_builder_chart_type()
         top_n = max(3, int(self.builder_topn_spin.value()))
 
         dimension_field = self._resolve_layer_field_name(layer, dimension_field)
@@ -2064,12 +3729,15 @@ class ModelTab(QWidget):
         visual_state = ChartVisualState(chart_type=chart_type, show_legend=chart_type in {"pie", "donut", "funnel"})
         binding = DashboardChartBinding(
             chart_id=item_id,
+            chart_type=chart_type,
             source_id=layer.id(),
             dimension_field=dimension_field,
             semantic_field_key=dimension_field,
             semantic_field_aliases=[dimension_field],
             measure_field="" if value_field == "__count__" else value_field,
             aggregation=aggregation,
+            top_n=top_n,
+            title_override=title_text,
             source_name=layer.name(),
         ).normalized()
         subtitle = f"{layer.name()} - {dimension_field} - {value_label}"
@@ -2344,17 +4012,55 @@ class ModelTab(QWidget):
             self.edit_mode_btn.blockSignals(False)
         self.set_edit_mode(target)
 
+    def _sync_visual_side_tab_buttons(self):
+        active_tab = str(getattr(self, "_active_visual_side_tab", "build") or "build")
+        if active_tab not in {"build", "format"}:
+            active_tab = "build"
+        if hasattr(self, "visual_side_stack"):
+            self.visual_side_stack.setCurrentIndex(1 if active_tab == "format" else 0)
+        for button, checked in (
+            (getattr(self, "visual_data_tab_btn", None), active_tab == "build"),
+            (getattr(self, "visual_format_tab_btn", None), active_tab == "format"),
+        ):
+            if button is None:
+                continue
+            button.blockSignals(True)
+            try:
+                button.setChecked(bool(checked))
+            finally:
+                button.blockSignals(False)
+
+    def _set_visual_side_tab(self, tab_name: str):
+        target = "format" if str(tab_name or "").strip().lower() == "format" else "build"
+        if target == "format":
+            self._set_visual_panel_open(True, focus=False)
+        else:
+            self._set_builder_panel_open(True, focus=False)
+
     def _set_builder_panel_open(self, enabled: bool, *, focus: bool = False):
         in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
         active = bool(enabled) and bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page
         self._builder_panel_open = bool(active)
-        self.builder_panel.setVisible(active)
+        if active:
+            self._visual_panel_open = False
+            self._active_visual_side_tab = "build"
+            self._sync_builder_selection_state()
+            self._sync_visual_side_tab_buttons()
+        self.visual_side_panel.setVisible(active or self._visual_panel_open)
+        self.data_panel.setVisible(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
+        self._ensure_canvas_splitter_sizes()
         self.create_chart_btn.blockSignals(True)
         try:
             if self.create_chart_btn.isChecked() != active:
                 self.create_chart_btn.setChecked(active)
         finally:
             self.create_chart_btn.blockSignals(False)
+        self.format_visual_btn.blockSignals(True)
+        try:
+            if self.format_visual_btn.isChecked() != bool(self._visual_panel_open):
+                self.format_visual_btn.setChecked(bool(self._visual_panel_open))
+        finally:
+            self.format_visual_btn.blockSignals(False)
         if active and focus:
             try:
                 self.builder_layer_combo.setFocus(Qt.TabFocusReason)
@@ -2364,6 +4070,73 @@ class ModelTab(QWidget):
     def _handle_create_chart_toggle(self, checked: bool):
         self._set_builder_panel_open(bool(checked), focus=bool(checked))
 
+    def _ensure_canvas_splitter_sizes(self):
+        splitter = getattr(self, "canvas_splitter", None)
+        if splitter is None:
+            return
+        try:
+            sizes = list(splitter.sizes())
+            total = sum(int(size or 0) for size in sizes)
+            if total <= 0 or len(sizes) < 3:
+                return
+            visual_visible = bool(self.visual_side_panel.isVisible())
+            data_visible = bool(self.data_panel.isVisible())
+            target_visual = int(min(max(sizes[1] if sizes[1] > 0 else 292, 260), 420)) if visual_visible else 0
+            target_data = int(min(max(sizes[2] if sizes[2] > 0 else 292, 260), 420)) if data_visible else 0
+            if visual_visible and sizes[1] < 220:
+                target_visual = 292
+            if data_visible and sizes[2] < 220:
+                target_data = 292
+            target_canvas = max(360, total - target_visual - target_data)
+            splitter.setSizes([target_canvas, target_visual, target_data])
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _set_visual_panel_open(self, enabled: bool, *, focus: bool = False):
+        in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
+        active = bool(enabled) and bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page
+        self._visual_panel_open = bool(active)
+        if active:
+            self._builder_panel_open = False
+            self._active_visual_side_tab = "format"
+            self._sync_visual_side_tab_buttons()
+        self.visual_side_panel.setVisible(active or self._builder_panel_open)
+        self.data_panel.setVisible(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
+        self._ensure_canvas_splitter_sizes()
+        self.format_visual_btn.blockSignals(True)
+        try:
+            if self.format_visual_btn.isChecked() != active:
+                self.format_visual_btn.setChecked(active)
+        finally:
+            self.format_visual_btn.blockSignals(False)
+        self.create_chart_btn.blockSignals(True)
+        try:
+            if self.create_chart_btn.isChecked() != self._builder_panel_open:
+                self.create_chart_btn.setChecked(self._builder_panel_open)
+        finally:
+            self.create_chart_btn.blockSignals(False)
+        if not active:
+            self._sync_visual_side_tab_buttons()
+        if not active:
+            self.visual_panel.clear_selection()
+            return
+        item_widget = None
+        active_page = self._active_page_widget()
+        if active_page is not None:
+            item_widget = active_page.canvas.selected_item_widget()
+        if item_widget is None:
+            self.visual_panel.clear_selection()
+            return
+        self.visual_panel.set_current_item(item_widget)
+        if focus:
+            try:
+                self.visual_panel.setFocus(Qt.TabFocusReason)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _handle_format_visual_toggle(self, checked: bool):
+        self._set_visual_panel_open(bool(checked), focus=bool(checked))
+
     def set_edit_mode(self, enabled: bool):
         enabled = bool(enabled)
         for widget in self._page_widgets_in_order():
@@ -2372,9 +4145,14 @@ class ModelTab(QWidget):
             except Exception:
                 continue
         self.create_chart_btn.setVisible(enabled and self.current_project is not None)
+        self.format_visual_btn.setVisible(enabled and self.current_project is not None)
         if not enabled:
             self._builder_panel_open = False
+            self._visual_panel_open = False
         self._set_builder_panel_open(self._builder_panel_open)
+        self._set_visual_panel_open(self._visual_panel_open)
+        self.data_panel.setVisible(enabled and self.current_project is not None and self.body_stack.currentWidget() is self.canvas_page)
+        self._ensure_canvas_splitter_sizes()
         if self.edit_mode_btn.isChecked() != enabled:
             self.edit_mode_btn.blockSignals(True)
             try:
@@ -2444,6 +4222,7 @@ class ModelTab(QWidget):
             self.save_as_btn,
             self.export_btn,
             self.edit_mode_btn,
+            self.format_visual_btn,
             self.settings_btn,
             self.close_project_btn,
         ):
@@ -2482,6 +4261,38 @@ class ModelTab(QWidget):
         self._dirty = True
         self._commit_history_if_changed()
         self._refresh_ui_state()
+
+    def _handle_canvas_item_selection(self, page_id: str, item_id: str, item_widget):
+        if page_id and page_id != self._current_page_id():
+            return
+        self._sync_builder_selection_state()
+        if not self.visual_side_panel.isVisible():
+            return
+        if item_widget is None:
+            self.visual_panel.clear_selection()
+            return
+        self.visual_panel.set_current_item(item_widget)
+
+    def _handle_canvas_field_binding_drop(self, page_id: str, item_id: str, slot_name: str, payload):
+        if page_id and page_id != self._current_page_id():
+            self._set_active_page(page_id, sync_project=True, update_tabs=True)
+        active_canvas = self._active_canvas()
+        if active_canvas is None:
+            return
+        active_canvas.select_item(item_id, emit_signal=True)
+        self._sync_builder_selection_state()
+        self._apply_dropped_field_to_selected_visual(slot_name, payload)
+
+    def _handle_canvas_visual_panel_requested(self, page_id: str, item_id: str):
+        if page_id and page_id != self._current_page_id():
+            self._set_active_page(page_id, sync_project=True, update_tabs=True)
+        active_page = self._active_page_widget()
+        if active_page is not None and item_id:
+            active_page.canvas.select_item(item_id, emit_signal=False)
+            item_widget = active_page.canvas.selected_item_widget()
+            if item_widget is not None:
+                self.visual_panel.set_current_item(item_widget)
+        self._set_visual_panel_open(True, focus=False)
 
     def _update_filters_bar(self, summary: Optional[Dict[str, object]] = None):
         active_canvas = self._active_canvas()
@@ -2553,6 +4364,10 @@ class ModelTab(QWidget):
         self._update_toolbar_visibility()
         self.close_project_btn.setVisible(has_project)
         self._set_builder_panel_open(self._builder_panel_open)
+        self._set_visual_panel_open(self._visual_panel_open)
+        self.data_panel.setVisible(has_project and bool(self.edit_mode_btn.isChecked()) and in_canvas_page)
+        self._ensure_canvas_splitter_sizes()
+        self._sync_builder_selection_state()
         self._update_footer_visibility()
         self._update_filters_bar()
         self.filters_bar.setVisible(bool(self.edit_mode_btn.isChecked()) and self.filters_bar.isVisible())

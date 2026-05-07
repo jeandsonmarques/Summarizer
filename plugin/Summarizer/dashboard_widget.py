@@ -38,6 +38,7 @@ from .report_view.pivot.pivot_formatters import PivotFormatter
 from .report_view.result_models import ChartPayload
 from .utils.fonts import ui_font
 from .utils.logging_utils import log_exception
+from .visual_format_panel import VisualFormatPanel
 
 def _icon_from_resource(name: str) -> QIcon:
     path = os.path.abspath(
@@ -159,6 +160,17 @@ class DashboardWidget(QWidget):
         self.center_btn.clicked.connect(self._center_dashboard_items)
         toolbar_layout.addWidget(self.center_btn, 0)
 
+        self.visual_panel_btn = QToolButton()
+        self.visual_panel_btn.setObjectName("DashboardIconButton")
+        self.visual_panel_btn.setCheckable(True)
+        self.visual_panel_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_panel_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.visual_panel_btn.setIcon(_icon_from_resource("icon_chart.svg"))
+        self.visual_panel_btn.setIconSize(QSize(16, 16))
+        self.visual_panel_btn.setToolTip("Formatar visual")
+        self.visual_panel_btn.clicked.connect(self.toggle_visual_panel)
+        toolbar_layout.addWidget(self.visual_panel_btn, 0)
+
         self.lock_btn = QToolButton()
         self.lock_btn.setObjectName("DashboardIconButton")
         self.lock_btn.setCheckable(True)
@@ -201,11 +213,24 @@ class DashboardWidget(QWidget):
         self.dashboard_canvas = DashboardCanvas(self)
         self.dashboard_canvas.setObjectName("DashboardVisualizationCanvas")
         self.dashboard_canvas.chartSelectionChanged.connect(self._handle_canvas_chart_selection)
+        self.dashboard_canvas.itemSelectionChanged.connect(self._handle_canvas_item_selection)
+        self.dashboard_canvas.visualPanelRequested.connect(self._handle_visual_panel_requested)
         self.dashboard_canvas.editModeChanged.connect(self._sync_dashboard_lock_button)
         self.dashboard_canvas.setMinimumHeight(560)
         charts_layout.addWidget(self.dashboard_canvas, stretch=1)
 
-        layout.addWidget(canvas_shell, stretch=1)
+        self.visual_format_panel = VisualFormatPanel(self)
+        self.visual_format_panel.hide()
+        self.visual_format_panel.closeRequested.connect(self.hide_visual_panel)
+
+        self.dashboard_area_splitter = QSplitter(Qt.Horizontal, self)
+        self.dashboard_area_splitter.setChildrenCollapsible(False)
+        self.dashboard_area_splitter.addWidget(canvas_shell)
+        self.dashboard_area_splitter.addWidget(self.visual_format_panel)
+        self.dashboard_area_splitter.setStretchFactor(0, 1)
+        self.dashboard_area_splitter.setStretchFactor(1, 0)
+        self.dashboard_area_splitter.setSizes([900, 0])
+        layout.addWidget(self.dashboard_area_splitter, stretch=1)
 
         self.table_filter_label = QLabel("")
         self.table_filter_label.setObjectName("FilterStatus")
@@ -296,6 +321,63 @@ class DashboardWidget(QWidget):
             self.dashboard_canvas.center_items()
         except Exception:
             log_exception("falha opcional ignorada")
+
+    def toggle_visual_panel(self):
+        if self.is_visual_panel_visible():
+            self.hide_visual_panel()
+        else:
+            self.show_visual_panel()
+
+    def show_visual_panel(self):
+        if not hasattr(self, "visual_format_panel"):
+            return
+        self.visual_format_panel.show()
+        self.visual_panel_btn.blockSignals(True)
+        self.visual_panel_btn.setChecked(True)
+        self.visual_panel_btn.blockSignals(False)
+        widget = self.dashboard_canvas.selected_item_widget() if hasattr(self, "dashboard_canvas") else None
+        if widget is None:
+            self.visual_format_panel.clear_selection()
+        else:
+            self.visual_format_panel.set_current_item(widget)
+        try:
+            self.dashboard_area_splitter.setSizes([900, 320])
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def hide_visual_panel(self):
+        if not hasattr(self, "visual_format_panel"):
+            return
+        self.visual_format_panel.hide()
+        self.visual_panel_btn.blockSignals(True)
+        self.visual_panel_btn.setChecked(False)
+        self.visual_panel_btn.blockSignals(False)
+        try:
+            self.dashboard_area_splitter.setSizes([1, 0])
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def is_visual_panel_visible(self) -> bool:
+        return bool(hasattr(self, "visual_format_panel") and not self.visual_format_panel.isHidden())
+
+    def _handle_canvas_item_selection(self, item_id: str, item_widget):
+        if not self.is_visual_panel_visible():
+            return
+        if item_widget is None:
+            self.visual_format_panel.clear_selection()
+            return
+        self.visual_format_panel.set_current_item(item_widget)
+
+    def _handle_visual_panel_requested(self, item_id: str):
+        if not hasattr(self, "dashboard_canvas"):
+            return
+        item_widget = self.dashboard_canvas.selected_item_widget()
+        if item_widget is None and item_id:
+            self.dashboard_canvas.select_item(item_id, emit_signal=False)
+            item_widget = self.dashboard_canvas.selected_item_widget()
+        self.show_visual_panel()
+        if item_widget is not None:
+            self.visual_format_panel.set_current_item(item_widget)
 
     def _set_chart_widget_payload(
         self,
@@ -455,7 +537,8 @@ class DashboardWidget(QWidget):
         base_item.visual_state.chart_type = chart_type
         try:
             base_item.visual_state.palette = self._dashboard_palette_for_item(role, chart_type, item_id)
-            base_item.visual_state.show_border = True
+            if item is None:
+                base_item.visual_state.show_border = True
         except Exception:
             log_exception("falha opcional ignorada")
         return base_item
@@ -662,6 +745,11 @@ class DashboardWidget(QWidget):
             QToolButton#DashboardIconButton:hover {{
                 background: #F8FAFC;
                 border-color: #94A3B8;
+            }}
+            QToolButton#DashboardIconButton:checked {{
+                background: #DBEAFE;
+                border-color: #3B82F6;
+                color: #1D4ED8;
             }}
             QPushButton[dashboardChip=\"true\"] {{
                 border: 1px solid #D1D9E6;
