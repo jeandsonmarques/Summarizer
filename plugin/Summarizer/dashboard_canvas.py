@@ -1357,6 +1357,10 @@ class DashboardCanvas(QWidget):
             return False
         hit = self._relation_line_at(event.pos())
         if hit is None:
+            if self._selected_item_id or self._selected_relation_id:
+                self._selected_relation_id = ""
+                self.select_item("", emit_signal=True)
+                self.surface.update()
             return False
         relation_id = str(hit.get("relation_id") or "")
         if not relation_id:
