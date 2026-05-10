@@ -546,8 +546,16 @@ class DashboardChartBinding:
     source_name: str = ""
     bindings: Dict[str, List[FieldBindingItem]] = field(default_factory=dict)
 
+    def _explicit_binding_roles(self) -> set[str]:
+        return {
+            normalize_binding_role(role)
+            for role in dict(self.bindings or {}).keys()
+            if normalize_binding_role(role)
+        }
+
     def _normalized_bindings(self) -> Dict[str, List[FieldBindingItem]]:
         normalized: Dict[str, List[FieldBindingItem]] = {role: [] for role in (*VISUAL_BINDING_ROLES, ROLE_SIZE)}
+        explicit_roles = self._explicit_binding_roles()
 
         def _add(role: str, value: Any, *, field_type: str = "unknown", aggregation: str = "", display_name: str = ""):
             target_role = normalize_binding_role(role)
@@ -580,26 +588,31 @@ class DashboardChartBinding:
                 if parsed is not None:
                     _add(target_role, parsed)
 
-        for field_name in _unique_normalized_texts([self.dimension_field]):
-            _add(ROLE_X_AXIS, field_name, aggregation="none")
-        for field_name in _unique_normalized_texts(self.row_fields or []):
-            _add(ROLE_X_AXIS, field_name, aggregation="none")
-        for field_name in _unique_normalized_texts(self.column_fields or []):
-            _add(ROLE_Y_AXIS, field_name, aggregation="none")
-        if self.x_field:
-            _add(ROLE_X_AXIS, self.x_field, field_type="numeric", aggregation="none")
-        if self.y_field:
-            _add(ROLE_Y_AXIS, self.y_field, field_type="numeric", aggregation=self.aggregation or "sum")
-        if self.size_field:
+        if ROLE_X_AXIS not in explicit_roles:
+            for field_name in _unique_normalized_texts([self.dimension_field]):
+                _add(ROLE_X_AXIS, field_name, aggregation="none")
+            for field_name in _unique_normalized_texts(self.row_fields or []):
+                _add(ROLE_X_AXIS, field_name, aggregation="none")
+            if self.x_field:
+                _add(ROLE_X_AXIS, self.x_field, field_type="numeric", aggregation="none")
+        if ROLE_Y_AXIS not in explicit_roles:
+            for field_name in _unique_normalized_texts(self.column_fields or []):
+                _add(ROLE_Y_AXIS, field_name, aggregation="none")
+            if self.y_field:
+                _add(ROLE_Y_AXIS, self.y_field, field_type="numeric", aggregation=self.aggregation or "sum")
+        if ROLE_SIZE not in explicit_roles and self.size_field:
             _add(ROLE_SIZE, self.size_field, field_type="numeric", aggregation="sum")
-        for field_name in _unique_normalized_texts([self.measure_field, *(self.value_fields or [])]):
-            _add(ROLE_VALUES, field_name, aggregation=dict(self.value_aggregations or {}).get(field_name) or self.aggregation or "sum")
-        if self.legend_field:
+        if ROLE_VALUES not in explicit_roles:
+            for field_name in _unique_normalized_texts([self.measure_field, *(self.value_fields or [])]):
+                _add(ROLE_VALUES, field_name, aggregation=dict(self.value_aggregations or {}).get(field_name) or self.aggregation or "sum")
+        if ROLE_LEGEND not in explicit_roles and self.legend_field:
             _add(ROLE_LEGEND, self.legend_field, aggregation="none")
-        for field_name in _unique_normalized_texts(self.filter_fields or []):
-            _add(ROLE_FILTERS, field_name, aggregation="none")
-        for field_name in _unique_normalized_texts(self.tooltip_fields or []):
-            _add(ROLE_TOOLTIP, field_name, aggregation="none")
+        if ROLE_FILTERS not in explicit_roles:
+            for field_name in _unique_normalized_texts(self.filter_fields or []):
+                _add(ROLE_FILTERS, field_name, aggregation="none")
+        if ROLE_TOOLTIP not in explicit_roles:
+            for field_name in _unique_normalized_texts(self.tooltip_fields or []):
+                _add(ROLE_TOOLTIP, field_name, aggregation="none")
 
         for role, items in list(normalized.items()):
             normalized[role] = [
@@ -623,24 +636,25 @@ class DashboardChartBinding:
     def normalized(self) -> "DashboardChartBinding":
         chart_type = normalize_chart_type(self.chart_type)
         bindings = self._normalized_bindings()
+        explicit_roles = self._explicit_binding_roles()
         x_axis_fields = [item.field for item in list(bindings.get(ROLE_X_AXIS) or [])]
         y_axis_fields = [item.field for item in list(bindings.get(ROLE_Y_AXIS) or [])]
         value_items = list(bindings.get(ROLE_VALUES) or [])
         value_fields = [item.field for item in value_items]
         row_fields = list(x_axis_fields)
         column_fields = list(y_axis_fields)
-        dimension_field = x_axis_fields[0] if x_axis_fields else str(self.dimension_field or "").strip()
-        measure_field = value_fields[0] if value_fields else str(self.measure_field or "").strip()
-        x_field = x_axis_fields[0] if x_axis_fields else str(self.x_field or "").strip()
-        y_field = y_axis_fields[0] if y_axis_fields else str(self.y_field or "").strip()
+        dimension_field = x_axis_fields[0] if x_axis_fields else ("" if ROLE_X_AXIS in explicit_roles else str(self.dimension_field or "").strip())
+        measure_field = value_fields[0] if value_fields else ("" if ROLE_VALUES in explicit_roles else str(self.measure_field or "").strip())
+        x_field = x_axis_fields[0] if x_axis_fields else ("" if ROLE_X_AXIS in explicit_roles else str(self.x_field or "").strip())
+        y_field = y_axis_fields[0] if y_axis_fields else ("" if ROLE_Y_AXIS in explicit_roles else str(self.y_field or "").strip())
         size_items = list(bindings.get(ROLE_SIZE) or [])
-        size_field = size_items[0].field if size_items else str(self.size_field or "").strip()
+        size_field = size_items[0].field if size_items else ("" if ROLE_SIZE in explicit_roles else str(self.size_field or "").strip())
         legend_items = list(bindings.get(ROLE_LEGEND) or [])
         filter_items = list(bindings.get(ROLE_FILTERS) or [])
         tooltip_items = list(bindings.get(ROLE_TOOLTIP) or [])
-        legend_field = legend_items[0].field if legend_items else str(self.legend_field or "").strip()
-        filter_fields = [item.field for item in filter_items] or _unique_normalized_texts(self.filter_fields or [])
-        tooltip_fields = [item.field for item in tooltip_items] or _unique_normalized_texts(self.tooltip_fields or [])
+        legend_field = legend_items[0].field if legend_items else ("" if ROLE_LEGEND in explicit_roles else str(self.legend_field or "").strip())
+        filter_fields = [item.field for item in filter_items] or ([] if ROLE_FILTERS in explicit_roles else _unique_normalized_texts(self.filter_fields or []))
+        tooltip_fields = [item.field for item in tooltip_items] or ([] if ROLE_TOOLTIP in explicit_roles else _unique_normalized_texts(self.tooltip_fields or []))
         if chart_type == "scatter":
             x_field = x_field or measure_field
             y_field = y_field or ""

@@ -126,6 +126,26 @@ def test_powerbi_binding_round_trip_with_multiple_axis_and_measures():
     assert restored.value_aggregations["POP_TOTAL"] == "sum"
 
 
+def test_explicit_empty_binding_role_overrides_legacy_fields():
+    binding = DashboardChartBinding(
+        chart_type="bar",
+        dimension_field="MUNIC",
+        x_field="MUNIC",
+        measure_field="ID",
+        value_fields=["ID"],
+        bindings={
+            "x_axis": [],
+            "values": [FieldBindingItem("ID", "ID", "numeric", "count", "values", 0)],
+        },
+    ).normalized()
+
+    assert binding.bindings.get("x_axis", []) == []
+    assert binding.dimension_field == ""
+    assert binding.x_field == ""
+    assert binding.measure_field == "ID"
+    assert binding.value_fields == ["ID"]
+
+
 def test_default_aggregation_by_field_type_and_role():
     assert default_aggregation_for_binding("numeric", "values") == "sum"
     assert default_aggregation_for_binding("text", "values") == "count"

@@ -5,7 +5,7 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QByteArray, QSize, Qt, QMimeData, pyqtSignal
+from qgis.PyQt.QtCore import QByteArray, QPoint, QSize, Qt, QMimeData, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QDrag, QIcon, QKeySequence, QPainter, QPixmap
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.PyQt.QtWidgets import (
@@ -132,10 +132,13 @@ class _ModelFieldBindingChip(QFrame):
     aggregationChanged = pyqtSignal(str, str)
     moveRequested = pyqtSignal(str, int)
 
-    def __init__(self, binding_item: FieldBindingItem, parent=None):
+    def __init__(self, binding_item: FieldBindingItem, parent=None, *, source_item_id: str = ""):
         super().__init__(parent)
         self.binding_item = binding_item.normalized()
+        self.source_item_id = str(source_item_id or "").strip()
+        self._drag_start_pos = QPoint()
         self.setObjectName("ModelBindingFieldChip")
+        self.setCursor(Qt.OpenHandCursor)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 2, 4, 2)
@@ -196,6 +199,38 @@ class _ModelFieldBindingChip(QFrame):
         aggregation = str(self.aggregation_combo.currentData() or "none")
         self.aggregationChanged.emit(self.binding_item.field, aggregation)
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_start_pos = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.LeftButton):
+            super().mouseMoveEvent(event)
+            return
+        if (event.pos() - self._drag_start_pos).manhattanLength() < 6:
+            super().mouseMoveEvent(event)
+            return
+        payload = {
+            "field_name": self.binding_item.field,
+            "display_name": self.binding_item.display_name or self.binding_item.field,
+            "field_group": self.binding_item.type,
+            "field_kind": self.binding_item.type,
+            "aggregation": self.binding_item.aggregation,
+            "source_slot": self.binding_item.role,
+            "source_item_id": self.source_item_id,
+        }
+        mime = QMimeData()
+        mime.setData(_MODEL_FIELD_MIME, json.dumps(payload).encode("utf-8"))
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        self.setCursor(Qt.ClosedHandCursor)
+        try:
+            drag.exec_(Qt.MoveAction)
+        finally:
+            self.setCursor(Qt.OpenHandCursor)
+        super().mouseMoveEvent(event)
+
 
 class _ModelBindingSlot(QFrame):
     fieldDropped = pyqtSignal(str, object)
@@ -206,6 +241,7 @@ class _ModelBindingSlot(QFrame):
     def __init__(self, slot_name: str, label: str, parent=None):
         super().__init__(parent)
         self.slot_name = str(slot_name or "").strip()
+        self._source_item_id = ""
         self.setObjectName("ModelBindingSlot")
         self.setAcceptDrops(True)
         self._active = False
@@ -242,7 +278,8 @@ class _ModelBindingSlot(QFrame):
     def set_label(self, text: str):
         self.label_widget.setText(str(text or ""))
 
-    def set_values(self, values, *, placeholder: str = ""):
+    def set_values(self, values, *, placeholder: str = "", source_item_id: str = ""):
+        self._source_item_id = str(source_item_id or "").strip()
         clean_values = []
         for index, value in enumerate(list(values or [])):
             if isinstance(value, FieldBindingItem):
@@ -261,7 +298,7 @@ class _ModelBindingSlot(QFrame):
             self.value_widget.hide()
             self.chips_host.show()
             for item in clean_values:
-                chip = _ModelFieldBindingChip(item, self.chips_host)
+                chip = _ModelFieldBindingChip(item, self.chips_host, source_item_id=self._source_item_id)
                 chip.removeRequested.connect(lambda field_name, slot=self.slot_name: self.removeRequested.emit(slot, field_name))
                 chip.aggregationChanged.connect(lambda field_name, aggregation, slot=self.slot_name: self.aggregationChanged.emit(slot, field_name, aggregation))
                 chip.moveRequested.connect(lambda field_name, delta, slot=self.slot_name: self.moveRequested.emit(slot, field_name, delta))
@@ -2005,7 +2042,11 @@ class ModelTab(QWidget):
             if slot_name in visible_slots:
                 label = labels_by_slot.get(slot_name) or slot_name
                 slot.set_label(_rt(label))
-                slot.set_values(self._slot_values_for_binding(binding, slot_name), placeholder=_rt("Opcional"))
+                slot.set_values(
+                    self._slot_values_for_binding(binding, slot_name),
+                    placeholder=_rt("Opcional"),
+                    source_item_id=item.item_id,
+                )
         self.builder_agg_combo.setEnabled(True)
         self.builder_topn_spin.setEnabled(True)
         self.builder_title_edit.setEnabled(True)
@@ -2096,6 +2137,8 @@ class ModelTab(QWidget):
         field_group = str(payload.get("field_group") or "other").strip().lower() or "other"
         layer_id = str(payload.get("layer_id") or "").strip()
         layer_name = str(payload.get("layer_name") or "").strip()
+        source_slot = normalize_binding_role(str(payload.get("source_slot") or "").strip())
+        source_item_id = str(payload.get("source_item_id") or "").strip()
         if not field_name:
             return binding.normalized()
         updated = binding.normalized()
@@ -2112,6 +2155,12 @@ class ModelTab(QWidget):
             role: [item.normalized(role, index) for index, item in enumerate(list(items or []))]
             for role, items in dict(updated.bindings or {}).items()
         }
+        if source_slot and source_item_id and source_item_id == str(updated.chart_id or "") and source_slot != slot_name:
+            current_bindings[source_slot] = [
+                item.normalized(source_slot, index)
+                for index, item in enumerate(list(current_bindings.get(source_slot) or []))
+                if item.field != field_name
+            ]
         role_items = list(current_bindings.get(slot_name) or [])
         item = self._field_binding_item_from_payload(slot_name, payload, len(role_items))
         if item is None:
