@@ -189,7 +189,7 @@ class _ModelFieldBindingChip(QFrame):
         remove.setIcon(_model_builder_trash_icon())
         remove.setIconSize(QSize(14, 14))
         remove.setToolTip(_rt("Remover campo"))
-        remove.clicked.connect(lambda: self.removeRequested.emit(self.binding_item.field))
+        remove.clicked.connect(lambda checked=False: self.removeRequested.emit(self.binding_item.field))
         layout.addWidget(remove, 0)
 
     def _emit_aggregation_changed(self):

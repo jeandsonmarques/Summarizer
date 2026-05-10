@@ -741,7 +741,7 @@ class DashboardItemWidget(QFrame):
         self.link_command_btn.setCursor(Qt.PointingHandCursor)
         self.link_command_btn.setToolTip(_rt("Criar relacao com outro grafico"))
         self.link_command_btn.setFont(ui_font())
-        self.link_command_btn.clicked.connect(lambda: self.linkCommandRequested.emit(self.item_id))
+        self.link_command_btn.clicked.connect(lambda checked=False: self.linkCommandRequested.emit(self.item_id))
         header_layout.addWidget(self.link_command_btn, 0)
         self.link_command_btn.hide()
 
@@ -754,7 +754,7 @@ class DashboardItemWidget(QFrame):
         self.remove_btn.setIconSize(QSize(14, 14))
         if close_icon.isNull():
             self.remove_btn.setText("X")
-        self.remove_btn.clicked.connect(lambda: self.removeRequested.emit(self.item_id))
+        self.remove_btn.clicked.connect(lambda checked=False: self.removeRequested.emit(self.item_id))
         header_layout.addWidget(self.remove_btn, 0)
 
         card_layout.addWidget(self.header, 0)
