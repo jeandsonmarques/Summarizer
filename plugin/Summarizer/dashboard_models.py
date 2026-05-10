@@ -70,60 +70,198 @@ SLOT_Y = "y"
 SLOT_SIZE = "size"
 SLOT_ROWS = "rows"
 SLOT_COLUMNS = "columns"
+ROLE_X_AXIS = "x_axis"
+ROLE_Y_AXIS = "y_axis"
+ROLE_VALUES = "values"
+ROLE_LEGEND = "legend"
+ROLE_FILTERS = "filters"
+ROLE_TOOLTIP = "tooltip"
+ROLE_SIZE = "size"
+
+VISUAL_BINDING_ROLES = (ROLE_X_AXIS, ROLE_Y_AXIS, ROLE_VALUES, ROLE_LEGEND, ROLE_FILTERS, ROLE_TOOLTIP)
+_ROLE_ALIASES = {
+    SLOT_CATEGORY: ROLE_X_AXIS,
+    SLOT_X: ROLE_X_AXIS,
+    SLOT_ROWS: ROLE_X_AXIS,
+    SLOT_Y: ROLE_Y_AXIS,
+    SLOT_COLUMNS: ROLE_Y_AXIS,
+    SLOT_VALUES: ROLE_VALUES,
+    SLOT_LEGEND: ROLE_LEGEND,
+    SLOT_FILTERS: ROLE_FILTERS,
+    SLOT_TOOLTIP: ROLE_TOOLTIP,
+    SLOT_SIZE: ROLE_SIZE,
+}
+
+
+def normalize_binding_role(role: str) -> str:
+    normalized = str(role or "").strip().lower()
+    return _ROLE_ALIASES.get(normalized, normalized if normalized in {*VISUAL_BINDING_ROLES, ROLE_SIZE} else "")
+
+
+def normalize_field_type(field_type: str) -> str:
+    normalized = str(field_type or "").strip().lower()
+    if normalized in {"numeric", "number", "integer", "float", "double", "decimal", "real", "measure"}:
+        return "numeric"
+    if normalized in {"text", "string", "str", "dimension"}:
+        return "text"
+    if normalized in {"date", "datetime", "time"}:
+        return "date"
+    if normalized in {"bool", "boolean"}:
+        return "boolean"
+    return "unknown"
+
+
+def default_aggregation_for_binding(field_type: str, role: str) -> str:
+    normalized_role = normalize_binding_role(role)
+    normalized_type = normalize_field_type(field_type)
+    if normalized_role in {ROLE_VALUES, ROLE_Y_AXIS, ROLE_SIZE}:
+        if normalized_type == "numeric":
+            return "sum"
+        return "count"
+    return "none"
+
+
+def normalize_aggregation(aggregation: str, field_type: str = "", role: str = "") -> str:
+    normalized = str(aggregation or "").strip().lower()
+    if normalized in {"", "default"}:
+        return default_aggregation_for_binding(field_type, role)
+    if normalized in {"count_distinct", "distinct_count"}:
+        return "unique_count"
+    if normalized in {"sum", "count", "avg", "min", "max", "unique_count", "none"}:
+        return normalized
+    return default_aggregation_for_binding(field_type, role)
+
+
+@dataclass
+class FieldBindingItem:
+    field: str
+    display_name: str = ""
+    type: str = "unknown"
+    aggregation: str = "none"
+    role: str = ""
+    order: int = 0
+
+    def normalized(self, fallback_role: str = "", fallback_order: int = 0) -> "FieldBindingItem":
+        role = normalize_binding_role(self.role or fallback_role)
+        field = str(self.field or "").strip()
+        display_name = str(self.display_name or field).strip() or field
+        field_type = normalize_field_type(self.type)
+        return FieldBindingItem(
+            field=field,
+            display_name=display_name,
+            type=field_type,
+            aggregation=normalize_aggregation(self.aggregation, field_type, role),
+            role=role,
+            order=max(0, int(self.order if self.order is not None else fallback_order)),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        normalized = self.normalized()
+        return {
+            "field": normalized.field,
+            "display_name": normalized.display_name,
+            "type": normalized.type,
+            "aggregation": normalized.aggregation,
+            "role": normalized.role,
+            "order": normalized.order,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Any, role: str = "", order: int = 0) -> Optional["FieldBindingItem"]:
+        if isinstance(payload, FieldBindingItem):
+            item = payload
+        elif isinstance(payload, dict):
+            item = cls(
+                field=str(payload.get("field") or payload.get("field_name") or "").strip(),
+                display_name=str(payload.get("display_name") or payload.get("name") or payload.get("field") or "").strip(),
+                type=str(payload.get("type") or payload.get("field_type") or payload.get("field_kind") or "unknown"),
+                aggregation=str(payload.get("aggregation") or ""),
+                role=str(payload.get("role") or role),
+                order=int(payload.get("order", order) or 0),
+            )
+        else:
+            item = cls(field=str(payload or "").strip(), display_name=str(payload or "").strip(), role=role, order=order)
+        normalized = item.normalized(fallback_role=role, fallback_order=order)
+        if not normalized.field or not normalized.role:
+            return None
+        return normalized
 
 
 SLOT_DEFINITIONS: Dict[str, List[Dict[str, Any]]] = {
-    "card": [{"name": SLOT_VALUES, "label": "Valor", "multiple": False, "groups": {"measure"}}],
+    "card": [
+        {"name": ROLE_VALUES, "label": "Valores", "multiple": True, "groups": {"measure", "dimension", "date", "other"}},
+        {"name": ROLE_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+    ],
     "bar": [
-        {"name": SLOT_CATEGORY, "label": "Categoria", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
-        {"name": SLOT_LEGEND, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
-        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_X_AXIS, "label": "Eixo X", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_Y_AXIS, "label": "Eixo Y", "multiple": True, "groups": {"measure"}},
+        {"name": ROLE_VALUES, "label": "Valores", "multiple": True, "groups": {"measure", "dimension", "date", "other"}},
+        {"name": ROLE_LEGEND, "label": "Legenda", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": ROLE_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
     ],
     "barh": [
-        {"name": SLOT_CATEGORY, "label": "Categoria", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
-        {"name": SLOT_LEGEND, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
-        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_X_AXIS, "label": "Eixo Y", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_Y_AXIS, "label": "Eixo X", "multiple": True, "groups": {"measure"}},
+        {"name": ROLE_VALUES, "label": "Valores", "multiple": True, "groups": {"measure", "dimension", "date", "other"}},
+        {"name": ROLE_LEGEND, "label": "Legenda", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": ROLE_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
     ],
     "line": [
-        {"name": SLOT_CATEGORY, "label": "Eixo", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
-        {"name": SLOT_LEGEND, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
-        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_X_AXIS, "label": "Eixo X", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_Y_AXIS, "label": "Eixo Y", "multiple": True, "groups": {"measure"}},
+        {"name": ROLE_VALUES, "label": "Valores", "multiple": True, "groups": {"measure", "dimension", "date", "other"}},
+        {"name": ROLE_LEGEND, "label": "Legenda", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": ROLE_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
     ],
     "pie": [
-        {"name": SLOT_CATEGORY, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
-        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
-        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_X_AXIS, "label": "Categoria", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_VALUES, "label": "Valores", "multiple": True, "groups": {"measure", "dimension", "date", "other"}},
+        {"name": ROLE_LEGEND, "label": "Legenda", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": ROLE_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
     ],
     "donut": [
-        {"name": SLOT_CATEGORY, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_VALUES, "label": "Valores", "multiple": False, "groups": {"measure"}},
-        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
-        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_X_AXIS, "label": "Categoria", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_VALUES, "label": "Valores", "multiple": True, "groups": {"measure", "dimension", "date", "other"}},
+        {"name": ROLE_LEGEND, "label": "Legenda", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": ROLE_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
     ],
     "scatter": [
-        {"name": SLOT_X, "label": "X", "multiple": False, "groups": {"measure"}},
-        {"name": SLOT_Y, "label": "Y", "multiple": False, "groups": {"measure"}},
-        {"name": SLOT_SIZE, "label": "Tamanho", "multiple": False, "groups": {"measure"}},
-        {"name": SLOT_LEGEND, "label": "Legenda", "multiple": False, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
-        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_X_AXIS, "label": "Eixo X", "multiple": False, "groups": {"measure"}},
+        {"name": ROLE_Y_AXIS, "label": "Eixo Y", "multiple": False, "groups": {"measure"}},
+        {"name": ROLE_SIZE, "label": "Tamanho", "multiple": False, "groups": {"measure"}},
+        {"name": ROLE_LEGEND, "label": "Legenda", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": ROLE_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
     ],
     "matrix": [
-        {"name": SLOT_ROWS, "label": "Linhas", "multiple": True, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_COLUMNS, "label": "Colunas", "multiple": True, "groups": {"dimension", "date", "other"}},
-        {"name": SLOT_VALUES, "label": "Valores", "multiple": True, "groups": {"measure"}},
-        {"name": SLOT_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
-        {"name": SLOT_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_X_AXIS, "label": "Linhas", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_Y_AXIS, "label": "Colunas", "multiple": True, "groups": {"dimension", "date", "other"}},
+        {"name": ROLE_VALUES, "label": "Valores", "multiple": True, "groups": {"measure", "dimension", "date", "other"}},
+        {"name": ROLE_TOOLTIP, "label": "Tooltip", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
+        {"name": ROLE_FILTERS, "label": "Filtros", "multiple": True, "groups": {"dimension", "date", "measure", "other"}},
     ],
 }
 SLOT_DEFINITIONS["table"] = SLOT_DEFINITIONS["matrix"]
+for _chart_type in ("kpi", "gauge"):
+    SLOT_DEFINITIONS[_chart_type] = SLOT_DEFINITIONS["card"]
+for _chart_type in (
+    "area",
+    "column_clustered",
+    "column_stacked",
+    "bar100_stacked",
+    "combo",
+    "treemap",
+    "waterfall",
+    "funnel",
+    "slicer",
+):
+    SLOT_DEFINITIONS[_chart_type] = SLOT_DEFINITIONS["bar"]
 
 
 def normalize_chart_type(chart_type: str) -> str:
@@ -144,7 +282,7 @@ def binding_slot_names(chart_type: str) -> List[str]:
 
 
 def is_binding_slot_compatible(chart_type: str, slot_name: str, field_group: str) -> bool:
-    slot_name = str(slot_name or "").strip().lower()
+    slot_name = normalize_binding_role(slot_name)
     field_group = str(field_group or "other").strip().lower() or "other"
     for slot in binding_slot_definitions(chart_type):
         if str(slot.get("name") or "") == slot_name:
@@ -156,46 +294,46 @@ def suggest_binding_slot(chart_type: str, field_group: str, binding: Optional["D
     chart_type = normalize_chart_type(chart_type)
     field_group = str(field_group or "other").strip().lower() or "other"
     binding = (binding or DashboardChartBinding(chart_type=chart_type)).normalized()
-    if chart_type == "card":
-        return SLOT_VALUES if field_group == "measure" else ""
+    if chart_type in {"card", "kpi", "gauge"}:
+        return ROLE_VALUES if field_group == "measure" else ""
     if chart_type == "scatter":
         if field_group == "measure":
-            if not binding.x_field:
-                return SLOT_X
-            if not binding.y_field:
-                return SLOT_Y
-            if not binding.size_field:
-                return SLOT_SIZE
-            return SLOT_TOOLTIP
+            if not binding.field_names(ROLE_X_AXIS):
+                return ROLE_X_AXIS
+            if not binding.field_names(ROLE_Y_AXIS):
+                return ROLE_Y_AXIS
+            if not binding.field_names(ROLE_SIZE):
+                return ROLE_SIZE
+            return ROLE_TOOLTIP
         if not binding.legend_field:
-            return SLOT_LEGEND
-        return SLOT_TOOLTIP
+            return ROLE_LEGEND
+        return ROLE_TOOLTIP
     if chart_type == "matrix":
         if field_group == "measure":
-            return SLOT_VALUES
-        if not binding.row_fields:
-            return SLOT_ROWS
-        return SLOT_COLUMNS
+            return ROLE_VALUES
+        if not binding.field_names(ROLE_X_AXIS):
+            return ROLE_X_AXIS
+        return ROLE_Y_AXIS
     if field_group == "measure":
-        return SLOT_VALUES
-    if not binding.dimension_field:
-        return SLOT_CATEGORY
+        return ROLE_VALUES
+    if not binding.field_names(ROLE_X_AXIS):
+        return ROLE_X_AXIS
     if not binding.legend_field:
-        return SLOT_LEGEND
-    return SLOT_TOOLTIP
+        return ROLE_LEGEND
+    return ROLE_TOOLTIP
 
 
 def empty_binding_message(chart_type: str, binding: Optional["DashboardChartBinding"] = None) -> str:
     chart_type = normalize_chart_type(chart_type)
     binding = (binding or DashboardChartBinding(chart_type=chart_type)).normalized()
-    if chart_type == "card":
+    if chart_type in {"card", "kpi", "gauge"}:
         return "Arraste uma medida para Valor."
     if chart_type == "scatter":
         return "Arraste campos numericos para X e Y."
     if chart_type == "matrix":
         return "Arraste campos para Linhas e Valores."
-    if chart_type in {"bar", "barh", "line", "pie", "donut"}:
-        return "Arraste uma categoria e uma medida."
+    if chart_type in {"bar", "barh", "line", "area", "pie", "donut"}:
+        return "Arraste campos para Eixo X/Categoria e Valores."
     return "Arraste campos para configurar este visual."
 
 
@@ -406,17 +544,103 @@ class DashboardChartBinding:
     title_override: str = ""
     base_filters: List[Dict[str, Any]] = field(default_factory=list)
     source_name: str = ""
+    bindings: Dict[str, List[FieldBindingItem]] = field(default_factory=dict)
+
+    def _normalized_bindings(self) -> Dict[str, List[FieldBindingItem]]:
+        normalized: Dict[str, List[FieldBindingItem]] = {role: [] for role in (*VISUAL_BINDING_ROLES, ROLE_SIZE)}
+
+        def _add(role: str, value: Any, *, field_type: str = "unknown", aggregation: str = "", display_name: str = ""):
+            target_role = normalize_binding_role(role)
+            if not target_role:
+                return
+            existing = normalized.setdefault(target_role, [])
+            order = len(existing)
+            payload = value
+            if not isinstance(value, (dict, FieldBindingItem)):
+                payload = {
+                    "field": str(value or "").strip(),
+                    "display_name": display_name or str(value or "").strip(),
+                    "type": field_type,
+                    "aggregation": aggregation,
+                    "role": target_role,
+                    "order": order,
+                }
+            item = FieldBindingItem.from_payload(payload, target_role, order)
+            if item is None:
+                return
+            duplicate = any(str(existing_item.field).lower() == item.field.lower() for existing_item in existing)
+            if duplicate:
+                return
+            existing.append(item.normalized(target_role, order))
+
+        for role, items in dict(self.bindings or {}).items():
+            target_role = normalize_binding_role(role)
+            for index, item in enumerate(list(items or [])):
+                parsed = FieldBindingItem.from_payload(item, target_role, index)
+                if parsed is not None:
+                    _add(target_role, parsed)
+
+        for field_name in _unique_normalized_texts([self.dimension_field]):
+            _add(ROLE_X_AXIS, field_name, aggregation="none")
+        for field_name in _unique_normalized_texts(self.row_fields or []):
+            _add(ROLE_X_AXIS, field_name, aggregation="none")
+        for field_name in _unique_normalized_texts(self.column_fields or []):
+            _add(ROLE_Y_AXIS, field_name, aggregation="none")
+        if self.x_field:
+            _add(ROLE_X_AXIS, self.x_field, field_type="numeric", aggregation="none")
+        if self.y_field:
+            _add(ROLE_Y_AXIS, self.y_field, field_type="numeric", aggregation=self.aggregation or "sum")
+        if self.size_field:
+            _add(ROLE_SIZE, self.size_field, field_type="numeric", aggregation="sum")
+        for field_name in _unique_normalized_texts([self.measure_field, *(self.value_fields or [])]):
+            _add(ROLE_VALUES, field_name, aggregation=dict(self.value_aggregations or {}).get(field_name) or self.aggregation or "sum")
+        if self.legend_field:
+            _add(ROLE_LEGEND, self.legend_field, aggregation="none")
+        for field_name in _unique_normalized_texts(self.filter_fields or []):
+            _add(ROLE_FILTERS, field_name, aggregation="none")
+        for field_name in _unique_normalized_texts(self.tooltip_fields or []):
+            _add(ROLE_TOOLTIP, field_name, aggregation="none")
+
+        for role, items in list(normalized.items()):
+            normalized[role] = [
+                item.normalized(role, index)
+                for index, item in enumerate(sorted(items, key=lambda item: int(item.order or 0)))
+                if item.field
+            ]
+        return normalized
+
+    def binding_items(self, role: str) -> List[FieldBindingItem]:
+        normalized = self.normalized()
+        return [item.normalized(role, index) for index, item in enumerate(normalized.bindings.get(normalize_binding_role(role), []) or [])]
+
+    def field_names(self, role: str) -> List[str]:
+        return [item.field for item in list((self.bindings or {}).get(normalize_binding_role(role), []) or []) if str(getattr(item, "field", "") or "").strip()]
+
+    def measure_items(self) -> List[FieldBindingItem]:
+        bindings = self.normalized().bindings
+        return list(bindings.get(ROLE_VALUES) or []) or list(bindings.get(ROLE_Y_AXIS) or [])
 
     def normalized(self) -> "DashboardChartBinding":
         chart_type = normalize_chart_type(self.chart_type)
-        row_fields = _unique_normalized_texts(self.row_fields or [])
-        column_fields = _unique_normalized_texts(self.column_fields or [])
-        value_fields = _unique_normalized_texts(self.value_fields or [])
-        dimension_field = str(self.dimension_field or "").strip()
-        measure_field = str(self.measure_field or "").strip()
-        x_field = str(self.x_field or "").strip()
-        y_field = str(self.y_field or "").strip()
-        size_field = str(self.size_field or "").strip()
+        bindings = self._normalized_bindings()
+        x_axis_fields = [item.field for item in list(bindings.get(ROLE_X_AXIS) or [])]
+        y_axis_fields = [item.field for item in list(bindings.get(ROLE_Y_AXIS) or [])]
+        value_items = list(bindings.get(ROLE_VALUES) or [])
+        value_fields = [item.field for item in value_items]
+        row_fields = list(x_axis_fields)
+        column_fields = list(y_axis_fields)
+        dimension_field = x_axis_fields[0] if x_axis_fields else str(self.dimension_field or "").strip()
+        measure_field = value_fields[0] if value_fields else str(self.measure_field or "").strip()
+        x_field = x_axis_fields[0] if x_axis_fields else str(self.x_field or "").strip()
+        y_field = y_axis_fields[0] if y_axis_fields else str(self.y_field or "").strip()
+        size_items = list(bindings.get(ROLE_SIZE) or [])
+        size_field = size_items[0].field if size_items else str(self.size_field or "").strip()
+        legend_items = list(bindings.get(ROLE_LEGEND) or [])
+        filter_items = list(bindings.get(ROLE_FILTERS) or [])
+        tooltip_items = list(bindings.get(ROLE_TOOLTIP) or [])
+        legend_field = legend_items[0].field if legend_items else str(self.legend_field or "").strip()
+        filter_fields = [item.field for item in filter_items] or _unique_normalized_texts(self.filter_fields or [])
+        tooltip_fields = [item.field for item in tooltip_items] or _unique_normalized_texts(self.tooltip_fields or [])
         if chart_type == "scatter":
             x_field = x_field or measure_field
             y_field = y_field or ""
@@ -442,8 +666,13 @@ class DashboardChartBinding:
             for key, value in dict(self.value_aggregations or {}).items()
             if str(key or "").strip()
         }
-        for field_name in value_fields:
-            value_aggs.setdefault(field_name, aggregation or "sum")
+        for item in [*value_items, *list(bindings.get(ROLE_Y_AXIS) or [])]:
+            value_aggs.setdefault(item.field, normalize_aggregation(item.aggregation, item.type, item.role))
+        if not aggregation:
+            for item in [*value_items, *list(bindings.get(ROLE_Y_AXIS) or [])]:
+                if item.aggregation and item.aggregation != "none":
+                    aggregation = item.aggregation
+                    break
         return DashboardChartBinding(
             chart_id=str(self.chart_id or "").strip(),
             chart_type=chart_type,
@@ -460,13 +689,14 @@ class DashboardChartBinding:
             value_fields=value_fields,
             value_aggregations=value_aggs,
             aggregation=aggregation,
-            legend_field=str(self.legend_field or "").strip(),
-            filter_fields=_unique_normalized_texts(self.filter_fields or []),
-            tooltip_fields=_unique_normalized_texts(self.tooltip_fields or []),
+            legend_field=legend_field,
+            filter_fields=_unique_normalized_texts(filter_fields),
+            tooltip_fields=_unique_normalized_texts(tooltip_fields),
             top_n=max(1, min(100, int(self.top_n or 12))),
             title_override=str(self.title_override or "").strip(),
             base_filters=[dict(item or {}) for item in list(self.base_filters or [])],
             source_name=str(self.source_name or "").strip(),
+            bindings={role: [item.normalized(role, index) for index, item in enumerate(items)] for role, items in bindings.items() if items},
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -494,6 +724,11 @@ class DashboardChartBinding:
             "title_override": normalized.title_override,
             "base_filters": _json_safe(normalized.base_filters),
             "source_name": normalized.source_name,
+            "bindings": {
+                role: [item.to_dict() for item in list(items or [])]
+                for role, items in dict(normalized.bindings or {}).items()
+                if items
+            },
         }
 
     @classmethod
@@ -522,6 +757,16 @@ class DashboardChartBinding:
             title_override=str(payload.get("title_override") or "").strip(),
             base_filters=[dict(item or {}) for item in list(payload.get("base_filters") or [])],
             source_name=str(payload.get("source_name") or "").strip(),
+            bindings={
+                normalize_binding_role(role): [
+                    item
+                    for index, item_payload in enumerate(list(items or []))
+                    for item in [FieldBindingItem.from_payload(item_payload, str(role), index)]
+                    if item is not None
+                ]
+                for role, items in dict(payload.get("bindings") or {}).items()
+                if normalize_binding_role(role)
+            },
         ).normalized()
 
     @classmethod
@@ -631,6 +876,7 @@ class DashboardChartBinding:
             title_override=title_override,
             base_filters=[dict(item or {}) for item in list(base_filters or [])],
             source_name=str(source_name).strip(),
+            bindings=dict(binding.get("bindings") or {}),
         ).normalized()
 
     def match_keys(self) -> List[str]:
@@ -639,13 +885,14 @@ class DashboardChartBinding:
 
     def has_minimum_fields(self) -> bool:
         chart_type = normalize_chart_type(self.chart_type)
-        if chart_type == "card":
-            return bool(self.measure_field or self.value_fields)
+        measure_items = self.measure_items()
+        if chart_type in {"card", "kpi", "gauge"}:
+            return bool(measure_items)
         if chart_type == "scatter":
             return bool(self.x_field and self.y_field)
         if chart_type == "matrix":
-            return bool(self.row_fields and self.value_fields)
-        return bool(self.dimension_field and (self.measure_field or self.aggregation == "count"))
+            return bool(self.field_names(ROLE_X_AXIS) and measure_items)
+        return bool(self.field_names(ROLE_X_AXIS) and (measure_items or self.aggregation == "count"))
 
     def empty_message(self) -> str:
         return empty_binding_message(self.chart_type, self)
