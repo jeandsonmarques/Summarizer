@@ -19,7 +19,6 @@ from qgis.PyQt.QtWidgets import (
     QSizePolicy,
     QAbstractSpinBox,
     QSpinBox,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -362,13 +361,6 @@ class VisualFormatPanel(QFrame):
         title_column.addWidget(self.item_label)
         header.addLayout(title_column, 1)
 
-        self.close_btn = QToolButton(self)
-        self.close_btn.setObjectName("VisualPanelCloseButton")
-        self.close_btn.setText("x")
-        self.close_btn.setCursor(Qt.PointingHandCursor)
-        self.close_btn.setToolTip(_rt("Recolher painel"))
-        self.close_btn.clicked.connect(self.closeRequested.emit)
-        header.addWidget(self.close_btn, 0, Qt.AlignTop)
         root.addLayout(header)
 
         self.empty_label = QLabel(
@@ -424,20 +416,6 @@ class VisualFormatPanel(QFrame):
             QLabel#VisualPanelEmpty {
                 color: #64748B;
                 font-size: 9px;
-            }
-            QToolButton#VisualPanelCloseButton {
-                min-width: 22px;
-                max-width: 22px;
-                min-height: 22px;
-                max-height: 22px;
-                border: 1px solid #CBD5E1;
-                border-radius: 6px;
-                background: #FFFFFF;
-                color: #334155;
-            }
-            QToolButton#VisualPanelCloseButton:hover {
-                background: #F8FAFC;
-                border-color: #94A3B8;
             }
             QPushButton#VisualPanelTabButton {
                 border: 1px solid #CBD5E1;
