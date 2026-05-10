@@ -194,9 +194,9 @@ class DashboardCanvas(QWidget):
         self._max_zoom = 3.0
         self._zoom_step = 1.15
         self._background_color = QColor("#FFFFFF")
-        self._grid_color = QColor("#E5E7EB")
+        self._grid_color = QColor("#FFFFFF")
         self._show_grid = False
-        self._grid_opacity = 0.72
+        self._grid_opacity = 1.0
         self.interaction_manager = ModelInteractionManager(self)
         self.interaction_manager.filtersChanged.connect(self.filtersChanged.emit)
 
