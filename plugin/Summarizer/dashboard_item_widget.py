@@ -5,8 +5,8 @@ import json
 import os
 from typing import Optional
 
-from qgis.PyQt.QtCore import QEvent, QPoint, QRect, QSize, Qt, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QIcon
+from qgis.PyQt.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QBrush, QIcon, QPainter, QPainterPath, QPen
 from qgis.PyQt.QtWidgets import (
     QAction,
     QActionGroup,
@@ -33,6 +33,7 @@ from qgis.PyQt.QtWidgets import (
 from .dashboard_models import (
     DashboardChartBinding,
     DashboardChartItem,
+    ROLE_X_AXIS,
     binding_slot_definitions,
     empty_binding_message,
     suggest_binding_slot,
@@ -137,6 +138,101 @@ class _VisualDropSlot(QFrame):
         event.acceptProposedAction()
 
 
+class _EmptyVisualPreview(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._chart_type = "bar"
+        self.setObjectName("ModelDashboardEmptyPreview")
+        self.setMinimumSize(190, 150)
+
+    def set_chart_type(self, chart_type: str):
+        normalized = str(chart_type or "bar").strip().lower() or "bar"
+        if normalized == self._chart_type:
+            return
+        self._chart_type = normalized
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        bounds = QRectF(self.rect()).adjusted(2, 2, -2, -2)
+        painter.fillRect(bounds, QColor("#F3F4F6"))
+        painter.setPen(QPen(QColor("#FFFFFF"), 1))
+        for step in range(1, 4):
+            y = bounds.top() + bounds.height() * step / 4.0
+            painter.drawLine(QPoint(int(bounds.left()), int(y)), QPoint(int(bounds.right()), int(y)))
+
+        chart_type = str(self._chart_type or "bar").lower()
+        bar_color = QColor("#C9CDD2")
+        darker = QColor("#B8BDC3")
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(bar_color))
+
+        if chart_type in {"barh", "funnel"}:
+            widths = [0.58, 0.78, 0.46, 0.70, 0.52]
+            top = bounds.top() + bounds.height() * 0.22
+            row_h = bounds.height() * 0.10
+            for index, factor in enumerate(widths):
+                y = top + index * row_h * 1.55
+                painter.drawRect(QRectF(bounds.left() + 16, y, bounds.width() * factor, row_h))
+        elif chart_type in {"line", "area"}:
+            points = [
+                QPointF(bounds.left() + bounds.width() * 0.12, bounds.bottom() - bounds.height() * 0.25),
+                QPointF(bounds.left() + bounds.width() * 0.30, bounds.bottom() - bounds.height() * 0.44),
+                QPointF(bounds.left() + bounds.width() * 0.48, bounds.bottom() - bounds.height() * 0.36),
+                QPointF(bounds.left() + bounds.width() * 0.66, bounds.bottom() - bounds.height() * 0.62),
+                QPointF(bounds.left() + bounds.width() * 0.84, bounds.bottom() - bounds.height() * 0.52),
+            ]
+            if chart_type == "area":
+                path = QPainterPath(points[0])
+                for point in points[1:]:
+                    path.lineTo(point)
+                path.lineTo(QPointF(points[-1].x(), bounds.bottom() - 12))
+                path.lineTo(QPointF(points[0].x(), bounds.bottom() - 12))
+                path.closeSubpath()
+                painter.setBrush(QBrush(QColor(201, 205, 210, 105)))
+                painter.drawPath(path)
+            painter.setPen(QPen(darker, 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            for index in range(len(points) - 1):
+                painter.drawLine(points[index], points[index + 1])
+        elif chart_type in {"pie", "donut"}:
+            rect = QRectF(
+                bounds.center().x() - bounds.height() * 0.30,
+                bounds.center().y() - bounds.height() * 0.30,
+                bounds.height() * 0.60,
+                bounds.height() * 0.60,
+            )
+            painter.setBrush(QBrush(bar_color))
+            painter.drawPie(rect, 30 * 16, 130 * 16)
+            painter.setBrush(QBrush(darker))
+            painter.drawPie(rect, 160 * 16, 90 * 16)
+            painter.setBrush(QBrush(QColor("#D9DDE2")))
+            painter.drawPie(rect, 250 * 16, 140 * 16)
+            if chart_type == "donut":
+                painter.setBrush(QBrush(QColor("#F3F4F6")))
+                painter.drawEllipse(rect.adjusted(rect.width() * 0.28, rect.height() * 0.28, -rect.width() * 0.28, -rect.height() * 0.28))
+        elif chart_type in {"matrix", "table", "slicer"}:
+            left = bounds.left() + 16
+            top = bounds.top() + 22
+            col_w = (bounds.width() - 32) / 3.0
+            row_h = (bounds.height() - 44) / 5.0
+            painter.setPen(QPen(QColor("#FFFFFF"), 1))
+            for row in range(5):
+                for col in range(3):
+                    shade = QColor("#C9CDD2") if row == 0 else QColor("#D9DDE2")
+                    painter.fillRect(QRectF(left + col * col_w, top + row * row_h, col_w - 2, row_h - 2), shade)
+        else:
+            values = [0.36, 0.44, 0.38, 0.72, 0.88, 0.60]
+            gap = bounds.width() * 0.045
+            bar_w = (bounds.width() - gap * 7) / 6.0
+            baseline = bounds.bottom() - 12
+            for index, factor in enumerate(values):
+                h = (bounds.height() - 34) * factor
+                x = bounds.left() + gap + index * (bar_w + gap)
+                painter.drawRect(QRectF(x, baseline - h, bar_w, h))
+
+
 class _DashboardVisualDropOverlay(QFrame):
     fieldDropped = pyqtSignal(str, object)
 
@@ -147,26 +243,23 @@ class _DashboardVisualDropOverlay(QFrame):
         self.setAttribute(Qt.WA_StyledBackground, True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(8)
-        layout.addStretch(1)
-
-        self.icon_label = QLabel("[]", self)
-        self.icon_label.setObjectName("ModelDashboardEmptyVisualIcon")
-        self.icon_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.icon_label, 0, Qt.AlignHCenter)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
 
         self.message_label = QLabel(_rt("Arraste campos para configurar este visual"), self)
         self.message_label.setObjectName("ModelDashboardEmptyVisualText")
         self.message_label.setWordWrap(True)
-        self.message_label.setAlignment(Qt.AlignCenter)
+        self.message_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         layout.addWidget(self.message_label, 0)
+
+        self.preview_widget = _EmptyVisualPreview(self)
+        layout.addWidget(self.preview_widget, 1)
 
         self.slots_row = QWidget(self)
         slots_layout = QGridLayout(self.slots_row)
-        slots_layout.setContentsMargins(0, 4, 0, 0)
-        slots_layout.setHorizontalSpacing(8)
-        slots_layout.setVerticalSpacing(8)
+        slots_layout.setContentsMargins(0, 0, 0, 0)
+        slots_layout.setHorizontalSpacing(0)
+        slots_layout.setVerticalSpacing(0)
         self._slots = {}
         self._slot_layout = slots_layout
         self._chart_type = "bar"
@@ -180,14 +273,12 @@ class _DashboardVisualDropOverlay(QFrame):
             else:
                 slots_layout.addWidget(slot, 1, index - 2, 1, 1)
             self._slots[slot_name] = slot
-        layout.addWidget(self.slots_row, 0)
-        layout.addStretch(1)
+        self.slots_row.hide()
 
     def set_chart_context(self, chart_type: str, binding: Optional[DashboardChartBinding] = None):
         self._chart_type = str(chart_type or "bar").strip().lower() or "bar"
-        compact = str(chart_type or "").strip().upper()[:3] or "[]"
-        self.icon_label.setText(compact)
-        self.message_label.setText(_rt(empty_binding_message(chart_type, binding)))
+        self.preview_widget.set_chart_type(self._chart_type)
+        self.message_label.setText(_rt("Selecione ou arraste campos para preencher este visual"))
         wanted = binding_slot_definitions(chart_type)
         wanted_names = [str(slot.get("name") or "") for slot in wanted]
         for slot_name, slot in self._slots.items():
@@ -196,7 +287,10 @@ class _DashboardVisualDropOverlay(QFrame):
             slot_name = str(slot_def.get("name") or "")
             slot = self._slots.get(slot_name)
             if slot is None:
-                continue
+                label = str(slot_def.get("label") or slot_name)
+                slot = _VisualDropSlot(slot_name, _rt(label), self.slots_row)
+                slot.fieldDropped.connect(self.fieldDropped.emit)
+                self._slots[slot_name] = slot
             self._slot_layout.removeWidget(slot)
             row = 0 if index < 3 else 1
             column = index if index < 3 else index - 3
@@ -220,7 +314,7 @@ class _DashboardVisualDropOverlay(QFrame):
             event.ignore()
             return
         suggested = suggest_binding_slot(self._chart_type, str(payload.get("field_group") or "other"))
-        target_slot = suggested if suggested in self._slots else "category"
+        target_slot = suggested if suggested in self._slots else ROLE_X_AXIS
         self.fieldDropped.emit(target_slot, payload)
         event.acceptProposedAction()
 
@@ -691,6 +785,9 @@ class DashboardItemWidget(QFrame):
             self.title_label,
             self.subtitle_label,
             self.chart_widget,
+            self.drop_overlay,
+            self.drop_overlay.message_label,
+            self.drop_overlay.preview_widget,
             self.footer_label,
         )
         for widget in self._event_widgets:
@@ -723,7 +820,7 @@ class DashboardItemWidget(QFrame):
         return bool(self._binding.has_minimum_fields())
 
     def _drop_overlay_visible(self) -> bool:
-        return bool(self._edit_mode and self._highlight_mode == "selected")
+        return bool(self._edit_mode and not self._has_minimum_binding())
 
     def _sync_drop_overlay(self):
         try:
@@ -829,10 +926,7 @@ class DashboardItemWidget(QFrame):
         self.title_label.setText(self._item.display_title())
         self.subtitle_label.setText(self._item.subtitle or "")
         self._sync_chart_identity()
-        empty_text = None
-        if not self._has_minimum_binding():
-            empty_text = _rt(empty_binding_message(str(getattr(self._item.visual_state, "chart_type", "") or ""), self._binding))
-        self.chart_widget.set_payload(self._item.payload, empty_text=empty_text)
+        self.chart_widget.set_payload(self._item.payload, empty_text="")
         self.chart_widget.chart_state = self._item.visual_state
         try:
             self.chart_widget.refresh_visual_state()
@@ -977,18 +1071,20 @@ class DashboardItemWidget(QFrame):
     def _apply_styles(self):
         zoom = max(0.6, min(2.0, float(self._zoom_scale or 1.0)))
         visual_state = getattr(self._item, "visual_state", None)
-        border = "#D9E1EA"
-        header_bg = "#FBFCFD"
-        header_border = "#EDF2F7"
+        border = "#D1D5DB"
+        header_bg = "#FFFFFF"
+        header_border = "#ECEFF3"
         card_bg = str(getattr(visual_state, "background_color", "#FFFFFF") or "#FFFFFF")
         if not bool(getattr(visual_state, "show_background", True)):
             card_bg = "transparent"
         title_color = str(getattr(visual_state, "title_color", "#1F2937") or "#1F2937")
         label_color = str(getattr(visual_state, "label_color", "#64748B") or "#64748B")
         try:
-            border_radius = int(getattr(visual_state, "border_radius", 12) or 12)
+            border_radius = int(getattr(visual_state, "border_radius", 2) or 2)
         except Exception:
-            border_radius = 12
+            border_radius = 2
+        if border_radius == 8:
+            border_radius = 2
         try:
             configured_title_size = int(getattr(visual_state, "title_size", 0) or 0)
         except Exception:
@@ -997,7 +1093,7 @@ class DashboardItemWidget(QFrame):
             configured_label_size = int(getattr(visual_state, "label_size", 0) or 0)
         except Exception:
             configured_label_size = 0
-        border_radius = max(0, min(32, border_radius))
+        border_radius = max(0, min(8, border_radius))
         title_size = configured_title_size if configured_title_size > 0 else max(11, min(18, int(round(13 * zoom))))
         label_size = configured_label_size if configured_label_size > 0 else max(9, min(15, int(round(11 * zoom))))
         if bool(getattr(visual_state, "show_border", False)):
@@ -1015,13 +1111,13 @@ class DashboardItemWidget(QFrame):
             header_bg = "transparent"
             header_border_rule = "none"
         elif self._highlight_mode == "drag":
-            border = "#A5B4FC"
+            border = "#9CA3AF"
             card_border = f"1px solid {border}"
         elif self._highlight_mode == "resize":
-            border = "#818CF8"
+            border = "#6B7280"
             card_border = f"1px solid {border}"
         elif self._highlight_mode == "selected":
-            border = "#93C5FD"
+            border = "#9CA3AF"
             card_border = f"1px solid {border}"
 
         self.setStyleSheet(
@@ -1033,12 +1129,12 @@ class DashboardItemWidget(QFrame):
             QFrame#ModelDashboardCard {{
                 background: {card_bg};
                 border: {card_border};
-                border-radius: {max(8, min(16, border_radius))}px;
+                border-radius: {border_radius}px;
             }}
             QFrame#ModelDashboardHeader {{
                 background: {header_bg};
                 border: {header_border_rule};
-                border-radius: 8px;
+                border-radius: 0px;
             }}
             QLabel#ModelDashboardItemTitle {{
                 color: {title_color};
@@ -1086,19 +1182,18 @@ class DashboardItemWidget(QFrame):
                 border-color: #6366F1;
             }}
             QFrame#ModelDashboardDropOverlay {{
-                background: rgba(255, 255, 255, 228);
-                border: 1px dashed #CBD5E1;
-                border-radius: {max(8, int(round(10 * zoom)))}px;
-            }}
-            QLabel#ModelDashboardEmptyVisualIcon {{
-                color: #3B82F6;
-                font-size: {max(12, min(22, int(round(16 * zoom))))}px;
-                font-weight: 600;
+                background: #FFFFFF;
+                border: none;
+                border-radius: 0px;
             }}
             QLabel#ModelDashboardEmptyVisualText {{
-                color: #475569;
+                color: #374151;
                 font-size: {max(10, min(16, int(round(11 * zoom))))}px;
                 font-weight: 400;
+            }}
+            QWidget#ModelDashboardEmptyPreview {{
+                background: #F3F4F6;
+                border: none;
             }}
             QFrame#ModelVisualDropSlot {{
                 background: rgba(255, 255, 255, 235);

@@ -3,10 +3,11 @@
 import json
 import os
 import uuid
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QSize, Qt, QMimeData, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QDrag, QKeySequence
+from qgis.PyQt.QtCore import QByteArray, QSize, Qt, QMimeData, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QDrag, QIcon, QKeySequence, QPainter, QPixmap
+from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.PyQt.QtWidgets import (
     QListWidget,
     QListWidgetItem,
@@ -43,15 +44,25 @@ from .dashboard_models import (
     DashboardChartItem,
     DashboardPage,
     DashboardProject,
+    FieldBindingItem,
+    ROLE_FILTERS,
+    ROLE_LEGEND,
+    ROLE_SIZE,
+    ROLE_TOOLTIP,
+    ROLE_VALUES,
+    ROLE_X_AXIS,
+    ROLE_Y_AXIS,
     binding_slot_definitions,
     empty_binding_message,
     is_binding_slot_compatible,
+    normalize_aggregation,
+    normalize_binding_role,
     normalize_chart_type,
     suggest_binding_slot,
 )
 from .dashboard_page_widget import DashboardPageWidget
 from .dashboard_project_store import DashboardProjectStore, PROJECT_EXTENSION
-from .field_list_helpers import configure_field_item, field_kind_from_field_def
+from .field_list_helpers import configure_field_item, field_kind_badge, field_kind_from_field_def, normalize_field_kind
 from .report_view.charts import ChartVisualState
 from .report_view.result_models import ChartPayload
 from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelModeToggle, _ModelRecentCard
@@ -64,6 +75,28 @@ from .visual_format_panel import VisualFormatPanel
 
 _MODEL_FIELD_MIME = "application/x-summarizer-model-field"
 _MODEL_FIELD_ROLE = Qt.UserRole + 41
+_MODEL_TRASH_SVG = """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M14.7404 9L14.3942 18M9.60577 18L9.25962 9M19.2276 5.79057C19.5696 5.84221 19.9104 5.89747 20.25 5.95629M19.2276 5.79057L18.1598 19.6726C18.0696 20.8448 17.0921 21.75 15.9164 21.75H8.08357C6.90786 21.75 5.93037 20.8448 5.8402 19.6726L4.77235 5.79057M19.2276 5.79057C18.0812 5.61744 16.9215 5.48485 15.75 5.39432M3.75 5.95629C4.08957 5.89747 4.43037 5.84221 4.77235 5.79057M4.77235 5.79057C5.91878 5.61744 7.07849 5.48485 8.25 5.39432M15.75 5.39432V4.47819C15.75 3.29882 14.8393 2.31423 13.6606 2.27652C13.1092 2.25889 12.5556 2.25 12 2.25C11.4444 2.25 10.8908 2.25889 10.3394 2.27652C9.16065 2.31423 8.25 3.29882 8.25 4.47819V5.39432M15.75 5.39432C14.5126 5.2987 13.262 5.25 12 5.25C10.738 5.25 9.48744 5.2987 8.25 5.39432" stroke="__COLOR__" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>"""
+
+
+def _model_builder_trash_icon(size: int = 14) -> QIcon:
+    icon = QIcon()
+    for mode, color in (
+        (QIcon.Normal, "#EF4444"),
+        (QIcon.Active, "#DC2626"),
+        (QIcon.Selected, "#DC2626"),
+        (QIcon.Disabled, "#FCA5A5"),
+    ):
+        svg_data = QByteArray(_MODEL_TRASH_SVG.replace("__COLOR__", color).encode("utf-8"))
+        renderer = QSvgRenderer(svg_data)
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        icon.addPixmap(pixmap, mode)
+    return icon
 
 
 class _ModelFieldList(QListWidget):
@@ -94,9 +127,81 @@ class _ModelFieldList(QListWidget):
         drag.exec_(Qt.CopyAction)
 
 
+class _ModelFieldBindingChip(QFrame):
+    removeRequested = pyqtSignal(str)
+    aggregationChanged = pyqtSignal(str, str)
+    moveRequested = pyqtSignal(str, int)
+
+    def __init__(self, binding_item: FieldBindingItem, parent=None):
+        super().__init__(parent)
+        self.binding_item = binding_item.normalized()
+        self.setObjectName("ModelBindingFieldChip")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 2, 4, 2)
+        layout.setSpacing(4)
+
+        badge = QLabel(field_kind_badge(self.binding_item.type), self)
+        badge.setObjectName("ModelBindingFieldBadge")
+        badge.setAlignment(Qt.AlignCenter)
+        layout.addWidget(badge, 0)
+
+        name = QLabel(self.binding_item.display_name or self.binding_item.field, self)
+        name.setObjectName("ModelBindingFieldName")
+        name.setToolTip(self.binding_item.field)
+        name.setMinimumWidth(42)
+        layout.addWidget(name, 1)
+
+        self.aggregation_combo = QComboBox(self)
+        self.aggregation_combo.setObjectName("ModelBindingAggregationCombo")
+        for label, value in (
+            (_rt("Sem agreg."), "none"),
+            (_rt("Soma"), "sum"),
+            (_rt("Contagem"), "count"),
+            (_rt("Media"), "avg"),
+            (_rt("Min"), "min"),
+            (_rt("Max"), "max"),
+            (_rt("Unicos"), "unique_count"),
+        ):
+            self.aggregation_combo.addItem(label, value)
+        index = self.aggregation_combo.findData(self.binding_item.aggregation)
+        self.aggregation_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.aggregation_combo.currentIndexChanged.connect(self._emit_aggregation_changed)
+        self.aggregation_combo.setVisible(self.binding_item.aggregation != "none" or self.binding_item.role in {ROLE_VALUES, ROLE_Y_AXIS, ROLE_SIZE})
+        layout.addWidget(self.aggregation_combo, 0)
+
+        for text, delta, tooltip in (("↑", -1, _rt("Mover para cima")), ("↓", 1, _rt("Mover para baixo"))):
+            button = QToolButton(self)
+            button.setObjectName("ModelBindingSlotMove")
+            button.setText(text)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setAutoRaise(True)
+            button.setFixedSize(16, 16)
+            button.setToolTip(tooltip)
+            button.clicked.connect(lambda checked=False, value=delta: self.moveRequested.emit(self.binding_item.field, value))
+            layout.addWidget(button, 0)
+
+        remove = QToolButton(self)
+        remove.setObjectName("ModelBindingSlotRemove")
+        remove.setCursor(Qt.PointingHandCursor)
+        remove.setAutoRaise(True)
+        remove.setFixedSize(18, 18)
+        remove.setIcon(_model_builder_trash_icon())
+        remove.setIconSize(QSize(14, 14))
+        remove.setToolTip(_rt("Remover campo"))
+        remove.clicked.connect(lambda: self.removeRequested.emit(self.binding_item.field))
+        layout.addWidget(remove, 0)
+
+    def _emit_aggregation_changed(self):
+        aggregation = str(self.aggregation_combo.currentData() or "none")
+        self.aggregationChanged.emit(self.binding_item.field, aggregation)
+
+
 class _ModelBindingSlot(QFrame):
     fieldDropped = pyqtSignal(str, object)
     removeRequested = pyqtSignal(str, str)
+    aggregationChanged = pyqtSignal(str, str, str)
+    moveRequested = pyqtSignal(str, str, int)
 
     def __init__(self, slot_name: str, label: str, parent=None):
         super().__init__(parent)
@@ -105,25 +210,31 @@ class _ModelBindingSlot(QFrame):
         self.setAcceptDrops(True)
         self._active = False
 
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(8, 6, 8, 6)
-        self._layout.setSpacing(6)
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(6, 5, 6, 6)
+        self._layout.setSpacing(4)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(4)
 
         self.label_widget = QLabel(label, self)
         self.label_widget.setObjectName("ModelBindingSlotLabel")
-        self._layout.addWidget(self.label_widget, 0)
+        header.addWidget(self.label_widget, 1)
+        self._layout.addLayout(header, 0)
 
-        self.value_widget = QLabel(_rt("Solte um campo aqui"), self)
+        self.value_widget = QLabel(_rt("Arraste campos aqui"), self)
         self.value_widget.setObjectName("ModelBindingSlotValue")
         self.value_widget.setWordWrap(True)
-        self._layout.addWidget(self.value_widget, 1)
+        self._layout.addWidget(self.value_widget, 0)
 
-        self.remove_btn = QToolButton(self)
-        self.remove_btn.setObjectName("ModelBindingSlotRemove")
-        self.remove_btn.setText("x")
-        self.remove_btn.clicked.connect(lambda: self.removeRequested.emit(self.slot_name, ""))
-        self._layout.addWidget(self.remove_btn, 0)
-        self.remove_btn.hide()
+        self.chips_host = QWidget(self)
+        self.chips_host.setObjectName("ModelBindingSlotChips")
+        self.chips_layout = QVBoxLayout(self.chips_host)
+        self.chips_layout.setContentsMargins(0, 0, 0, 0)
+        self.chips_layout.setSpacing(3)
+        self._layout.addWidget(self.chips_host, 0)
+        self._chip_widgets = []
 
     def set_value(self, text: str, *, placeholder: str = ""):
         self.set_values([text] if str(text or "").strip() else [], placeholder=placeholder)
@@ -132,38 +243,35 @@ class _ModelBindingSlot(QFrame):
         self.label_widget.setText(str(text or ""))
 
     def set_values(self, values, *, placeholder: str = ""):
-        clean_values = [str(value or "").strip() for value in list(values or []) if str(value or "").strip()]
+        clean_values = []
+        for index, value in enumerate(list(values or [])):
+            if isinstance(value, FieldBindingItem):
+                item = value.normalized(self.slot_name, index)
+            elif isinstance(value, dict):
+                item = FieldBindingItem.from_payload(value, self.slot_name, index)
+            else:
+                item = FieldBindingItem.from_payload(str(value or "").strip(), self.slot_name, index)
+            if item is not None and item.field:
+                clean_values.append(item)
         for widget in list(getattr(self, "_chip_widgets", []) or []):
-            self._layout.removeWidget(widget)
+            self.chips_layout.removeWidget(widget)
             widget.deleteLater()
         self._chip_widgets = []
-        self.remove_btn.hide()
         if clean_values:
             self.value_widget.hide()
-            insert_at = max(1, self._layout.count() - 1)
-            for value in clean_values:
-                chip = QFrame(self)
-                chip.setObjectName("ModelBindingSlotChip")
-                chip_layout = QHBoxLayout(chip)
-                chip_layout.setContentsMargins(6, 1, 4, 1)
-                chip_layout.setSpacing(4)
-                label = QLabel(value, chip)
-                label.setObjectName("ModelBindingSlotChipLabel")
-                label.setToolTip(value)
-                chip_layout.addWidget(label, 1)
-                remove = QToolButton(chip)
-                remove.setObjectName("ModelBindingSlotRemove")
-                remove.setText("x")
-                remove.setToolTip(_rt("Remover campo"))
-                remove.clicked.connect(lambda checked=False, item=value: self.removeRequested.emit(self.slot_name, item))
-                chip_layout.addWidget(remove, 0)
-                self._layout.insertWidget(insert_at, chip, 0)
-                insert_at += 1
+            self.chips_host.show()
+            for item in clean_values:
+                chip = _ModelFieldBindingChip(item, self.chips_host)
+                chip.removeRequested.connect(lambda field_name, slot=self.slot_name: self.removeRequested.emit(slot, field_name))
+                chip.aggregationChanged.connect(lambda field_name, aggregation, slot=self.slot_name: self.aggregationChanged.emit(slot, field_name, aggregation))
+                chip.moveRequested.connect(lambda field_name, delta, slot=self.slot_name: self.moveRequested.emit(slot, field_name, delta))
+                self.chips_layout.addWidget(chip, 0)
                 self._chip_widgets.append(chip)
             self.setProperty("filled", True)
         else:
+            self.chips_host.hide()
             self.value_widget.show()
-            self.value_widget.setText(str(placeholder or _rt("Solte um campo aqui")))
+            self.value_widget.setText(str(placeholder or _rt("Adicionar campo\nArraste campos aqui")))
             self.setProperty("filled", False)
         self.style().unpolish(self)
         self.style().polish(self)
@@ -779,22 +887,8 @@ class ModelTab(QWidget):
             }
             QLabel#ModelBuilderHint {
                 color: #64748B;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 400;
-            }
-            QToolButton#ModelBuilderCloseButton {
-                min-width: 22px;
-                max-width: 22px;
-                min-height: 22px;
-                max-height: 22px;
-                border: 1px solid #CBD5E1;
-                border-radius: 6px;
-                background: #FFFFFF;
-                color: #334155;
-            }
-            QToolButton#ModelBuilderCloseButton:hover {
-                background: #F8FAFC;
-                border-color: #94A3B8;
             }
             QFrame#ModelBuilderSection {
                 background: #FFFFFF;
@@ -840,7 +934,7 @@ class ModelTab(QWidget):
             }
             QLabel#ModelBuilderSectionTitle {
                 color: #0F172A;
-                font-size: 13px;
+                font-size: 12px;
                 font-weight: 500;
             }
             QToolButton#ModelVisualTypeButton {
@@ -901,70 +995,107 @@ class ModelTab(QWidget):
             }
             QLabel#ModelBuilderFieldLabel {
                 color: #6B7280;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 400;
             }
             QFrame#ModelBindingSlot {
-                background: #FFFFFF;
-                border: 1px dashed #DDE5EF;
+                background: #F8FAFC;
+                border: 1px solid rgba(148, 163, 184, 0.32);
                 border-radius: 4px;
+                min-height: 42px;
             }
             QFrame#ModelBindingSlot[filled="true"] {
-                border-style: solid;
-                border-color: #CBD5E1;
-                background: #F8FAFC;
+                border-color: rgba(148, 163, 184, 0.36);
+                background: #FFFFFF;
             }
             QFrame#ModelBindingSlot[dropActive="true"] {
-                border-style: solid;
-                border-color: rgba(96, 165, 250, 0.42);
-                background: rgba(248, 250, 252, 0.98);
+                border-color: rgba(96, 165, 250, 0.45);
+                background: rgba(239, 246, 255, 0.55);
             }
             QLabel#ModelBindingSlotLabel {
-                color: #374151;
-                font-size: 12px;
+                color: #475569;
+                font-size: 10px;
                 font-weight: 500;
             }
-            QFrame#ModelBindingSlotChip {
-                background: rgba(241, 245, 249, 0.98);
-                border: 1px solid rgba(148, 163, 184, 0.24);
-                border-radius: 999px;
+            QFrame#ModelBindingSlotChips {
+                background: transparent;
             }
-            QLabel#ModelBindingSlotChipLabel {
-                color: #0F172A;
-                font-size: 12px;
-                font-weight: 500;
+            QFrame#ModelBindingFieldChip {
+                background: #FFFFFF;
+                border: 1px solid rgba(148, 163, 184, 0.42);
+                border-radius: 3px;
             }
-            QLabel#ModelBindingSlotValue {
-                color: #6B7280;
-                font-size: 12px;
+            QLabel#ModelBindingFieldBadge {
+                background: #EEF2FF;
+                color: #334155;
+                border: 1px solid rgba(148, 163, 184, 0.32);
+                border-radius: 2px;
+                min-width: 26px;
+                max-width: 34px;
+                min-height: 16px;
+                font-size: 8px;
+                font-weight: 600;
+            }
+            QLabel#ModelBindingFieldName {
+                color: #111827;
+                font-size: 10px;
                 font-weight: 400;
             }
+            QLabel#ModelBindingSlotValue {
+                color: #94A3B8;
+                font-size: 10px;
+                font-weight: 400;
+            }
+            QComboBox#ModelBindingAggregationCombo {
+                min-height: 18px;
+                max-height: 18px;
+                border: 1px solid rgba(148, 163, 184, 0.32);
+                border-radius: 2px;
+                padding: 0 4px;
+                background: #F8FAFC;
+                color: #334155;
+                font-size: 9px;
+            }
             QToolButton#ModelBindingSlotRemove {
+                min-width: 18px;
+                max-width: 18px;
+                min-height: 18px;
+                max-height: 18px;
+                border: 1px solid transparent;
+                border-radius: 2px;
+                background: transparent;
+                padding: 0;
+            }
+            QToolButton#ModelBindingSlotRemove:hover {
+                background: rgba(239, 68, 68, 0.08);
+                border-color: rgba(239, 68, 68, 0.20);
+            }
+            QToolButton#ModelBindingSlotMove {
                 min-width: 16px;
                 max-width: 16px;
                 min-height: 16px;
                 max-height: 16px;
-                border: 1px solid #CBD5E1;
-                border-radius: 8px;
-                background: #FFFFFF;
-                color: #334155;
+                border: 1px solid transparent;
+                border-radius: 2px;
+                background: transparent;
+                color: #64748B;
                 padding: 0;
-                font-size: 10px;
+                font-size: 9px;
             }
-            QToolButton#ModelBindingSlotRemove:hover {
-                background: #F8FAFC;
-                border-color: #94A3B8;
+            QToolButton#ModelBindingSlotMove:hover {
+                background: #F1F5F9;
+                border-color: rgba(148, 163, 184, 0.24);
             }
             QComboBox#ModelBuilderCombo,
             QLineEdit#ModelBuilderLineEdit,
             QSpinBox#ModelBuilderSpin {
-                min-height: 24px;
+                min-height: 23px;
                 border: 1px solid rgba(17, 24, 39, 0.08);
                 border-radius: 2px;
                 padding: 2px 6px;
                 background: rgba(255, 255, 255, 0.96);
                 color: #111827;
-                font-size: 12px;
+                font-size: 11px;
             }
             QComboBox#ModelBuilderCombo:focus,
             QLineEdit#ModelBuilderLineEdit:focus,
@@ -1227,19 +1358,35 @@ class ModelTab(QWidget):
                 border-color: rgba(17, 24, 39, 0.12);
             }
             QFrame#ModelBindingSlot {
-                background: #FFFFFF;
-                border: 1px dashed #DDE5EF;
+                background: #F8FAFC;
+                border: 1px solid rgba(148, 163, 184, 0.32);
                 border-radius: 4px;
+                min-height: 42px;
             }
             QFrame#ModelBindingSlot[filled="true"] {
-                border-style: solid;
-                border-color: #CBD5E1;
-                background: #F8FAFC;
+                border-color: rgba(148, 163, 184, 0.36);
+                background: #FFFFFF;
             }
-            QFrame#ModelBindingSlotChip {
-                background: #F1F5F9;
-                border: 1px solid #CBD5E1;
-                border-radius: 9px;
+            QFrame#ModelBindingFieldChip {
+                background: #FFFFFF;
+                border: 1px solid rgba(148, 163, 184, 0.42);
+                border-radius: 3px;
+            }
+            QLabel#ModelBindingFieldBadge {
+                background: #EEF2FF;
+                color: #334155;
+                border: 1px solid rgba(148, 163, 184, 0.32);
+                border-radius: 2px;
+                min-width: 26px;
+                max-width: 34px;
+                min-height: 16px;
+                font-size: 8px;
+                font-weight: 600;
+            }
+            QLabel#ModelBindingFieldName,
+            QLabel#ModelBindingSlotValue,
+            QLabel#ModelBindingSlotLabel {
+                font-size: 10px;
             }
             """
         )
@@ -1252,19 +1399,6 @@ class ModelTab(QWidget):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(4)
-
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(0)
-        header.addStretch(1)
-
-        self.builder_panel_close_btn = QToolButton(panel)
-        self.builder_panel_close_btn.setObjectName("ModelBuilderCloseButton")
-        self.builder_panel_close_btn.setText("x")
-        self.builder_panel_close_btn.setToolTip(_rt("Recolher painel"))
-        self.builder_panel_close_btn.clicked.connect(lambda: self._set_builder_panel_open(False))
-        header.addWidget(self.builder_panel_close_btn, 0, Qt.AlignTop)
-        layout.addLayout(header, 0)
 
         scroll = QScrollArea(panel)
         scroll.setObjectName("ModelBuilderScroll")
@@ -1330,10 +1464,22 @@ class ModelTab(QWidget):
             (_rt("Colunas"), "bar", "ModelVisual-Column.svg", _rt("Colunas - compara valores por categoria.")),
             (_rt("Barras"), "barh", "ModelVisual-Bar.svg", _rt("Barras - compara categorias em eixo horizontal.")),
             (_rt("Linha"), "line", "ModelVisual-Line.svg", _rt("Linha - mostra tendência ao longo do tempo.")),
+            (_rt("Area"), "area", "ModelVisual-Area.svg", _rt("Area - destaca a evolução acumulada dos valores.")),
             (_rt("Pizza"), "pie", "ModelVisual-Pie.svg", _rt("Pizza - mostra composição entre partes.")),
             (_rt("Rosca"), "donut", "ModelVisual-Donut.svg", _rt("Rosca - composição com foco no total.")),
+            (_rt("Card"), "card", "ModelVisual-Card.svg", _rt("Card - destaca um único indicador.")),
+            (_rt("KPI"), "kpi", "ModelVisual-KPI.svg", _rt("KPI - acompanha um indicador principal.")),
+            (_rt("Medidor"), "gauge", "ModelVisual-Gauge.svg", _rt("Medidor - mostra progresso em relação a uma meta.")),
+            (_rt("Matriz"), "matrix", "ModelVisual-Matrix.svg", _rt("Matriz - cruza linhas, colunas e valores.")),
+            (_rt("Segmentador"), "slicer", "ModelVisual-Slicer.svg", _rt("Segmentador - lista categorias para filtragem visual.")),
+            (_rt("Coluna agrupada"), "column_clustered", "ModelVisual-ColumnClustered.svg", _rt("Coluna agrupada - compara séries lado a lado.")),
+            (_rt("Coluna empilhada"), "column_stacked", "ModelVisual-ColumnStacked.svg", _rt("Coluna empilhada - mostra partes dentro de cada coluna.")),
+            (_rt("Barra 100%"), "bar100_stacked", "ModelVisual-Bar100Stacked.svg", _rt("Barra 100% - compara proporções entre categorias.")),
+            (_rt("Combo"), "combo", "ModelVisual-Combo.svg", _rt("Combo - combina barras e linha no mesmo visual.")),
             (_rt("Dispersao"), "scatter", "ModelVisual-Scatter.svg", _rt("Dispersão - compara X, Y e tamanho.")),
-            (_rt("Tabela"), "matrix", "ModelVisual-Matrix.svg", _rt("Tabela - cruza linhas, colunas e valores.")),
+            (_rt("Treemap"), "treemap", "ModelVisual-Treemap.svg", _rt("Treemap - mostra participação por áreas.")),
+            (_rt("Cascata"), "waterfall", "ModelVisual-Waterfall.svg", _rt("Cascata - destaca variações positivas e negativas.")),
+            (_rt("Funil"), "funnel", "ModelVisual-Funnel.svg", _rt("Funil - mostra etapas em sequência.")),
         ]
         self.builder_visual_buttons = {}
         for index, (label_text, chart_type, icon_name, tooltip_text) in enumerate(self._builder_visual_specs):
@@ -1351,7 +1497,7 @@ class ModelTab(QWidget):
             button.setAutoRaise(True)
             button.setFixedSize(30, 28)
             button.setIconSize(QSize(18, 18))
-            button.clicked.connect(lambda checked=False, value=chart_type: self._create_blank_visual_from_type(value))
+            button.clicked.connect(lambda checked=False, value=chart_type: self._select_visual_type_from_builder(value))
             button.setProperty("visualType", chart_type)
             self.builder_visual_buttons[chart_type] = button
             visuals_grid.addWidget(button, index // 6, index % 6)
@@ -1385,20 +1531,19 @@ class ModelTab(QWidget):
 
         self.builder_binding_slots = {}
         for slot_name, slot_label in (
-            ("category", _rt("Categoria / Eixo")),
-            ("values", _rt("Valores")),
-            ("legend", _rt("Legenda")),
-            ("filters", _rt("Filtros")),
-            ("tooltip", _rt("Tooltip")),
-            ("x", _rt("X")),
-            ("y", _rt("Y")),
-            ("size", _rt("Tamanho")),
-            ("rows", _rt("Linhas")),
-            ("columns", _rt("Colunas")),
+            (ROLE_X_AXIS, _rt("Eixo X")),
+            (ROLE_Y_AXIS, _rt("Eixo Y")),
+            (ROLE_VALUES, _rt("Valores")),
+            (ROLE_LEGEND, _rt("Legenda")),
+            (ROLE_TOOLTIP, _rt("Tooltip")),
+            (ROLE_FILTERS, _rt("Filtros")),
+            (ROLE_SIZE, _rt("Tamanho")),
         ):
             slot = _ModelBindingSlot(slot_name, slot_label, self.builder_construct_card)
             slot.fieldDropped.connect(self._apply_dropped_field_to_selected_visual)
             slot.removeRequested.connect(self._remove_selected_visual_slot_field)
+            slot.aggregationChanged.connect(self._change_selected_visual_slot_aggregation)
+            slot.moveRequested.connect(self._move_selected_visual_slot_field)
             self.builder_binding_slots[slot_name] = slot
             construct_layout.addWidget(slot, 0)
             self._builder_selection_widgets.append(slot)
@@ -1631,52 +1776,38 @@ class ModelTab(QWidget):
 
     def _suggested_role_for_group(self, group: str) -> str:
         mapping = {
-            "dimension": "category",
-            "measure": "values",
-            "date": "category",
-            "other": "tooltip",
+            "dimension": ROLE_X_AXIS,
+            "measure": ROLE_VALUES,
+            "date": ROLE_X_AXIS,
+            "other": ROLE_TOOLTIP,
         }
-        return mapping.get(str(group or "").strip().lower(), "category")
+        return mapping.get(str(group or "").strip().lower(), ROLE_X_AXIS)
 
-    def _slot_values_for_binding(self, binding: DashboardChartBinding, slot_name: str) -> List[str]:
-        slot_name = str(slot_name or "").strip().lower()
-        if slot_name == "category":
-            return [binding.dimension_field] if binding.dimension_field else []
-        if slot_name == "values":
-            fields = list(binding.value_fields or [])
-            if binding.measure_field and binding.measure_field not in fields:
-                fields.insert(0, binding.measure_field)
-            if not fields and binding.aggregation == "count":
-                return [_rt("Contagem")]
-            return fields
-        if slot_name == "legend":
-            return [binding.legend_field] if binding.legend_field else []
-        if slot_name == "filters":
-            return list(binding.filter_fields or [])
-        if slot_name == "tooltip":
-            return list(binding.tooltip_fields or [])
-        if slot_name == "x":
-            return [binding.x_field] if binding.x_field else []
-        if slot_name == "y":
-            return [binding.y_field] if binding.y_field else []
-        if slot_name == "size":
-            return [binding.size_field] if binding.size_field else []
-        if slot_name == "rows":
-            return list(binding.row_fields or [])
-        if slot_name == "columns":
-            return list(binding.column_fields or [])
-        return []
+    def _slot_values_for_binding(self, binding: DashboardChartBinding, slot_name: str) -> List[FieldBindingItem]:
+        role = normalize_binding_role(slot_name)
+        return list(binding.normalized().bindings.get(role) or [])
 
     def _chart_type_label(self, chart_type: str) -> str:
         labels = {
             "card": _rt("Card"),
+            "kpi": _rt("KPI"),
+            "gauge": _rt("Medidor"),
             "bar": _rt("Colunas"),
             "barh": _rt("Barras"),
             "line": _rt("Linha"),
+            "area": _rt("Area"),
             "pie": _rt("Pizza"),
             "donut": _rt("Rosca"),
             "scatter": _rt("Dispersao"),
-            "matrix": _rt("Tabela"),
+            "matrix": _rt("Matriz"),
+            "slicer": _rt("Segmentador"),
+            "column_clustered": _rt("Coluna agrupada"),
+            "column_stacked": _rt("Coluna empilhada"),
+            "bar100_stacked": _rt("Barra 100%"),
+            "combo": _rt("Combo"),
+            "treemap": _rt("Treemap"),
+            "waterfall": _rt("Cascata"),
+            "funnel": _rt("Funil"),
         }
         return labels.get(str(chart_type or "").strip().lower(), _rt("Grafico"))
 
@@ -1757,6 +1888,22 @@ class ModelTab(QWidget):
         self._dirty = True
         self._commit_history_if_changed()
         self._refresh_ui_state()
+        self._set_builder_panel_open(True, focus=False)
+        self._sync_builder_selection_state()
+
+    def _select_visual_type_from_builder(self, chart_type: str):
+        normalized_type = normalize_chart_type(chart_type)
+        item = self._selected_canvas_item()
+        if item is None:
+            self._create_blank_visual_from_type(normalized_type)
+            return
+        binding = item.binding.normalized()
+        binding.chart_type = normalized_type
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is None:
+            return
+        updated_item.visual_state.chart_type = normalized_type
+        self._replace_canvas_item(updated_item, select=True)
         self._set_builder_panel_open(True, focus=False)
         self._sync_builder_selection_state()
 
@@ -1866,7 +2013,7 @@ class ModelTab(QWidget):
         label = self.builder_option_labels.get("aggregation")
         if label is not None:
             label.setVisible(True)
-        topn_visible = active_chart_type not in {"card", "scatter"}
+        topn_visible = active_chart_type not in {"card", "kpi", "gauge", "scatter"}
         self.builder_topn_spin.setVisible(topn_visible)
         label = self.builder_option_labels.get("top_n")
         if label is not None:
@@ -1928,8 +2075,23 @@ class ModelTab(QWidget):
                 log_exception("falha opcional ignorada")
         return "bar"
 
+    def _field_binding_item_from_payload(self, role: str, payload: Dict[str, object], order: int = 0) -> Optional[FieldBindingItem]:
+        field_name = str(payload.get("field_name") or payload.get("field") or "").strip()
+        if not field_name:
+            return None
+        field_kind = normalize_field_kind(str(payload.get("field_kind") or payload.get("field_group") or "unknown"))
+        aggregation = normalize_aggregation("", field_kind, role)
+        return FieldBindingItem(
+            field=field_name,
+            display_name=str(payload.get("display_name") or field_name).strip() or field_name,
+            type=field_kind,
+            aggregation=aggregation,
+            role=role,
+            order=order,
+        ).normalized(role, order)
+
     def _apply_field_payload_to_binding(self, binding: DashboardChartBinding, slot_name: str, payload: Dict[str, object]) -> DashboardChartBinding:
-        slot_name = str(slot_name or "").strip().lower()
+        slot_name = normalize_binding_role(slot_name)
         field_name = str(payload.get("field_name") or "").strip()
         field_group = str(payload.get("field_group") or "other").strip().lower() or "other"
         layer_id = str(payload.get("layer_id") or "").strip()
@@ -1946,80 +2108,60 @@ class ModelTab(QWidget):
         if not slot_name or not is_binding_slot_compatible(updated.chart_type, slot_name, field_group):
             self.builder_selected_visual_label.setText(_rt("Campo incompativel com este slot"))
             return updated.normalized()
-        if slot_name == "category":
-            updated.dimension_field = field_name
-            updated.semantic_field_key = field_name
-            updated.semantic_field_aliases = [field_name]
-        elif slot_name == "values":
-            if normalize_chart_type(updated.chart_type) == "matrix":
-                if field_name not in updated.value_fields:
-                    updated.value_fields = list(updated.value_fields or []) + [field_name]
-                updated.measure_field = updated.value_fields[0] if updated.value_fields else field_name
-            else:
-                updated.measure_field = field_name
-                updated.value_fields = [field_name]
-            if updated.aggregation in {"", "count"}:
-                updated.aggregation = "sum"
-        elif slot_name == "legend":
-            updated.legend_field = field_name
-        elif slot_name == "x":
-            updated.x_field = field_name
-        elif slot_name == "y":
-            updated.y_field = field_name
-        elif slot_name == "size":
-            updated.size_field = field_name
-        elif slot_name == "rows":
-            if field_name not in updated.row_fields:
-                updated.row_fields = list(updated.row_fields or []) + [field_name]
-            updated.dimension_field = updated.row_fields[0] if updated.row_fields else field_name
-            updated.semantic_field_key = updated.dimension_field
-            updated.semantic_field_aliases = list(updated.row_fields or [])
-        elif slot_name == "columns":
-            if field_name not in updated.column_fields:
-                updated.column_fields = list(updated.column_fields or []) + [field_name]
-        elif slot_name == "filters":
-            if field_name not in updated.filter_fields:
-                updated.filter_fields = list(updated.filter_fields) + [field_name]
-        elif slot_name == "tooltip":
-            if field_name not in updated.tooltip_fields:
-                updated.tooltip_fields = list(updated.tooltip_fields) + [field_name]
+        current_bindings = {
+            role: [item.normalized(role, index) for index, item in enumerate(list(items or []))]
+            for role, items in dict(updated.bindings or {}).items()
+        }
+        role_items = list(current_bindings.get(slot_name) or [])
+        item = self._field_binding_item_from_payload(slot_name, payload, len(role_items))
+        if item is None:
+            return updated.normalized()
+        if any(existing.field.lower() == item.field.lower() for existing in role_items):
+            return updated.normalized()
+        slot_def = next((slot for slot in binding_slot_definitions(updated.chart_type) if str(slot.get("name") or "") == slot_name), {})
+        if not bool(slot_def.get("multiple", True)):
+            role_items = []
+        role_items.append(item)
+        current_bindings[slot_name] = role_items
+        updated.bindings = current_bindings
         return updated.normalized()
 
     def _remove_binding_slot_value(self, binding: DashboardChartBinding, slot_name: str, field_name: str = "") -> DashboardChartBinding:
         updated = binding.normalized()
-        slot_name = str(slot_name or "").strip().lower()
+        slot_name = normalize_binding_role(slot_name)
         field_name = str(field_name or "").strip()
-        if slot_name == "category":
-            updated.dimension_field = ""
-            updated.semantic_field_key = ""
-            updated.semantic_field_aliases = []
-        elif slot_name == "values":
-            if field_name:
-                updated.value_fields = [item for item in list(updated.value_fields or []) if item != field_name]
-            else:
-                updated.value_fields = []
-            updated.measure_field = updated.value_fields[0] if updated.value_fields else ""
-            if not updated.measure_field:
-                updated.aggregation = "count"
-        elif slot_name == "legend":
-            updated.legend_field = ""
-        elif slot_name == "x":
-            updated.x_field = ""
-        elif slot_name == "y":
-            updated.y_field = ""
-        elif slot_name == "size":
-            updated.size_field = ""
-        elif slot_name == "rows":
-            updated.row_fields = [item for item in list(updated.row_fields or []) if item != field_name] if field_name else []
-            updated.dimension_field = updated.row_fields[0] if updated.row_fields else ""
-            updated.semantic_field_key = updated.dimension_field
-            updated.semantic_field_aliases = list(updated.row_fields or [])
-        elif slot_name == "columns":
-            updated.column_fields = [item for item in list(updated.column_fields or []) if item != field_name] if field_name else []
-        elif slot_name == "filters":
-            updated.filter_fields = [item for item in list(updated.filter_fields or []) if item != field_name] if field_name else []
-        elif slot_name == "tooltip":
-            updated.tooltip_fields = [item for item in list(updated.tooltip_fields or []) if item != field_name] if field_name else []
+        role_items = list(updated.bindings.get(slot_name) or [])
+        if field_name:
+            role_items = [item for item in role_items if item.field != field_name]
+        else:
+            role_items = []
+        updated.bindings[slot_name] = [item.normalized(slot_name, index) for index, item in enumerate(role_items)]
+        return updated.normalized()
+
+    def _change_binding_slot_aggregation(self, binding: DashboardChartBinding, slot_name: str, field_name: str, aggregation: str) -> DashboardChartBinding:
+        updated = binding.normalized()
+        role = normalize_binding_role(slot_name)
+        items = []
+        for index, item in enumerate(list(updated.bindings.get(role) or [])):
+            if item.field == field_name:
+                item = FieldBindingItem(item.field, item.display_name, item.type, aggregation, role, index).normalized(role, index)
+            items.append(item.normalized(role, index))
+        updated.bindings[role] = items
+        return updated.normalized()
+
+    def _move_binding_slot_field(self, binding: DashboardChartBinding, slot_name: str, field_name: str, delta: int) -> DashboardChartBinding:
+        updated = binding.normalized()
+        role = normalize_binding_role(slot_name)
+        items = list(updated.bindings.get(role) or [])
+        current = next((index for index, item in enumerate(items) if item.field == field_name), -1)
+        if current < 0:
+            return updated
+        target = max(0, min(len(items) - 1, current + int(delta or 0)))
+        if target == current:
+            return updated
+        item = items.pop(current)
+        items.insert(target, item)
+        updated.bindings[role] = [item.normalized(role, index) for index, item in enumerate(items)]
         return updated.normalized()
 
     def _update_selected_visual_binding_controls(self):
@@ -2030,6 +2172,13 @@ class ModelTab(QWidget):
         binding.aggregation = str(self.builder_agg_combo.currentData() or "count").strip().lower() or "count"
         binding.top_n = max(1, int(self.builder_topn_spin.value()))
         binding.title_override = str(self.builder_title_edit.text() or "").strip()
+        for role in (ROLE_VALUES, ROLE_Y_AXIS):
+            items = list(binding.bindings.get(role) or [])
+            if items:
+                first = items[0]
+                items[0] = FieldBindingItem(first.field, first.display_name, first.type, binding.aggregation, first.role, first.order).normalized(first.role, first.order)
+                binding.bindings[role] = items
+                break
         updated_item = self._rebuild_chart_item_from_binding(item, binding)
         if updated_item is not None:
             self._replace_canvas_item(updated_item)
@@ -2048,6 +2197,24 @@ class ModelTab(QWidget):
         if item is None:
             return
         binding = self._remove_binding_slot_value(item.binding, slot_name, field_name)
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _change_selected_visual_slot_aggregation(self, slot_name: str, field_name: str, aggregation: str):
+        item = self._selected_canvas_item()
+        if item is None:
+            return
+        binding = self._change_binding_slot_aggregation(item.binding, slot_name, field_name, aggregation)
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _move_selected_visual_slot_field(self, slot_name: str, field_name: str, delta: int):
+        item = self._selected_canvas_item()
+        if item is None:
+            return
+        binding = self._move_binding_slot_field(item.binding, slot_name, field_name, delta)
         updated_item = self._rebuild_chart_item_from_binding(item, binding)
         if updated_item is not None:
             self._replace_canvas_item(updated_item)
@@ -2159,9 +2326,63 @@ class ModelTab(QWidget):
             log_exception("falha opcional ignorada")
         return ""
 
+    def _field_kind_for_layer_field(self, layer: QgsVectorLayer, field_name: str) -> str:
+        try:
+            fields = layer.fields()
+            index = fields.lookupField(str(field_name or ""))
+            if index is not None and index >= 0:
+                return normalize_field_kind(field_kind_from_field_def(fields.field(index)))
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return "unknown"
+
+    def _resolve_binding_items_for_layer(self, binding: DashboardChartBinding, role: str, layer: QgsVectorLayer) -> List[FieldBindingItem]:
+        normalized = binding.normalized()
+        result: List[FieldBindingItem] = []
+        for index, item in enumerate(list(normalized.bindings.get(normalize_binding_role(role)) or [])):
+            resolved_name = self._resolve_layer_field_name(layer, item.field)
+            if not resolved_name:
+                continue
+            field_type = self._field_kind_for_layer_field(layer, resolved_name)
+            result.append(
+                FieldBindingItem(
+                    field=resolved_name,
+                    display_name=item.display_name or resolved_name,
+                    type=field_type,
+                    aggregation=normalize_aggregation(item.aggregation, field_type, item.role),
+                    role=item.role,
+                    order=index,
+                ).normalized(item.role, index)
+            )
+        return result
+
+    def _feature_category_from_items(self, feature, items: List[FieldBindingItem]) -> tuple[str, object]:
+        if not items:
+            return _rt("Total"), _rt("Total")
+        raw_parts = []
+        display_parts = []
+        for item in items:
+            raw_value = feature.attribute(item.field)
+            raw_parts.append(raw_value)
+            text = str(raw_value).strip() if raw_value not in (None, "") else _rt("(vazio)")
+            display_parts.append(text)
+        return " / ".join(display_parts), tuple(raw_parts)
+
     def _rebuild_scatter_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding, layer: QgsVectorLayer) -> DashboardChartItem:
         updated_item = item.clone()
         updated_binding = binding.normalized()
+        x_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_X_AXIS, layer)
+        y_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_Y_AXIS, layer)
+        size_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_SIZE, layer)
+        legend_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_LEGEND, layer)
+        if x_items:
+            updated_binding.x_field = x_items[0].field
+        if y_items:
+            updated_binding.y_field = y_items[0].field
+        if size_items:
+            updated_binding.size_field = size_items[0].field
+        if legend_items:
+            updated_binding.legend_field = legend_items[0].field
         points = []
         for feature in layer.getFeatures():
             x_value = self._safe_float(feature.attribute(updated_binding.x_field))
@@ -2224,11 +2445,15 @@ class ModelTab(QWidget):
     def _rebuild_matrix_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding, layer: QgsVectorLayer) -> DashboardChartItem:
         updated_item = item.clone()
         updated_binding = binding.normalized()
-        rows = list(updated_binding.row_fields or [])
-        columns = list(updated_binding.column_fields or [])
-        values = list(updated_binding.value_fields or [])
-        value_field = values[0] if values else ""
-        aggregation = str(updated_binding.aggregation or "sum").strip().lower() or "sum"
+        row_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_X_AXIS, layer)
+        column_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_Y_AXIS, layer)
+        value_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_VALUES, layer)
+        rows = [item.field for item in row_items]
+        columns = [item.field for item in column_items]
+        values = [item.field for item in value_items]
+        value_item = value_items[0] if value_items else None
+        value_field = value_item.field if value_item is not None else ""
+        aggregation = normalize_aggregation(value_item.aggregation if value_item is not None else updated_binding.aggregation, value_item.type if value_item is not None else "", ROLE_VALUES)
         grouped: Dict[str, Dict[str, object]] = {}
         has_numeric_values = False
         for feature in layer.getFeatures():
@@ -2240,13 +2465,16 @@ class ModelTab(QWidget):
                 bucket["feature_ids"].append(int(feature.id()))
             except Exception:
                 log_exception("falha opcional ignorada")
-            numeric = self._safe_float(feature.attribute(value_field)) if value_field else None
-            if numeric is None:
-                continue
-            has_numeric_values = True
+            if aggregation == "count":
+                numeric = 1.0
+            else:
+                numeric = self._safe_float(feature.attribute(value_field)) if value_field else None
+                if numeric is None:
+                    continue
+                has_numeric_values = True
             bucket["sum"] = float(bucket.get("sum") or 0.0) + float(numeric)
             bucket["count"] = int(bucket.get("count") or 0) + 1
-        if not grouped or not has_numeric_values:
+        if not grouped or (aggregation != "count" and not has_numeric_values):
             updated_item.binding = updated_binding
             updated_item.payload = self._empty_chart_payload("matrix", updated_binding.title_override)
             updated_item.subtitle = _rt("Sem valores numericos para a matriz")
@@ -2258,6 +2486,8 @@ class ModelTab(QWidget):
             value = float(bucket.get("sum") or 0.0)
             if aggregation == "avg":
                 value = value / float(max(1, count))
+            elif aggregation == "count":
+                value = float(count)
             matrix_rows.append({"category": category, "value": value, "feature_ids": list(bucket.get("feature_ids") or [])})
         matrix_rows.sort(key=lambda row: float(row.get("value") or 0.0), reverse=True)
         top_n = max(1, int(updated_binding.top_n or 50))
@@ -2317,30 +2547,44 @@ class ModelTab(QWidget):
 
         updated_binding.source_id = layer.id()
         updated_binding.source_name = layer.name()
-        dimension_field = self._resolve_layer_field_name(layer, updated_binding.dimension_field)
-        measure_field = self._resolve_layer_field_name(layer, updated_binding.measure_field) if updated_binding.measure_field else ""
-        legend_field = self._resolve_layer_field_name(layer, updated_binding.legend_field) if updated_binding.legend_field else ""
-        x_field = self._resolve_layer_field_name(layer, updated_binding.x_field) if updated_binding.x_field else ""
-        y_field = self._resolve_layer_field_name(layer, updated_binding.y_field) if updated_binding.y_field else ""
-        size_field = self._resolve_layer_field_name(layer, updated_binding.size_field) if updated_binding.size_field else ""
-        row_fields = [name for name in (self._resolve_layer_field_name(layer, item) for item in list(updated_binding.row_fields or [])) if name]
-        column_fields = [name for name in (self._resolve_layer_field_name(layer, item) for item in list(updated_binding.column_fields or [])) if name]
-        value_fields = [name for name in (self._resolve_layer_field_name(layer, item) for item in list(updated_binding.value_fields or [])) if name]
-        aggregation = str(updated_binding.aggregation or "count").strip().lower() or "count"
+        x_axis_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_X_AXIS, layer)
+        y_axis_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_Y_AXIS, layer)
+        value_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_VALUES, layer)
+        legend_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_LEGEND, layer)
+        filter_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_FILTERS, layer)
+        tooltip_items = self._resolve_binding_items_for_layer(updated_binding, ROLE_TOOLTIP, layer)
+        measure_items = list(value_items or []) or list(y_axis_items or [])
+        dimension_field = x_axis_items[0].field if x_axis_items else ""
+        measure_field = measure_items[0].field if measure_items else ""
+        legend_field = legend_items[0].field if legend_items else ""
+        aggregation = normalize_aggregation(measure_items[0].aggregation if measure_items else updated_binding.aggregation, measure_items[0].type if measure_items else "", ROLE_VALUES)
         top_n = max(1, int(updated_binding.top_n or 12))
 
         updated_binding.dimension_field = dimension_field
         updated_binding.measure_field = measure_field
         updated_binding.legend_field = legend_field
-        updated_binding.x_field = x_field
-        updated_binding.y_field = y_field
-        updated_binding.size_field = size_field
-        updated_binding.row_fields = row_fields
-        updated_binding.column_fields = column_fields
-        updated_binding.value_fields = value_fields
+        updated_binding.x_field = x_axis_items[0].field if x_axis_items else ""
+        updated_binding.y_field = y_axis_items[0].field if y_axis_items else ""
+        updated_binding.row_fields = [item.field for item in x_axis_items]
+        updated_binding.column_fields = [item.field for item in y_axis_items]
+        updated_binding.value_fields = [item.field for item in value_items]
+        updated_binding.filter_fields = [item.field for item in filter_items]
+        updated_binding.tooltip_fields = [item.field for item in tooltip_items]
+        updated_binding.bindings = {
+            role: items
+            for role, items in {
+                ROLE_X_AXIS: x_axis_items,
+                ROLE_Y_AXIS: y_axis_items,
+                ROLE_VALUES: value_items,
+                ROLE_LEGEND: legend_items,
+                ROLE_FILTERS: filter_items,
+                ROLE_TOOLTIP: tooltip_items,
+            }.items()
+            if items
+        }
         if dimension_field:
             updated_binding.semantic_field_key = dimension_field
-            updated_binding.semantic_field_aliases = [dimension_field]
+            updated_binding.semantic_field_aliases = [item.field for item in x_axis_items]
 
         if not updated_binding.has_minimum_fields():
             updated_item.binding = updated_binding
@@ -2359,53 +2603,69 @@ class ModelTab(QWidget):
         if chart_type == "matrix":
             return self._rebuild_matrix_item_from_binding(updated_item, updated_binding, layer)
 
-        grouped: Dict[str, Dict[str, object]] = {}
+        active_measure_items = measure_items or [
+            FieldBindingItem(
+                field=dimension_field,
+                display_name=_rt("Contagem"),
+                type="unknown",
+                aggregation="count",
+                role=ROLE_VALUES,
+                order=0,
+            ).normalized(ROLE_VALUES, 0)
+        ]
+        if chart_type in {"pie", "donut", "card", "kpi", "gauge"} and active_measure_items:
+            active_measure_items = active_measure_items[:1]
+
+        grouped: Dict[tuple[str, str], Dict[str, object]] = {}
         has_numeric_values = False
         for feature in layer.getFeatures():
-            raw_category = feature.attribute(dimension_field) if dimension_field else None
-            category = str(raw_category).strip() if raw_category is not None else ""
-            if not category:
-                category = _rt("(vazio)")
-            bucket = grouped.setdefault(
-                category,
-                {
-                    "raw_category": raw_category if raw_category is not None else category,
-                    "feature_ids": [],
-                    "sum": 0.0,
-                    "count": 0,
-                    "distinct": set(),
-                    "min": None,
-                    "max": None,
-                },
-            )
-            try:
-                bucket["feature_ids"].append(int(feature.id()))
-            except Exception:
-                log_exception("falha opcional ignorada")
+            category, raw_category = self._feature_category_from_items(feature, x_axis_items)
+            for measure_index, measure_item in enumerate(active_measure_items):
+                measure_label = measure_item.display_name or measure_item.field or _rt("Valor")
+                bucket_key = (category, measure_label if len(active_measure_items) > 1 else "")
+                bucket = grouped.setdefault(
+                    bucket_key,
+                    {
+                        "category": category,
+                        "series": measure_label if len(active_measure_items) > 1 else "",
+                        "raw_category": (raw_category, measure_label) if len(active_measure_items) > 1 else raw_category,
+                        "feature_ids": [],
+                        "sum": 0.0,
+                        "count": 0,
+                        "distinct": set(),
+                        "min": None,
+                        "max": None,
+                    },
+                )
+                try:
+                    bucket["feature_ids"].append(int(feature.id()))
+                except Exception:
+                    log_exception("falha opcional ignorada")
 
-            if aggregation == "count":
-                value = 1.0
-            else:
-                target_field = measure_field or dimension_field
+                item_aggregation = normalize_aggregation(measure_item.aggregation, measure_item.type, measure_item.role)
+                target_field = measure_item.field or dimension_field
                 raw_value = feature.attribute(target_field) if target_field else None
-                if aggregation == "count_distinct":
+                if item_aggregation == "count":
+                    value = 1.0
+                elif item_aggregation == "unique_count":
                     if raw_value is not None and str(raw_value).strip():
                         bucket["distinct"].add(str(raw_value).strip())
                     bucket["count"] = int(bucket.get("count") or 0) + 1
                     continue
-                value = self._safe_float(raw_value)
-                if value is None:
-                    continue
-                has_numeric_values = True
+                else:
+                    value = self._safe_float(raw_value)
+                    if value is None:
+                        continue
+                    has_numeric_values = True
 
-            bucket["sum"] = float(bucket.get("sum") or 0.0) + float(value)
-            bucket["count"] = int(bucket.get("count") or 0) + 1
-            current_min = bucket.get("min")
-            current_max = bucket.get("max")
-            bucket["min"] = float(value) if current_min is None else min(float(current_min), float(value))
-            bucket["max"] = float(value) if current_max is None else max(float(current_max), float(value))
+                bucket["sum"] = float(bucket.get("sum") or 0.0) + float(value)
+                bucket["count"] = int(bucket.get("count") or 0) + 1
+                current_min = bucket.get("min")
+                current_max = bucket.get("max")
+                bucket["min"] = float(value) if current_min is None else min(float(current_min), float(value))
+                bucket["max"] = float(value) if current_max is None else max(float(current_max), float(value))
 
-        if aggregation not in {"count", "count_distinct"} and not has_numeric_values:
+        if any(normalize_aggregation(item.aggregation, item.type, item.role) not in {"count", "unique_count"} for item in active_measure_items) and not has_numeric_values:
             updated_item.binding = updated_binding
             updated_item.payload = self._empty_chart_payload(chart_type, updated_binding.title_override)
             updated_item.subtitle = _rt("Sem valores numericos para o campo selecionado")
@@ -2413,23 +2673,29 @@ class ModelTab(QWidget):
             return updated_item
 
         rows: List[Dict[str, object]] = []
-        for category, bucket in grouped.items():
+        for (_category, _series), bucket in grouped.items():
             count = int(bucket.get("count") or 0)
-            if aggregation == "avg":
+            measure_label = str(bucket.get("series") or "")
+            measure_item = next((item for item in active_measure_items if (item.display_name or item.field) == measure_label), active_measure_items[0])
+            item_aggregation = normalize_aggregation(measure_item.aggregation, measure_item.type, measure_item.role)
+            if item_aggregation == "avg":
                 metric_value = float(bucket.get("sum") or 0.0) / float(max(1, count))
-            elif aggregation == "min":
+            elif item_aggregation == "min":
                 metric_value = float(bucket.get("min") or 0.0)
-            elif aggregation == "max":
+            elif item_aggregation == "max":
                 metric_value = float(bucket.get("max") or 0.0)
-            elif aggregation == "sum":
+            elif item_aggregation == "sum":
                 metric_value = float(bucket.get("sum") or 0.0)
-            elif aggregation == "count_distinct":
+            elif item_aggregation == "unique_count":
                 metric_value = float(len(bucket.get("distinct") or set()))
             else:
                 metric_value = float(count)
+            display_category = str(bucket.get("category") or "")
+            if measure_label:
+                display_category = f"{display_category} / {measure_label}"
             rows.append(
                 {
-                    "category": str(category),
+                    "category": display_category,
                     "value": metric_value,
                     "raw_category": bucket.get("raw_category"),
                     "feature_ids": list(bucket.get("feature_ids") or []),
@@ -2451,16 +2717,17 @@ class ModelTab(QWidget):
             "min": _rt("Minimo"),
             "max": _rt("Maximo"),
             "count_distinct": _rt("Contagem distinta"),
+            "unique_count": _rt("Contagem distinta"),
         }.get(aggregation, _rt("Contagem"))
         value_target = measure_field or dimension_field
         value_label = _rt("Contagem") if aggregation == "count" else _rt("{agg_label} de {field_name}", agg_label=agg_label, field_name=value_target)
 
         title_text = str(updated_binding.title_override or "").strip()
         if not title_text:
-            if chart_type == "card":
+            if chart_type in {"card", "kpi", "gauge"}:
                 title_text = _rt("{agg_label} - {layer_name}", agg_label=agg_label, layer_name=layer.name())
             else:
-                title_text = _rt("{agg_label} por {dimension_field}", agg_label=agg_label, dimension_field=dimension_field)
+                title_text = _rt("{agg_label} por {dimension_field}", agg_label=agg_label, dimension_field=" / ".join(item.display_name or item.field for item in x_axis_items) or dimension_field)
 
         updated_item.binding = updated_binding
         updated_item.title = title_text if updated_binding.title_override else ""
@@ -2485,8 +2752,11 @@ class ModelTab(QWidget):
             "config": {
                 "chart_type": chart_type,
                 "row_field": dimension_field,
+                "row_fields": [item.field for item in x_axis_items],
                 "semantic_field_key": dimension_field,
                 "value_field": measure_field,
+                "value_fields": [item.field for item in active_measure_items],
+                "bindings": updated_binding.to_dict().get("bindings", {}),
                 "legend_field": legend_field,
                 "aggregation": aggregation,
                 "top_n": top_n,
@@ -2542,10 +2812,10 @@ class ModelTab(QWidget):
     def _default_canvas_style(self) -> Dict[str, object]:
         return {
             "background": "#FFFFFF",
-            "grid_color": "#E5E7EB",
+            "grid_color": "#FFFFFF",
             "show_grid": True,
             "grid_size": 8,
-            "grid_opacity": 0.72,
+            "grid_opacity": 1.0,
         }
 
     def _normalized_canvas_style(self, style: Optional[Dict[str, object]] = None) -> Dict[str, object]:
@@ -2561,9 +2831,14 @@ class ModelTab(QWidget):
         except Exception:
             grid_opacity = float(base["grid_opacity"])
         grid_opacity = max(0.1, min(1.0, grid_opacity))
+        background = self._normalize_hex_color(payload.get("background"), str(base["background"]))
+        grid_color = self._normalize_hex_color(payload.get("grid_color"), str(base["grid_color"]))
+        if background == "#FFFFFF" and grid_color == "#E5E7EB":
+            grid_color = "#FFFFFF"
+            grid_opacity = 1.0
         return {
-            "background": self._normalize_hex_color(payload.get("background"), str(base["background"])),
-            "grid_color": self._normalize_hex_color(payload.get("grid_color"), str(base["grid_color"])),
+            "background": background,
+            "grid_color": grid_color,
             "show_grid": bool(payload.get("show_grid", base["show_grid"])),
             "grid_size": grid_size,
             "grid_opacity": grid_opacity,
@@ -2828,10 +3103,10 @@ class ModelTab(QWidget):
         presets = {
             "clean": {
                 "background": "#FFFFFF",
-                "grid_color": "#E5E7EB",
+                "grid_color": "#FFFFFF",
                 "show_grid": True,
                 "grid_size": 8,
-                "grid_opacity": 0.72,
+                "grid_opacity": 1.0,
             },
             "soft": {
                 "background": "#F8FAFC",
@@ -2868,7 +3143,7 @@ class ModelTab(QWidget):
         grid_edit = QLineEdit(str(draft.get("grid_color") or ""), card)
         grid_edit.setObjectName("WalkerDialogInput")
         grid_preview = QLabel(card)
-        self._set_color_preview_chip(grid_preview, grid_edit.text(), "#E5E7EB")
+        self._set_color_preview_chip(grid_preview, grid_edit.text(), "#FFFFFF")
         grid.addWidget(grid_label, 2, 0)
         grid.addWidget(grid_edit, 2, 1, 1, 2)
         grid.addWidget(grid_preview, 2, 3)
@@ -2893,7 +3168,7 @@ class ModelTab(QWidget):
         grid_opacity_spin = QSpinBox(card)
         grid_opacity_spin.setObjectName("WalkerDialogInput")
         grid_opacity_spin.setRange(10, 100)
-        grid_opacity_spin.setValue(int(round(float(draft.get("grid_opacity", 0.72)) * 100.0)))
+        grid_opacity_spin.setValue(int(round(float(draft.get("grid_opacity", 1.0)) * 100.0)))
         grid_opacity_spin.setButtonSymbols(QSpinBox.NoButtons)
         grid_opacity_spin.setAlignment(Qt.AlignCenter)
         grid.addWidget(grid_opacity_label, 4, 2)
@@ -2922,7 +3197,7 @@ class ModelTab(QWidget):
         palette_grid.setContentsMargins(0, 0, 0, 0)
         palette_grid.setSpacing(6)
         palette_grid.addWidget(QLabel(_rt("Paleta grade"), card))
-        grid_quick_colors = ["#E5E7EB", "#D1D5DB", "#9CA3AF", "#6B7280", "#374151"]
+        grid_quick_colors = ["#FFFFFF", "#E5E7EB", "#D1D5DB", "#9CA3AF", "#6B7280", "#374151"]
         for color in grid_quick_colors:
             chip = QPushButton("", card)
             chip.setObjectName("WalkerColorChip")
@@ -2966,7 +3241,7 @@ class ModelTab(QWidget):
 
         def _refresh_color_previews():
             self._set_color_preview_chip(bg_preview, bg_edit.text(), "#FFFFFF")
-            self._set_color_preview_chip(grid_preview, grid_edit.text(), "#E5E7EB")
+            self._set_color_preview_chip(grid_preview, grid_edit.text(), "#FFFFFF")
 
         bg_edit.textChanged.connect(lambda *_: _refresh_color_previews())
         grid_edit.textChanged.connect(lambda *_: _refresh_color_previews())
@@ -2976,10 +3251,10 @@ class ModelTab(QWidget):
         def _apply_style_to_controls(style_payload: Dict[str, object]):
             normalized = self._normalized_canvas_style(style_payload)
             bg_edit.setText(str(normalized.get("background") or "#FFFFFF"))
-            grid_edit.setText(str(normalized.get("grid_color") or "#E5E7EB"))
+            grid_edit.setText(str(normalized.get("grid_color") or "#FFFFFF"))
             show_grid_check.setChecked(bool(normalized.get("show_grid", True)))
             grid_size_spin.setValue(int(normalized.get("grid_size", 8)))
-            grid_opacity_spin.setValue(int(round(float(normalized.get("grid_opacity", 0.72)) * 100.0)))
+            grid_opacity_spin.setValue(int(round(float(normalized.get("grid_opacity", 1.0)) * 100.0)))
             _refresh_color_previews()
 
         def _handle_preset_changed(index: int):
@@ -3025,7 +3300,7 @@ class ModelTab(QWidget):
             return
 
         draft["background"] = self._normalize_hex_color(bg_edit.text(), str(style.get("background") or "#FFFFFF"))
-        draft["grid_color"] = self._normalize_hex_color(grid_edit.text(), str(style.get("grid_color") or "#E5E7EB"))
+        draft["grid_color"] = self._normalize_hex_color(grid_edit.text(), str(style.get("grid_color") or "#FFFFFF"))
         draft["show_grid"] = bool(show_grid_check.isChecked())
         draft["grid_size"] = int(grid_size_spin.value())
         draft["grid_opacity"] = max(0.1, min(1.0, float(grid_opacity_spin.value()) / 100.0))
@@ -3727,6 +4002,8 @@ class ModelTab(QWidget):
 
         item_id = uuid.uuid4().hex
         visual_state = ChartVisualState(chart_type=chart_type, show_legend=chart_type in {"pie", "donut", "funnel"})
+        value_binding_field = dimension_field if value_field == "__count__" else value_field
+        value_binding_label = _rt("Contagem") if value_field == "__count__" else value_field
         binding = DashboardChartBinding(
             chart_id=item_id,
             chart_type=chart_type,
@@ -3739,6 +4016,28 @@ class ModelTab(QWidget):
             top_n=top_n,
             title_override=title_text,
             source_name=layer.name(),
+            bindings={
+                ROLE_X_AXIS: [
+                    FieldBindingItem(
+                        field=dimension_field,
+                        display_name=dimension_field,
+                        type=self._field_kind_for_layer_field(layer, dimension_field),
+                        aggregation="none",
+                        role=ROLE_X_AXIS,
+                        order=0,
+                    )
+                ],
+                ROLE_VALUES: [
+                    FieldBindingItem(
+                        field=value_binding_field,
+                        display_name=value_binding_label,
+                        type=self._field_kind_for_layer_field(layer, value_binding_field),
+                        aggregation=aggregation,
+                        role=ROLE_VALUES,
+                        order=0,
+                    )
+                ],
+            },
         ).normalized()
         subtitle = f"{layer.name()} - {dimension_field} - {value_label}"
         return DashboardChartItem(
