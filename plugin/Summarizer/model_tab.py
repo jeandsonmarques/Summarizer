@@ -428,7 +428,7 @@ class ModelTab(QWidget):
         self._configure_toolbar_icon_button(self.save_btn, "Walker-Save.svg", _rt("Salvar"))
         self._configure_toolbar_icon_button(self.save_as_btn, "Walker-SaveAs.svg", _rt("Salvar como"))
         self._configure_toolbar_icon_button(self.export_btn, "Walker-Image.svg", _rt("Exportar imagem"))
-        self._configure_toolbar_icon_button(self.create_chart_btn, "Walker-Chart.svg", _rt("Criar grafico"))
+        self._configure_toolbar_icon_button(self.create_chart_btn, "ModelVisual-Pie.svg", _rt("Criar grafico"))
         self._configure_toolbar_icon_button(self.format_visual_btn, "Walker-Format.svg", _rt("Formatar visual"))
         self._configure_toolbar_icon_button(self.edit_mode_btn, "Walker-Edit.svg", _rt("Edicao"))
         self._configure_toolbar_icon_button(
@@ -4494,7 +4494,10 @@ class ModelTab(QWidget):
                 continue
         self.create_chart_btn.setVisible(enabled and self.current_project is not None)
         self.format_visual_btn.setVisible(enabled and self.current_project is not None)
-        if not enabled:
+        if enabled and self.current_project is not None:
+            self._builder_panel_open = True
+            self._visual_panel_open = False
+        else:
             self._builder_panel_open = False
             self._visual_panel_open = False
         self._set_builder_panel_open(self._builder_panel_open)
