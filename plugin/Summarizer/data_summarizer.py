@@ -330,6 +330,7 @@ class SummarizerDialog(QDialog):
         self._active_locale = str(active_locale or "")
         self._has_translation = bool(has_translation)
         self._language_settings_key = "Summarizer/uiLocale"
+        self._theme_settings_key = "Summarizer/uiTheme"
         self.ui = Ui_SummarizerDialog()
         self.ui.setupUi(self)
         self._square_scopes = []
@@ -347,6 +348,7 @@ class SummarizerDialog(QDialog):
         except Exception:
             log_exception("falha opcional ignorada")
         self._init_language_button()
+        self._init_theme_button()
 
         # External integration state (not used in main dialog anymore)
         self.external_df = None
@@ -545,6 +547,10 @@ class SummarizerDialog(QDialog):
             self._apply_runtime_translations()
         except Exception:
             log_exception("falha opcional ignorada")
+        try:
+            self.apply_styles()
+        except Exception:
+            log_exception("falha opcional ignorada")
     def toggle_window_state(self):
         if self.isMaximized():
             self.showNormal()
@@ -668,6 +674,81 @@ class SummarizerDialog(QDialog):
             log_exception("falha opcional ignorada")
         self._refresh_language_button()
 
+    def _normalize_theme_mode(self, value: str) -> str:
+        mode = str(value or "").strip().lower()
+        return "dark" if mode == "dark" else "light"
+
+    def _current_theme_mode(self) -> str:
+        raw = str(QSettings().value(self._theme_settings_key, "light") or "light")
+        return self._normalize_theme_mode(raw)
+
+    def _theme_label(self, mode: str) -> str:
+        return _rt_runtime("Escuro") if self._normalize_theme_mode(mode) == "dark" else _rt_runtime("Claro")
+
+    def _refresh_theme_button(self):
+        btn = getattr(self.ui, "theme_btn", None)
+        if btn is None:
+            return
+        mode = self._current_theme_mode()
+        try:
+            btn.setIcon(svg_icon("Theme.svg"))
+            btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        btn.setText(_rt_runtime("Tema"))
+        btn.setToolTip(f"{_rt_runtime('Tema')}: {self._theme_label(mode)}")
+
+    def _set_theme_mode(self, mode: str):
+        normalized = self._normalize_theme_mode(mode)
+        current = self._current_theme_mode()
+        if normalized == current:
+            return
+        QSettings().setValue(self._theme_settings_key, normalized)
+        self.apply_styles()
+        self._refresh_theme_button()
+
+    def _build_theme_menu(self) -> QMenu:
+        menu = QMenu(self)
+        current = self._current_theme_mode()
+        for mode, label in (("light", _rt_runtime("Claro")), ("dark", _rt_runtime("Escuro"))):
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(current == mode)
+            action.triggered.connect(lambda _checked=False, m=mode: self._set_theme_mode(m))
+        return menu
+
+    def _show_theme_menu(self):
+        btn = getattr(self.ui, "theme_btn", None)
+        if btn is None:
+            return
+        menu = self._build_theme_menu()
+        menu.exec_(btn.mapToGlobal(btn.rect().bottomLeft()))
+
+    def _init_theme_button(self):
+        btn = getattr(self.ui, "theme_btn", None)
+        if btn is None:
+            return
+        try:
+            btn.clicked.connect(self._show_theme_menu)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self._refresh_theme_button()
+
+    def _mark_theme_mode(self, mode: str):
+        normalized = self._normalize_theme_mode(mode)
+        widgets = [self]
+        try:
+            widgets.extend(self.findChildren(QWidget))
+        except Exception:
+            log_exception("falha opcional ignorada")
+        for widget in widgets:
+            try:
+                widget.setProperty("themeMode", normalized)
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+            except Exception:
+                continue
+
     def _apply_runtime_translations(self):
         _apply_i18n_widgets(self)
 
@@ -696,7 +777,6 @@ class SummarizerDialog(QDialog):
         """Marca frames e layouts para o tema de cards."""
         cards = [
             getattr(self.ui, "results_header_frame", None),
-            getattr(self.ui, "results_body", None),
             getattr(self.ui, "export_card", None),
         ]
         for card in cards:
@@ -712,12 +792,14 @@ class SummarizerDialog(QDialog):
 
         layout = getattr(self.ui, "results_body_layout", None)
         if layout is not None:
-            layout.setContentsMargins(2, 2, 2, 2)
-            layout.setSpacing(4)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
 
     def apply_styles(self):
         """Aplica o style.qss oficial do plugin (arquivo principal de temas)."""
         style_path = os.path.join(os.path.dirname(__file__), "resources", "style.qss")
+        theme_mode = self._current_theme_mode()
+        self._mark_theme_mode(theme_mode)
         if not os.path.exists(style_path):
             self._apply_square_theme()
             return
@@ -725,7 +807,7 @@ class SummarizerDialog(QDialog):
         try:
             with open(style_path, "r", encoding="utf-8") as handler:
                 template = Template(handler.read())
-            context = palette_context()
+            context = palette_context(theme_mode)
             self.setStyleSheet(template.safe_substitute(context))
         except Exception:
             try:
@@ -739,7 +821,9 @@ class SummarizerDialog(QDialog):
                 self.sidebar.refresh_styles()
             except Exception:
                 log_exception("falha opcional ignorada")
+        self._square_theme_applied = False
         self._apply_square_theme()
+        self._refresh_theme_button()
 
     def _apply_square_theme(self):
         if getattr(self, "_square_theme_applied", False):

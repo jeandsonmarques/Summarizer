@@ -15,8 +15,8 @@ COLORS = {
     "color_border": "#E2E6EC",
     "color_text_primary": "#252B33",
     "color_text_secondary": "#55606D",
-    "color_primary": "#F2C811",
-    "color_primary_hover": "#D6A800",
+    "color_primary": "#5A3FE6",
+    "color_primary_hover": "#4936C8",
     "color_brand": "#5A3FE6",
     "color_brand_soft": "rgba(104, 92, 208, 0.10)",
     "color_secondary": "#2B7DE9",
@@ -24,9 +24,29 @@ COLORS = {
     "color_warning": "#F2994A",
     "color_error": "#EB5757",
     "color_table_zebra": "#F6F8FB",
-    "color_table_selection": "#FFF4CC",
+    "color_table_selection": "#E5E7EB",
     "color_splitter": "#E2E6EC",
     "color_shadow": "rgba(17, 24, 39, 0.06)",
+}
+
+DARK_COLORS = {
+    "color_app_bg": "#111827",
+    "color_surface": "#1F2937",
+    "color_border": "#374151",
+    "color_text_primary": "#F8FAFC",
+    "color_text_secondary": "#CBD5E1",
+    "color_primary": "#7C6CFF",
+    "color_primary_hover": "#6A5AE8",
+    "color_brand": "#8B7CFF",
+    "color_brand_soft": "rgba(139, 124, 255, 0.20)",
+    "color_secondary": "#60A5FA",
+    "color_success": "#4ADE80",
+    "color_warning": "#FDBA74",
+    "color_error": "#F87171",
+    "color_table_zebra": "#182230",
+    "color_table_selection": "#374151",
+    "color_splitter": "#374151",
+    "color_shadow": "rgba(0, 0, 0, 0.30)",
 }
 
 TYPOGRAPHY = {
@@ -62,10 +82,12 @@ MISC = {
 }
 
 
-def palette_context():
+def palette_context(theme_mode: str = "light"):
     """
     Helper that merges all dictionaries so template formatting can use
     the keys as `${color_app_bg}`, `${font_title_size}`, etc.
     """
 
-    return ChainMap({}, COLORS, TYPOGRAPHY, MISC)
+    mode = str(theme_mode or "light").strip().lower()
+    colors = DARK_COLORS if mode == "dark" else COLORS
+    return ChainMap({}, colors, TYPOGRAPHY, MISC)

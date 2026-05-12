@@ -51,11 +51,12 @@ from .utils.logging_utils import log_exception
 
 _MODEL_FIELD_MIME = "application/x-summarizer-model-field"
 def _icon_from_resource(name: str) -> QIcon:
-    path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "resources", "icons", str(name or "").strip())
-    )
-    if os.path.exists(path):
-        return QIcon(path)
+    base_dir = os.path.dirname(__file__)
+    candidate_name = str(name or "").strip()
+    for parts in (("resources", "icons", candidate_name), ("resources", "SVG", candidate_name)):
+        path = os.path.abspath(os.path.join(base_dir, *parts))
+        if os.path.exists(path):
+            return QIcon(path)
     return QIcon()
 
 
@@ -70,8 +71,50 @@ class _DashboardConnectorOverlay(QWidget):
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        # Conectores visuais ocultos para manter o canvas limpo; a relação é iniciada pelo comando no header.
-        return
+        if not bool(getattr(self._host, "_edit_mode", False)):
+            return
+        highlight_mode = str(getattr(self._host, "_highlight_mode", "idle") or "idle").strip().lower()
+        if highlight_mode not in {"selected", "drag", "resize"}:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        frame_rect = self.rect().adjusted(1, 1, -2, -2)
+        if frame_rect.width() <= 0 or frame_rect.height() <= 0:
+            return
+
+        border_color = QColor("#A3A3A3")
+        handle_color = QColor("#8A8A8A")
+        if highlight_mode == "drag":
+            border_color = QColor("#737373")
+            handle_color = QColor("#6B7280")
+        elif highlight_mode == "resize":
+            border_color = QColor("#525252")
+            handle_color = QColor("#4B5563")
+
+        selection_pen = QPen(border_color, 1)
+        selection_pen.setCosmetic(True)
+        painter.setPen(selection_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(frame_rect)
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(handle_color))
+        zoom = max(0.8, min(1.4, float(getattr(self._host, "_zoom_scale", 1.0) or 1.0)))
+        handle_size = max(5, min(8, int(round(6 * zoom))))
+        half = handle_size // 2
+        points = [
+            QPoint(frame_rect.left(), frame_rect.top()),
+            QPoint(frame_rect.center().x(), frame_rect.top()),
+            QPoint(frame_rect.right(), frame_rect.top()),
+            QPoint(frame_rect.left(), frame_rect.center().y()),
+            QPoint(frame_rect.right(), frame_rect.center().y()),
+            QPoint(frame_rect.left(), frame_rect.bottom()),
+            QPoint(frame_rect.center().x(), frame_rect.bottom()),
+            QPoint(frame_rect.right(), frame_rect.bottom()),
+        ]
+        for point in points:
+            painter.drawRect(QRect(point.x() - half, point.y() - half, handle_size, handle_size))
 
 
 def _read_model_field_payload(mime_data) -> Optional[dict]:
@@ -674,6 +717,7 @@ class DashboardItemWidget(QFrame):
         self._binding = item.binding.normalized()
         self._external_filters = {}
         self._zoom_scale = 1.0
+        self._logical_chart_size = QSize()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -716,7 +760,7 @@ class DashboardItemWidget(QFrame):
         self.model_edit_btn.setObjectName("ModelDashboardHeaderIconButton")
         self.model_edit_btn.setCursor(Qt.PointingHandCursor)
         self.model_edit_btn.setToolTip(_rt("Alterar tipo de grafico"))
-        model_icon = _icon_from_resource("walker_chart_type.svg")
+        model_icon = _icon_from_resource("ModelVisual-Donut.svg")
         self.model_edit_btn.setIcon(model_icon)
         self.model_edit_btn.setIconSize(QSize(16, 16))
         if model_icon.isNull():
@@ -736,7 +780,7 @@ class DashboardItemWidget(QFrame):
         self.personalize_btn.clicked.connect(self._request_visual_panel)
         header_layout.addWidget(self.personalize_btn, 0)
 
-        self.link_command_btn = QPushButton(_rt("+ Relacao"), self.header)
+        self.link_command_btn = QPushButton("+", self.header)
         self.link_command_btn.setObjectName("ModelDashboardLinkCommandButton")
         self.link_command_btn.setCursor(Qt.PointingHandCursor)
         self.link_command_btn.setToolTip(_rt("Criar relacao com outro grafico"))
@@ -952,13 +996,13 @@ class DashboardItemWidget(QFrame):
             return
         self._zoom_scale = normalized
 
-        card_margin = max(2, int(round(4 * normalized)))
-        card_spacing = max(2, int(round(3 * normalized)))
-        header_margin = max(2, int(round(4 * normalized)))
-        header_spacing = max(4, int(round(10 * normalized)))
-        button_side = max(20, int(round(28 * normalized)))
-        icon_side = max(14, int(round(16 * normalized)))
-        remove_icon_side = max(12, int(round(14 * normalized)))
+        card_margin = max(0, int(round(4 * normalized)))
+        card_spacing = max(0, int(round(3 * normalized)))
+        header_margin = max(0, int(round(4 * normalized)))
+        header_spacing = max(1, int(round(10 * normalized)))
+        button_side = max(8, int(round(28 * normalized)))
+        icon_side = max(5, int(round(16 * normalized)))
+        remove_icon_side = max(5, int(round(14 * normalized)))
 
         try:
             self.card.layout().setContentsMargins(card_margin, card_margin, card_margin, card_margin)
@@ -970,38 +1014,62 @@ class DashboardItemWidget(QFrame):
 
         self.model_edit_btn.setFixedSize(button_side, button_side)
         self.personalize_btn.setFixedSize(button_side, button_side)
-        self.remove_btn.setFixedSize(max(20, button_side - 2), max(20, button_side - 2))
+        self.remove_btn.setFixedSize(max(8, button_side - 2), max(8, button_side - 2))
         self.model_edit_btn.setIconSize(QSize(icon_side, icon_side))
         self.personalize_btn.setIconSize(QSize(icon_side, icon_side))
         self.remove_btn.setIconSize(QSize(remove_icon_side, remove_icon_side))
         self.link_command_btn.setMinimumHeight(button_side)
         self.link_command_btn.setMaximumHeight(button_side)
-        self.link_command_btn.setMinimumWidth(max(56, int(round(84 * normalized))))
-        self.link_command_btn.setMaximumWidth(16777215)
-        self.setMinimumSize(max(180, int(round(220 * normalized))), max(140, int(round(160 * normalized))))
-        self.chart_widget.setMinimumSize(max(180, int(round(220 * normalized))), max(140, int(round(160 * normalized))))
+        self.link_command_btn.setMinimumWidth(button_side)
+        self.link_command_btn.setMaximumWidth(button_side)
         if hasattr(self.chart_widget, "set_display_scale"):
             try:
-                self.chart_widget.set_display_scale(normalized)
+                self.chart_widget.set_display_scale(1.0)
             except Exception:
                 log_exception("falha opcional ignorada")
+        self.setMinimumSize(1, 1)
+        self.chart_widget.setMinimumSize(1, 1)
+        self._sync_logical_chart_render_size()
 
         title_font = ui_font()
-        title_font.setPixelSize(max(11, min(18, int(round(13 * normalized)))))
+        title_font.setPixelSize(max(5, min(36, int(round(13 * normalized)))))
         title_font.setWeight(600)
         self.title_label.setFont(title_font)
         supporting_font = ui_font()
-        supporting_font.setPixelSize(max(9, min(15, int(round(11 * normalized)))))
+        supporting_font.setPixelSize(max(4, min(30, int(round(11 * normalized)))))
         supporting_font.setWeight(400)
         self.subtitle_label.setFont(supporting_font)
         self.footer_label.setFont(supporting_font)
         self.drag_label.setFont(supporting_font)
         button_font = ui_font()
-        button_font.setPixelSize(max(9, min(14, int(round(11 * normalized)))))
+        button_font.setPixelSize(max(4, min(28, int(round(11 * normalized)))))
         button_font.setWeight(600)
         self.link_command_btn.setFont(button_font)
 
         self._apply_styles()
+
+    def _fallback_logical_chart_size(self) -> QSize:
+        layout = self._item.layout.normalized()
+        return QSize(
+            max(80, int(round(layout.width)) - 8),
+            max(60, int(round(layout.height)) - 44),
+        )
+
+    def _sync_logical_chart_render_size(self, allow_capture: bool = False):
+        zoom = max(0.0001, float(self._zoom_scale or 1.0))
+        widget_size = self.chart_widget.size()
+        if widget_size.width() >= 20 and widget_size.height() >= 20:
+            self._logical_chart_size = QSize(
+                max(20, int(round(float(widget_size.width()) / zoom))),
+                max(20, int(round(float(widget_size.height()) / zoom))),
+            )
+        else:
+            self._logical_chart_size = self._fallback_logical_chart_size()
+        if hasattr(self.chart_widget, "set_fixed_render_size"):
+            try:
+                self.chart_widget.set_fixed_render_size(self._logical_chart_size)
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def set_edit_mode(self, enabled: bool):
         self._edit_mode = bool(enabled)
@@ -1067,9 +1135,13 @@ class DashboardItemWidget(QFrame):
         self._highlight_mode = normalized
         self._apply_styles()
         self.update()
+        try:
+            self._overlay.update()
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def _apply_styles(self):
-        zoom = max(0.6, min(2.0, float(self._zoom_scale or 1.0)))
+        zoom = max(0.35, min(3.0, float(self._zoom_scale or 1.0)))
         visual_state = getattr(self._item, "visual_state", None)
         border = "#D1D5DB"
         header_bg = "#FFFFFF"
@@ -1094,8 +1166,8 @@ class DashboardItemWidget(QFrame):
         except Exception:
             configured_label_size = 0
         border_radius = max(0, min(8, border_radius))
-        title_size = configured_title_size if configured_title_size > 0 else max(11, min(18, int(round(13 * zoom))))
-        label_size = configured_label_size if configured_label_size > 0 else max(9, min(15, int(round(11 * zoom))))
+        title_size = configured_title_size if configured_title_size > 0 else max(5, min(36, int(round(13 * zoom))))
+        label_size = configured_label_size if configured_label_size > 0 else max(4, min(30, int(round(11 * zoom))))
         if bool(getattr(visual_state, "show_border", False)):
             border = str(getattr(visual_state, "border_color", border) or border)
         try:
@@ -1117,7 +1189,7 @@ class DashboardItemWidget(QFrame):
             border = "#6B7280"
             card_border = f"1px solid {border}"
         elif self._highlight_mode == "selected":
-            border = "#9CA3AF"
+            border = "#A3A3A3"
             card_border = f"1px solid {border}"
 
         self.setStyleSheet(
@@ -1150,36 +1222,36 @@ class DashboardItemWidget(QFrame):
             }}
             QToolButton#ModelDashboardRemoveButton,
             QToolButton#ModelDashboardHeaderIconButton {{
-                min-height: {max(18, int(round(24 * zoom)))}px;
-                max-height: {max(18, int(round(24 * zoom)))}px;
-                min-width: {max(18, int(round(24 * zoom)))}px;
-                max-width: {max(18, int(round(24 * zoom)))}px;
+                min-height: {max(8, int(round(24 * zoom)))}px;
+                max-height: {max(8, int(round(24 * zoom)))}px;
+                min-width: {max(8, int(round(24 * zoom)))}px;
+                max-width: {max(8, int(round(24 * zoom)))}px;
                 padding: 0;
                 color: #374151;
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
+                background: transparent;
+                border: none;
                 border-radius: {max(4, int(round(6 * zoom)))}px;
                 font-weight: 400;
             }}
             QToolButton#ModelDashboardRemoveButton:hover,
             QToolButton#ModelDashboardHeaderIconButton:hover {{
-                background: #F9FAFB;
-                border-color: #9CA3AF;
+                background: #F3F4F6;
             }}
             QPushButton#ModelDashboardLinkCommandButton {{
-                min-height: {max(18, int(round(24 * zoom)))}px;
-                max-height: {max(18, int(round(24 * zoom)))}px;
-                padding: 0 {max(4, int(round(8 * zoom)))}px;
-                color: #3730A3;
-                background: #EEF2FF;
-                border: 1px solid #818CF8;
+                min-height: {max(8, int(round(24 * zoom)))}px;
+                max-height: {max(8, int(round(24 * zoom)))}px;
+                min-width: {max(8, int(round(24 * zoom)))}px;
+                max-width: {max(8, int(round(24 * zoom)))}px;
+                padding: 0;
+                color: #4B5563;
+                background: transparent;
+                border: none;
                 border-radius: {max(6, int(round(8 * zoom)))}px;
-                font-size: {max(9, min(14, int(round(11 * zoom))))}px;
+                font-size: {max(4, min(28, int(round(11 * zoom))))}px;
                 font-weight: 600;
             }}
             QPushButton#ModelDashboardLinkCommandButton:hover {{
-                background: #E0E7FF;
-                border-color: #6366F1;
+                background: #F3F4F6;
             }}
             QFrame#ModelDashboardDropOverlay {{
                 background: #FFFFFF;
@@ -1188,7 +1260,7 @@ class DashboardItemWidget(QFrame):
             }}
             QLabel#ModelDashboardEmptyVisualText {{
                 color: #374151;
-                font-size: {max(10, min(16, int(round(11 * zoom))))}px;
+                font-size: {max(4, min(30, int(round(11 * zoom))))}px;
                 font-weight: 400;
             }}
             QWidget#ModelDashboardEmptyPreview {{
@@ -1206,7 +1278,7 @@ class DashboardItemWidget(QFrame):
             }}
             QLabel#ModelVisualDropSlotLabel {{
                 color: #334155;
-                font-size: {max(9, min(14, int(round(10 * zoom))))}px;
+                font-size: {max(4, min(28, int(round(10 * zoom))))}px;
                 font-weight: 500;
             }}
             """
@@ -1623,6 +1695,10 @@ class DashboardItemWidget(QFrame):
         local_pos = self._map_event_pos(watched, event)
         global_pos = self._event_global_pos(event)
 
+        if watched is self.chart_widget and event_type == QEvent.Resize:
+            self._sync_logical_chart_render_size()
+            return super().eventFilter(watched, event)
+
         if event_type == QEvent.Wheel:
             canvas = self._find_canvas_host()
             if canvas is not None and hasattr(canvas, "is_edit_mode"):
@@ -1743,6 +1819,7 @@ class DashboardItemWidget(QFrame):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._sync_logical_chart_render_size(allow_capture=True)
         try:
             self._overlay.setGeometry(self.rect())
             self._overlay.raise_()

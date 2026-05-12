@@ -1,7 +1,7 @@
 import math
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation, pyqtSignal
+from qgis.PyQt.QtCore import QEasingCurve, QPointF, QRect, QRectF, QSize, Qt, QVariantAnimation, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from qgis.PyQt.QtWidgets import (
     QAction,
@@ -194,6 +194,7 @@ class ReportChartWidget(QWidget):
         self._empty_text = ""
         self._embedded_mode = False
         self._display_scale = 1.0
+        self._fixed_render_size = QSize()
         self._base_font = harmonize_font_family(QFont(self.font()))
         self._ensure_base_font_scalable()
         self._font_scale = 1.0
@@ -299,6 +300,18 @@ class ReportChartWidget(QWidget):
         self.setFont(base_font)
         self._apply_font_scale_to_widget()
         self.setMinimumSize(max(120, int(round(220 * normalized))), max(90, int(round(180 * normalized))))
+        self.update()
+
+    def set_fixed_render_size(self, size: QSize):
+        try:
+            next_size = QSize(size)
+        except Exception:
+            next_size = QSize()
+        if next_size.width() < 20 or next_size.height() < 20:
+            next_size = QSize()
+        if next_size == self._fixed_render_size:
+            return
+        self._fixed_render_size = next_size
         self.update()
 
     def _apply_font_scale_to_widget(self):
@@ -1957,12 +1970,26 @@ class ReportChartWidget(QWidget):
 
     def _event_point(self, event) -> QPointF:
         try:
-            return QPointF(event.localPos())
+            point = QPointF(event.localPos())
         except Exception:
             try:
-                return QPointF(event.pos())
+                point = QPointF(event.pos())
             except Exception:
                 return QPointF()
+        fixed_size = QSize(self._fixed_render_size)
+        if (
+            fixed_size.isValid()
+            and fixed_size.width() > 0
+            and fixed_size.height() > 0
+            and self.width() > 0
+            and self.height() > 0
+            and (fixed_size.width() != self.width() or fixed_size.height() != self.height())
+        ):
+            return QPointF(
+                point.x() * float(fixed_size.width()) / float(self.width()),
+                point.y() * float(fixed_size.height()) / float(self.height()),
+            )
+        return point
 
     def _interactive_target_at(self, point: QPointF):
         for target in reversed(self._interactive_regions):
@@ -2569,13 +2596,38 @@ class ReportChartWidget(QWidget):
         return visible_pairs
 
     def paintEvent(self, event):
+        fixed_size = QSize(self._fixed_render_size)
+        if (
+            fixed_size.isValid()
+            and fixed_size.width() > 0
+            and fixed_size.height() > 0
+            and self.width() > 0
+            and self.height() > 0
+            and (fixed_size.width() != self.width() or fixed_size.height() != self.height())
+        ):
+            painter = QPainter(self)
+            painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+            painter.save()
+            try:
+                painter.scale(
+                    float(self.width()) / float(fixed_size.width()),
+                    float(self.height()) / float(fixed_size.height()),
+                )
+                self._paint_chart_surface(painter, QRect(0, 0, fixed_size.width(), fixed_size.height()))
+            finally:
+                painter.restore()
+            return
+
         painter = QPainter(self)
+        self._paint_chart_surface(painter, self.rect())
+
+    def _paint_chart_surface(self, painter: QPainter, bounds: QRect):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
         painter.setFont(self._resolved_scaled_font())
         if bool(getattr(self.chart_state, "show_background", True)):
-            painter.fillRect(self.rect(), self._visual_color("background_color", "#FFFFFF"))
+            painter.fillRect(bounds, self._visual_color("background_color", "#FFFFFF"))
         self._interactive_regions = []
-        rect = QRectF(self.rect()).adjusted(12, 12, -12, -12)
+        rect = QRectF(bounds).adjusted(12, 12, -12, -12)
 
         render_payload = self._render_payload()
         if render_payload is None:

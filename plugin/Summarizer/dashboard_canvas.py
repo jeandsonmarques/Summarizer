@@ -45,6 +45,16 @@ class _DashboardCanvasSurface(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.fillRect(self.rect(), QColor(self._canvas._background_color))
 
+        outline_rect = self._canvas.page_outline_rect()
+        if outline_rect.isValid():
+            outline_pen = QPen(QColor("#111827"))
+            outline_pen.setWidth(1)
+            outline_pen.setStyle(Qt.DotLine)
+            outline_pen.setCosmetic(True)
+            painter.setPen(outline_pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(outline_rect.adjusted(0, 0, -1, -1))
+
         if self._canvas._edit_mode and self._canvas._show_grid:
             grid_color = QColor(self._canvas._grid_color)
             try:
@@ -104,6 +114,20 @@ class _DashboardCanvasSurface(QWidget):
             scaled_preview = self._canvas._scaled_rect(preview_rect)
             painter.fillRect(scaled_preview, fill)
             painter.drawRoundedRect(scaled_preview.adjusted(1, 1, -1, -1), 12, 12)
+
+        if self._canvas._edit_mode:
+            guide_pen = QPen(QColor("#EF4444"))
+            guide_pen.setWidth(1)
+            guide_pen.setStyle(Qt.DashLine)
+            guide_pen.setCosmetic(True)
+            painter.setPen(guide_pen)
+            for guide in self._canvas.alignment_guides():
+                orientation = str(guide.get("orientation") or "")
+                position = int(guide.get("position") or 0)
+                if orientation == "vertical":
+                    painter.drawLine(position, 0, position, self.height())
+                elif orientation == "horizontal":
+                    painter.drawLine(0, position, self.width(), position)
 
     def mousePressEvent(self, event):
         if self._canvas._handle_surface_mouse_press(event):
@@ -187,12 +211,14 @@ class DashboardCanvas(QWidget):
         self._selected_item_id: str = ""
         self._interaction: Dict[str, object] = {}
         self._preview_rect: Optional[QRect] = None
+        self._alignment_guides: List[Dict[str, int]] = []
         self._link_preview: Optional[Dict[str, object]] = None
         self._selected_relation_id: str = ""
         self._zoom = 1.0
         self._min_zoom = 0.35
         self._max_zoom = 3.0
         self._zoom_step = 1.15
+        self._page_outline_size = QSize(1280, 720)
         self._background_color = QColor("#FFFFFF")
         self._grid_color = QColor("#FFFFFF")
         self._show_grid = False
@@ -324,6 +350,16 @@ class DashboardCanvas(QWidget):
         zoom = max(self._zoom, 0.0001)
         return QPoint(int(round(delta.x() / zoom)), int(round(delta.y() / zoom)))
 
+    def page_outline_rect(self) -> QRect:
+        left, top, _right, _bottom = self._margins
+        zoom = max(self._zoom, 0.0001)
+        return QRect(
+            int(round(left * zoom)),
+            int(round(top * zoom)),
+            max(1, int(round(self._page_outline_size.width() * zoom))),
+            max(1, int(round(self._page_outline_size.height() * zoom))),
+        )
+
     def _apply_zoom(self, new_zoom: float, anchor_viewport_pos: Optional[QPoint] = None):
         new_zoom = self._clamp_zoom(new_zoom)
         if abs(new_zoom - self._zoom) < 1e-6:
@@ -378,6 +414,13 @@ class DashboardCanvas(QWidget):
             except Exception:
                 log_exception("falha opcional ignorada")
             return True
+
+        if not (modifiers & Qt.ControlModifier):
+            try:
+                event.ignore()
+            except Exception:
+                log_exception("falha opcional ignorada")
+            return False
 
         self._apply_zoom(self._zoom * (self._zoom_step ** (delta / 120.0)), self._event_pos_to_point(event))
         try:
@@ -931,6 +974,10 @@ class DashboardCanvas(QWidget):
             preview = self._scaled_rect(self._preview_rect)
             max_right = max(max_right, preview.right() + right)
             max_bottom = max(max_bottom, preview.bottom() + bottom)
+        outline = self.page_outline_rect()
+        if outline.isValid():
+            max_right = max(max_right, outline.right() + right)
+            max_bottom = max(max_bottom, outline.bottom() + bottom)
         self.surface.setMinimumSize(QSize(max_right + left, max_bottom + top))
         self.surface.resize(max_right + left, max_bottom + top)
 
@@ -969,7 +1016,62 @@ class DashboardCanvas(QWidget):
 
     def _set_preview_rect(self, rect: Optional[QRect]):
         self._preview_rect = QRect(rect) if rect is not None else None
+        if rect is None:
+            self._alignment_guides = []
         self._sync_surface_size()
+        self.surface.update()
+
+    def alignment_guides(self) -> List[Dict[str, int]]:
+        return [dict(item) for item in list(self._alignment_guides or [])]
+
+    def _rect_alignment_points(self, rect: QRect) -> Dict[str, int]:
+        return {
+            "left": int(rect.left()),
+            "center_x": int(rect.left() + int(round(rect.width() / 2.0))),
+            "right": int(rect.right()),
+            "top": int(rect.top()),
+            "center_y": int(rect.top() + int(round(rect.height() / 2.0))),
+            "bottom": int(rect.bottom()),
+        }
+
+    def _update_alignment_guides(self, active_item_id: str, rect: QRect):
+        tolerance = max(6, int(round(self.grid_size * 1.25)))
+        active_points = self._rect_alignment_points(rect)
+        best_vertical: Optional[Tuple[int, int]] = None
+        best_horizontal: Optional[Tuple[int, int]] = None
+
+        for item in self._items:
+            if str(item.item_id or "") == str(active_item_id or ""):
+                continue
+            other_rect = self._rect_from_layout(item.layout)
+            other_points = self._rect_alignment_points(other_rect)
+            for active_key in ("left", "center_x", "right"):
+                for other_key in ("left", "center_x", "right"):
+                    distance = abs(active_points[active_key] - other_points[other_key])
+                    if distance <= tolerance and (best_vertical is None or distance < best_vertical[0]):
+                        best_vertical = (distance, other_points[other_key])
+            for active_key in ("top", "center_y", "bottom"):
+                for other_key in ("top", "center_y", "bottom"):
+                    distance = abs(active_points[active_key] - other_points[other_key])
+                    if distance <= tolerance and (best_horizontal is None or distance < best_horizontal[0]):
+                        best_horizontal = (distance, other_points[other_key])
+
+        guides: List[Dict[str, int]] = []
+        if best_vertical is not None:
+            guides.append(
+                {
+                    "orientation": "vertical",
+                    "position": int(round(best_vertical[1] * self._zoom)),
+                }
+            )
+        if best_horizontal is not None:
+            guides.append(
+                {
+                    "orientation": "horizontal",
+                    "position": int(round(best_horizontal[1] * self._zoom)),
+                }
+            )
+        self._alignment_guides = guides
         self.surface.update()
 
     def _remove_item(self, item_id: str):
@@ -1005,6 +1107,7 @@ class DashboardCanvas(QWidget):
             "start_global": payload.get("global_pos"),
             "start_layout": item.layout.normalized(),
         }
+        self._alignment_guides = []
         widget.set_highlight_mode("drag")
         self._set_preview_rect(self._rect_from_layout(item.layout))
 
@@ -1023,6 +1126,7 @@ class DashboardCanvas(QWidget):
             start_layout.width,
             start_layout.height,
         )
+        self._update_alignment_guides(item_id, rect)
         self._set_preview_rect(rect)
         widget = self._widgets.get(item_id)
         if widget is not None:
@@ -1091,6 +1195,7 @@ class DashboardCanvas(QWidget):
             "start_global": payload.get("global_pos"),
             "start_layout": item.layout.normalized(),
         }
+        self._alignment_guides = []
         widget.set_highlight_mode("resize")
         self._set_preview_rect(self._rect_from_layout(item.layout))
 
@@ -1105,6 +1210,7 @@ class DashboardCanvas(QWidget):
         current_global = payload.get("global_pos")
         delta = self._logical_delta(current_global - start_global)
         rect = self._resize_rect(start_layout, resize_mode, delta)
+        self._update_alignment_guides(item_id, rect)
         self._set_preview_rect(rect)
         widget = self._widgets.get(item_id)
         if widget is not None:

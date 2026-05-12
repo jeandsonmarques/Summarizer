@@ -688,11 +688,11 @@ class _SummarySourceCard(QToolButton):
 
 class _PivotFieldListDelegate(QStyledItemDelegate):
     _TEXT_COLOR = QColor(_INK_COLOR)
-    _TEXT_SELECTED_COLOR = QColor("#1d4ed8")
-    _TEXT_SELECTED_BG = QColor("#dbeafe")
+    _TEXT_SELECTED_COLOR = QColor(_INK_COLOR)
+    _TEXT_SELECTED_BG = QColor("#E5E7EB")
     _NUMERIC_COLOR = QColor(_INK_COLOR)
-    _NUMERIC_SELECTED_COLOR = QColor("#9333ea")
-    _NUMERIC_SELECTED_BG = QColor("#f3e8ff")
+    _NUMERIC_SELECTED_COLOR = QColor(_INK_COLOR)
+    _NUMERIC_SELECTED_BG = QColor("#E5E7EB")
 
     def paint(self, painter, option, index):
         opt = QStyleOptionViewItem(option)
@@ -1060,10 +1060,12 @@ class PivotTableWidget(QWidget):
             QLineEdit#summarySearch {
                 min-height: 30px;
                 padding: 0 9px;
-                color: #111827;
+                color: #4b5563;
                 background: #FFFFFF;
                 border: 1px solid #D1D5DB;
                 border-radius: 6px;
+                font-size: 12px;
+                font-weight: 400;
             }
             QLineEdit#summarySearch:hover,
             QLineEdit#summarySearch:focus {
@@ -1338,6 +1340,7 @@ class PivotTableWidget(QWidget):
         self.table_view.setSelectionBehavior(QAbstractItemView.SelectItems)
         self.table_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_view.setFocusPolicy(Qt.NoFocus)
         self.table_view.horizontalHeader().setStretchLastSection(True)
         self.table_view.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.table_view.clicked.connect(self._handle_table_cell_clicked)
@@ -2495,7 +2498,7 @@ class PivotTableWidget(QWidget):
         tokens["__WELCOME_SUBTITLE_PX__"] = str(max(int(tokens["__FONT_BODY_PX__"]) + 4, 16))
         qss = """
             QWidget#summaryPivotRoot {
-                background: #f5f5f7;
+                background: #ffffff;
                 font-family: __FONT_UI_STACK__;
                 font-size: __FONT_BODY_PX__px;
                 color: #111827;
@@ -2572,15 +2575,23 @@ class PivotTableWidget(QWidget):
             #summaryPivotRoot QSplitter#summaryAnalyticsSplitter {
                 background: transparent;
             }
+            #summaryPivotRoot QSplitter#summaryMainSplitter {
+                background: transparent;
+            }
+            #summaryPivotRoot QSplitter#summaryMainSplitter::handle {
+                background: transparent;
+                width: 6px;
+                margin: 0;
+            }
             #summaryPivotRoot QSplitter#summaryAnalyticsSplitter::handle {
-                background: rgba(17, 24, 39, 0.08);
-                width: 1px;
+                background: transparent;
+                width: 6px;
                 margin: 0;
             }
             #summaryPivotRoot QFrame#summaryFieldsPanel,
             #summaryPivotRoot QFrame#summaryFiltersPanel {
                 background: #ffffff;
-                border: 1px solid rgba(17, 24, 39, 0.09);
+                border: 1px solid rgba(17, 24, 39, 0.055);
                 border-radius: 2px;
             }
             #summaryPivotRoot QFrame#summaryFieldsPanel[collapsed="true"],
@@ -2837,7 +2848,9 @@ class PivotTableWidget(QWidget):
                 background: transparent;
                 border: none;
                 border-radius: 7px;
-                color: #111827;
+                color: #4b5563;
+                font-size: __FONT_SECONDARY_PX__px;
+                font-weight: __FONT_WEIGHT_REGULAR__;
             }
             #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch:hover,
             #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch:focus {
@@ -2916,6 +2929,16 @@ class PivotTableWidget(QWidget):
             }
             #summaryPivotRoot QCheckBox#summaryAutoUpdateCheck {
                 padding-left: 8px;
+                background: transparent;
+                border: none;
+                border-radius: 0px;
+                outline: none;
+            }
+            #summaryPivotRoot QCheckBox#summaryAutoUpdateCheck:hover,
+            #summaryPivotRoot QCheckBox#summaryAutoUpdateCheck:focus {
+                background: transparent;
+                border: none;
+                outline: none;
             }
             #summaryPivotRoot QCheckBox::indicator {
                 width: 12px;
@@ -3214,9 +3237,9 @@ class PivotTableWidget(QWidget):
                 border-radius: 0px;
             }
             #summaryPivotRoot QFrame#summaryEmptyState {
-                background: #fafafb;
-                border: 1px dashed rgba(17, 24, 39, 0.10);
-                border-radius: 5px;
+                background: #ffffff;
+                border: none;
+                border-radius: 0px;
             }
             #summaryPivotRoot QTableView {
                 background: #ffffff;
@@ -3224,11 +3247,17 @@ class PivotTableWidget(QWidget):
                 border-radius: 5px;
                 gridline-color: rgba(17, 24, 39, 0.045);
                 alternate-background-color: #fcfcfd;
-                selection-background-color: rgba(81, 96, 116, 0.12);
+                selection-background-color: #E5E7EB;
                 selection-color: #111827;
             }
             #summaryPivotRoot QTableView::item {
                 padding: 6px 9px;
+            }
+            #summaryPivotRoot QTableView::item:selected {
+                background: #E5E7EB;
+                color: #111827;
+                border: none;
+                outline: none;
             }
             #summaryPivotRoot QHeaderView::section {
                 background: #f9fafb;
@@ -3246,9 +3275,9 @@ class PivotTableWidget(QWidget):
                 border-bottom: 1px solid rgba(17, 24, 39, 0.06);
             }
             #summaryPivotRoot QSplitter::handle {
-                background: rgba(17, 24, 39, 0.06);
-                width: 4px;
-                margin: 4px 0;
+                background: transparent;
+                width: 6px;
+                margin: 0;
             }
             #summaryPivotRoot QScrollArea {
                 background: transparent;

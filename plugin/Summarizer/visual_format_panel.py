@@ -4,7 +4,7 @@ import copy
 from typing import Optional
 
 from qgis.PyQt.QtCore import QEasingCurve, QPropertyAnimation, QRectF, Qt, pyqtProperty, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QPainter, QPainterPath, QPen
+from qgis.PyQt.QtGui import QColor, QPainter, QPainterPath, QPalette, QPen
 from qgis.PyQt.QtWidgets import (
     QColorDialog,
     QComboBox,
@@ -30,6 +30,17 @@ from .utils.fonts import ui_font
 
 def _rt(text: str) -> str:
     return str(text or "")
+
+
+def _force_panel_white_background(widget: QWidget):
+    widget.setAttribute(Qt.WA_StyledBackground, True)
+    widget.setAutoFillBackground(True)
+    palette = widget.palette()
+    palette.setColor(widget.backgroundRole(), QColor("#FFFFFF"))
+    palette.setColor(QPalette.Window, QColor("#FFFFFF"))
+    palette.setColor(QPalette.Base, QColor("#FFFFFF"))
+    palette.setColor(QPalette.AlternateBase, QColor("#FFFFFF"))
+    widget.setPalette(palette)
 
 
 class _ColorButton(QPushButton):
@@ -246,7 +257,7 @@ class _PanelSection(QFrame):
     def __init__(self, title: str, parent=None, *, expanded: bool = False):
         super().__init__(parent)
         self.setObjectName("VisualPanelSection")
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        _force_panel_white_background(self)
         self._title = str(title or "")
         self._expanded = False
         layout = QVBoxLayout(self)
@@ -278,7 +289,7 @@ class _PanelSection(QFrame):
 
         self.content_frame = QFrame(self)
         self.content_frame.setObjectName("VisualPanelSectionContent")
-        self.content_frame.setAttribute(Qt.WA_StyledBackground, True)
+        _force_panel_white_background(self.content_frame)
         self.content_frame.setFrameShape(QFrame.StyledPanel)
         self.content_frame.setFrameShadow(QFrame.Plain)
         self.content_frame.setLineWidth(1)
@@ -288,7 +299,7 @@ class _PanelSection(QFrame):
 
         self.body = QWidget(self.content_frame)
         self.body.setObjectName("VisualPanelSectionBody")
-        self.body.setAttribute(Qt.WA_StyledBackground, True)
+        _force_panel_white_background(self.body)
         self.body_layout = QVBoxLayout(self.body)
         self.body_layout.setContentsMargins(8, 6, 8, 8)
         self.body_layout.setSpacing(6)
@@ -324,6 +335,7 @@ class VisualFormatPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VisualFormatPanel")
+        _force_panel_white_background(self)
         self.setMinimumWidth(240)
         self.setMaximumWidth(16777215)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -387,16 +399,44 @@ class VisualFormatPanel(QFrame):
         root.addLayout(mode_row)
 
         self.scroll = QScrollArea(self)
+        self.scroll.setObjectName("VisualPanelScroll")
+        _force_panel_white_background(self.scroll)
+        self.scroll.setStyleSheet(
+            """
+            QScrollArea#VisualPanelScroll {
+                background: #FFFFFF;
+                background-color: #FFFFFF;
+                border: none;
+            }
+            QScrollArea#VisualPanelScroll QWidget,
+            QScrollArea#VisualPanelScroll QFrame,
+            QScrollArea#VisualPanelScroll QAbstractScrollArea,
+            QScrollArea#VisualPanelScroll QAbstractScrollArea::viewport {
+                background: #FFFFFF;
+                background-color: #FFFFFF;
+            }
+            """
+        )
         self.scroll.setFrameShape(QFrame.NoFrame)
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll.viewport().setObjectName("VisualPanelScrollViewport")
+        _force_panel_white_background(self.scroll.viewport())
+        self.scroll.viewport().setStyleSheet("background: #FFFFFF; background-color: #FFFFFF;")
         self.form_host = QWidget(self.scroll)
+        self.form_host.setObjectName("VisualPanelFormHost")
+        _force_panel_white_background(self.form_host)
+        self.form_host.setStyleSheet("QWidget#VisualPanelFormHost { background: #FFFFFF; background-color: #FFFFFF; }")
         self.form_layout = QVBoxLayout(self.form_host)
         self.form_layout.setContentsMargins(0, 0, 0, 0)
         self.form_layout.setSpacing(10)
         self._build_sections()
-        self.form_layout.addStretch(1)
+        bottom_spacer = QWidget(self.form_host)
+        bottom_spacer.setObjectName("VisualPanelBottomSpacer")
+        _force_panel_white_background(bottom_spacer)
+        bottom_spacer.setStyleSheet("QWidget#VisualPanelBottomSpacer { background: #FFFFFF; background-color: #FFFFFF; }")
+        self.form_layout.addWidget(bottom_spacer, 1)
         self.scroll.setWidget(self.form_host)
         root.addWidget(self.scroll, 1)
 
@@ -406,6 +446,22 @@ class VisualFormatPanel(QFrame):
                 background: #FFFFFF;
                 border: 1px solid #DCE3EC;
                 border-radius: 6px;
+            }
+            QFrame#VisualFormatPanel QWidget,
+            QFrame#VisualFormatPanel QFrame,
+            QFrame#VisualFormatPanel QScrollArea,
+            QFrame#VisualFormatPanel QAbstractScrollArea,
+            QFrame#VisualFormatPanel QAbstractScrollArea::viewport {
+                background-color: #FFFFFF;
+            }
+            QScrollArea#VisualPanelScroll,
+            QWidget#VisualPanelScrollViewport,
+            QWidget#VisualPanelFormHost {
+                background: #FFFFFF;
+                border: none;
+            }
+            QLabel#VisualPanelEmpty {
+                background: transparent;
             }
             QLabel#VisualPanelTitle {
                 color: #0F172A;
@@ -438,12 +494,12 @@ class VisualFormatPanel(QFrame):
             }
             QFrame#VisualPanelSection {
                 border: none;
-                background: transparent;
+                background: #FFFFFF;
             }
             QFrame#VisualPanelSectionHeader {
                 border: none;
                 border-radius: 5px;
-                background: transparent;
+                background: #FFFFFF;
                 min-height: 28px;
                 max-height: 28px;
             }

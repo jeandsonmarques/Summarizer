@@ -5,8 +5,8 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QByteArray, QPoint, QSize, Qt, QMimeData, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QDrag, QIcon, QKeySequence, QPainter, QPixmap
+from qgis.PyQt.QtCore import QByteArray, QPoint, QRectF, QSize, Qt, QMimeData, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QDrag, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette, QPixmap
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.PyQt.QtWidgets import (
     QListWidget,
@@ -75,9 +75,31 @@ from .visual_format_panel import VisualFormatPanel
 
 _MODEL_FIELD_MIME = "application/x-summarizer-model-field"
 _MODEL_FIELD_ROLE = Qt.UserRole + 41
+_MODEL_SIDE_PANEL_COLLAPSED_WIDTH = 40
+_MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH = 292
+_MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH = 420
+_MODEL_DATA_PANEL_COLLAPSED_WIDTH = 36
+_MODEL_DATA_PANEL_MIN_WIDTH = 136
+_MODEL_DATA_PANEL_DEFAULT_WIDTH = 168
+_MODEL_DATA_PANEL_MAX_WIDTH = 244
 _MODEL_TRASH_SVG = """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M14.7404 9L14.3942 18M9.60577 18L9.25962 9M19.2276 5.79057C19.5696 5.84221 19.9104 5.89747 20.25 5.95629M19.2276 5.79057L18.1598 19.6726C18.0696 20.8448 17.0921 21.75 15.9164 21.75H8.08357C6.90786 21.75 5.93037 20.8448 5.8402 19.6726L4.77235 5.79057M19.2276 5.79057C18.0812 5.61744 16.9215 5.48485 15.75 5.39432M3.75 5.95629C4.08957 5.89747 4.43037 5.84221 4.77235 5.79057M4.77235 5.79057C5.91878 5.61744 7.07849 5.48485 8.25 5.39432M15.75 5.39432V4.47819C15.75 3.29882 14.8393 2.31423 13.6606 2.27652C13.1092 2.25889 12.5556 2.25 12 2.25C11.4444 2.25 10.8908 2.25889 10.3394 2.27652C9.16065 2.31423 8.25 3.29882 8.25 4.47819V5.39432M15.75 5.39432C14.5126 5.2987 13.262 5.25 12 5.25C10.738 5.25 9.48744 5.2987 8.25 5.39432" stroke="__COLOR__" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>"""
+_MODEL_FIELDS_SVG = """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M20.25 6.375C20.25 8.65317 16.5563 10.5 12 10.5C7.44365 10.5 3.75 8.65317 3.75 6.375M20.25 6.375C20.25 4.09683 16.5563 2.25 12 2.25C7.44365 2.25 3.75 4.09683 3.75 6.375M20.25 6.375V17.625C20.25 19.9032 16.5563 21.75 12 21.75C7.44365 21.75 3.75 19.9032 3.75 17.625V6.375M20.25 6.375V10.125M3.75 6.375V10.125M20.25 10.125V13.875C20.25 16.1532 16.5563 18 12 18C7.44365 18 3.75 16.1532 3.75 13.875V10.125M20.25 10.125C20.25 12.4032 16.5563 14.25 12 14.25C7.44365 14.25 3.75 12.4032 3.75 10.125" stroke="__COLOR__" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>"""
+
+
+def _force_model_white_background(widget: QWidget):
+    widget.setAttribute(Qt.WA_StyledBackground, True)
+    widget.setAutoFillBackground(True)
+    palette = widget.palette()
+    palette.setColor(widget.foregroundRole(), QColor("#111827"))
+    palette.setColor(widget.backgroundRole(), QColor("#FFFFFF"))
+    palette.setColor(QPalette.Window, QColor("#FFFFFF"))
+    palette.setColor(QPalette.Base, QColor("#FFFFFF"))
+    palette.setColor(QPalette.AlternateBase, QColor("#FFFFFF"))
+    widget.setPalette(palette)
 
 
 def _model_builder_trash_icon(size: int = 14) -> QIcon:
@@ -89,6 +111,25 @@ def _model_builder_trash_icon(size: int = 14) -> QIcon:
         (QIcon.Disabled, "#FCA5A5"),
     ):
         svg_data = QByteArray(_MODEL_TRASH_SVG.replace("__COLOR__", color).encode("utf-8"))
+        renderer = QSvgRenderer(svg_data)
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        icon.addPixmap(pixmap, mode)
+    return icon
+
+
+def _model_panel_fields_icon(size: int = 14) -> QIcon:
+    icon = QIcon()
+    for mode, color in (
+        (QIcon.Normal, "#475569"),
+        (QIcon.Active, "#334155"),
+        (QIcon.Selected, "#334155"),
+        (QIcon.Disabled, "#CBD5E1"),
+    ):
+        svg_data = QByteArray(_MODEL_FIELDS_SVG.replace("__COLOR__", color).encode("utf-8"))
         renderer = QSvgRenderer(svg_data)
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
@@ -125,6 +166,35 @@ class _ModelFieldList(QListWidget):
         drag = QDrag(self)
         drag.setMimeData(mime)
         drag.exec_(Qt.CopyAction)
+
+
+class _ModelVerticalPanelLabel(QLabel):
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setFont(ui_font(8, weight=500))
+        self.setStyleSheet("color: #111827; font-size: 8pt; font-weight: 500; background: transparent;")
+
+    def sizeHint(self):
+        metrics = QFontMetrics(self.font())
+        text_width = metrics.horizontalAdvance(self.text()) if hasattr(metrics, "horizontalAdvance") else metrics.width(self.text())
+        return QSize(22, max(86, int(text_width) + 16))
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.TextAntialiasing, True)
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.setFont(self.font())
+        painter.translate(self.width() / 2.0, self.height() / 2.0)
+        painter.rotate(-90)
+        painter.drawText(
+            QRectF(-self.height() / 2.0, -self.width() / 2.0, self.height(), self.width()),
+            int(Qt.AlignCenter),
+            self.text(),
+        )
+        painter.end()
 
 
 class _ModelFieldBindingChip(QFrame):
@@ -256,11 +326,14 @@ class _ModelBindingSlot(QFrame):
 
         self.label_widget = QLabel(label, self)
         self.label_widget.setObjectName("ModelBindingSlotLabel")
+        self.label_widget.setFont(ui_font(8, weight=500))
         header.addWidget(self.label_widget, 1)
         self._layout.addLayout(header, 0)
 
         self.value_widget = QLabel(_rt("Arraste campos aqui"), self)
         self.value_widget.setObjectName("ModelBindingSlotValue")
+        self.value_widget.setFont(ui_font(8))
+        self.value_widget.setStyleSheet("QLabel#ModelBindingSlotValue { color: #64748B; font-size: 8pt; font-weight: 400; background: #FFFFFF; }")
         self.value_widget.setWordWrap(True)
         self._layout.addWidget(self.value_widget, 0)
 
@@ -385,6 +458,10 @@ class ModelTab(QWidget):
         self._history_limit = 80
         self._builder_panel_open = False
         self._visual_panel_open = False
+        self._visual_side_collapsed = False
+        self._visual_side_width = _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
+        self._data_panel_collapsed = False
+        self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
         self._builder_selected_item_id: str = ""
         self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
 
@@ -594,40 +671,54 @@ class ModelTab(QWidget):
 
         self.visual_side_panel = QFrame(self.canvas_splitter)
         self.visual_side_panel.setObjectName("ModelVisualSidePanel")
-        self.visual_side_panel.setAttribute(Qt.WA_StyledBackground, True)
+        _force_model_white_background(self.visual_side_panel)
         self.visual_side_panel.setMinimumWidth(260)
-        self.visual_side_panel.setMaximumWidth(520)
+        self.visual_side_panel.setMaximumWidth(_MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH)
         visual_side_layout = QVBoxLayout(self.visual_side_panel)
         visual_side_layout.setContentsMargins(8, 8, 8, 8)
         visual_side_layout.setSpacing(6)
 
-        visual_tab_bar = QFrame(self.visual_side_panel)
-        visual_tab_bar.setObjectName("ModelVisualPanelTabBar")
-        visual_tab_layout = QHBoxLayout(visual_tab_bar)
+        self.visual_tab_bar = QFrame(self.visual_side_panel)
+        self.visual_tab_bar.setObjectName("ModelVisualPanelTabBar")
+        visual_tab_layout = QHBoxLayout(self.visual_tab_bar)
         visual_tab_layout.setContentsMargins(4, 4, 4, 4)
         visual_tab_layout.setSpacing(4)
-        self.visual_data_tab_btn = QPushButton(_rt("Adicionar dados"), visual_tab_bar)
+        self.visual_data_tab_btn = QPushButton(_rt("Adicionar dados"), self.visual_tab_bar)
         self.visual_data_tab_btn.setObjectName("ModelVisualPanelTabButton")
         self.visual_data_tab_btn.setCheckable(True)
         self.visual_data_tab_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_data_tab_btn.setFlat(True)
+        self.visual_data_tab_btn.setAutoDefault(False)
+        self.visual_data_tab_btn.setDefault(False)
         self.visual_data_tab_btn.setToolTip("")
         self.visual_data_tab_btn.setStatusTip("")
         self.visual_data_tab_btn.setWhatsThis("")
         self.visual_data_tab_btn.clicked.connect(lambda checked=False: self._set_visual_side_tab("build"))
         visual_tab_layout.addWidget(self.visual_data_tab_btn, 1)
-        self.visual_format_tab_btn = QPushButton(_rt("Formatar visual"), visual_tab_bar)
+        self.visual_format_tab_btn = QPushButton(_rt("Formatar visual"), self.visual_tab_bar)
         self.visual_format_tab_btn.setObjectName("ModelVisualPanelTabButton")
         self.visual_format_tab_btn.setCheckable(True)
         self.visual_format_tab_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_format_tab_btn.setFlat(True)
+        self.visual_format_tab_btn.setAutoDefault(False)
+        self.visual_format_tab_btn.setDefault(False)
         self.visual_format_tab_btn.setToolTip("")
         self.visual_format_tab_btn.setStatusTip("")
         self.visual_format_tab_btn.setWhatsThis("")
         self.visual_format_tab_btn.clicked.connect(lambda checked=False: self._set_visual_side_tab("format"))
         visual_tab_layout.addWidget(self.visual_format_tab_btn, 1)
-        visual_side_layout.addWidget(visual_tab_bar, 0)
+        self.visual_side_toggle_btn = QToolButton(self.visual_tab_bar)
+        self.visual_side_toggle_btn.setObjectName("ModelSidePanelToggle")
+        self.visual_side_toggle_btn.setAutoRaise(True)
+        self.visual_side_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_side_toggle_btn.setFixedSize(22, 22)
+        self.visual_side_toggle_btn.clicked.connect(self._toggle_visual_side_panel)
+        visual_tab_layout.addWidget(self.visual_side_toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+        visual_side_layout.addWidget(self.visual_tab_bar, 0)
 
         self.visual_side_stack = QStackedWidget(self.visual_side_panel)
         self.visual_side_stack.setObjectName("ModelVisualSideStack")
+        _force_model_white_background(self.visual_side_stack)
         self.builder_panel = self._build_chart_builder_panel(self.visual_side_stack)
         self.visual_side_stack.addWidget(self.builder_panel)
         self.visual_panel = VisualFormatPanel(self.visual_side_stack)
@@ -636,17 +727,41 @@ class ModelTab(QWidget):
         self.visual_panel.closeRequested.connect(lambda: self._set_visual_panel_open(False))
         self.visual_side_stack.addWidget(self.visual_panel)
         visual_side_layout.addWidget(self.visual_side_stack, 1)
+        self.visual_side_collapsed_rail = QFrame(self.visual_side_panel)
+        self.visual_side_collapsed_rail.setObjectName("ModelSidePanelCollapsedRail")
+        self.visual_side_collapsed_rail.hide()
+        visual_rail_layout = QVBoxLayout(self.visual_side_collapsed_rail)
+        visual_rail_layout.setContentsMargins(2, 6, 2, 6)
+        visual_rail_layout.setSpacing(8)
+        self.visual_side_collapsed_btn = QToolButton(self.visual_side_collapsed_rail)
+        self.visual_side_collapsed_btn.setObjectName("ModelSidePanelToggle")
+        self.visual_side_collapsed_btn.setAutoRaise(True)
+        self.visual_side_collapsed_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_side_collapsed_btn.setFixedSize(22, 22)
+        self.visual_side_collapsed_btn.setStyleSheet(
+            "QToolButton#ModelSidePanelToggle { background: transparent; border: none; padding: 0px; }"
+        )
+        self.visual_side_collapsed_btn.clicked.connect(self._toggle_visual_side_panel)
+        visual_rail_layout.addWidget(self.visual_side_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
+        self.visual_side_collapsed_title = _ModelVerticalPanelLabel(_rt("Visualizações"), self.visual_side_collapsed_rail)
+        self.visual_side_collapsed_title.setObjectName("ModelSidePanelCollapsedTitle")
+        visual_rail_layout.addWidget(self.visual_side_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
+        visual_rail_layout.addStretch(1)
+        visual_side_layout.addWidget(self.visual_side_collapsed_rail, 1)
         self._active_visual_side_tab = "build"
+        self._apply_visual_tab_button_styles()
         self._sync_visual_side_tab_buttons()
+        self._sync_visual_side_panel_chrome()
         self._apply_visual_side_panel_styles()
         self.visual_side_panel.setVisible(False)
         self.canvas_splitter.addWidget(self.visual_side_panel)
 
         self.data_panel = self._build_data_panel(self.canvas_splitter)
-        self.data_panel.setMinimumWidth(260)
-        self.data_panel.setMaximumWidth(520)
+        self.data_panel.setMinimumWidth(_MODEL_DATA_PANEL_MIN_WIDTH)
+        self.data_panel.setMaximumWidth(_MODEL_DATA_PANEL_MAX_WIDTH)
         self.data_panel.setVisible(False)
         self.canvas_splitter.addWidget(self.data_panel)
+        self._sync_data_panel_chrome()
         self.canvas_splitter.setStretchFactor(0, 1)
         self.canvas_splitter.setStretchFactor(1, 0)
         self.canvas_splitter.setStretchFactor(2, 0)
@@ -871,6 +986,23 @@ class ModelTab(QWidget):
                 border: 1px solid #DCE3EC;
                 border-radius: 6px;
             }
+            QFrame#ModelVisualSidePanel QWidget,
+            QFrame#ModelVisualSidePanel QFrame,
+            QFrame#ModelVisualSidePanel QScrollArea,
+            QFrame#ModelVisualSidePanel QAbstractScrollArea,
+            QFrame#ModelVisualSidePanel QAbstractScrollArea::viewport {
+                background-color: #FFFFFF;
+            }
+            QFrame#ModelVisualSidePanel QWidget,
+            QFrame#ModelVisualSidePanel QFrame,
+            QFrame#ModelVisualSidePanel QScrollArea,
+            QFrame#ModelVisualSidePanel QAbstractScrollArea,
+            QFrame#ModelVisualSidePanel QAbstractScrollArea::viewport {
+                background-color: #FFFFFF;
+            }
+            QFrame#ModelVisualSidePanel[collapsed="true"] {
+                border-color: #E2E8F0;
+            }
             QSplitter#ModelCanvasSplitter {
                 background: transparent;
             }
@@ -887,9 +1019,37 @@ class ModelTab(QWidget):
                 border: 1px solid #E2E8F0;
                 border-radius: 6px;
             }
-            QStackedWidget#ModelVisualSideStack {
+            QFrame#ModelSidePanelCollapsedRail {
                 background: transparent;
                 border: none;
+            }
+            QLabel#ModelSidePanelCollapsedTitle {
+                color: #111827;
+                font-size: 8pt;
+                font-weight: 500;
+                background: transparent;
+            }
+            QToolButton#ModelSidePanelToggle,
+            QToolButton#ModelDataPanelToggle {
+                border: none;
+                background: transparent;
+                color: #475569;
+                font-size: 14px;
+                font-weight: 500;
+                padding: 0px;
+            }
+            QToolButton#ModelSidePanelToggle:hover,
+            QToolButton#ModelDataPanelToggle:hover {
+                background: #F1F5F9;
+                border-radius: 4px;
+                color: #111827;
+            }
+            QStackedWidget#ModelVisualSideStack {
+                background: #FFFFFF;
+                border: none;
+            }
+            QStackedWidget#ModelVisualSideStack > QWidget {
+                background: #FFFFFF;
             }
             QPushButton#ModelVisualPanelTabButton {
                 min-height: 28px;
@@ -912,10 +1072,13 @@ class ModelTab(QWidget):
             }
             QScrollArea#ModelBuilderScroll {
                 border: none;
-                background: transparent;
+                background: #FFFFFF;
+            }
+            QWidget#ModelBuilderScrollViewport {
+                background: #FFFFFF;
             }
             QWidget#ModelBuilderHost {
-                background: transparent;
+                background: #FFFFFF;
             }
             QLabel#ModelBuilderTitle {
                 color: #0F172A;
@@ -933,7 +1096,7 @@ class ModelTab(QWidget):
                 border-radius: 6px;
             }
             QFrame#ModelBuilderPlainSection {
-                background: transparent;
+                background: #FFFFFF;
                 border: none;
                 border-radius: 0px;
             }
@@ -960,8 +1123,21 @@ class ModelTab(QWidget):
                 border: 1px solid rgba(15, 23, 42, 0.06);
                 border-radius: 6px;
             }
+            QFrame#ModelBuilderDataPanel QWidget,
+            QFrame#ModelBuilderDataPanel QFrame,
+            QFrame#ModelBuilderDataPanel QListWidget,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea::viewport {
+                background-color: #FFFFFF;
+            }
+            QWidget#ModelDataPanelBody {
+                background: #FFFFFF;
+            }
+            QWidget#ModelDataFieldsBody {
+                background: #FFFFFF;
+            }
             QFrame#ModelBuilderDataSection {
-                background: transparent;
+                background: #FFFFFF;
                 border: none;
             }
             QFrame#ModelBuilderFieldsHeader {
@@ -971,7 +1147,7 @@ class ModelTab(QWidget):
             }
             QLabel#ModelBuilderSectionTitle {
                 color: #0F172A;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 500;
             }
             QToolButton#ModelVisualTypeButton {
@@ -1000,13 +1176,13 @@ class ModelTab(QWidget):
                 background: #E8EEF6;
             }
             QFrame#ModelBuilderEmptyState {
-                background: rgba(255, 255, 255, 0.88);
+                background: #FFFFFF;
                 border: 1px dashed rgba(17, 24, 39, 0.12);
                 border-radius: 6px;
             }
             QLabel#ModelBuilderEmptyStateLabel {
                 color: #64748B;
-                font-size: 12px;
+                font-size: 10px;
                 font-weight: 400;
             }
             QListWidget#ModelBuilderFieldList {
@@ -1017,6 +1193,9 @@ class ModelTab(QWidget):
                 padding: 4px;
                 outline: 0;
                 font-size: 12px;
+            }
+            QWidget#ModelBuilderFieldListViewport {
+                background: #FFFFFF;
             }
             QListWidget#ModelBuilderFieldList::item {
                 padding: 2px 6px;
@@ -1036,7 +1215,7 @@ class ModelTab(QWidget):
                 font-weight: 400;
             }
             QFrame#ModelBindingSlot {
-                background: #F8FAFC;
+                background: #FFFFFF;
                 border: 1px solid rgba(148, 163, 184, 0.32);
                 border-radius: 4px;
                 min-height: 42px;
@@ -1080,7 +1259,7 @@ class ModelTab(QWidget):
             }
             QLabel#ModelBindingSlotValue {
                 color: #94A3B8;
-                font-size: 10px;
+                font-size: 9px;
                 font-weight: 400;
             }
             QComboBox#ModelBindingAggregationCombo {
@@ -1353,16 +1532,22 @@ class ModelTab(QWidget):
                 border-color: #93C5FD;
             }
             QFrame#ModelBuilderPanel {
-                background: transparent;
+                background: #FFFFFF;
+                border: none;
+            }
+            QStackedWidget#ModelVisualSideStack,
+            QStackedWidget#ModelVisualSideStack > QWidget {
+                background: #FFFFFF;
                 border: none;
             }
             QScrollArea#ModelBuilderScroll,
+            QWidget#ModelBuilderScrollViewport,
             QWidget#ModelBuilderHost {
-                background: transparent;
+                background: #FFFFFF;
                 border: none;
             }
             QFrame#ModelBuilderPlainSection {
-                background: transparent;
+                background: #FFFFFF;
                 border: none;
             }
             QFrame#ModelBuilderVisualsSection {
@@ -1395,7 +1580,7 @@ class ModelTab(QWidget):
                 border-color: rgba(17, 24, 39, 0.12);
             }
             QFrame#ModelBindingSlot {
-                background: #F8FAFC;
+                background: #FFFFFF;
                 border: 1px solid rgba(148, 163, 184, 0.32);
                 border-radius: 4px;
                 min-height: 42px;
@@ -1423,15 +1608,64 @@ class ModelTab(QWidget):
             QLabel#ModelBindingFieldName,
             QLabel#ModelBindingSlotValue,
             QLabel#ModelBindingSlotLabel {
-                font-size: 10px;
+                font-size: 9px;
+            }
+            QLabel#ModelBindingSlotValue {
+                color: #64748B;
+                font-weight: 400;
             }
             """
         )
+        self._apply_visual_tab_button_styles()
+
+    def _apply_visual_tab_button_styles(self):
+        style = """
+            QPushButton#ModelVisualPanelTabButton {
+                min-height: 28px;
+                max-height: 28px;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                background-color: transparent;
+                color: #334155;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 500;
+                text-align: center;
+            }
+            QPushButton#ModelVisualPanelTabButton:hover {
+                background-color: #F8FAFC;
+                border-color: #D7DEE8;
+                color: #111827;
+            }
+            QPushButton#ModelVisualPanelTabButton:checked,
+            QPushButton#ModelVisualPanelTabButton:checked:hover {
+                background-color: #EAF4FF;
+                border-color: #93C5FD;
+                color: #111827;
+            }
+            QPushButton#ModelVisualPanelTabButton:pressed {
+                background-color: #DBEAFE;
+                border-color: #60A5FA;
+                color: #111827;
+            }
+        """
+        for button in (
+            getattr(self, "visual_data_tab_btn", None),
+            getattr(self, "visual_format_tab_btn", None),
+        ):
+            if button is None:
+                continue
+            button.setStyleSheet(style)
+            try:
+                button.style().unpolish(button)
+                button.style().polish(button)
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def _build_chart_builder_panel(self, parent: QWidget) -> QFrame:
         panel = QFrame(parent)
         panel.setObjectName("ModelBuilderPanel")
-        panel.setAttribute(Qt.WA_StyledBackground, True)
+        _force_model_white_background(panel)
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 6, 8, 8)
@@ -1439,14 +1673,36 @@ class ModelTab(QWidget):
 
         scroll = QScrollArea(panel)
         scroll.setObjectName("ModelBuilderScroll")
+        _force_model_white_background(scroll)
+        scroll.setStyleSheet(
+            """
+            QScrollArea#ModelBuilderScroll {
+                background: #FFFFFF;
+                background-color: #FFFFFF;
+                border: none;
+            }
+            QScrollArea#ModelBuilderScroll QWidget,
+            QScrollArea#ModelBuilderScroll QFrame,
+            QScrollArea#ModelBuilderScroll QAbstractScrollArea,
+            QScrollArea#ModelBuilderScroll QAbstractScrollArea::viewport {
+                background: #FFFFFF;
+                background-color: #FFFFFF;
+            }
+            """
+        )
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.viewport().setObjectName("ModelBuilderScrollViewport")
+        _force_model_white_background(scroll.viewport())
+        scroll.viewport().setStyleSheet("background: #FFFFFF; background-color: #FFFFFF;")
         layout.addWidget(scroll, 1)
 
         host = QWidget(scroll)
         host.setObjectName("ModelBuilderHost")
+        _force_model_white_background(host)
+        host.setStyleSheet("QWidget#ModelBuilderHost { background: #FFFFFF; background-color: #FFFFFF; }")
         host_layout = QVBoxLayout(host)
         host_layout.setContentsMargins(0, 0, 0, 0)
         host_layout.setSpacing(6)
@@ -1454,7 +1710,7 @@ class ModelTab(QWidget):
 
         visuals_card = QFrame(panel)
         visuals_card.setObjectName("ModelBuilderVisualsSection")
-        visuals_card.setAttribute(Qt.WA_StyledBackground, True)
+        _force_model_white_background(visuals_card)
         visuals_card.setStyleSheet(
             """
             QFrame#ModelBuilderVisualsSection {
@@ -1492,6 +1748,8 @@ class ModelTab(QWidget):
         visuals_layout.setSpacing(6)
         visuals_title = QLabel(_rt("Visualizações"), visuals_card)
         visuals_title.setObjectName("ModelBuilderSectionTitle")
+        visuals_title.setFont(ui_font(9, weight=500))
+        visuals_title.setStyleSheet("QLabel#ModelBuilderSectionTitle { color: #0F172A; font-size: 9pt; font-weight: 500; background: #FFFFFF; }")
         visuals_layout.addWidget(visuals_title, 0)
         visuals_grid = QGridLayout()
         visuals_grid.setContentsMargins(0, 0, 0, 0)
@@ -1543,22 +1801,39 @@ class ModelTab(QWidget):
 
         self.builder_empty_label = QFrame(panel)
         self.builder_empty_label.setObjectName("ModelBuilderEmptyState")
+        _force_model_white_background(self.builder_empty_label)
+        self.builder_empty_label.setFrameShape(QFrame.NoFrame)
+        self.builder_empty_label.setStyleSheet(
+            """
+            QFrame#ModelBuilderEmptyState,
+            QFrame#ModelBuilderEmptyState QWidget,
+            QFrame#ModelBuilderEmptyState QLabel {
+                background: #FFFFFF;
+                background-color: #FFFFFF;
+                border: none;
+            }
+            """
+        )
         empty_layout = QVBoxLayout(self.builder_empty_label)
         empty_layout.setContentsMargins(8, 6, 8, 6)
         empty_layout.setSpacing(0)
         empty_text = QLabel(_rt("Selecione um visual para configurar os campos e as opções."), self.builder_empty_label)
         empty_text.setObjectName("ModelBuilderEmptyStateLabel")
+        empty_text.setFont(ui_font(8))
+        empty_text.setStyleSheet("QLabel#ModelBuilderEmptyStateLabel { color: #64748B; font-size: 8pt; font-weight: 400; background: #FFFFFF; }")
         empty_text.setWordWrap(True)
         empty_layout.addWidget(empty_text)
         host_layout.addWidget(self.builder_empty_label, 0)
 
         self.builder_construct_card = QFrame(panel)
         self.builder_construct_card.setObjectName("ModelBuilderSoftDividerSection")
+        _force_model_white_background(self.builder_construct_card)
         construct_layout = QVBoxLayout(self.builder_construct_card)
         construct_layout.setContentsMargins(8, 8, 8, 8)
         construct_layout.setSpacing(6)
         construct_title = QLabel(_rt("Construir visual"), self.builder_construct_card)
         construct_title.setObjectName("ModelBuilderSectionTitle")
+        construct_title.setFont(ui_font(9, weight=500))
         construct_layout.addWidget(construct_title, 0)
         self.builder_selected_visual_label = QLabel(_rt("Nenhum visual selecionado"), self.builder_construct_card)
         self.builder_selected_visual_label.setObjectName("ModelBuilderHint")
@@ -1589,11 +1864,13 @@ class ModelTab(QWidget):
 
         self.builder_format_card = QFrame(panel)
         self.builder_format_card.setObjectName("ModelBuilderSoftDividerSection")
+        _force_model_white_background(self.builder_format_card)
         format_layout = QVBoxLayout(self.builder_format_card)
         format_layout.setContentsMargins(8, 8, 8, 8)
         format_layout.setSpacing(6)
         format_title = QLabel(_rt("Opções de dados"), self.builder_format_card)
         format_title.setObjectName("ModelBuilderSectionTitle")
+        format_title.setFont(ui_font(9, weight=500))
         format_layout.addWidget(format_title, 0)
 
         options_form = QFormLayout()
@@ -1647,7 +1924,11 @@ class ModelTab(QWidget):
         self.builder_empty_label.setVisible(True)
         self.builder_construct_card.setVisible(False)
         self.builder_format_card.setVisible(False)
-        host_layout.addStretch(1)
+        bottom_spacer = QWidget(host)
+        bottom_spacer.setObjectName("ModelBuilderBottomSpacer")
+        _force_model_white_background(bottom_spacer)
+        bottom_spacer.setStyleSheet("QWidget#ModelBuilderBottomSpacer { background: #FFFFFF; background-color: #FFFFFF; }")
+        host_layout.addWidget(bottom_spacer, 1)
 
         self.builder_value_combo.currentIndexChanged.connect(self._on_builder_value_changed)
         self.builder_agg_combo.currentIndexChanged.connect(self._update_selected_visual_binding_controls)
@@ -1660,7 +1941,7 @@ class ModelTab(QWidget):
     def _build_data_panel(self, parent: QWidget) -> QFrame:
         panel = QFrame(parent)
         panel.setObjectName("ModelBuilderDataPanel")
-        panel.setAttribute(Qt.WA_StyledBackground, True)
+        _force_model_white_background(panel)
         panel.setStyleSheet(
             """
             QFrame#ModelBuilderDataPanel {
@@ -1668,8 +1949,38 @@ class ModelTab(QWidget):
                 border: 1px solid rgba(17, 24, 39, 0.09);
                 border-radius: 2px;
             }
-            QFrame#ModelBuilderDataSection {
+            QFrame#ModelBuilderDataPanel QWidget,
+            QFrame#ModelBuilderDataPanel QFrame,
+            QFrame#ModelBuilderDataPanel QListWidget,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea::viewport {
+                background-color: #FFFFFF;
+            }
+            QFrame#ModelBuilderDataPanel[collapsed="true"] {
+                border-color: #E2E8F0;
+            }
+            QWidget#ModelDataPanelHeader {
+                background: #FFFFFF;
+                border: none;
+            }
+            QLabel#ModelDataPanelIcon {
+                min-width: 14px;
+                max-width: 14px;
+                min-height: 14px;
+                max-height: 14px;
+            }
+            QFrame#ModelDataPanelCollapsedRail {
                 background: transparent;
+                border: none;
+            }
+            QLabel#ModelDataPanelCollapsedTitle {
+                color: #111827;
+                font-size: 8pt;
+                font-weight: 500;
+                background: transparent;
+            }
+            QFrame#ModelBuilderDataSection {
+                background: #FFFFFF;
                 border: none;
             }
             QComboBox#ModelBuilderCombo {
@@ -1684,11 +1995,14 @@ class ModelTab(QWidget):
             QListWidget#ModelBuilderFieldList {
                 border: 1px solid rgba(17, 24, 39, 0.09);
                 border-radius: 2px;
-                background: rgba(255, 255, 255, 0.96);
+                background: #FFFFFF;
                 padding: 2px;
                 color: #111827;
                 font-size: 12px;
                 outline: 0px;
+            }
+            QWidget#ModelBuilderFieldListViewport {
+                background: #FFFFFF;
             }
             QListWidget#ModelBuilderFieldList::item {
                 padding: 4px 6px;
@@ -1730,7 +2044,7 @@ class ModelTab(QWidget):
             }
             QLabel#ModelBuilderFieldLabel {
                 color: #6B7280;
-                font-size: 11px;
+                font-size: 10px;
                 font-weight: 500;
             }
             """
@@ -1740,16 +2054,38 @@ class ModelTab(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        header = QHBoxLayout()
+        self.data_panel_header = QWidget(panel)
+        self.data_panel_header.setObjectName("ModelDataPanelHeader")
+        _force_model_white_background(self.data_panel_header)
+        header = QHBoxLayout(self.data_panel_header)
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(6)
-        title = QLabel(_rt("Painel dados"), panel)
-        title.setObjectName("ModelBuilderTitle")
-        header.addWidget(title, 1, Qt.AlignVCenter)
-        layout.addLayout(header, 0)
+        self.data_panel_icon = QLabel(self.data_panel_header)
+        self.data_panel_icon.setObjectName("ModelDataPanelIcon")
+        self.data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
+        header.addWidget(self.data_panel_icon, 0, Qt.AlignVCenter)
+        self.data_panel_title = QLabel(_rt("Painel dados"), self.data_panel_header)
+        self.data_panel_title.setObjectName("ModelBuilderTitle")
+        header.addWidget(self.data_panel_title, 1, Qt.AlignVCenter)
+        self.data_panel_toggle_btn = QToolButton(self.data_panel_header)
+        self.data_panel_toggle_btn.setObjectName("ModelDataPanelToggle")
+        self.data_panel_toggle_btn.setAutoRaise(True)
+        self.data_panel_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.data_panel_toggle_btn.setFixedSize(22, 22)
+        self.data_panel_toggle_btn.clicked.connect(self._toggle_data_panel)
+        header.addWidget(self.data_panel_toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+        layout.addWidget(self.data_panel_header, 0)
+
+        self.data_panel_body = QWidget(panel)
+        self.data_panel_body.setObjectName("ModelDataPanelBody")
+        _force_model_white_background(self.data_panel_body)
+        body_layout = QVBoxLayout(self.data_panel_body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(6)
 
         layer_card = QFrame(panel)
         layer_card.setObjectName("ModelBuilderDataSection")
+        _force_model_white_background(layer_card)
         layer_layout = QHBoxLayout(layer_card)
         layer_layout.setContentsMargins(0, 0, 0, 0)
         layer_layout.setSpacing(8)
@@ -1761,19 +2097,25 @@ class ModelTab(QWidget):
         self.builder_layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
         self.builder_layer_combo.layerChanged.connect(self._on_builder_layer_changed)
         layer_layout.addWidget(self.builder_layer_combo, 1)
-        layout.addWidget(layer_card, 0)
+        body_layout.addWidget(layer_card, 0)
 
         fields_card = QFrame(panel)
         fields_card.setObjectName("ModelBuilderDataSection")
+        _force_model_white_background(fields_card)
         fields_layout = QVBoxLayout(fields_card)
         fields_layout.setContentsMargins(0, 0, 0, 0)
         fields_layout.setSpacing(0)
         fields_body = QWidget(fields_card)
+        fields_body.setObjectName("ModelDataFieldsBody")
+        _force_model_white_background(fields_body)
         fields_body_layout = QVBoxLayout(fields_body)
         fields_body_layout.setContentsMargins(0, 4, 0, 0)
         fields_body_layout.setSpacing(0)
         self.builder_fields_list = _ModelFieldList(fields_body)
         self.builder_fields_list.setObjectName("ModelBuilderFieldList")
+        self.builder_fields_list.viewport().setObjectName("ModelBuilderFieldListViewport")
+        _force_model_white_background(self.builder_fields_list)
+        _force_model_white_background(self.builder_fields_list.viewport())
         self.builder_fields_list.setMinimumHeight(220)
         self.builder_fields_list.setUniformItemSizes(True)
         self.builder_fields_list.setSpacing(1)
@@ -1781,7 +2123,27 @@ class ModelTab(QWidget):
         self.builder_fields_list.fieldActivated.connect(self._handle_field_list_activation)
         fields_body_layout.addWidget(self.builder_fields_list, 1)
         fields_layout.addWidget(fields_body, 1)
-        layout.addWidget(fields_card, 1)
+        body_layout.addWidget(fields_card, 1)
+        layout.addWidget(self.data_panel_body, 1)
+
+        self.data_panel_collapsed_rail = QFrame(panel)
+        self.data_panel_collapsed_rail.setObjectName("ModelDataPanelCollapsedRail")
+        self.data_panel_collapsed_rail.hide()
+        rail_layout = QVBoxLayout(self.data_panel_collapsed_rail)
+        rail_layout.setContentsMargins(2, 6, 2, 6)
+        rail_layout.setSpacing(8)
+        self.data_panel_collapsed_btn = QToolButton(self.data_panel_collapsed_rail)
+        self.data_panel_collapsed_btn.setObjectName("ModelDataPanelToggle")
+        self.data_panel_collapsed_btn.setAutoRaise(True)
+        self.data_panel_collapsed_btn.setCursor(Qt.PointingHandCursor)
+        self.data_panel_collapsed_btn.setFixedSize(22, 22)
+        self.data_panel_collapsed_btn.clicked.connect(self._toggle_data_panel)
+        rail_layout.addWidget(self.data_panel_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
+        self.data_panel_collapsed_title = _ModelVerticalPanelLabel(_rt("Painel dados"), self.data_panel_collapsed_rail)
+        self.data_panel_collapsed_title.setObjectName("ModelDataPanelCollapsedTitle")
+        rail_layout.addWidget(self.data_panel_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
+        rail_layout.addStretch(1)
+        layout.addWidget(self.data_panel_collapsed_rail, 1)
 
         return panel
 
@@ -1990,6 +2352,85 @@ class ModelTab(QWidget):
                 include_badge=True,
             )
             self.builder_fields_list.addItem(item)
+        self._sync_data_panel_width_to_content()
+
+    def _text_width(self, metrics: QFontMetrics, text: str) -> int:
+        if hasattr(metrics, "horizontalAdvance"):
+            return int(metrics.horizontalAdvance(text))
+        return int(metrics.width(text))
+
+    def _desired_data_panel_width(self) -> int:
+        try:
+            metrics = QFontMetrics(self.builder_fields_list.font())
+            max_text = 0
+            for index in range(self.builder_fields_list.count()):
+                item = self.builder_fields_list.item(index)
+                if item is None:
+                    continue
+                text = str(item.data(Qt.UserRole + 2) or item.text() or "")
+                max_text = max(max_text, self._text_width(metrics, text))
+            layer_text = ""
+            try:
+                layer_text = self.builder_layer_combo.currentText()
+            except Exception:
+                layer_text = ""
+            max_text = max(max_text, self._text_width(metrics, layer_text))
+            chrome = 44
+            desired = max(_MODEL_DATA_PANEL_MIN_WIDTH, max_text + chrome)
+            return min(_MODEL_DATA_PANEL_MAX_WIDTH, desired)
+        except Exception:
+            log_exception("falha opcional ignorada")
+            return _MODEL_DATA_PANEL_DEFAULT_WIDTH
+
+    def _sync_data_panel_width_to_content(self):
+        if not hasattr(self, "data_panel"):
+            return
+        self._data_panel_width = self._desired_data_panel_width()
+        self._sync_data_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
+    def _toggle_data_panel(self):
+        if not getattr(self, "_data_panel_collapsed", False):
+            sizes = self.canvas_splitter.sizes() if hasattr(self, "canvas_splitter") else []
+            if len(sizes) >= 3 and sizes[2] > _MODEL_DATA_PANEL_COLLAPSED_WIDTH:
+                self._data_panel_width = min(_MODEL_DATA_PANEL_MAX_WIDTH, max(_MODEL_DATA_PANEL_MIN_WIDTH, int(sizes[2])))
+        self._data_panel_collapsed = not bool(getattr(self, "_data_panel_collapsed", False))
+        self._sync_data_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
+    def _set_data_panel_available(self, available: bool):
+        if not hasattr(self, "data_panel"):
+            return
+        self.data_panel.setVisible(bool(available))
+        if available:
+            self._sync_data_panel_chrome()
+
+    def _sync_data_panel_chrome(self):
+        if not hasattr(self, "data_panel"):
+            return
+        collapsed = bool(getattr(self, "_data_panel_collapsed", False))
+        self.data_panel.setMinimumWidth(_MODEL_DATA_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_DATA_PANEL_MIN_WIDTH)
+        self.data_panel.setMaximumWidth(_MODEL_DATA_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_DATA_PANEL_MAX_WIDTH)
+        self.data_panel.setProperty("collapsed", collapsed)
+        if hasattr(self, "data_panel_header"):
+            self.data_panel_header.setVisible(not collapsed)
+        if hasattr(self, "data_panel_body"):
+            self.data_panel_body.setVisible(not collapsed)
+        if hasattr(self, "data_panel_collapsed_rail"):
+            self.data_panel_collapsed_rail.setVisible(collapsed)
+        if hasattr(self, "data_panel_toggle_btn"):
+            self.data_panel_toggle_btn.setArrowType(Qt.NoArrow)
+            self.data_panel_toggle_btn.setText("›")
+            self.data_panel_toggle_btn.setToolTip(_rt("Recolher painel dados"))
+        if hasattr(self, "data_panel_collapsed_btn"):
+            self.data_panel_collapsed_btn.setArrowType(Qt.NoArrow)
+            self.data_panel_collapsed_btn.setText("‹")
+            self.data_panel_collapsed_btn.setToolTip(_rt("Expandir painel dados"))
+        try:
+            self.data_panel.style().unpolish(self.data_panel)
+            self.data_panel.style().polish(self.data_panel)
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def _active_selected_binding(self) -> Optional[DashboardChartBinding]:
         item = self._selected_canvas_item()
@@ -4377,6 +4818,61 @@ class ModelTab(QWidget):
                 button.setChecked(bool(checked))
             finally:
                 button.blockSignals(False)
+            if hasattr(self, "_apply_visual_tab_button_styles"):
+                self._apply_visual_tab_button_styles()
+
+    def _toggle_visual_side_panel(self):
+        if not getattr(self, "_visual_side_collapsed", False):
+            sizes = self.canvas_splitter.sizes() if hasattr(self, "canvas_splitter") else []
+            if len(sizes) >= 2 and sizes[1] > _MODEL_SIDE_PANEL_COLLAPSED_WIDTH:
+                self._visual_side_width = min(
+                    _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH,
+                    max(260, int(sizes[1])),
+                )
+        self._visual_side_collapsed = not bool(getattr(self, "_visual_side_collapsed", False))
+        self._sync_visual_side_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
+    def _set_visual_side_panel_available(self, available: bool):
+        if not hasattr(self, "visual_side_panel"):
+            return
+        self.visual_side_panel.setVisible(bool(available))
+        if available:
+            self._sync_visual_side_panel_chrome()
+
+    def _sync_visual_side_panel_chrome(self):
+        if not hasattr(self, "visual_side_panel"):
+            return
+        collapsed = bool(getattr(self, "_visual_side_collapsed", False))
+        self.visual_side_panel.setMinimumWidth(_MODEL_SIDE_PANEL_COLLAPSED_WIDTH if collapsed else 260)
+        self.visual_side_panel.setMaximumWidth(
+            _MODEL_SIDE_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH
+        )
+        self.visual_side_panel.setProperty("collapsed", collapsed)
+        if hasattr(self, "visual_tab_bar"):
+            self.visual_tab_bar.setVisible(not collapsed)
+        if hasattr(self, "visual_side_stack"):
+            self.visual_side_stack.setVisible(not collapsed)
+        if hasattr(self, "visual_data_tab_btn"):
+            self.visual_data_tab_btn.setVisible(not collapsed)
+        if hasattr(self, "visual_format_tab_btn"):
+            self.visual_format_tab_btn.setVisible(not collapsed)
+        if hasattr(self, "visual_side_collapsed_rail"):
+            self.visual_side_collapsed_rail.setVisible(collapsed)
+        if hasattr(self, "visual_side_toggle_btn"):
+            self.visual_side_toggle_btn.setVisible(not collapsed)
+            self.visual_side_toggle_btn.setArrowType(Qt.NoArrow)
+            self.visual_side_toggle_btn.setText("›")
+            self.visual_side_toggle_btn.setToolTip(_rt("Recolher visualizações"))
+        if hasattr(self, "visual_side_collapsed_btn"):
+            self.visual_side_collapsed_btn.setArrowType(Qt.NoArrow)
+            self.visual_side_collapsed_btn.setText("‹")
+            self.visual_side_collapsed_btn.setToolTip(_rt("Expandir visualizações"))
+        try:
+            self.visual_side_panel.style().unpolish(self.visual_side_panel)
+            self.visual_side_panel.style().polish(self.visual_side_panel)
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def _set_visual_side_tab(self, tab_name: str):
         target = "format" if str(tab_name or "").strip().lower() == "format" else "build"
@@ -4394,8 +4890,8 @@ class ModelTab(QWidget):
             self._active_visual_side_tab = "build"
             self._sync_builder_selection_state()
             self._sync_visual_side_tab_buttons()
-        self.visual_side_panel.setVisible(active or self._visual_panel_open)
-        self.data_panel.setVisible(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
+        self._set_visual_side_panel_available(active or self._visual_panel_open)
+        self._set_data_panel_available(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
         self._ensure_canvas_splitter_sizes()
         self.create_chart_btn.blockSignals(True)
         try:
@@ -4429,12 +4925,30 @@ class ModelTab(QWidget):
                 return
             visual_visible = bool(self.visual_side_panel.isVisible())
             data_visible = bool(self.data_panel.isVisible())
-            target_visual = int(min(max(sizes[1] if sizes[1] > 0 else 292, 260), 420)) if visual_visible else 0
-            target_data = int(min(max(sizes[2] if sizes[2] > 0 else 292, 260), 420)) if data_visible else 0
-            if visual_visible and sizes[1] < 220:
-                target_visual = 292
-            if data_visible and sizes[2] < 220:
-                target_data = 292
+            if visual_visible and getattr(self, "_visual_side_collapsed", False):
+                target_visual = _MODEL_SIDE_PANEL_COLLAPSED_WIDTH
+            elif visual_visible:
+                preferred_visual = int(
+                    getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH)
+                    or _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
+                )
+                target_visual = int(min(max(preferred_visual, 260), _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH))
+            else:
+                target_visual = 0
+            if data_visible and getattr(self, "_data_panel_collapsed", False):
+                target_data = _MODEL_DATA_PANEL_COLLAPSED_WIDTH
+            elif data_visible:
+                preferred_data = int(getattr(self, "_data_panel_width", _MODEL_DATA_PANEL_DEFAULT_WIDTH) or _MODEL_DATA_PANEL_DEFAULT_WIDTH)
+                target_data = int(min(max(preferred_data, _MODEL_DATA_PANEL_MIN_WIDTH), _MODEL_DATA_PANEL_MAX_WIDTH))
+            else:
+                target_data = 0
+            if visual_visible and not getattr(self, "_visual_side_collapsed", False) and sizes[1] < 180:
+                target_visual = int(
+                    getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH)
+                    or _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
+                )
+            if data_visible and not getattr(self, "_data_panel_collapsed", False) and sizes[2] < 120:
+                target_data = int(getattr(self, "_data_panel_width", _MODEL_DATA_PANEL_DEFAULT_WIDTH) or _MODEL_DATA_PANEL_DEFAULT_WIDTH)
             target_canvas = max(360, total - target_visual - target_data)
             splitter.setSizes([target_canvas, target_visual, target_data])
         except Exception:
@@ -4448,8 +4962,8 @@ class ModelTab(QWidget):
             self._builder_panel_open = False
             self._active_visual_side_tab = "format"
             self._sync_visual_side_tab_buttons()
-        self.visual_side_panel.setVisible(active or self._builder_panel_open)
-        self.data_panel.setVisible(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
+        self._set_visual_side_panel_available(active or self._builder_panel_open)
+        self._set_data_panel_available(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
         self._ensure_canvas_splitter_sizes()
         self.format_visual_btn.blockSignals(True)
         try:
@@ -4502,7 +5016,7 @@ class ModelTab(QWidget):
             self._visual_panel_open = False
         self._set_builder_panel_open(self._builder_panel_open)
         self._set_visual_panel_open(self._visual_panel_open)
-        self.data_panel.setVisible(enabled and self.current_project is not None and self.body_stack.currentWidget() is self.canvas_page)
+        self._set_data_panel_available(enabled and self.current_project is not None and self.body_stack.currentWidget() is self.canvas_page)
         self._ensure_canvas_splitter_sizes()
         if self.edit_mode_btn.isChecked() != enabled:
             self.edit_mode_btn.blockSignals(True)
@@ -4578,7 +5092,9 @@ class ModelTab(QWidget):
             self.close_project_btn,
         ):
             button.setVisible(show_project_actions)
-        self.create_chart_btn.setVisible(show_project_actions and bool(self.edit_mode_btn.isChecked()))
+        edit_enabled = bool(self.edit_mode_btn.isChecked())
+        self.create_chart_btn.setVisible(show_project_actions and edit_enabled)
+        self.format_visual_btn.setVisible(show_project_actions and edit_enabled)
         self.mode_switch_wrap.setVisible(show_project_actions)
         if has_project:
             self._configure_toolbar_icon_button(self.new_btn, "Walker-New.svg", _rt("Novo"))
@@ -4716,7 +5232,7 @@ class ModelTab(QWidget):
         self.close_project_btn.setVisible(has_project)
         self._set_builder_panel_open(self._builder_panel_open)
         self._set_visual_panel_open(self._visual_panel_open)
-        self.data_panel.setVisible(has_project and bool(self.edit_mode_btn.isChecked()) and in_canvas_page)
+        self._set_data_panel_available(has_project and bool(self.edit_mode_btn.isChecked()) and in_canvas_page)
         self._ensure_canvas_splitter_sizes()
         self._sync_builder_selection_state()
         self._update_footer_visibility()

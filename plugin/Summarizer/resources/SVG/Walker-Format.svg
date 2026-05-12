@@ -2,7 +2,7 @@
   <path d="M4 5.5a1 1 0 0 1 1-1h10a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z" fill="#0F172A"/>
   <path d="M4 10a1 1 0 0 1 1-1h10a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z" fill="#0F172A"/>
   <path d="M4 14.5a1 1 0 0 1 1-1h10a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z" fill="#0F172A"/>
-  <circle cx="7" cy="5.5" r="2" fill="#2563EB"/>
-  <circle cx="12.5" cy="10" r="2" fill="#2563EB"/>
-  <circle cx="9" cy="14.5" r="2" fill="#2563EB"/>
+  <circle cx="7" cy="5.5" r="2" fill="#6B7280"/>
+  <circle cx="12.5" cy="10" r="2" fill="#6B7280"/>
+  <circle cx="9" cy="14.5" r="2" fill="#6B7280"/>
 </svg>

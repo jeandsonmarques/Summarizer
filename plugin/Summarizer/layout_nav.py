@@ -78,10 +78,10 @@ class SidebarController(QObject):
             btn.setCursor(Qt.PointingHandCursor)
             btn.setToolTip(tooltip)
             if mode == "relatorios":
-                btn.setFixedSize(52, 52)
+                btn.setFixedSize(50, 51)
             else:
-                btn.setFixedSize(36, 36)
-            btn.setIconSize(QSize(36, 36) if mode == "relatorios" else QSize(20, 20))
+                btn.setFixedSize(50, 37)
+            btn.setIconSize(QSize(35, 35) if mode == "relatorios" else QSize(21, 21))
             btn.setProperty("navIcon", "true")
             btn.setProperty("active", False)
             if mode == "relatorios":
@@ -196,7 +196,7 @@ class SidebarController(QObject):
             return QRect()
         indicator_width = 3
         indicator_height = min(max(28, geo.height() - 8), 44)
-        x = 0
+        x = 4
         y = geo.center().y() - (indicator_height // 2)
         return QRect(x, y, indicator_width, indicator_height)
 
