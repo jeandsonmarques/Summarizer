@@ -5,13 +5,9 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QByteArray, QPoint, QRect, QRectF, QSize, QSettings, Qt, QMimeData, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QDrag, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette, QPixmap
-from qgis.PyQt.QtSvg import QSvgRenderer
+from qgis.PyQt.QtCore import QPoint, QRect, QSize, Qt, QMimeData, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QDrag, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette
 from qgis.PyQt.QtWidgets import (
-    QAbstractItemView,
-    QListWidget,
-    QListWidgetItem,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -36,8 +32,7 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qgis.core import QgsMapLayerProxyModel, QgsProject, QgsVectorLayer
-from qgis.gui import QgsMapLayerComboBox
+from qgis.core import QgsProject, QgsVectorLayer
 
 from .dashboard_add_dialog import DashboardAddDialog
 from .dashboard_canvas import DashboardCanvas
@@ -64,19 +59,41 @@ from .dashboard_models import (
 )
 from .dashboard_page_widget import DashboardPageWidget
 from .dashboard_project_store import DashboardProjectStore, PROJECT_EXTENSION
-from .field_list_helpers import configure_field_item, field_kind_badge, field_kind_from_field_def, normalize_field_kind
+from .field_list_helpers import field_kind_badge, normalize_field_kind
 from .report_view.charts import ChartVisualState
 from .report_view.result_models import ChartPayload
-from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelModeToggle, _ModelRecentCard
+from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelRecentCard
+from .model_view.model_data_panel import (
+    build_model_data_panel,
+    desired_data_panel_width,
+    field_catalog_for_layer,
+    field_group_for_def,
+    field_is_date_like,
+    field_is_numeric,
+    field_kind_for_layer_field,
+    populate_builder_field_list,
+    refresh_builder_data_fonts,
+    resolve_layer_field_name,
+    sync_data_panel_chrome,
+    toggle_data_panel_state,
+)
+from .model_view.model_header import build_model_header
+from .model_view.model_theme import (
+    _force_model_white_background,
+    _is_dark_theme,
+    _model_builder_trash_icon,
+    _model_panel_fields_icon,
+    _model_theme_color,
+    _model_tinted_svg_icon,
+    fill_model_theme_tokens,
+)
 from .slim_dialogs import slim_message, slim_question
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
-from .utils.resources import svg_icon
 from .utils.logging_utils import log_exception
 from .visual_format_panel import VisualFormatPanel
 
 _MODEL_FIELD_MIME = "application/x-summarizer-model-field"
-_MODEL_FIELD_ROLE = Qt.UserRole + 41
 _MODEL_SIDE_PANEL_COLLAPSED_WIDTH = 40
 _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH = 276
 _MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH = 250
@@ -85,236 +102,6 @@ _MODEL_DATA_PANEL_COLLAPSED_WIDTH = 40
 _MODEL_DATA_PANEL_MIN_WIDTH = 120
 _MODEL_DATA_PANEL_DEFAULT_WIDTH = 148
 _MODEL_DATA_PANEL_MAX_WIDTH = 320
-_MODEL_TRASH_SVG = """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M14.7404 9L14.3942 18M9.60577 18L9.25962 9M19.2276 5.79057C19.5696 5.84221 19.9104 5.89747 20.25 5.95629M19.2276 5.79057L18.1598 19.6726C18.0696 20.8448 17.0921 21.75 15.9164 21.75H8.08357C6.90786 21.75 5.93037 20.8448 5.8402 19.6726L4.77235 5.79057M19.2276 5.79057C18.0812 5.61744 16.9215 5.48485 15.75 5.39432M3.75 5.95629C4.08957 5.89747 4.43037 5.84221 4.77235 5.79057M4.77235 5.79057C5.91878 5.61744 7.07849 5.48485 8.25 5.39432M15.75 5.39432V4.47819C15.75 3.29882 14.8393 2.31423 13.6606 2.27652C13.1092 2.25889 12.5556 2.25 12 2.25C11.4444 2.25 10.8908 2.25889 10.3394 2.27652C9.16065 2.31423 8.25 3.29882 8.25 4.47819V5.39432M15.75 5.39432C14.5126 5.2987 13.262 5.25 12 5.25C10.738 5.25 9.48744 5.2987 8.25 5.39432" stroke="__COLOR__" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>"""
-_MODEL_FIELDS_SVG = """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M20.25 6.375C20.25 8.65317 16.5563 10.5 12 10.5C7.44365 10.5 3.75 8.65317 3.75 6.375M20.25 6.375C20.25 4.09683 16.5563 2.25 12 2.25C7.44365 2.25 3.75 4.09683 3.75 6.375M20.25 6.375V17.625C20.25 19.9032 16.5563 21.75 12 21.75C7.44365 21.75 3.75 19.9032 3.75 17.625V6.375M20.25 6.375V10.125M3.75 6.375V10.125M20.25 10.125V13.875C20.25 16.1532 16.5563 18 12 18C7.44365 18 3.75 16.1532 3.75 13.875V10.125M20.25 10.125C20.25 12.4032 16.5563 14.25 12 14.25C7.44365 14.25 3.75 12.4032 3.75 10.125" stroke="__COLOR__" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>"""
-
-
-def _model_fields_panel_font():
-    font = ui_font()
-    font.setPixelSize(12)
-    return font
-
-
-def _is_dark_theme() -> bool:
-    try:
-        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
-    except Exception:
-        return False
-
-
-def _model_theme_color(name: str) -> str:
-    dark = {
-        "app": "#0B1020",
-        "surface": "#111827",
-        "surface_2": "#172033",
-        "hover": "#1F2A3D",
-        "border": "#334155",
-        "border_soft": "rgba(148, 163, 184, 0.22)",
-        "text": "#F8FAFC",
-        "muted": "#CBD5E1",
-        "checked": "#312E81",
-        "checked_border": "#7C6CFF",
-    }
-    light = {
-        "app": "#FFFFFF",
-        "surface": "#FFFFFF",
-        "surface_2": "#F8FAFC",
-        "hover": "#F8FAFC",
-        "border": "#DCE3EC",
-        "border_soft": "rgba(17, 24, 39, 0.08)",
-        "text": "#0F172A",
-        "muted": "#64748B",
-        "checked": "#EAF4FF",
-        "checked_border": "#93C5FD",
-    }
-    return (dark if _is_dark_theme() else light).get(name, light["surface"])
-
-
-def _force_model_white_background(widget: QWidget):
-    widget.setAttribute(Qt.WA_StyledBackground, True)
-    widget.setAutoFillBackground(True)
-    palette = widget.palette()
-    palette.setColor(widget.foregroundRole(), QColor(_model_theme_color("text")))
-    palette.setColor(widget.backgroundRole(), QColor(_model_theme_color("surface")))
-    palette.setColor(QPalette.Window, QColor(_model_theme_color("surface")))
-    palette.setColor(QPalette.Base, QColor(_model_theme_color("surface")))
-    palette.setColor(QPalette.AlternateBase, QColor(_model_theme_color("surface_2")))
-    widget.setPalette(palette)
-
-
-def _model_builder_trash_icon(size: int = 14) -> QIcon:
-    icon = QIcon()
-    for mode, color in (
-        (QIcon.Normal, "#EF4444"),
-        (QIcon.Active, "#DC2626"),
-        (QIcon.Selected, "#DC2626"),
-        (QIcon.Disabled, "#FCA5A5"),
-    ):
-        svg_data = QByteArray(_MODEL_TRASH_SVG.replace("__COLOR__", color).encode("utf-8"))
-        renderer = QSvgRenderer(svg_data)
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        renderer.render(painter)
-        painter.end()
-        icon.addPixmap(pixmap, mode)
-    return icon
-
-
-def _model_panel_fields_icon(size: int = 14) -> QIcon:
-    icon = QIcon()
-    normal = "#CBD5E1" if _is_dark_theme() else "#475569"
-    active = "#F8FAFC" if _is_dark_theme() else "#334155"
-    disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
-    for mode, color in (
-        (QIcon.Normal, normal),
-        (QIcon.Active, active),
-        (QIcon.Selected, active),
-        (QIcon.Disabled, disabled),
-    ):
-        svg_data = QByteArray(_MODEL_FIELDS_SVG.replace("__COLOR__", color).encode("utf-8"))
-        renderer = QSvgRenderer(svg_data)
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.end()
-        icon.addPixmap(pixmap, mode)
-    return icon
-
-
-def _model_panel_chevron_icon(direction: str = "right", size: int = 20) -> QIcon:
-    path_d = "M9 5 L15 12 L9 19" if str(direction or "").lower() == "right" else "M15 5 L9 12 L15 19"
-    template = (
-        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" '
-        'xmlns="http://www.w3.org/2000/svg">'
-        f'<path d="{path_d}" stroke="__COLOR__" stroke-width="2.8" '
-        'stroke-linecap="round" stroke-linejoin="round"/>'
-        "</svg>"
-    )
-    icon = QIcon()
-    normal = "#CBD5E1" if _is_dark_theme() else "#334155"
-    active = "#F8FAFC" if _is_dark_theme() else "#111827"
-    disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
-    for mode, color in (
-        (QIcon.Normal, normal),
-        (QIcon.Active, active),
-        (QIcon.Selected, active),
-        (QIcon.Disabled, disabled),
-    ):
-        try:
-            svg_data = QByteArray(template.replace("__COLOR__", color).encode("utf-8"))
-            renderer = QSvgRenderer(svg_data)
-            pixmap = QPixmap(size, size)
-            pixmap.fill(Qt.transparent)
-            painter = QPainter(pixmap)
-            renderer.render(painter)
-            painter.end()
-            icon.addPixmap(pixmap, mode)
-        except Exception:
-            log_exception("falha opcional ignorada")
-    return icon
-
-
-def _model_tinted_svg_icon(icon_name: str, size: int = 18, accent_color: str = "") -> QIcon:
-    path = os.path.join(os.path.dirname(__file__), "resources", "SVG", icon_name)
-    if not os.path.exists(path):
-        return svg_icon(icon_name)
-    icon = QIcon()
-    accent = QColor(str(accent_color or ""))
-    if accent.isValid():
-        normal = accent.name()
-        active = accent.lighter(112).name()
-        disabled = accent.lighter(165).name()
-    else:
-        normal = "#E5E7EB" if _is_dark_theme() else "#334155"
-        active = "#FFFFFF" if _is_dark_theme() else "#111827"
-        disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
-    for mode, color in (
-        (QIcon.Normal, normal),
-        (QIcon.Active, active),
-        (QIcon.Selected, active),
-        (QIcon.Disabled, disabled),
-    ):
-        try:
-            with open(path, "rb") as handle:
-                renderer = QSvgRenderer(QByteArray(handle.read()))
-            pixmap = QPixmap(size, size)
-            pixmap.fill(Qt.transparent)
-            painter = QPainter(pixmap)
-            viewbox = renderer.viewBoxF()
-            if viewbox.isValid() and viewbox.width() > 0 and viewbox.height() > 0:
-                scale = min(size / viewbox.width(), size / viewbox.height()) * 0.9
-                target_w = viewbox.width() * scale
-                target_h = viewbox.height() * scale
-                renderer.render(painter, QRectF((size - target_w) / 2, (size - target_h) / 2, target_w, target_h))
-            else:
-                renderer.render(painter)
-            painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-            painter.fillRect(pixmap.rect(), QColor(color))
-            painter.end()
-            icon.addPixmap(pixmap, mode)
-        except Exception:
-            log_exception("falha opcional ignorada")
-            return svg_icon(icon_name)
-    return icon
-
-
-class _ModelFieldList(QListWidget):
-    fieldActivated = pyqtSignal(object)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._drag_start_pos = QPoint()
-        self.setDragEnabled(True)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setDragDropMode(QAbstractItemView.DragOnly)
-        self.setDefaultDropAction(Qt.CopyAction)
-        self.itemDoubleClicked.connect(self._emit_activated)
-
-    def supportedDropActions(self):
-        return Qt.CopyAction
-
-    def mousePressEvent(self, event):
-        item = self.itemAt(event.pos())
-        if item is not None:
-            self.setCurrentItem(item)
-            if event.button() == Qt.LeftButton:
-                self._drag_start_pos = event.pos()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.LeftButton:
-            if (event.pos() - self._drag_start_pos).manhattanLength() >= 6:
-                self.startDrag(Qt.CopyAction)
-                return
-        super().mouseMoveEvent(event)
-
-    def _emit_activated(self, item):
-        payload = item.data(_MODEL_FIELD_ROLE) if item is not None else None
-        if isinstance(payload, dict):
-            self.fieldActivated.emit(dict(payload))
-
-    def startDrag(self, supportedActions):
-        item = self.currentItem()
-        selected = self.selectedItems()
-        if selected:
-            item = selected[0]
-        if item is None:
-            return
-        payload = item.data(_MODEL_FIELD_ROLE)
-        if not isinstance(payload, dict):
-            return
-        mime = QMimeData()
-        mime.setData(_MODEL_FIELD_MIME, json.dumps(payload).encode("utf-8"))
-        drag = QDrag(self)
-        drag.setMimeData(mime)
-        drag.exec_(Qt.CopyAction)
 
 
 class _ModelVerticalPanelLabel(QLabel):
@@ -628,150 +415,14 @@ class ModelTab(QWidget):
         root.setContentsMargins(4, 2, 4, 3)
         root.setSpacing(4)
 
-        header = QFrame(self)
-        header.setObjectName("ModelHeader")
-        header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(10)
-
-        top_row = QHBoxLayout()
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(0)
-
-        self.new_btn = QPushButton(_rt("Novo"))
-        self.open_btn = QPushButton(_rt("Abrir"))
-        self.save_btn = QPushButton(_rt("Salvar"))
-        self.save_as_btn = QPushButton(_rt("Salvar como"))
-        self.export_btn = QPushButton(_rt("Exportar"))
-        self.undo_btn = QPushButton(_rt("Desfazer"))
-        self.redo_btn = QPushButton(_rt("Refazer"))
-        self.create_chart_btn = QPushButton(_rt("Criar grafico"))
-        self.format_visual_btn = QPushButton(_rt("Formatar visual"))
-        self.edit_mode_btn = QPushButton(_rt("Edicao"))
-        self.settings_btn = QPushButton(_rt("Configuracoes"))
-        self.create_chart_btn.setCheckable(True)
-        self.create_chart_btn.setChecked(False)
-        self.format_visual_btn.setCheckable(True)
-        self.format_visual_btn.setChecked(False)
-        self.edit_mode_btn.setCheckable(True)
-        self.edit_mode_btn.setChecked(True)
-        self.close_project_btn = QToolButton()
-        self.close_project_btn.setObjectName("ModelCloseProjectButton")
-        self._configure_toolbar_icon_button(self.undo_btn, "Walker-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
-        self._configure_toolbar_icon_button(self.redo_btn, "Walker-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
-        self._configure_toolbar_icon_button(self.new_btn, "Walker-New.svg", _rt("Novo"))
-        self._configure_toolbar_icon_button(self.open_btn, "Walker-Open.svg", _rt("Abrir"))
-        self._configure_toolbar_icon_button(self.save_btn, "Walker-Save.svg", _rt("Salvar"))
-        self._configure_toolbar_icon_button(self.save_as_btn, "Walker-SaveAs.svg", _rt("Salvar como"))
-        self._configure_toolbar_icon_button(self.export_btn, "Walker-Image.svg", _rt("Exportar imagem"))
-        self._configure_toolbar_icon_button(self.create_chart_btn, "ModelVisual-Pie.svg", _rt("Criar grafico"))
-        self._configure_toolbar_icon_button(self.format_visual_btn, "Walker-Format.svg", _rt("Formatar visual"))
-        self._configure_toolbar_icon_button(self.edit_mode_btn, "Walker-Edit.svg", _rt("Edicao"))
-        self._configure_toolbar_icon_button(
-            self.settings_btn,
-            "Walker-Settings.svg",
-            _rt("Configurar fundo e grade do canvas"),
-            icon_color="#F97316",
+        header_parts = build_model_header(
+            self,
+            configure_toolbar_icon_button=self._configure_toolbar_icon_button,
+            build_visual_type_buttons=self._build_visual_type_buttons,
         )
-        self._configure_toolbar_icon_button(
-            self.close_project_btn,
-            "Close.svg",
-            _rt("Fechar projeto e voltar para a tela inicial"),
-            icon_size=16,
-        )
-        self.close_project_btn.setVisible(False)
-        for button in (
-            self.undo_btn,
-            self.redo_btn,
-            self.new_btn,
-            self.open_btn,
-            self.save_btn,
-            self.save_as_btn,
-            self.export_btn,
-            self.create_chart_btn,
-            self.format_visual_btn,
-            self.edit_mode_btn,
-            self.settings_btn,
-            self.close_project_btn,
-        ):
-            button.setObjectName("ModelToolbarButton")
-
-        self.toolbar_strip = QFrame(header)
-        self.toolbar_strip.setObjectName("ModelToolbarStrip")
-        self.toolbar_strip.setAttribute(Qt.WA_StyledBackground, True)
-        toolbar_layout = QHBoxLayout(self.toolbar_strip)
-        toolbar_layout.setContentsMargins(8, 5, 8, 5)
-        toolbar_layout.setSpacing(2)
-        for button in (self.undo_btn, self.redo_btn):
-            toolbar_layout.addWidget(button, 0)
-        toolbar_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
-        for button in (self.new_btn, self.open_btn, self.save_btn, self.save_as_btn, self.export_btn):
-            toolbar_layout.addWidget(button, 0)
-        toolbar_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
-        for button in (self.create_chart_btn, self.format_visual_btn, self.edit_mode_btn):
-            toolbar_layout.addWidget(button, 0)
-        self.visual_types_leading_separator = self._create_toolbar_separator(self.toolbar_strip)
-        toolbar_layout.addWidget(self.visual_types_leading_separator, 0)
-        self.toolbar_visuals_strip = QFrame(self.toolbar_strip)
-        self.toolbar_visuals_strip.setObjectName("ModelToolbarVisualTypes")
-        toolbar_visuals_layout = QHBoxLayout(self.toolbar_visuals_strip)
-        toolbar_visuals_layout.setContentsMargins(4, 0, 4, 0)
-        toolbar_visuals_layout.setSpacing(1)
-        self._build_visual_type_buttons(self.toolbar_visuals_strip, toolbar_visuals_layout, button_size=32, icon_size=20)
-        self.toolbar_visuals_strip.setVisible(False)
-        toolbar_layout.addWidget(self.toolbar_visuals_strip, 0)
-        self.visual_types_trailing_separator = self._create_toolbar_separator(self.toolbar_strip)
-        toolbar_layout.addWidget(self.visual_types_trailing_separator, 0)
-        toolbar_layout.addStretch(1)
-        self.mode_switch_wrap = QWidget(self.toolbar_strip)
-        self.mode_switch_wrap.setObjectName("ModelModeSwitchWrap")
-        mode_layout = QHBoxLayout(self.mode_switch_wrap)
-        mode_layout.setContentsMargins(0, 0, 0, 0)
-        mode_layout.setSpacing(6)
-        self.mode_state_label = QLabel(_rt("Edição"), self.mode_switch_wrap)
-        self.mode_state_label.setObjectName("ModelModeStateLabel")
-        self.mode_toggle = _ModelModeToggle(self.mode_switch_wrap)
-        self.mode_toggle.setObjectName("ModelModeToggle")
-        self.mode_toggle.setChecked(True, animated=False)
-        self.mode_toggle.setToolTip(_rt("Alternar entre modo de edição e pré-visualização"))
-        mode_layout.addWidget(self.mode_state_label, 0)
-        mode_layout.addWidget(self.mode_toggle, 0)
-        self.clear_filters_btn = QPushButton(_rt("Limpar filtros"))
-        self.clear_filters_btn.setObjectName("ModelActionButton")
-        self.clear_filters_btn.setVisible(False)
-        self.clear_filters_btn.clicked.connect(self._clear_model_filters)
-        toolbar_layout.addWidget(self.clear_filters_btn, 0)
-        toolbar_layout.addSpacing(8)
-        toolbar_layout.addWidget(self.settings_btn, 0)
-        toolbar_layout.addSpacing(8)
-        toolbar_layout.addWidget(self.mode_switch_wrap, 0)
-        toolbar_layout.addSpacing(8)
-        toolbar_layout.addWidget(self.close_project_btn, 0)
-
-        top_row.addWidget(self.toolbar_strip, 1)
-        header_layout.addLayout(top_row)
-
-        self.project_hint_label = QLabel(
-            _rt("Monte painéis com os graficos da aba Resumo e da aba Relatorios. O painel salvo continua editavel.")
-        )
-        self.project_hint_label.setObjectName("ModelHint")
-        self.project_hint_label.setWordWrap(True)
-        self.project_hint_label.setVisible(False)
-        header_layout.addWidget(self.project_hint_label)
-
-        root.addWidget(header, 0)
-
-        self.filters_bar = QFrame(self)
-        self.filters_bar.setObjectName("ModelFiltersBar")
-        self.filters_bar.setAttribute(Qt.WA_StyledBackground, True)
-        filters_layout = QHBoxLayout(self.filters_bar)
-        filters_layout.setContentsMargins(14, 10, 14, 10)
-        filters_layout.setSpacing(10)
-        self.filters_label = QLabel(_rt("Filtros ativos: nenhum"))
-        self.filters_label.setObjectName("ModelFiltersLabel")
-        self.filters_label.setWordWrap(True)
-        filters_layout.addWidget(self.filters_label, 1)
-        self.filters_bar.setVisible(False)
+        for name, widget in header_parts.__dict__.items():
+            setattr(self, name, widget)
+        root.addWidget(self.header, 0)
         root.addWidget(self.filters_bar, 0)
 
         self.body_stack = QStackedWidget(self)
@@ -993,6 +644,7 @@ class ModelTab(QWidget):
         self.create_chart_btn.toggled.connect(self._handle_create_chart_toggle)
         self.format_visual_btn.toggled.connect(self._handle_format_visual_toggle)
         self.settings_btn.clicked.connect(self._open_canvas_style_settings)
+        self.clear_filters_btn.clicked.connect(self._clear_model_filters)
         self.zoom_out_btn.clicked.connect(self._zoom_canvas_out)
         self.zoom_reset_btn.clicked.connect(self._zoom_canvas_reset)
         self.zoom_in_btn.clicked.connect(self._zoom_canvas_in)
@@ -1870,20 +1522,7 @@ class ModelTab(QWidget):
             layout.addWidget(button, 0)
 
     def _fill_model_theme_tokens(self, style: str) -> str:
-        replacements = {
-            "__CHECKED_BORDER__": _model_theme_color("checked_border"),
-            "__BORDER_SOFT__": _model_theme_color("border_soft"),
-            "__SURFACE_2__": _model_theme_color("surface_2"),
-            "__CHECKED__": _model_theme_color("checked"),
-            "__SURFACE__": _model_theme_color("surface"),
-            "__BORDER__": _model_theme_color("border"),
-            "__MUTED__": _model_theme_color("muted"),
-            "__HOVER__": _model_theme_color("hover"),
-            "__TEXT__": _model_theme_color("text"),
-        }
-        for token, value in replacements.items():
-            style = style.replace(token, value)
-        return style
+        return fill_model_theme_tokens(style)
 
     def _apply_visual_side_panel_styles(self):
         style = """
@@ -2555,220 +2194,18 @@ class ModelTab(QWidget):
         return panel
 
     def _build_data_panel(self, parent: QWidget) -> QFrame:
-        panel = QFrame(parent)
-        panel.setObjectName("ModelBuilderDataPanel")
-        _force_model_white_background(panel)
-        panel.setStyleSheet(
-            """
-            QFrame#ModelBuilderDataPanel {
-                background: #FFFFFF;
-                border: 1px solid rgba(17, 24, 39, 0.09);
-                border-radius: 2px;
-            }
-            QFrame#ModelBuilderDataPanel QWidget,
-            QFrame#ModelBuilderDataPanel QFrame,
-            QFrame#ModelBuilderDataPanel QListWidget,
-            QFrame#ModelBuilderDataPanel QAbstractScrollArea,
-            QFrame#ModelBuilderDataPanel QAbstractScrollArea::viewport {
-                background-color: #FFFFFF;
-            }
-            QFrame#ModelBuilderDataPanel[collapsed="true"] {
-                border-color: #E2E8F0;
-            }
-            QWidget#ModelDataPanelHeader {
-                background: #FFFFFF;
-                border: none;
-            }
-            QLabel#ModelDataPanelIcon {
-                min-width: 14px;
-                max-width: 14px;
-                min-height: 14px;
-                max-height: 14px;
-            }
-            QFrame#ModelDataPanelCollapsedRail {
-                background: transparent;
-                border: none;
-            }
-            QLabel#ModelDataPanelCollapsedTitle {
-                color: #111827;
-                font-size: 8pt;
-                font-weight: 500;
-                background: transparent;
-            }
-            QFrame#ModelBuilderDataSection {
-                background: #FFFFFF;
-                border: none;
-            }
-            QComboBox#ModelBuilderCombo {
-                min-height: 28px;
-                border: 1px solid rgba(17, 24, 39, 0.09);
-                border-radius: 6px;
-                background: #FFFFFF;
-                padding: 3px 8px;
-                color: #111827;
-                font-size: 12px;
-            }
-            QListWidget#ModelBuilderFieldList {
-                border: 1px solid rgba(17, 24, 39, 0.09);
-                border-radius: 2px;
-                background: #FFFFFF;
-                padding: 2px;
-                color: #111827;
-                font-size: 12px;
-                outline: 0px;
-            }
-            QWidget#ModelBuilderFieldListViewport {
-                background: #FFFFFF;
-            }
-            QListWidget#ModelBuilderFieldList::item {
-                padding: 4px 6px;
-                margin: 0px;
-                border-radius: 2px;
-            }
-            QListWidget#ModelBuilderFieldList::item:hover {
-                background: rgba(17, 24, 39, 0.035);
-            }
-            QListWidget#ModelBuilderFieldList::item:selected {
-                background: rgba(81, 96, 116, 0.12);
-                color: #111827;
-            }
-            QListWidget#ModelBuilderFieldList QScrollBar:vertical {
-                background: transparent;
-                width: 10px;
-                margin: 4px 0px;
-            }
-            QListWidget#ModelBuilderFieldList QScrollBar::handle:vertical {
-                background: rgba(107, 114, 128, 0.28);
-                border-radius: 5px;
-                min-height: 24px;
-            }
-            QListWidget#ModelBuilderFieldList QScrollBar::handle:vertical:hover {
-                background: rgba(107, 114, 128, 0.40);
-            }
-            QListWidget#ModelBuilderFieldList QScrollBar::add-line:vertical,
-            QListWidget#ModelBuilderFieldList QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QListWidget#ModelBuilderFieldList QScrollBar::add-page:vertical,
-            QListWidget#ModelBuilderFieldList QScrollBar::sub-page:vertical {
-                background: transparent;
-            }
-            QLabel#ModelBuilderTitle {
-                color: #4B5563;
-                font-size: 12px;
-                font-weight: 500;
-            }
-            QLabel#ModelBuilderFieldLabel {
-                color: #6B7280;
-                font-size: 10px;
-                font-weight: 500;
-            }
-            """
+        parts = build_model_data_panel(
+            parent,
+            toggle_data_panel=self._toggle_data_panel,
+            on_builder_layer_changed=self._on_builder_layer_changed,
+            handle_field_list_activation=self._handle_field_list_activation,
+            vertical_label_cls=_ModelVerticalPanelLabel,
         )
-
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
-
-        self.data_panel_header = QWidget(panel)
-        self.data_panel_header.setObjectName("ModelDataPanelHeader")
-        _force_model_white_background(self.data_panel_header)
-        header = QHBoxLayout(self.data_panel_header)
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(6)
-        self.data_panel_icon = QLabel(self.data_panel_header)
-        self.data_panel_icon.setObjectName("ModelDataPanelIcon")
-        self.data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
-        header.addWidget(self.data_panel_icon, 0, Qt.AlignVCenter)
-        self.data_panel_title = QLabel(_rt("Campos"), self.data_panel_header)
-        self.data_panel_title.setObjectName("ModelBuilderTitle")
-        self.data_panel_title.setFont(_model_fields_panel_font())
-        header.addWidget(self.data_panel_title, 1, Qt.AlignVCenter)
-        self.data_panel_toggle_btn = QToolButton(self.data_panel_header)
-        self.data_panel_toggle_btn.setObjectName("ModelDataPanelToggle")
-        self.data_panel_toggle_btn.setAutoRaise(True)
-        self.data_panel_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.data_panel_toggle_btn.setFixedSize(22, 22)
-        self.data_panel_toggle_btn.clicked.connect(self._toggle_data_panel)
-        header.addWidget(self.data_panel_toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
-        layout.addWidget(self.data_panel_header, 0)
-
-        self.data_panel_body = QWidget(panel)
-        self.data_panel_body.setObjectName("ModelDataPanelBody")
-        _force_model_white_background(self.data_panel_body)
-        body_layout = QVBoxLayout(self.data_panel_body)
-        body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(6)
-
-        layer_card = QFrame(panel)
-        layer_card.setObjectName("ModelBuilderDataSection")
-        _force_model_white_background(layer_card)
-        layer_layout = QHBoxLayout(layer_card)
-        layer_layout.setContentsMargins(0, 0, 0, 0)
-        layer_layout.setSpacing(8)
-        layer_title = QLabel(_rt("Camada"), layer_card)
-        layer_title.setObjectName("ModelBuilderFieldLabel")
-        layer_layout.addWidget(layer_title, 0, Qt.AlignVCenter)
-        self.builder_layer_combo = QgsMapLayerComboBox(panel)
-        self.builder_layer_combo.setObjectName("ModelBuilderCombo")
-        self.builder_layer_combo.setFont(_model_fields_panel_font())
-        try:
-            self.builder_layer_combo.view().setFont(_model_fields_panel_font())
-        except Exception:
-            log_exception("falha opcional ignorada")
-        self.builder_layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
-        self.builder_layer_combo.layerChanged.connect(self._on_builder_layer_changed)
-        layer_layout.addWidget(self.builder_layer_combo, 1)
-        body_layout.addWidget(layer_card, 0)
-
-        fields_card = QFrame(panel)
-        fields_card.setObjectName("ModelBuilderDataSection")
-        _force_model_white_background(fields_card)
-        fields_layout = QVBoxLayout(fields_card)
-        fields_layout.setContentsMargins(0, 0, 0, 0)
-        fields_layout.setSpacing(0)
-        fields_body = QWidget(fields_card)
-        fields_body.setObjectName("ModelDataFieldsBody")
-        _force_model_white_background(fields_body)
-        fields_body_layout = QVBoxLayout(fields_body)
-        fields_body_layout.setContentsMargins(0, 4, 0, 0)
-        fields_body_layout.setSpacing(0)
-        self.builder_fields_list = _ModelFieldList(fields_body)
-        self.builder_fields_list.setObjectName("ModelBuilderFieldList")
-        self.builder_fields_list.setFont(_model_fields_panel_font())
-        self.builder_fields_list.viewport().setObjectName("ModelBuilderFieldListViewport")
-        _force_model_white_background(self.builder_fields_list)
-        _force_model_white_background(self.builder_fields_list.viewport())
-        self.builder_fields_list.setMinimumHeight(220)
-        self.builder_fields_list.setUniformItemSizes(True)
-        self.builder_fields_list.setSpacing(1)
-        self.builder_fields_list.setIconSize(QSize(14, 14))
-        self.builder_fields_list.fieldActivated.connect(self._handle_field_list_activation)
-        fields_body_layout.addWidget(self.builder_fields_list, 1)
-        fields_layout.addWidget(fields_body, 1)
-        body_layout.addWidget(fields_card, 1)
-        layout.addWidget(self.data_panel_body, 1)
-
-        self.data_panel_collapsed_rail = QFrame(panel)
-        self.data_panel_collapsed_rail.setObjectName("ModelDataPanelCollapsedRail")
-        self.data_panel_collapsed_rail.hide()
-        rail_layout = QVBoxLayout(self.data_panel_collapsed_rail)
-        rail_layout.setContentsMargins(2, 6, 2, 6)
-        rail_layout.setSpacing(8)
-        self.data_panel_collapsed_btn = QToolButton(self.data_panel_collapsed_rail)
-        self.data_panel_collapsed_btn.setObjectName("ModelDataPanelToggle")
-        self.data_panel_collapsed_btn.setAutoRaise(True)
-        self.data_panel_collapsed_btn.setCursor(Qt.PointingHandCursor)
-        self.data_panel_collapsed_btn.setFixedSize(22, 22)
-        self.data_panel_collapsed_btn.clicked.connect(self._toggle_data_panel)
-        rail_layout.addWidget(self.data_panel_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
-        self.data_panel_collapsed_title = _ModelVerticalPanelLabel(_rt("Campos"), self.data_panel_collapsed_rail)
-        self.data_panel_collapsed_title.setObjectName("ModelDataPanelCollapsedTitle")
-        rail_layout.addWidget(self.data_panel_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
-        rail_layout.addStretch(1)
-        layout.addWidget(self.data_panel_collapsed_rail, 1)
-
-        return panel
+        for name, widget in parts.__dict__.items():
+            if name == "panel":
+                continue
+            setattr(self, name, widget)
+        return parts.panel
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -2777,60 +2214,16 @@ class ModelTab(QWidget):
         self._refresh_theme_icons()
 
     def _refresh_builder_data_fonts(self):
-        for widget in (
-            getattr(self, "data_panel_title", None),
-            getattr(self, "builder_layer_combo", None),
-            getattr(self, "builder_fields_list", None),
-        ):
-            if widget is None:
-                continue
-            try:
-                widget.setFont(_model_fields_panel_font())
-            except Exception:
-                log_exception("falha opcional ignorada")
-        try:
-            self.data_panel_title.setText(_rt("Campos"))
-            self.data_panel_title.setFont(_model_fields_panel_font())
-        except Exception:
-            log_exception("falha opcional ignorada")
-        try:
-            self.builder_layer_combo.view().setFont(_model_fields_panel_font())
-        except Exception:
-            log_exception("falha opcional ignorada")
-        try:
-            for index in range(self.builder_fields_list.count()):
-                item = self.builder_fields_list.item(index)
-                if item is not None:
-                    item.setFont(_model_fields_panel_font())
-                    item.setFlags(item.flags() | Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
-        except Exception:
-            log_exception("falha opcional ignorada")
+        refresh_builder_data_fonts(self)
 
     def _field_is_numeric(self, field_def) -> bool:
-        if field_def is None:
-            return False
-        try:
-            return bool(field_def.isNumeric())
-        except Exception:
-            log_exception("falha opcional ignorada")
-        type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
-        return any(token in type_name for token in ("int", "double", "float", "real", "numeric", "decimal"))
+        return field_is_numeric(field_def)
 
     def _field_is_date_like(self, field_def) -> bool:
-        if field_def is None:
-            return False
-        type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
-        return any(token in type_name for token in ("date", "time"))
+        return field_is_date_like(field_def)
 
     def _field_group_for_def(self, field_def) -> str:
-        if self._field_is_numeric(field_def):
-            return "measure"
-        if self._field_is_date_like(field_def):
-            return "date"
-        type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
-        if any(token in type_name for token in ("string", "text", "char")):
-            return "dimension"
-        return "other"
+        return field_group_for_def(field_def)
 
     def _suggested_role_for_group(self, group: str) -> str:
         mapping = {
@@ -2966,56 +2359,10 @@ class ModelTab(QWidget):
         self._sync_builder_selection_state()
 
     def _field_catalog_for_layer(self, layer: Optional[QgsVectorLayer]) -> Dict[str, List[Dict[str, str]]]:
-        catalog = {"all": []}
-        if layer is None:
-            return catalog
-        try:
-            field_defs = list(layer.fields())
-        except Exception:
-            field_defs = []
-        for field_def in field_defs:
-            field_name = str(field_def.name() or "").strip()
-            if not field_name:
-                continue
-            group = self._field_group_for_def(field_def)
-            type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip()
-            field_kind = field_kind_from_field_def(field_def)
-            catalog["all"].append(
-                {
-                    "layer_name": layer.name(),
-                    "layer_id": layer.id(),
-                    "field_name": field_name,
-                    "field_type": type_name,
-                    "field_kind": field_kind,
-                    "field_group": group,
-                    "suggested_role": self._suggested_role_for_group(group),
-                }
-            )
-        return catalog
+        return field_catalog_for_layer(layer)
 
     def _refresh_builder_field_lists(self, layer: Optional[QgsVectorLayer]):
-        self._builder_field_catalog = self._field_catalog_for_layer(layer)
-        self.builder_fields_list.clear()
-        for payload in list(self._builder_field_catalog.get("all") or []):
-            label = str(payload.get("field_name") or "")
-            field_kind = str(payload.get("field_kind") or "other")
-            is_numeric = normalize_field_kind(field_kind) == "numeric"
-            display_label = f"# {label}" if is_numeric else label
-            tooltip = _rt("{name}\nTipo: {kind}", name=label, kind=str(payload.get("field_type") or field_kind).strip() or field_kind)
-            item = QListWidgetItem()
-            configure_field_item(
-                item,
-                display_name=label,
-                kind=field_kind,
-                tooltip=tooltip,
-                payload=dict(payload),
-                role=_MODEL_FIELD_ROLE,
-                include_badge=False,
-            )
-            item.setText(display_label)
-            item.setFont(_model_fields_panel_font())
-            item.setForeground(QColor(_model_theme_color("text")))
-            self.builder_fields_list.addItem(item)
+        self._builder_field_catalog = populate_builder_field_list(self, layer)
         self._sync_data_panel_width_to_content()
 
     def _text_width(self, metrics: QFontMetrics, text: str) -> int:
@@ -3024,28 +2371,13 @@ class ModelTab(QWidget):
         return int(metrics.width(text))
 
     def _desired_data_panel_width(self) -> int:
-        try:
-            metrics = QFontMetrics(self.builder_fields_list.font())
-            max_text = 0
-            for index in range(self.builder_fields_list.count()):
-                item = self.builder_fields_list.item(index)
-                if item is None:
-                    continue
-                text = str(item.text() or item.data(Qt.UserRole + 2) or "")
-                max_text = max(max_text, self._text_width(metrics, text))
-            layer_text = ""
-            try:
-                layer_text = self.builder_layer_combo.currentText()
-            except Exception:
-                layer_text = ""
-            max_text = max(max_text, self._text_width(metrics, layer_text))
-            icon_width = int(self.builder_fields_list.iconSize().width() or 14)
-            chrome = icon_width + 54
-            desired = max(_MODEL_DATA_PANEL_MIN_WIDTH, max_text + chrome)
-            return min(_MODEL_DATA_PANEL_MAX_WIDTH, desired)
-        except Exception:
-            log_exception("falha opcional ignorada")
-            return _MODEL_DATA_PANEL_DEFAULT_WIDTH
+        return desired_data_panel_width(
+            self.builder_fields_list,
+            self.builder_layer_combo,
+            minimum_width=_MODEL_DATA_PANEL_MIN_WIDTH,
+            maximum_width=_MODEL_DATA_PANEL_MAX_WIDTH,
+            default_width=_MODEL_DATA_PANEL_DEFAULT_WIDTH,
+        )
 
     def _sync_data_panel_width_to_content(self):
         if not hasattr(self, "data_panel"):
@@ -3055,11 +2387,13 @@ class ModelTab(QWidget):
         self._ensure_canvas_splitter_sizes()
 
     def _toggle_data_panel(self):
-        if not getattr(self, "_data_panel_collapsed", False):
-            sizes = self.canvas_splitter.sizes() if hasattr(self, "canvas_splitter") else []
-            if len(sizes) >= 3 and sizes[2] > _MODEL_DATA_PANEL_COLLAPSED_WIDTH:
-                self._data_panel_width = min(_MODEL_DATA_PANEL_MAX_WIDTH, max(_MODEL_DATA_PANEL_MIN_WIDTH, int(sizes[2])))
-        self._data_panel_collapsed = not bool(getattr(self, "_data_panel_collapsed", False))
+        toggle_data_panel_state(
+            self,
+            collapsed_width=_MODEL_DATA_PANEL_COLLAPSED_WIDTH,
+            min_width=_MODEL_DATA_PANEL_MIN_WIDTH,
+            max_width=_MODEL_DATA_PANEL_MAX_WIDTH,
+            default_width=_MODEL_DATA_PANEL_DEFAULT_WIDTH,
+        )
         self._sync_data_panel_chrome()
         self._ensure_canvas_splitter_sizes()
 
@@ -3071,36 +2405,13 @@ class ModelTab(QWidget):
             self._sync_data_panel_chrome()
 
     def _sync_data_panel_chrome(self):
-        if not hasattr(self, "data_panel"):
-            return
-        collapsed = bool(getattr(self, "_data_panel_collapsed", False))
-        self.data_panel.setMinimumWidth(_MODEL_DATA_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_DATA_PANEL_MIN_WIDTH)
-        self.data_panel.setMaximumWidth(_MODEL_DATA_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_DATA_PANEL_MAX_WIDTH)
-        self.data_panel.setProperty("collapsed", collapsed)
-        if hasattr(self, "data_panel_header"):
-            self.data_panel_header.setVisible(not collapsed)
-        if hasattr(self, "data_panel_body"):
-            self.data_panel_body.setVisible(not collapsed)
-        if hasattr(self, "data_panel_collapsed_rail"):
-            self.data_panel_collapsed_rail.setVisible(collapsed)
-        if hasattr(self, "data_panel_toggle_btn"):
-            self.data_panel_toggle_btn.setArrowType(Qt.NoArrow)
-            self.data_panel_toggle_btn.setIcon(QIcon())
-            self.data_panel_toggle_btn.setText("‹")
-            self.data_panel_toggle_btn.setFixedSize(22, 22)
-            self.data_panel_toggle_btn.setToolTip(_rt("Recolher campos"))
-        if hasattr(self, "data_panel_collapsed_btn"):
-            self.data_panel_collapsed_btn.setArrowType(Qt.NoArrow)
-            self.data_panel_collapsed_btn.setIcon(QIcon())
-            self.data_panel_collapsed_btn.setText("›")
-            self.data_panel_collapsed_btn.setFixedSize(22, 22)
-            self.data_panel_collapsed_btn.setToolTip(_rt("Expandir campos"))
+        sync_data_panel_chrome(
+            self,
+            collapsed_width=_MODEL_DATA_PANEL_COLLAPSED_WIDTH,
+            min_width=_MODEL_DATA_PANEL_MIN_WIDTH,
+            max_width=_MODEL_DATA_PANEL_MAX_WIDTH,
+        )
         self._apply_collapsed_panel_chrome()
-        try:
-            self.data_panel.style().unpolish(self.data_panel)
-            self.data_panel.style().polish(self.data_panel)
-        except Exception:
-            log_exception("falha opcional ignorada")
 
     def _active_selected_binding(self) -> Optional[DashboardChartBinding]:
         item = self._selected_canvas_item()
@@ -3460,41 +2771,10 @@ class ModelTab(QWidget):
             return None
 
     def _resolve_layer_field_name(self, layer: QgsVectorLayer, field_name: str) -> str:
-        candidate = str(field_name or "").strip()
-        if layer is None or not candidate:
-            return ""
-        try:
-            fields = layer.fields()
-        except Exception:
-            return candidate
-        try:
-            index = fields.lookupField(candidate)
-        except Exception:
-            index = -1
-        if index is not None and index >= 0:
-            try:
-                return str(fields.field(index).name() or candidate).strip()
-            except Exception:
-                return candidate
-        lowered = candidate.lower()
-        try:
-            for field in fields:
-                name = str(field.name() or "").strip()
-                if name and (name == candidate or name.lower() == lowered):
-                    return name
-        except Exception:
-            log_exception("falha opcional ignorada")
-        return ""
+        return resolve_layer_field_name(layer, field_name)
 
     def _field_kind_for_layer_field(self, layer: QgsVectorLayer, field_name: str) -> str:
-        try:
-            fields = layer.fields()
-            index = fields.lookupField(str(field_name or ""))
-            if index is not None and index >= 0:
-                return normalize_field_kind(field_kind_from_field_def(fields.field(index)))
-        except Exception:
-            log_exception("falha opcional ignorada")
-        return "unknown"
+        return field_kind_for_layer_field(layer, field_name)
 
     def _resolve_binding_items_for_layer(self, binding: DashboardChartBinding, role: str, layer: QgsVectorLayer) -> List[FieldBindingItem]:
         normalized = binding.normalized()
