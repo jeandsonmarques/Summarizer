@@ -84,7 +84,10 @@ def test_open_panel_without_selection_shows_empty_message():
         widget.show_visual_panel()
 
         assert widget.visual_format_panel.empty_label.isHidden() is False
-        assert widget.visual_format_panel.empty_label.text() == "Selecione um visual para editar suas propriedades."
+        assert (
+            widget.visual_format_panel.empty_label.text()
+            == "Selecione um visual para editar suas propriedades."
+        )
     finally:
         widget.deleteLater()
 
@@ -124,7 +127,10 @@ def test_visual_panel_change_updates_chart_visual_state():
         widget.visual_format_panel._controls["background_opacity"].setValue(76)
         widget.visual_format_panel._controls["shadow_enabled"].set_checked_state(True)
         widget.visual_format_panel._controls["show_axis_labels"].set_checked_state(False)
-        widget.visual_format_panel._set_combo_value(widget.visual_format_panel._controls["display_units"], "thousand")
+        widget.visual_format_panel._set_combo_value(
+            widget.visual_format_panel._controls["display_units"],
+            "thousand",
+        )
         widget.visual_format_panel._controls["bar_width_percent"].setValue(80)
         widget.visual_format_panel._controls["alt_text"].setText("Teste acessivel")
 
