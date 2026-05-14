@@ -90,6 +90,18 @@ from .model_view.model_canvas_style_dialog import (
     open_canvas_style_dialog,
     set_color_preview_chip,
 )
+from .model_view.model_project_controller import (
+    apply_legacy_single_page_compatibility,
+    normalize_loaded_project,
+    normalize_page_payload,
+    normalize_project_payload,
+    normalize_project_source_meta,
+    project_snapshot_payload,
+    resolve_active_page_id,
+    snapshot_signature,
+    snapshot_state,
+    validate_dashboard_project,
+)
 from .model_view.model_theme import (
     _force_model_white_background,
     _is_dark_theme,
@@ -2437,6 +2449,35 @@ class ModelTab(QWidget):
     def _set_color_preview_chip(self, label: QLabel, color_value: object, fallback: str):
         set_color_preview_chip(label, color_value, fallback)
 
+    def _normalize_page_payload(self, payload: object) -> Dict[str, object]:
+        return normalize_page_payload(payload)
+
+    def _normalize_project_payload(self, payload: object) -> Dict[str, object]:
+        return normalize_project_payload(
+            payload,
+            page_title_provider=self._page_display_title,
+            canvas_style_normalizer=self._normalized_canvas_style,
+        )
+
+    def _normalize_project_source_meta(self, source_meta: Optional[Dict[str, object]]) -> Dict[str, object]:
+        return normalize_project_source_meta(source_meta, canvas_style_normalizer=self._normalized_canvas_style)
+
+    def _normalize_loaded_project(self, project: DashboardProject) -> DashboardProject:
+        return normalize_loaded_project(
+            project,
+            page_title_provider=self._page_display_title,
+            canvas_style_normalizer=self._normalized_canvas_style,
+        )
+
+    def _apply_legacy_single_page_compatibility(self, payload: object) -> Dict[str, object]:
+        return apply_legacy_single_page_compatibility(payload, page_title_provider=self._page_display_title)
+
+    def _resolve_active_page_id(self, payload: object, pages: Optional[List[object]] = None) -> str:
+        return resolve_active_page_id(payload, pages)
+
+    def _validate_dashboard_project(self, project: object) -> bool:
+        return validate_dashboard_project(project)
+
     def _open_canvas_style_settings(self):
         if self.current_project is None:
             return
@@ -2453,52 +2494,13 @@ class ModelTab(QWidget):
             self._sync_project_from_pages(self._current_page_id())
         except Exception:
             log_exception("falha opcional ignorada")
-        project = self.current_project
-        pages = [page.normalized() for page in list(project.pages or [])]
-        if not pages:
-            pages = [DashboardPage(title=self._page_display_title(1)).normalized()]
-        active_page_id = str(project.active_page_id or pages[0].page_id or "").strip() or pages[0].page_id
-        active_page = pages[0]
-        for page in pages:
-            if str(page.page_id or "").strip() == active_page_id:
-                active_page = page
-                break
-        payload = {
-            "version": int(project.version or 2),
-            "project_id": str(project.project_id or ""),
-            "name": str(project.name or ""),
-            "created_at": str(project.created_at or ""),
-            "updated_at": str(project.updated_at or ""),
-            "edit_mode": bool(project.edit_mode),
-            "source_meta": dict(project.source_meta or {}),
-            "active_page_id": active_page_id,
-            "pages": [page.to_dict() for page in pages],
-            "items": [item.to_dict() for item in list(active_page.items or [])],
-            "visual_links": [link.to_dict() for link in list(active_page.visual_links or [])],
-            "chart_relations": [relation.to_dict() for relation in list(active_page.chart_relations or [])],
-        }
-        try:
-            return json.loads(json.dumps(payload, ensure_ascii=False))
-        except Exception:
-            return payload
+        return project_snapshot_payload(self.current_project, page_title_provider=self._page_display_title)
 
     def _snapshot_state(self) -> Dict[str, object]:
-        return {
-            "project": self._project_snapshot_payload(),
-            "path": str(self.current_path or ""),
-            "dirty": bool(self._dirty),
-        }
+        return snapshot_state(self._project_snapshot_payload(), self.current_path, self._dirty)
 
     def _snapshot_signature(self, snapshot: Optional[Dict[str, object]]) -> str:
-        payload = dict(snapshot or {})
-        serial = {
-            "project": payload.get("project"),
-            "path": str(payload.get("path") or ""),
-        }
-        try:
-            return json.dumps(serial, sort_keys=True, ensure_ascii=False)
-        except Exception:
-            return str(serial)
+        return snapshot_signature(snapshot)
 
     def _reset_history(self):
         self._history_undo.clear()
@@ -3162,7 +3164,9 @@ class ModelTab(QWidget):
             active_page_id=page.page_id,
         )
         self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
-        self.current_project.source_meta["canvas_style"] = self._default_canvas_style()
+        self.current_project.source_meta = self._normalize_project_source_meta(
+            {"canvas_style": self._default_canvas_style()}
+        )
         self.current_path = ""
         self._dirty = False
         self._rebuild_page_stack(page.page_id)
@@ -3188,21 +3192,7 @@ class ModelTab(QWidget):
         except Exception as exc:
             slim_message(self, _rt("Model"), _rt("Nao foi possivel abrir o painel: {error}", error=exc))
             return
-        try:
-            if bool(project.source_meta.get("_legacy_single_page")) and len(list(project.pages or [])) == 1:
-                legacy_page = list(project.pages or [])[0].normalized()
-                project_name = str(project.name or "").strip().lower()
-                page_title = str(legacy_page.title or "").strip().lower()
-                if not page_title or page_title == project_name:
-                    legacy_page.title = self._page_display_title(1)
-                    project.pages = [legacy_page]
-                    project.active_page_id = legacy_page.page_id
-                    project.set_active_page(legacy_page.page_id)
-        except Exception:
-            log_exception("falha opcional ignorada")
-        source_meta = dict(getattr(project, "source_meta", {}) or {})
-        source_meta["canvas_style"] = self._normalized_canvas_style(source_meta.get("canvas_style"))
-        project.source_meta = source_meta
+        project = self._normalize_loaded_project(project)
         self.current_project = project
         self.current_path = self.store.normalize_path(path)
         self._dirty = False
