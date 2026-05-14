@@ -1,7 +1,7 @@
 import math
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QEasingCurve, QPointF, QRect, QRectF, QSize, Qt, QVariantAnimation, pyqtSignal
+from qgis.PyQt.QtCore import QEasingCurve, QPointF, QRect, QRectF, QSize, QSettings, Qt, QVariantAnimation, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from qgis.PyQt.QtWidgets import (
     QAction,
@@ -23,6 +23,13 @@ from .charts import ChartDataProfile, ChartVisualState
 from .charts.chart_animation import chart_popup_icon
 from .charts.chart_utils import extract_chart_payload_rows, value_scale_bounds, value_scale_ratio
 from .result_models import ChartPayload, QueryResult
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
 
 class ChartFactory:
     MAX_RENDER_ITEMS = 160
@@ -197,7 +204,7 @@ class ReportChartWidget(QWidget):
         self._fixed_render_size = QSize()
         self._base_font = harmonize_font_family(QFont(self.font()))
         self._ensure_base_font_scalable()
-        self._font_scale = 1.0
+        self._font_scale = 0.82
         self.chart_state = ChartVisualState()
         self._interactive_regions: List[Dict[str, object]] = []
         self._active_category_keys: List[str] = []
@@ -316,9 +323,9 @@ class ReportChartWidget(QWidget):
 
     def _apply_font_scale_to_widget(self):
         try:
-            self._font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+            self._font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
         except Exception:
-            self._font_scale = 1.0
+            self._font_scale = 0.82
         self.setFont(self._resolved_scaled_font())
 
     def _resolved_scaled_font(self, extra_scale: float = 1.0) -> QFont:
@@ -336,7 +343,7 @@ class ReportChartWidget(QWidget):
         self.update()
 
     def _effective_font_scale(self) -> float:
-        raw_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+        raw_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
         # Make the visible response a little stronger so the user can feel the change
         # without turning the charts into oversized UI.
         adjusted = 1.0 + (raw_scale - 1.0) * 1.85
@@ -582,10 +589,11 @@ class ReportChartWidget(QWidget):
     def _draw_fallback_state(self, painter: QPainter, rect: QRectF, title: str, detail: str = ""):
         painter.save()
         panel = rect.adjusted(8, 8, -8, -8)
-        painter.setPen(QPen(QColor("#E5E7EB"), 1))
-        painter.setBrush(QColor("#FFFFFF"))
+        dark_mode = _is_dark_theme()
+        painter.setPen(QPen(QColor("#334155" if dark_mode else "#E5E7EB"), 1))
+        painter.setBrush(QColor("#111827" if dark_mode else "#FFFFFF"))
         painter.drawRoundedRect(panel, 10, 10)
-        painter.setPen(QPen(QColor("#374151")))
+        painter.setPen(QPen(QColor("#F8FAFC" if dark_mode else "#374151")))
         title_font = harmonize_font_family(QFont(self.font()))
         title_font.setBold(True)
         painter.setFont(title_font)
@@ -594,7 +602,7 @@ class ReportChartWidget(QWidget):
             detail_font = harmonize_font_family(QFont(self.font()))
             detail_font.setBold(False)
             painter.setFont(detail_font)
-            painter.setPen(QPen(QColor("#6B7280")))
+            painter.setPen(QPen(QColor("#CBD5E1" if dark_mode else "#6B7280")))
             painter.drawText(panel.adjusted(14, 34, -14, -10), Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, str(detail))
         painter.restore()
 
@@ -1177,7 +1185,7 @@ class ReportChartWidget(QWidget):
     def _default_visual_state(self, payload: Optional[ChartPayload]) -> ChartVisualState:
         chart_type = self._normalize_chart_type(getattr(payload, "chart_type", "bar"))
         state = ChartVisualState(chart_type=chart_type, palette=self._preferred_palette_for_chart_type(chart_type))
-        state.font_scale = 1.0
+        state.font_scale = 0.82
         state.bar_corner_style = "square"
         if chart_type in {"pie", "donut"}:
             state.show_legend = True
@@ -1544,7 +1552,7 @@ class ReportChartWidget(QWidget):
     def _ensure_visual_state_compatibility(self):
         if self.chart_state.chart_type not in self.TYPE_LABELS:
             self.chart_state.chart_type = self._fallback_chart_type()
-        self.chart_state.font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+        self.chart_state.font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
 
         if not self._supports_percentage():
             self.chart_state.show_percent = False
@@ -2635,7 +2643,7 @@ class ReportChartWidget(QWidget):
             self._active_render_payload = None
             self._paint_context = {}
             if self._empty_text:
-                painter.setPen(QPen(QColor("#6B7280")))
+                painter.setPen(QPen(QColor("#CBD5E1" if _is_dark_theme() else "#6B7280")))
                 painter.drawText(rect, Qt.AlignCenter, self._empty_text)
             return
 
@@ -2830,7 +2838,21 @@ class ReportChartWidget(QWidget):
         return colors
 
     def _visual_color(self, attr: str, fallback: str) -> QColor:
-        color = QColor(str(getattr(self.chart_state, attr, "") or fallback))
+        raw_value = str(getattr(self.chart_state, attr, "") or fallback)
+        if _is_dark_theme():
+            normalized = raw_value.strip().upper()
+            dark_defaults = {
+                "background_color": {"#FFFFFF": "#111827", "#F8FAFC": "#111827", "#FAFAFA": "#111827"},
+                "border_color": {"#CBD5E1": "#334155", "#D1D5DB": "#334155", "#E2E8F0": "#334155"},
+                "grid_color": {"#E5E7EB": "#334155", "#D1D5DB": "#334155", "#FFFFFF": "#334155"},
+                "zero_line_color": {"#CBD5E1": "#475569", "#D1D5DB": "#475569"},
+                "title_color": {"#111827": "#F8FAFC", "#1F2937": "#F8FAFC", "#0F172A": "#F8FAFC"},
+                "label_color": {"#4B5563": "#CBD5E1", "#64748B": "#CBD5E1", "#475569": "#CBD5E1"},
+                "axis_label_color": {"#4B5563": "#CBD5E1", "#64748B": "#CBD5E1", "#475569": "#CBD5E1"},
+                "value_color": {"#111827": "#F8FAFC", "#1F2937": "#F8FAFC", "#0F172A": "#F8FAFC"},
+            }
+            raw_value = dark_defaults.get(str(attr or ""), {}).get(normalized, raw_value)
+        color = QColor(raw_value)
         if color.isValid():
             return color
         return QColor(fallback)
@@ -3608,7 +3630,7 @@ class ReportChartWidget(QWidget):
         axis_font = harmonize_font_family(QFont(self.font()))
         axis_font.setPointSize(self._scaled_size(axis_font.pointSize() - 1, minimum=6))
         painter.setFont(axis_font)
-        painter.setPen(QPen(QColor("#6B7280")))
+        painter.setPen(QPen(QColor("#CBD5E1" if _is_dark_theme() else "#6B7280")))
         painter.drawText(rect, align, text)
         painter.restore()
 
@@ -3876,18 +3898,36 @@ class ReportChartWidget(QWidget):
         self._draw_surface_card(painter, frame, 12)
         painter.setClipRect(frame.adjusted(3, 3, -3, -3))
 
-        palette = {
-            "border": QColor("#E7EAF0"),
-            "header_fill": QColor("#F8FAFC"),
-            "header_fill_alt": QColor("#F3F4F6"),
-            "row_fill": QColor("#FFFFFF"),
-            "row_fill_alt": QColor("#FAFAFC"),
-            "total_fill": QColor("#EEF2FF"),
-            "total_fill_alt": QColor("#EDE9FE"),
-            "header_text": QColor("#5B43D6"),
-            "value_text": QColor("#111827"),
-            "value_accent": QColor("#4F46E5"),
-        }
+        if _is_dark_theme():
+            palette = {
+                "border": QColor("#334155"),
+                "header_fill": QColor("#172033"),
+                "header_fill_alt": QColor("#1F2A3D"),
+                "row_fill": QColor("#111827"),
+                "row_fill_alt": QColor("#0F172A"),
+                "total_fill": QColor("#312E81"),
+                "total_fill_alt": QColor("#3730A3"),
+                "header_text": QColor("#C4B5FD"),
+                "value_text": QColor("#F8FAFC"),
+                "value_accent": QColor("#A78BFA"),
+                "band": QColor("#7C6CFF"),
+                "total_header_text": QColor("#F8FAFC"),
+            }
+        else:
+            palette = {
+                "border": QColor("#E7EAF0"),
+                "header_fill": QColor("#F8FAFC"),
+                "header_fill_alt": QColor("#F3F4F6"),
+                "row_fill": QColor("#FFFFFF"),
+                "row_fill_alt": QColor("#FAFAFC"),
+                "total_fill": QColor("#EEF2FF"),
+                "total_fill_alt": QColor("#EDE9FE"),
+                "header_text": QColor("#5B43D6"),
+                "value_text": QColor("#111827"),
+                "value_accent": QColor("#4F46E5"),
+                "band": QColor("#5A3FE6"),
+                "total_header_text": QColor("#111827"),
+            }
 
         font = harmonize_font_family(QFont(self.font()))
         font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
@@ -3908,7 +3948,7 @@ class ReportChartWidget(QWidget):
         cell_width = max(74.0, (frame.width() - row_header_width - 20.0) / column_count)
 
         top_band = QRectF(frame.left() + 10, frame.top() + 8, frame.width() - 20, 2)
-        painter.fillRect(top_band, QColor("#5A3FE6"))
+        painter.fillRect(top_band, palette["band"])
 
         painter.setFont(header_font)
         painter.setPen(QPen(palette["header_text"]))
@@ -3926,7 +3966,7 @@ class ReportChartWidget(QWidget):
             painter.setPen(QPen(palette["border"], 0.9))
             painter.setBrush(header_fill)
             painter.drawRoundedRect(header_rect, 4, 4)
-            painter.setPen(QPen(QColor("#111827" if is_total_header else "#4F46E5")))
+            painter.setPen(QPen(palette["total_header_text"] if is_total_header else palette["header_text"]))
             painter.setFont(header_font if is_total_header else font)
             painter.drawText(header_rect.adjusted(8, 0, -8, 0), Qt.AlignLeft | Qt.AlignVCenter, header)
 
@@ -3955,7 +3995,7 @@ class ReportChartWidget(QWidget):
             painter.setBrush(row_fill)
             painter.drawRoundedRect(row_rect, 4, 4)
             painter.setFont(font)
-            painter.setPen(QPen(QColor("#1F2937")))
+            painter.setPen(QPen(palette["value_text"]))
             painter.drawText(
                 row_rect.adjusted(8, 0, -8, 0),
                 Qt.AlignVCenter | Qt.AlignLeft,
@@ -3985,7 +4025,7 @@ class ReportChartWidget(QWidget):
                     painter.setFont(total_font if (show_total and header == "Total") else font)
                     text_opacity = 0.92 + 0.08 * progress if reason in {"data", "filter"} else 1.0
                     painter.setOpacity(row_opacity * text_opacity)
-                    painter.setPen(QPen(QColor("#111827" if (show_total and header == "Total") else palette["value_accent"])))
+                    painter.setPen(QPen(palette["value_text"] if (show_total and header == "Total") else palette["value_accent"]))
                     painter.drawText(
                         cell_rect.adjusted(8, 0, -8, 0),
                         Qt.AlignVCenter | Qt.AlignRight,
@@ -4011,7 +4051,7 @@ class ReportChartWidget(QWidget):
                 painter.setFont(font)
                 text_opacity = 0.92 + 0.08 * progress if reason in {"data", "filter"} else 1.0
                 painter.setOpacity(row_opacity * text_opacity)
-                painter.setPen(QPen(QColor("#111827")))
+                painter.setPen(QPen(palette["value_text"]))
                 painter.drawText(
                     cell_rect.adjusted(8, 0, -8, 0),
                     Qt.AlignVCenter | Qt.AlignRight,

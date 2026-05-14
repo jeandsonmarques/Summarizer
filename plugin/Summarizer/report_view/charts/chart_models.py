@@ -8,7 +8,7 @@ from typing import Dict, List
 class ChartVisualState:
     chart_type: str = "bar"
     palette: str = "purple"
-    font_scale: float = 1.0
+    font_scale: float = 0.82
     show_legend: bool = False
     show_values: bool = True
     show_percent: bool = False

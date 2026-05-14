@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, Tuple
 
-from qgis.PyQt.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QPoint, QRect, QSize, QSettings, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter, QPen
 from qgis.PyQt.QtWidgets import (
     QComboBox,
@@ -29,6 +29,23 @@ from .model_relations_popup import ModelRelationsPopup
 
 
 from .utils.logging_utils import log_exception
+from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
+
+
+def _dark_aware_color(color: QColor, light_default: str, dark_default: str) -> QColor:
+    current = QColor(color)
+    if _is_dark_theme() and current.name().upper() == str(light_default).upper():
+        return QColor(dark_default)
+    return current
+
+
 class _DashboardCanvasSurface(QWidget):
     def __init__(self, canvas, parent=None):
         super().__init__(parent)
@@ -39,15 +56,26 @@ class _DashboardCanvasSurface(QWidget):
         self._pan_start_h = 0
         self._pan_start_v = 0
 
+    def _event_global_point(self, event) -> QPoint:
+        try:
+            pos = event.globalPosition()
+            return QPoint(int(pos.x()), int(pos.y()))
+        except Exception:
+            try:
+                return QPoint(event.globalPos())
+            except Exception:
+                return self.mapToGlobal(self._canvas._event_pos_to_point(event))
+
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(self.rect(), QColor(self._canvas._background_color))
+        painter.fillRect(self.rect(), self._canvas.resolved_background_color())
 
         outline_rect = self._canvas.page_outline_rect()
         if outline_rect.isValid():
-            outline_pen = QPen(QColor("#111827"))
+            outline = QColor("#334155" if _is_dark_theme() else "#111827")
+            outline_pen = QPen(outline)
             outline_pen.setWidth(1)
             outline_pen.setStyle(Qt.DotLine)
             outline_pen.setCosmetic(True)
@@ -56,7 +84,7 @@ class _DashboardCanvasSurface(QWidget):
             painter.drawRect(outline_rect.adjusted(0, 0, -1, -1))
 
         if self._canvas._edit_mode and self._canvas._show_grid:
-            grid_color = QColor(self._canvas._grid_color)
+            grid_color = self._canvas.resolved_grid_color()
             try:
                 grid_color.setAlphaF(max(0.1, min(1.0, float(self._canvas._grid_opacity))))
             except Exception:
@@ -134,7 +162,7 @@ class _DashboardCanvasSurface(QWidget):
             return
         if getattr(event, "button", lambda: None)() in (Qt.LeftButton, Qt.MiddleButton):
             self._pan_active = True
-            self._pan_start_pos = self._canvas._event_pos_to_point(event)
+            self._pan_start_pos = self._event_global_point(event)
             self._pan_start_h = self._canvas.scroll.horizontalScrollBar().value()
             self._pan_start_v = self._canvas.scroll.verticalScrollBar().value()
             self.setCursor(Qt.ClosedHandCursor)
@@ -147,12 +175,16 @@ class _DashboardCanvasSurface(QWidget):
 
     def mouseMoveEvent(self, event):
         if self._pan_active:
-            current = self._canvas._event_pos_to_point(event)
+            current = self._event_global_point(event)
             delta = current - self._pan_start_pos
             hbar = self._canvas.scroll.horizontalScrollBar()
             vbar = self._canvas.scroll.verticalScrollBar()
-            hbar.setValue(max(hbar.minimum(), min(hbar.maximum(), self._pan_start_h - delta.x())))
-            vbar.setValue(max(vbar.minimum(), min(vbar.maximum(), self._pan_start_v - delta.y())))
+            target_h = max(hbar.minimum(), min(hbar.maximum(), self._pan_start_h - delta.x()))
+            target_v = max(vbar.minimum(), min(vbar.maximum(), self._pan_start_v - delta.y()))
+            if hbar.value() != target_h:
+                hbar.setValue(target_h)
+            if vbar.value() != target_v:
+                vbar.setValue(target_v)
             try:
                 event.accept()
             except Exception:
@@ -199,6 +231,8 @@ class DashboardCanvas(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("DashboardCanvasRoot")
+        self.setFont(ui_font())
+        self._font_enforcer = attach_ui_font_enforcer(self)
         self.grid_size = 8
         self._edit_mode = True
         self._margins = (20, 20, 20, 20)
@@ -243,11 +277,14 @@ class DashboardCanvas(QWidget):
         self.scroll.horizontalScrollBar().setObjectName("DashboardCanvasHScrollBar")
         self.scroll.verticalScrollBar().setObjectName("DashboardCanvasVScrollBar")
 
-        self.setStyleSheet(
-            """
+        canvas_bg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
+        scroll_handle = "#475569" if _is_dark_theme() else "#C9D0DB"
+        scroll_handle_hover = "#64748B" if _is_dark_theme() else "#AEB8C8"
+        scroll_border = "#334155" if _is_dark_theme() else "#BFC6D2"
+        style = """
             QWidget#DashboardCanvasRoot,
             QWidget#DashboardCanvasSurface {
-                background: #FFFFFF;
+                background: __CANVAS_BG__;
             }
             QScrollArea#DashboardCanvasScrollArea {
                 border: none;
@@ -265,12 +302,12 @@ class DashboardCanvas(QWidget):
             QScrollBar#DashboardCanvasHScrollBar::handle:horizontal {
                 min-width: 44px;
                 border-radius: 5px;
-                border: 1px solid #BFC6D2;
-                background: #C9D0DB;
+                border: 1px solid __SCROLL_BORDER__;
+                background: __SCROLL_HANDLE__;
             }
             QScrollBar#DashboardCanvasHScrollBar::handle:horizontal:hover {
-                background: #AEB8C8;
-                border-color: #A7B1C0;
+                background: __SCROLL_HANDLE_HOVER__;
+                border-color: __SCROLL_BORDER__;
             }
             QScrollBar#DashboardCanvasHScrollBar::add-line:horizontal,
             QScrollBar#DashboardCanvasHScrollBar::sub-line:horizontal {
@@ -296,12 +333,12 @@ class DashboardCanvas(QWidget):
             QScrollBar#DashboardCanvasVScrollBar::handle:vertical {
                 min-height: 44px;
                 border-radius: 5px;
-                border: 1px solid #BFC6D2;
-                background: #C9D0DB;
+                border: 1px solid __SCROLL_BORDER__;
+                background: __SCROLL_HANDLE__;
             }
             QScrollBar#DashboardCanvasVScrollBar::handle:vertical:hover {
-                background: #AEB8C8;
-                border-color: #A7B1C0;
+                background: __SCROLL_HANDLE_HOVER__;
+                border-color: __SCROLL_BORDER__;
             }
             QScrollBar#DashboardCanvasVScrollBar::add-line:vertical,
             QScrollBar#DashboardCanvasVScrollBar::sub-line:vertical {
@@ -320,7 +357,19 @@ class DashboardCanvas(QWidget):
                 background: transparent;
             }
             """
+        style = (
+            style.replace("__CANVAS_BG__", canvas_bg)
+            .replace("__SCROLL_BORDER__", scroll_border)
+            .replace("__SCROLL_HANDLE_HOVER__", scroll_handle_hover)
+            .replace("__SCROLL_HANDLE__", scroll_handle)
         )
+        self.setStyleSheet(style)
+
+    def resolved_background_color(self) -> QColor:
+        return _dark_aware_color(self._background_color, "#FFFFFF", "#0B1020")
+
+    def resolved_grid_color(self) -> QColor:
+        return _dark_aware_color(self._grid_color, "#FFFFFF", "#334155")
 
     def _event_pos_to_point(self, event) -> QPoint:
         try:
@@ -538,14 +587,42 @@ class DashboardCanvas(QWidget):
         normalized = str(item_id or "").strip()
         if normalized and self._layout_by_id(normalized) is None:
             normalized = ""
+        brought_to_front = self._bring_item_to_front(normalized) if normalized else False
         if normalized == self._selected_item_id:
             if emit_signal:
                 self.itemSelectionChanged.emit(normalized, self._widgets.get(normalized))
+            if brought_to_front:
+                self.itemsChanged.emit()
             return
         self._selected_item_id = normalized
         self._sync_item_selection_highlights()
         if emit_signal:
             self.itemSelectionChanged.emit(normalized, self._widgets.get(normalized))
+        if brought_to_front:
+            self.itemsChanged.emit()
+
+    def _bring_item_to_front(self, item_id: str) -> bool:
+        normalized = str(item_id or "").strip()
+        if not normalized:
+            return False
+        current_index = next((index for index, item in enumerate(self._items) if item.item_id == normalized), -1)
+        if current_index < 0:
+            return False
+        changed = current_index != len(self._items) - 1
+        if changed:
+            item = self._items.pop(current_index)
+            self._items.append(item)
+        widget = self._widgets.get(normalized)
+        if widget is not None:
+            try:
+                widget.raise_()
+            except Exception:
+                log_exception("falha opcional ignorada")
+        try:
+            self.surface.update()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return changed
 
     def visual_links(self) -> List[DashboardVisualLink]:
         return [DashboardVisualLink.from_dict(link.to_dict()) for link in self._visual_links]
@@ -1359,6 +1436,8 @@ class DashboardCanvas(QWidget):
         dialog = QDialog(self)
         dialog.setObjectName("ModelRelationTargetDialog")
         dialog.setWindowTitle("Nova relacao")
+        dialog.setFont(ui_font())
+        dialog._font_enforcer = attach_ui_font_enforcer(dialog)
         dialog.setModal(True)
         dialog.setMinimumWidth(430)
         dialog.setStyleSheet(
@@ -1415,8 +1494,13 @@ class DashboardCanvas(QWidget):
         root.addWidget(prompt)
 
         combo = QComboBox(dialog)
+        combo.setFont(ui_font(8))
         for label, item_id in options:
             combo.addItem(label, item_id)
+        try:
+            combo.view().setFont(ui_font(8))
+        except Exception:
+            log_exception("falha opcional ignorada")
         root.addWidget(combo)
 
         actions = QHBoxLayout()
@@ -1434,6 +1518,7 @@ class DashboardCanvas(QWidget):
         ok_btn.clicked.connect(dialog.accept)
         actions.addWidget(ok_btn, 0)
         root.addLayout(actions)
+        harmonize_widget_fonts(dialog)
 
         if dialog.exec_() != QDialog.Accepted:
             return ""

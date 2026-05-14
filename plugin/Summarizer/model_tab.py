@@ -5,10 +5,11 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QByteArray, QPoint, QRectF, QSize, Qt, QMimeData, pyqtSignal
+from qgis.PyQt.QtCore import QByteArray, QPoint, QRect, QRectF, QSize, QSettings, Qt, QMimeData, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QDrag, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette, QPixmap
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.PyQt.QtWidgets import (
+    QAbstractItemView,
     QListWidget,
     QListWidgetItem,
     QCheckBox,
@@ -26,6 +27,7 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QShortcut,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QSplitter,
     QSpinBox,
@@ -76,12 +78,13 @@ from .visual_format_panel import VisualFormatPanel
 _MODEL_FIELD_MIME = "application/x-summarizer-model-field"
 _MODEL_FIELD_ROLE = Qt.UserRole + 41
 _MODEL_SIDE_PANEL_COLLAPSED_WIDTH = 40
-_MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH = 292
-_MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH = 420
-_MODEL_DATA_PANEL_COLLAPSED_WIDTH = 36
-_MODEL_DATA_PANEL_MIN_WIDTH = 136
-_MODEL_DATA_PANEL_DEFAULT_WIDTH = 168
-_MODEL_DATA_PANEL_MAX_WIDTH = 244
+_MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH = 276
+_MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH = 250
+_MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH = 360
+_MODEL_DATA_PANEL_COLLAPSED_WIDTH = 40
+_MODEL_DATA_PANEL_MIN_WIDTH = 120
+_MODEL_DATA_PANEL_DEFAULT_WIDTH = 148
+_MODEL_DATA_PANEL_MAX_WIDTH = 320
 _MODEL_TRASH_SVG = """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M14.7404 9L14.3942 18M9.60577 18L9.25962 9M19.2276 5.79057C19.5696 5.84221 19.9104 5.89747 20.25 5.95629M19.2276 5.79057L18.1598 19.6726C18.0696 20.8448 17.0921 21.75 15.9164 21.75H8.08357C6.90786 21.75 5.93037 20.8448 5.8402 19.6726L4.77235 5.79057M19.2276 5.79057C18.0812 5.61744 16.9215 5.48485 15.75 5.39432M3.75 5.95629C4.08957 5.89747 4.43037 5.84221 4.77235 5.79057M4.77235 5.79057C5.91878 5.61744 7.07849 5.48485 8.25 5.39432M15.75 5.39432V4.47819C15.75 3.29882 14.8393 2.31423 13.6606 2.27652C13.1092 2.25889 12.5556 2.25 12 2.25C11.4444 2.25 10.8908 2.25889 10.3394 2.27652C9.16065 2.31423 8.25 3.29882 8.25 4.47819V5.39432M15.75 5.39432C14.5126 5.2987 13.262 5.25 12 5.25C10.738 5.25 9.48744 5.2987 8.25 5.39432" stroke="__COLOR__" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>"""
@@ -90,15 +93,56 @@ _MODEL_FIELDS_SVG = """<svg width="24" height="24" viewBox="0 0 24 24" fill="non
 </svg>"""
 
 
+def _model_fields_panel_font():
+    font = ui_font()
+    font.setPixelSize(12)
+    return font
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
+
+
+def _model_theme_color(name: str) -> str:
+    dark = {
+        "app": "#0B1020",
+        "surface": "#111827",
+        "surface_2": "#172033",
+        "hover": "#1F2A3D",
+        "border": "#334155",
+        "border_soft": "rgba(148, 163, 184, 0.22)",
+        "text": "#F8FAFC",
+        "muted": "#CBD5E1",
+        "checked": "#312E81",
+        "checked_border": "#7C6CFF",
+    }
+    light = {
+        "app": "#FFFFFF",
+        "surface": "#FFFFFF",
+        "surface_2": "#F8FAFC",
+        "hover": "#F8FAFC",
+        "border": "#DCE3EC",
+        "border_soft": "rgba(17, 24, 39, 0.08)",
+        "text": "#0F172A",
+        "muted": "#64748B",
+        "checked": "#EAF4FF",
+        "checked_border": "#93C5FD",
+    }
+    return (dark if _is_dark_theme() else light).get(name, light["surface"])
+
+
 def _force_model_white_background(widget: QWidget):
     widget.setAttribute(Qt.WA_StyledBackground, True)
     widget.setAutoFillBackground(True)
     palette = widget.palette()
-    palette.setColor(widget.foregroundRole(), QColor("#111827"))
-    palette.setColor(widget.backgroundRole(), QColor("#FFFFFF"))
-    palette.setColor(QPalette.Window, QColor("#FFFFFF"))
-    palette.setColor(QPalette.Base, QColor("#FFFFFF"))
-    palette.setColor(QPalette.AlternateBase, QColor("#FFFFFF"))
+    palette.setColor(widget.foregroundRole(), QColor(_model_theme_color("text")))
+    palette.setColor(widget.backgroundRole(), QColor(_model_theme_color("surface")))
+    palette.setColor(QPalette.Window, QColor(_model_theme_color("surface")))
+    palette.setColor(QPalette.Base, QColor(_model_theme_color("surface")))
+    palette.setColor(QPalette.AlternateBase, QColor(_model_theme_color("surface_2")))
     widget.setPalette(palette)
 
 
@@ -115,6 +159,7 @@ def _model_builder_trash_icon(size: int = 14) -> QIcon:
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
         renderer.render(painter)
         painter.end()
         icon.addPixmap(pixmap, mode)
@@ -123,11 +168,14 @@ def _model_builder_trash_icon(size: int = 14) -> QIcon:
 
 def _model_panel_fields_icon(size: int = 14) -> QIcon:
     icon = QIcon()
+    normal = "#CBD5E1" if _is_dark_theme() else "#475569"
+    active = "#F8FAFC" if _is_dark_theme() else "#334155"
+    disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
-        (QIcon.Normal, "#475569"),
-        (QIcon.Active, "#334155"),
-        (QIcon.Selected, "#334155"),
-        (QIcon.Disabled, "#CBD5E1"),
+        (QIcon.Normal, normal),
+        (QIcon.Active, active),
+        (QIcon.Selected, active),
+        (QIcon.Disabled, disabled),
     ):
         svg_data = QByteArray(_MODEL_FIELDS_SVG.replace("__COLOR__", color).encode("utf-8"))
         renderer = QSvgRenderer(svg_data)
@@ -140,14 +188,112 @@ def _model_panel_fields_icon(size: int = 14) -> QIcon:
     return icon
 
 
+def _model_panel_chevron_icon(direction: str = "right", size: int = 20) -> QIcon:
+    path_d = "M9 5 L15 12 L9 19" if str(direction or "").lower() == "right" else "M15 5 L9 12 L15 19"
+    template = (
+        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" '
+        'xmlns="http://www.w3.org/2000/svg">'
+        f'<path d="{path_d}" stroke="__COLOR__" stroke-width="2.8" '
+        'stroke-linecap="round" stroke-linejoin="round"/>'
+        "</svg>"
+    )
+    icon = QIcon()
+    normal = "#CBD5E1" if _is_dark_theme() else "#334155"
+    active = "#F8FAFC" if _is_dark_theme() else "#111827"
+    disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
+    for mode, color in (
+        (QIcon.Normal, normal),
+        (QIcon.Active, active),
+        (QIcon.Selected, active),
+        (QIcon.Disabled, disabled),
+    ):
+        try:
+            svg_data = QByteArray(template.replace("__COLOR__", color).encode("utf-8"))
+            renderer = QSvgRenderer(svg_data)
+            pixmap = QPixmap(size, size)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            icon.addPixmap(pixmap, mode)
+        except Exception:
+            log_exception("falha opcional ignorada")
+    return icon
+
+
+def _model_tinted_svg_icon(icon_name: str, size: int = 18, accent_color: str = "") -> QIcon:
+    path = os.path.join(os.path.dirname(__file__), "resources", "SVG", icon_name)
+    if not os.path.exists(path):
+        return svg_icon(icon_name)
+    icon = QIcon()
+    accent = QColor(str(accent_color or ""))
+    if accent.isValid():
+        normal = accent.name()
+        active = accent.lighter(112).name()
+        disabled = accent.lighter(165).name()
+    else:
+        normal = "#E5E7EB" if _is_dark_theme() else "#334155"
+        active = "#FFFFFF" if _is_dark_theme() else "#111827"
+        disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
+    for mode, color in (
+        (QIcon.Normal, normal),
+        (QIcon.Active, active),
+        (QIcon.Selected, active),
+        (QIcon.Disabled, disabled),
+    ):
+        try:
+            with open(path, "rb") as handle:
+                renderer = QSvgRenderer(QByteArray(handle.read()))
+            pixmap = QPixmap(size, size)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            viewbox = renderer.viewBoxF()
+            if viewbox.isValid() and viewbox.width() > 0 and viewbox.height() > 0:
+                scale = min(size / viewbox.width(), size / viewbox.height()) * 0.9
+                target_w = viewbox.width() * scale
+                target_h = viewbox.height() * scale
+                renderer.render(painter, QRectF((size - target_w) / 2, (size - target_h) / 2, target_w, target_h))
+            else:
+                renderer.render(painter)
+            painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            painter.fillRect(pixmap.rect(), QColor(color))
+            painter.end()
+            icon.addPixmap(pixmap, mode)
+        except Exception:
+            log_exception("falha opcional ignorada")
+            return svg_icon(icon_name)
+    return icon
+
+
 class _ModelFieldList(QListWidget):
     fieldActivated = pyqtSignal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._drag_start_pos = QPoint()
         self.setDragEnabled(True)
-        self.setSelectionMode(QListWidget.SingleSelection)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragDropMode(QAbstractItemView.DragOnly)
+        self.setDefaultDropAction(Qt.CopyAction)
         self.itemDoubleClicked.connect(self._emit_activated)
+
+    def supportedDropActions(self):
+        return Qt.CopyAction
+
+    def mousePressEvent(self, event):
+        item = self.itemAt(event.pos())
+        if item is not None:
+            self.setCurrentItem(item)
+            if event.button() == Qt.LeftButton:
+                self._drag_start_pos = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton:
+            if (event.pos() - self._drag_start_pos).manhattanLength() >= 6:
+                self.startDrag(Qt.CopyAction)
+                return
+        super().mouseMoveEvent(event)
 
     def _emit_activated(self, item):
         payload = item.data(_MODEL_FIELD_ROLE) if item is not None else None
@@ -156,6 +302,9 @@ class _ModelFieldList(QListWidget):
 
     def startDrag(self, supportedActions):
         item = self.currentItem()
+        selected = self.selectedItems()
+        if selected:
+            item = selected[0]
         if item is None:
             return
         payload = item.data(_MODEL_FIELD_ROLE)
@@ -171,30 +320,29 @@ class _ModelFieldList(QListWidget):
 class _ModelVerticalPanelLabel(QLabel):
     def __init__(self, text: str = "", parent=None):
         super().__init__(text, parent)
-        self.setFont(ui_font(8, weight=500))
-        self.setStyleSheet("color: #111827; font-size: 8pt; font-weight: 500; background: transparent;")
+        self.setStyleSheet("color: #111827; font-size: 12px; font-weight: 500; background: transparent;")
 
     def sizeHint(self):
-        metrics = QFontMetrics(self.font())
-        text_width = metrics.horizontalAdvance(self.text()) if hasattr(metrics, "horizontalAdvance") else metrics.width(self.text())
-        return QSize(22, max(86, int(text_width) + 16))
+        hint = super().sizeHint()
+        return QSize(max(28, hint.height() + 10), max(128, hint.width() + 16))
 
     def minimumSizeHint(self):
-        return self.sizeHint()
+        return QSize(28, 124)
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.TextAntialiasing, True)
-        painter.setPen(self.palette().color(self.foregroundRole()))
-        painter.setFont(self.font())
-        painter.translate(self.width() / 2.0, self.height() / 2.0)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.translate(self.width() / 2, self.height() / 2)
         painter.rotate(-90)
-        painter.drawText(
-            QRectF(-self.height() / 2.0, -self.width() / 2.0, self.height(), self.width()),
-            int(Qt.AlignCenter),
-            self.text(),
+        rect = QRect(
+            int(-self.height() / 2),
+            int(-self.width() / 2),
+            int(self.height()),
+            int(self.width()),
         )
-        painter.end()
+        painter.setPen(self.palette().color(QPalette.WindowText))
+        painter.setFont(self.font())
+        painter.drawText(rect, Qt.AlignCenter, self.text())
 
 
 class _ModelFieldBindingChip(QFrame):
@@ -209,10 +357,13 @@ class _ModelFieldBindingChip(QFrame):
         self._drag_start_pos = QPoint()
         self.setObjectName("ModelBindingFieldChip")
         self.setCursor(Qt.OpenHandCursor)
+        self.setMinimumWidth(0)
+        self.setMaximumWidth(16777215)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 2, 4, 2)
-        layout.setSpacing(4)
+        layout.setContentsMargins(4, 2, 3, 2)
+        layout.setSpacing(3)
 
         badge = QLabel(field_kind_badge(self.binding_item.type), self)
         badge.setObjectName("ModelBindingFieldBadge")
@@ -222,11 +373,14 @@ class _ModelFieldBindingChip(QFrame):
         name = QLabel(self.binding_item.display_name or self.binding_item.field, self)
         name.setObjectName("ModelBindingFieldName")
         name.setToolTip(self.binding_item.field)
-        name.setMinimumWidth(42)
+        name.setMinimumWidth(0)
+        name.setMaximumWidth(16777215)
+        name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         layout.addWidget(name, 1)
 
         self.aggregation_combo = QComboBox(self)
         self.aggregation_combo.setObjectName("ModelBindingAggregationCombo")
+        self.aggregation_combo.setFixedWidth(58)
         for label, value in (
             (_rt("Sem agreg."), "none"),
             (_rt("Soma"), "sum"),
@@ -249,7 +403,7 @@ class _ModelFieldBindingChip(QFrame):
             button.setText(text)
             button.setCursor(Qt.PointingHandCursor)
             button.setAutoRaise(True)
-            button.setFixedSize(16, 16)
+            button.setFixedSize(14, 16)
             button.setToolTip(tooltip)
             button.clicked.connect(lambda checked=False, value=delta: self.moveRequested.emit(self.binding_item.field, value))
             layout.addWidget(button, 0)
@@ -339,6 +493,7 @@ class _ModelBindingSlot(QFrame):
 
         self.chips_host = QWidget(self)
         self.chips_host.setObjectName("ModelBindingSlotChips")
+        self.chips_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.chips_layout = QVBoxLayout(self.chips_host)
         self.chips_layout.setContentsMargins(0, 0, 0, 0)
         self.chips_layout.setSpacing(3)
@@ -439,6 +594,8 @@ class ModelTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("ModelTabRoot")
+        self.setFont(ui_font())
+        self._font_enforcer = attach_ui_font_enforcer(self)
         self.store = DashboardProjectStore()
         self.current_project: Optional[DashboardProject] = None
         self.current_path: str = ""
@@ -464,6 +621,8 @@ class ModelTab(QWidget):
         self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
         self._builder_selected_item_id: str = ""
         self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
+        self._builder_visual_specs = self._visual_type_specs()
+        self.builder_visual_buttons = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 2, 4, 3)
@@ -512,6 +671,7 @@ class ModelTab(QWidget):
             self.settings_btn,
             "Walker-Settings.svg",
             _rt("Configurar fundo e grade do canvas"),
+            icon_color="#F97316",
         )
         self._configure_toolbar_icon_button(
             self.close_project_btn,
@@ -548,8 +708,20 @@ class ModelTab(QWidget):
         for button in (self.new_btn, self.open_btn, self.save_btn, self.save_as_btn, self.export_btn):
             toolbar_layout.addWidget(button, 0)
         toolbar_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
-        for button in (self.create_chart_btn, self.format_visual_btn, self.edit_mode_btn, self.settings_btn):
+        for button in (self.create_chart_btn, self.format_visual_btn, self.edit_mode_btn):
             toolbar_layout.addWidget(button, 0)
+        self.visual_types_leading_separator = self._create_toolbar_separator(self.toolbar_strip)
+        toolbar_layout.addWidget(self.visual_types_leading_separator, 0)
+        self.toolbar_visuals_strip = QFrame(self.toolbar_strip)
+        self.toolbar_visuals_strip.setObjectName("ModelToolbarVisualTypes")
+        toolbar_visuals_layout = QHBoxLayout(self.toolbar_visuals_strip)
+        toolbar_visuals_layout.setContentsMargins(4, 0, 4, 0)
+        toolbar_visuals_layout.setSpacing(1)
+        self._build_visual_type_buttons(self.toolbar_visuals_strip, toolbar_visuals_layout, button_size=32, icon_size=20)
+        self.toolbar_visuals_strip.setVisible(False)
+        toolbar_layout.addWidget(self.toolbar_visuals_strip, 0)
+        self.visual_types_trailing_separator = self._create_toolbar_separator(self.toolbar_strip)
+        toolbar_layout.addWidget(self.visual_types_trailing_separator, 0)
         toolbar_layout.addStretch(1)
         self.mode_switch_wrap = QWidget(self.toolbar_strip)
         self.mode_switch_wrap.setObjectName("ModelModeSwitchWrap")
@@ -569,6 +741,8 @@ class ModelTab(QWidget):
         self.clear_filters_btn.setVisible(False)
         self.clear_filters_btn.clicked.connect(self._clear_model_filters)
         toolbar_layout.addWidget(self.clear_filters_btn, 0)
+        toolbar_layout.addSpacing(8)
+        toolbar_layout.addWidget(self.settings_btn, 0)
         toolbar_layout.addSpacing(8)
         toolbar_layout.addWidget(self.mode_switch_wrap, 0)
         toolbar_layout.addSpacing(8)
@@ -672,7 +846,7 @@ class ModelTab(QWidget):
         self.visual_side_panel = QFrame(self.canvas_splitter)
         self.visual_side_panel.setObjectName("ModelVisualSidePanel")
         _force_model_white_background(self.visual_side_panel)
-        self.visual_side_panel.setMinimumWidth(260)
+        self.visual_side_panel.setMinimumWidth(_MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH)
         self.visual_side_panel.setMaximumWidth(_MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH)
         visual_side_layout = QVBoxLayout(self.visual_side_panel)
         visual_side_layout.setContentsMargins(8, 8, 8, 8)
@@ -722,7 +896,7 @@ class ModelTab(QWidget):
         self.builder_panel = self._build_chart_builder_panel(self.visual_side_stack)
         self.visual_side_stack.addWidget(self.builder_panel)
         self.visual_panel = VisualFormatPanel(self.visual_side_stack)
-        self.visual_panel.setMinimumWidth(240)
+        self.visual_panel.setMinimumWidth(_MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH)
         self.visual_panel.setMaximumWidth(16777215)
         self.visual_panel.closeRequested.connect(lambda: self._set_visual_panel_open(False))
         self.visual_side_stack.addWidget(self.visual_panel)
@@ -762,10 +936,11 @@ class ModelTab(QWidget):
         self.data_panel.setVisible(False)
         self.canvas_splitter.addWidget(self.data_panel)
         self._sync_data_panel_chrome()
+        self._apply_builder_panel_theme_overrides()
         self.canvas_splitter.setStretchFactor(0, 1)
         self.canvas_splitter.setStretchFactor(1, 0)
         self.canvas_splitter.setStretchFactor(2, 0)
-        self.canvas_splitter.setSizes([900, 292, 292])
+        self.canvas_splitter.setSizes([900, _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH, _MODEL_DATA_PANEL_DEFAULT_WIDTH])
 
         self.body_stack.addWidget(self.empty_page)
         self.body_stack.addWidget(self.canvas_page)
@@ -851,6 +1026,10 @@ class ModelTab(QWidget):
                 max-width: 1px;
                 margin: 4px 6px;
                 background: #E5E7EB;
+            }
+            QFrame#ModelToolbarVisualTypes {
+                background: transparent;
+                border: none;
             }
             QWidget#ModelModeSwitchWrap {
                 background: transparent;
@@ -1151,10 +1330,10 @@ class ModelTab(QWidget):
                 font-weight: 500;
             }
             QToolButton#ModelVisualTypeButton {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 28px;
-                max-height: 28px;
+                min-width: 32px;
+                max-width: 32px;
+                min-height: 30px;
+                max-height: 30px;
                 border: 1px solid transparent;
                 border-radius: 6px;
                 background: transparent;
@@ -1240,14 +1419,16 @@ class ModelTab(QWidget):
                 background: #FFFFFF;
                 border: 1px solid rgba(148, 163, 184, 0.42);
                 border-radius: 3px;
+                min-height: 22px;
+                max-height: 24px;
             }
             QLabel#ModelBindingFieldBadge {
                 background: #EEF2FF;
                 color: #334155;
                 border: 1px solid rgba(148, 163, 184, 0.32);
                 border-radius: 2px;
-                min-width: 26px;
-                max-width: 34px;
+                min-width: 24px;
+                max-width: 26px;
                 min-height: 16px;
                 font-size: 8px;
                 font-weight: 600;
@@ -1256,6 +1437,7 @@ class ModelTab(QWidget):
                 color: #111827;
                 font-size: 10px;
                 font-weight: 400;
+                min-width: 0px;
             }
             QLabel#ModelBindingSlotValue {
                 color: #94A3B8;
@@ -1265,9 +1447,11 @@ class ModelTab(QWidget):
             QComboBox#ModelBindingAggregationCombo {
                 min-height: 18px;
                 max-height: 18px;
+                min-width: 58px;
+                max-width: 58px;
                 border: 1px solid rgba(148, 163, 184, 0.32);
                 border-radius: 2px;
-                padding: 0 4px;
+                padding: 0 2px;
                 background: #F8FAFC;
                 color: #334155;
                 font-size: 9px;
@@ -1287,8 +1471,8 @@ class ModelTab(QWidget):
                 border-color: rgba(239, 68, 68, 0.20);
             }
             QToolButton#ModelBindingSlotMove {
-                min-width: 16px;
-                max-width: 16px;
+                min-width: 14px;
+                max-width: 14px;
                 min-height: 16px;
                 max-height: 16px;
                 border: 1px solid transparent;
@@ -1485,12 +1669,15 @@ class ModelTab(QWidget):
             }
             """
         )
+        self._apply_dark_theme_overlay()
+        self._refresh_theme_icons()
 
         self._refresh_recents()
         self._refresh_builder_layers()
         self._sync_mode_switch_state(bool(self.edit_mode_btn.isChecked()))
         self._refresh_ui_state()
         self._reset_history()
+        harmonize_widget_fonts(self)
         project = QgsProject.instance()
         try:
             project.layersAdded.connect(lambda *_: self._refresh_builder_layers())
@@ -1499,17 +1686,215 @@ class ModelTab(QWidget):
         except Exception:
             log_exception("falha opcional ignorada")
 
+    def _apply_dark_theme_overlay(self):
+        if not hasattr(self, "_base_model_stylesheet"):
+            self._base_model_stylesheet = self.styleSheet() or ""
+        if not _is_dark_theme():
+            if self.styleSheet() != self._base_model_stylesheet:
+                self.setStyleSheet(self._base_model_stylesheet)
+            return
+        self.setStyleSheet(self._base_model_stylesheet)
+        overlay = """
+            QWidget#ModelTabRoot {
+                background: #0B1020;
+                color: #F8FAFC;
+            }
+            QFrame#ModelToolbarStrip,
+            QFrame#ModelWelcomeCard,
+            QFrame#ModelRecentsCard,
+            QFrame#ModelFooterBar,
+            QFrame#ModelActionCard,
+            QFrame#ModelRecentCard,
+            QFrame#ModelFiltersBar {
+                background: #111827;
+                border-color: #334155;
+                color: #F8FAFC;
+            }
+            QFrame#ModelToolbarSeparator,
+            QSlider#ModelZoomSlider::groove:horizontal {
+                background: #334155;
+            }
+            QLabel#ModelModeStateLabel,
+            QLabel#ModelFiltersLabel,
+            QLabel#ModelActionCardTitle,
+            QLabel#ModelRecentCardTitle,
+            QLabel#ModelPageStripTabTitle[selected="true"] {
+                color: #F8FAFC;
+            }
+            QLabel#ModelHint,
+            QLabel#ModelWelcomeText,
+            QLabel#ModelRecentsPlaceholder,
+            QLabel#ModelActionCardText,
+            QLabel#ModelRecentCardText,
+            QLabel#ModelPageStripTabTitle,
+            QWidget#ModelPageStripTab,
+            QToolButton#ModelPageStripTabMenu,
+            QToolButton#ModelPageStripTabClose,
+            QToolButton#ModelPageStripNavButton {
+                color: #CBD5E1;
+            }
+            QWidget#ModelPageStripTab:hover,
+            QToolButton#ModelPageStripTabMenu:hover,
+            QToolButton#ModelPageStripTabClose:hover,
+            QToolButton#ModelPageStripNavButton:hover,
+            QPushButton#ModelToolbarButton:hover,
+            QToolButton#ModelToolbarButton:hover,
+            QPushButton#ModelActionButton:hover,
+            QPushButton#ModelZoomButton:hover {
+                background: #1F2A3D;
+                color: #F8FAFC;
+                border-color: #475569;
+            }
+            QPushButton#ModelToolbarButton,
+            QToolButton#ModelToolbarButton,
+            QPushButton#ModelActionButton,
+            QPushButton#ModelZoomButton,
+            QLineEdit#ModelPageStripTabEdit {
+                background: #172033;
+                color: #F8FAFC;
+                border-color: #334155;
+            }
+            QPushButton#ModelToolbarButton:checked,
+            QToolButton#ModelToolbarButton:checked,
+            QPushButton#ModelToolbarButton:pressed,
+            QToolButton#ModelToolbarButton:pressed,
+            QPushButton#ModelActionButton:pressed,
+            QPushButton#ModelZoomButton:pressed {
+                background: #312E81;
+                color: #F8FAFC;
+                border-color: #7C6CFF;
+            }
+            QLabel#ModelActionCardIcon {
+                background: #312E81;
+                border-color: #7C6CFF;
+            }
+        """
+        self.setStyleSheet(f"{self._base_model_stylesheet}\n{overlay}")
+        self._refresh_theme_icons()
+
+    def _refresh_theme_icons(self):
+        for button in (
+            getattr(self, "undo_btn", None),
+            getattr(self, "redo_btn", None),
+            getattr(self, "new_btn", None),
+            getattr(self, "open_btn", None),
+            getattr(self, "save_btn", None),
+            getattr(self, "save_as_btn", None),
+            getattr(self, "export_btn", None),
+            getattr(self, "create_chart_btn", None),
+            getattr(self, "format_visual_btn", None),
+            getattr(self, "edit_mode_btn", None),
+            getattr(self, "settings_btn", None),
+            getattr(self, "close_project_btn", None),
+            getattr(self, "visual_side_toggle_btn", None),
+            getattr(self, "visual_side_collapsed_btn", None),
+            getattr(self, "data_panel_toggle_btn", None),
+            getattr(self, "data_panel_collapsed_btn", None),
+        ):
+            if button is None:
+                continue
+            icon_name = button.property("modelIconName")
+            if not icon_name:
+                continue
+            try:
+                icon_size = int(button.property("modelIconSize") or button.iconSize().width() or 18)
+                icon_color = str(button.property("modelIconColor") or "")
+                button.setIcon(_model_tinted_svg_icon(str(icon_name), icon_size, icon_color))
+                button.setIconSize(QSize(icon_size, icon_size))
+                button.style().unpolish(button)
+                button.style().polish(button)
+                button.update()
+            except Exception:
+                log_exception("falha opcional ignorada")
+        for button in getattr(self, "builder_visual_buttons", {}).values():
+            if button is None:
+                continue
+            icon_name = button.property("modelIconName")
+            if not icon_name:
+                continue
+            try:
+                icon_size = int(button.property("modelIconSize") or button.iconSize().width() or 15)
+                icon_color = str(button.property("modelIconColor") or "")
+                button.setIcon(_model_tinted_svg_icon(str(icon_name), icon_size, icon_color))
+                button.setIconSize(QSize(icon_size, icon_size))
+            except Exception:
+                log_exception("falha opcional ignorada")
+        if getattr(self, "data_panel_icon", None) is not None:
+            self.data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
+
+    def _visual_type_specs(self):
+        return [
+            (_rt("Colunas"), "bar", "ModelVisual-Column.svg", _rt("Colunas - compara valores por categoria.")),
+            (_rt("Barras"), "barh", "ModelVisual-Bar.svg", _rt("Barras - compara categorias em eixo horizontal.")),
+            (_rt("Linha"), "line", "ModelVisual-Line.svg", _rt("Linha - mostra tendência ao longo do tempo.")),
+            (_rt("Area"), "area", "ModelVisual-Area.svg", _rt("Area - destaca a evolução acumulada dos valores.")),
+            (_rt("Pizza"), "pie", "ModelVisual-Pie.svg", _rt("Pizza - mostra composição entre partes.")),
+            (_rt("Rosca"), "donut", "ModelVisual-Donut.svg", _rt("Rosca - composição com foco no total.")),
+            (_rt("Card"), "card", "ModelVisual-Card.svg", _rt("Card - destaca um único indicador.")),
+            (_rt("KPI"), "kpi", "ModelVisual-KPI.svg", _rt("KPI - acompanha um indicador principal.")),
+            (_rt("Medidor"), "gauge", "ModelVisual-Gauge.svg", _rt("Medidor - mostra progresso em relação a uma meta.")),
+            (_rt("Matriz"), "matrix", "ModelVisual-Matrix.svg", _rt("Matriz - cruza linhas, colunas e valores.")),
+            (_rt("Segmentador"), "slicer", "ModelVisual-Slicer.svg", _rt("Segmentador - lista categorias para filtragem visual.")),
+            (_rt("Coluna agrupada"), "column_clustered", "ModelVisual-ColumnClustered.svg", _rt("Coluna agrupada - compara séries lado a lado.")),
+            (_rt("Coluna empilhada"), "column_stacked", "ModelVisual-ColumnStacked.svg", _rt("Coluna empilhada - mostra partes dentro de cada coluna.")),
+            (_rt("Barra 100%"), "bar100_stacked", "ModelVisual-Bar100Stacked.svg", _rt("Barra 100% - compara proporções entre categorias.")),
+            (_rt("Combo"), "combo", "ModelVisual-Combo.svg", _rt("Combo - combina barras e linha no mesmo visual.")),
+            (_rt("Dispersao"), "scatter", "ModelVisual-Scatter.svg", _rt("Dispersão - compara X, Y e tamanho.")),
+            (_rt("Treemap"), "treemap", "ModelVisual-Treemap.svg", _rt("Treemap - mostra participação por áreas.")),
+            (_rt("Cascata"), "waterfall", "ModelVisual-Waterfall.svg", _rt("Cascata - destaca variações positivas e negativas.")),
+            (_rt("Funil"), "funnel", "ModelVisual-Funnel.svg", _rt("Funil - mostra etapas em sequência.")),
+        ]
+
+    def _build_visual_type_buttons(self, parent: QWidget, layout, *, button_size: int = 24, icon_size: int = 15):
+        self.builder_visual_buttons = {}
+        for label_text, chart_type, icon_name, tooltip_text in self._builder_visual_specs:
+            button = QToolButton(parent)
+            button.setObjectName("ModelVisualTypeButton")
+            button.setProperty("modelIconName", icon_name)
+            button.setProperty("modelIconSize", icon_size)
+            button.setProperty("visualType", chart_type)
+            button.setCheckable(True)
+            button.setText("")
+            button.setIcon(_model_tinted_svg_icon(icon_name, icon_size))
+            button.setToolTip(label_text)
+            button.setStatusTip("")
+            button.setWhatsThis("")
+            button.setAccessibleName(label_text)
+            button.setAccessibleDescription(tooltip_text)
+            button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            button.setAutoRaise(True)
+            button.setFixedSize(button_size, button_size)
+            button.setIconSize(QSize(icon_size, icon_size))
+            button.clicked.connect(lambda checked=False, value=chart_type: self._select_visual_type_from_builder(value))
+            self.builder_visual_buttons[chart_type] = button
+            layout.addWidget(button, 0)
+
+    def _fill_model_theme_tokens(self, style: str) -> str:
+        replacements = {
+            "__CHECKED_BORDER__": _model_theme_color("checked_border"),
+            "__BORDER_SOFT__": _model_theme_color("border_soft"),
+            "__SURFACE_2__": _model_theme_color("surface_2"),
+            "__CHECKED__": _model_theme_color("checked"),
+            "__SURFACE__": _model_theme_color("surface"),
+            "__BORDER__": _model_theme_color("border"),
+            "__MUTED__": _model_theme_color("muted"),
+            "__HOVER__": _model_theme_color("hover"),
+            "__TEXT__": _model_theme_color("text"),
+        }
+        for token, value in replacements.items():
+            style = style.replace(token, value)
+        return style
+
     def _apply_visual_side_panel_styles(self):
-        self.visual_side_panel.setStyleSheet(
-            """
+        style = """
             QFrame#ModelVisualSidePanel {
-                background: #FFFFFF;
-                border: 1px solid #DCE3EC;
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
                 border-radius: 6px;
             }
             QFrame#ModelVisualPanelTabBar {
-                background: #FFFFFF;
-                border: 1px solid #E2E8F0;
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
                 border-radius: 6px;
             }
             QPushButton#ModelVisualPanelTabButton {
@@ -1518,89 +1903,91 @@ class ModelTab(QWidget):
                 border: 1px solid transparent;
                 border-radius: 4px;
                 background: transparent;
-                color: #334155;
+                color: __MUTED__;
                 padding: 0 8px;
                 font-size: 11px;
                 font-weight: 500;
             }
             QPushButton#ModelVisualPanelTabButton:hover {
-                background: #F8FAFC;
-                border-color: #D7DEE8;
+                background: __HOVER__;
+                border-color: __BORDER__;
             }
             QPushButton#ModelVisualPanelTabButton:checked {
-                background: #EAF4FF;
-                border-color: #93C5FD;
+                background: __CHECKED__;
+                border-color: __CHECKED_BORDER__;
             }
             QFrame#ModelBuilderPanel {
-                background: #FFFFFF;
+                background: __SURFACE__;
                 border: none;
             }
             QStackedWidget#ModelVisualSideStack,
             QStackedWidget#ModelVisualSideStack > QWidget {
-                background: #FFFFFF;
+                background: __SURFACE__;
                 border: none;
             }
             QScrollArea#ModelBuilderScroll,
             QWidget#ModelBuilderScrollViewport,
             QWidget#ModelBuilderHost {
-                background: #FFFFFF;
+                background: __SURFACE__;
                 border: none;
             }
             QFrame#ModelBuilderPlainSection {
-                background: #FFFFFF;
+                background: __SURFACE__;
                 border: none;
             }
             QFrame#ModelBuilderVisualsSection {
-                background: #FFFFFF;
-                border: 1px solid rgba(17, 24, 39, 0.08);
+                background: __SURFACE__;
+                border: 1px solid __BORDER_SOFT__;
                 border-radius: 6px;
             }
             QFrame#ModelBuilderVisualsSection:hover {
-                border-color: rgba(17, 24, 39, 0.14);
+                border-color: __BORDER__;
             }
             QFrame#ModelBuilderSoftDividerSection {
-                background: #FFFFFF;
-                border: 1px solid #E5EAF1;
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
                 border-radius: 5px;
             }
             QToolButton#ModelVisualTypeButton {
                 background: transparent;
                 border: 1px solid transparent;
                 border-radius: 6px;
-                color: #475569;
+                color: __MUTED__;
                 padding: 0px;
             }
             QToolButton#ModelVisualTypeButton:hover {
-                background: #F3F4F6;
-                border-color: rgba(17, 24, 39, 0.10);
+                background: __HOVER__;
+                border-color: __BORDER_SOFT__;
             }
             QToolButton#ModelVisualTypeButton:checked {
-                background: #E8EEF6;
-                color: #0F172A;
-                border-color: rgba(17, 24, 39, 0.12);
+                background: __CHECKED__;
+                color: __TEXT__;
+                border-color: __CHECKED_BORDER__;
             }
             QFrame#ModelBindingSlot {
-                background: #FFFFFF;
-                border: 1px solid rgba(148, 163, 184, 0.32);
+                background: __SURFACE_2__;
+                border: 1px solid __BORDER_SOFT__;
                 border-radius: 4px;
                 min-height: 42px;
             }
             QFrame#ModelBindingSlot[filled="true"] {
-                border-color: rgba(148, 163, 184, 0.36);
-                background: #FFFFFF;
+                border-color: __BORDER__;
+                background: __SURFACE_2__;
             }
             QFrame#ModelBindingFieldChip {
-                background: #FFFFFF;
-                border: 1px solid rgba(148, 163, 184, 0.42);
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
                 border-radius: 3px;
+                min-height: 22px;
+                max-height: 24px;
             }
             QLabel#ModelBindingFieldBadge {
-                background: #EEF2FF;
-                color: #334155;
-                border: 1px solid rgba(148, 163, 184, 0.32);
+                background: __CHECKED__;
+                color: __TEXT__;
+                border: 1px solid __BORDER__;
                 border-radius: 2px;
-                min-width: 26px;
-                max-width: 34px;
+                min-width: 24px;
+                max-width: 26px;
                 min-height: 16px;
                 font-size: 8px;
                 font-weight: 600;
@@ -1610,13 +1997,332 @@ class ModelTab(QWidget):
             QLabel#ModelBindingSlotLabel {
                 font-size: 9px;
             }
+            QLabel#ModelBindingFieldName {
+                min-width: 0px;
+            }
             QLabel#ModelBindingSlotValue {
-                color: #64748B;
+                color: __MUTED__;
                 font-weight: 400;
+            }
+        """
+        self.visual_side_panel.setStyleSheet(self._fill_model_theme_tokens(style))
+        self._apply_builder_panel_theme_overrides()
+        self._refresh_theme_icons()
+
+    def _apply_builder_panel_theme_overrides(self):
+        style = self._fill_model_theme_tokens(
+            """
+            QScrollArea#ModelBuilderScroll,
+            QWidget#ModelBuilderScrollViewport,
+            QWidget#ModelBuilderHost,
+            QWidget#ModelBuilderBottomSpacer,
+            QFrame#ModelBuilderPanel,
+            QFrame#ModelBuilderVisualsSection,
+            QFrame#ModelBuilderEmptyState,
+            QFrame#ModelBuilderEmptyState QWidget,
+            QFrame#ModelBuilderEmptyState QLabel,
+            QFrame#ModelBuilderSoftDividerSection,
+            QFrame#ModelBuilderPlainSection,
+            QFrame#ModelBuilderDataPanel,
+            QFrame#ModelDataPanelCollapsedRail,
+            QFrame#ModelSidePanelCollapsedRail,
+            QFrame#ModelBuilderDataPanel QWidget,
+            QFrame#ModelBuilderDataPanel QFrame,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea::viewport,
+            QWidget#ModelDataPanelHeader,
+            QWidget#ModelDataPanelBody,
+            QWidget#ModelDataFieldsBody,
+            QFrame#ModelBuilderDataSection {
+                background: __SURFACE__;
+                background-color: __SURFACE__;
+                color: __TEXT__;
+            }
+            QFrame#ModelBuilderVisualsSection,
+            QFrame#ModelBuilderSoftDividerSection,
+            QFrame#ModelBuilderDataPanel {
+                border: 1px solid __BORDER__;
+                border-radius: 6px;
+            }
+            QFrame#ModelDataPanelCollapsedRail,
+            QFrame#ModelSidePanelCollapsedRail {
+                border: none;
+                border-radius: 0px;
+                background: __SURFACE__;
+                background-color: __SURFACE__;
+            }
+            QFrame#ModelBuilderEmptyState {
+                border: 1px dashed __BORDER__;
+                border-radius: 6px;
+            }
+            QLabel#ModelBuilderTitle,
+            QLabel#ModelBuilderSectionTitle {
+                color: __TEXT__;
+                background: transparent;
+                font-weight: 500;
+            }
+            QLabel#ModelBuilderHint,
+            QLabel#ModelBuilderFieldLabel,
+            QLabel#ModelBuilderEmptyStateLabel,
+            QLabel#ModelDataPanelCollapsedTitle,
+            QLabel#ModelBindingSlotLabel,
+            QLabel#ModelBindingSlotValue {
+                color: __MUTED__;
+                background: transparent;
+            }
+            QLabel#ModelDataPanelCollapsedTitle,
+            QLabel#ModelSidePanelCollapsedTitle {
+                color: __TEXT__;
+                background: transparent;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QListWidget#ModelBuilderFieldList {
+                background: __SURFACE_2__;
+                color: __TEXT__;
+                border: 1px solid __BORDER__;
+                border-radius: 2px;
+                padding: 2px;
+                outline: 0;
+            }
+            QWidget#ModelBuilderFieldListViewport {
+                background: __SURFACE_2__;
+            }
+            QListWidget#ModelBuilderFieldList::item {
+                background: transparent;
+                color: __TEXT__;
+                border: none;
+                padding: 4px 6px;
+                margin: 0px;
+            }
+            QListWidget#ModelBuilderFieldList::item:hover {
+                background: __HOVER__;
+                color: __TEXT__;
+            }
+            QListWidget#ModelBuilderFieldList::item:selected {
+                background: __CHECKED__;
+                color: __TEXT__;
+            }
+            QComboBox#ModelBuilderCombo,
+            QLineEdit#ModelBuilderLineEdit,
+            QSpinBox#ModelBuilderSpin,
+            QComboBox#ModelBindingAggregationCombo {
+                background: __SURFACE_2__;
+                color: __TEXT__;
+                border: 1px solid __BORDER__;
+                border-radius: 2px;
+                selection-background-color: __CHECKED__;
+                selection-color: __TEXT__;
+            }
+            QComboBox#ModelBindingAggregationCombo {
+                min-width: 58px;
+                max-width: 58px;
+                min-height: 18px;
+                max-height: 18px;
+                padding: 0 2px;
+            }
+            QComboBox#ModelBuilderCombo:hover,
+            QLineEdit#ModelBuilderLineEdit:hover,
+            QSpinBox#ModelBuilderSpin:hover,
+            QComboBox#ModelBindingAggregationCombo:hover {
+                background: __HOVER__;
+                border-color: __CHECKED_BORDER__;
+            }
+            QFrame#ModelBindingSlot {
+                background: __SURFACE_2__;
+                border: 1px solid __BORDER__;
+                border-radius: 4px;
+            }
+            QFrame#ModelBindingSlot[filled="true"] {
+                background: __SURFACE_2__;
+                border-color: __CHECKED_BORDER__;
+            }
+            QFrame#ModelBindingFieldChip {
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
+                border-radius: 3px;
+                min-height: 22px;
+                max-height: 24px;
+            }
+            QLabel#ModelBindingFieldBadge {
+                background: __CHECKED__;
+                color: __TEXT__;
+                border: 1px solid __CHECKED_BORDER__;
+                border-radius: 2px;
+                min-width: 24px;
+                max-width: 26px;
+            }
+            QLabel#ModelBindingFieldName {
+                color: __TEXT__;
+                background: transparent;
+                min-width: 0px;
+            }
+            QToolButton#ModelVisualTypeButton,
+            QToolButton#ModelBindingSlotMove,
+            QToolButton#ModelBindingSlotRemove,
+            QToolButton#ModelSidePanelToggle,
+            QToolButton#ModelDataPanelToggle {
+                background: transparent;
+                border: 1px solid transparent;
+                color: __TEXT__;
+            }
+            QToolButton#ModelVisualTypeButton:hover,
+            QToolButton#ModelBindingSlotMove:hover,
+            QToolButton#ModelSidePanelToggle:hover,
+            QToolButton#ModelDataPanelToggle:hover {
+                background: transparent;
+                border-color: transparent;
+                color: __TEXT__;
+            }
+            QFrame#ModelBuilderVisualsSection QToolButton#ModelVisualTypeButton:hover,
+            QFrame#ModelBuilderVisualsSection QToolButton#ModelBindingSlotMove:hover {
+                background: __HOVER__;
+                border-color: __BORDER__;
+            }
+            QToolButton#ModelBindingSlotRemove:hover {
+                background: rgba(239, 68, 68, 0.08);
+                border-color: rgba(239, 68, 68, 0.20);
+            }
+            QToolButton#ModelVisualTypeButton:checked {
+                background: __CHECKED__;
+                border-color: __CHECKED_BORDER__;
+                color: __TEXT__;
             }
             """
         )
+        for widget in (
+            getattr(self, "builder_panel", None),
+            getattr(self, "visual_side_stack", None),
+            getattr(self, "data_panel", None),
+        ):
+            if widget is None:
+                continue
+            try:
+                widget.setStyleSheet(style)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        for name in (
+            "ModelBuilderScroll",
+            "ModelBuilderScrollViewport",
+            "ModelBuilderHost",
+            "ModelBuilderBottomSpacer",
+            "ModelBuilderVisualsSection",
+            "ModelBuilderEmptyState",
+            "ModelBuilderSoftDividerSection",
+            "ModelBuilderDataPanel",
+            "ModelDataPanelCollapsedRail",
+            "ModelSidePanelCollapsedRail",
+            "ModelDataPanelHeader",
+            "ModelDataPanelBody",
+            "ModelDataFieldsBody",
+            "ModelBuilderDataSection",
+            "ModelBuilderFieldList",
+            "ModelBuilderFieldListViewport",
+        ):
+            for widget in self.findChildren(QWidget, name):
+                try:
+                    palette = widget.palette()
+                    palette.setColor(QPalette.Window, QColor(_model_theme_color("surface")))
+                    palette.setColor(QPalette.Base, QColor(_model_theme_color("surface_2")))
+                    palette.setColor(QPalette.AlternateBase, QColor(_model_theme_color("surface")))
+                    palette.setColor(QPalette.Text, QColor(_model_theme_color("text")))
+                    palette.setColor(QPalette.WindowText, QColor(_model_theme_color("text")))
+                    widget.setPalette(palette)
+                    widget.setAutoFillBackground(True)
+                    widget.setStyleSheet(style)
+                except Exception:
+                    log_exception("falha opcional ignorada")
+        label_style = (
+            "background: transparent; "
+            f"color: {_model_theme_color('muted')}; "
+            "font-weight: 400;"
+        )
+        title_style = (
+            "background: transparent; "
+            f"color: {_model_theme_color('text')}; "
+            "font-weight: 500;"
+        )
+        for name, style_text in (
+            ("ModelBuilderSectionTitle", title_style),
+            ("ModelBuilderEmptyStateLabel", label_style),
+            ("ModelBindingSlotValue", label_style),
+            ("ModelDataPanelCollapsedTitle", title_style),
+            ("ModelSidePanelCollapsedTitle", title_style),
+        ):
+            for label in self.findChildren(QLabel, name):
+                try:
+                    label.setStyleSheet(style_text)
+                except Exception:
+                    log_exception("falha opcional ignorada")
         self._apply_visual_tab_button_styles()
+        self._apply_collapsed_panel_chrome()
+
+    def _apply_collapsed_panel_chrome(self):
+        surface = _model_theme_color("surface")
+        text = _model_theme_color("text")
+        button_style = f"""
+            QToolButton#ModelSidePanelToggle,
+            QToolButton#ModelDataPanelToggle,
+            QToolButton {{
+                background: transparent;
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                color: {text};
+                padding: 0px;
+                font-size: 16px;
+                font-weight: 500;
+            }}
+            QToolButton#ModelSidePanelToggle:hover,
+            QToolButton#ModelDataPanelToggle:hover,
+            QToolButton:hover,
+            QToolButton:pressed {{
+                background: {_model_theme_color("hover")};
+                background-color: {_model_theme_color("hover")};
+                border: 1px solid {_model_theme_color("border")};
+                color: {text};
+            }}
+        """
+        rail_style = f"background: {surface}; background-color: {surface}; border: none; border-radius: 0px;"
+        label_style = f"background: transparent; color: {text}; font-size: 12px; font-weight: 500;"
+
+        for rail_name in ("visual_side_collapsed_rail", "data_panel_collapsed_rail"):
+            rail = getattr(self, rail_name, None)
+            if rail is None:
+                continue
+            try:
+                rail.setStyleSheet(rail_style)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+        for button_name in (
+            "visual_side_toggle_btn",
+            "visual_side_collapsed_btn",
+            "data_panel_toggle_btn",
+            "data_panel_collapsed_btn",
+        ):
+            button = getattr(self, button_name, None)
+            if button is None:
+                continue
+            try:
+                button.setAutoRaise(True)
+                button.setFixedSize(22, 22)
+                button.setStyleSheet(button_style)
+                button.style().unpolish(button)
+                button.style().polish(button)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+        for label_name in ("visual_side_collapsed_title", "data_panel_collapsed_title"):
+            label = getattr(self, label_name, None)
+            if label is None:
+                continue
+            try:
+                label.setStyleSheet(label_style)
+                label.updateGeometry()
+                label.update()
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def _apply_visual_tab_button_styles(self):
         style = """
@@ -1626,29 +2332,30 @@ class ModelTab(QWidget):
                 border: 1px solid transparent;
                 border-radius: 4px;
                 background-color: transparent;
-                color: #334155;
+                color: __MUTED__;
                 padding: 0 8px;
                 font-size: 11px;
                 font-weight: 500;
                 text-align: center;
             }
             QPushButton#ModelVisualPanelTabButton:hover {
-                background-color: #F8FAFC;
-                border-color: #D7DEE8;
-                color: #111827;
+                background-color: __HOVER__;
+                border-color: __BORDER__;
+                color: __TEXT__;
             }
             QPushButton#ModelVisualPanelTabButton:checked,
             QPushButton#ModelVisualPanelTabButton:checked:hover {
-                background-color: #EAF4FF;
-                border-color: #93C5FD;
-                color: #111827;
+                background-color: __CHECKED__;
+                border-color: __CHECKED_BORDER__;
+                color: __TEXT__;
             }
             QPushButton#ModelVisualPanelTabButton:pressed {
-                background-color: #DBEAFE;
-                border-color: #60A5FA;
-                color: #111827;
+                background-color: __CHECKED__;
+                border-color: __CHECKED_BORDER__;
+                color: __TEXT__;
             }
         """
+        style = self._fill_model_theme_tokens(style)
         for button in (
             getattr(self, "visual_data_tab_btn", None),
             getattr(self, "visual_format_tab_btn", None),
@@ -1707,97 +2414,6 @@ class ModelTab(QWidget):
         host_layout.setContentsMargins(0, 0, 0, 0)
         host_layout.setSpacing(6)
         scroll.setWidget(host)
-
-        visuals_card = QFrame(panel)
-        visuals_card.setObjectName("ModelBuilderVisualsSection")
-        _force_model_white_background(visuals_card)
-        visuals_card.setStyleSheet(
-            """
-            QFrame#ModelBuilderVisualsSection {
-                background: #FFFFFF;
-                border: 1px solid #DCE3EC;
-                border-radius: 6px;
-            }
-            QFrame#ModelBuilderVisualsSection:hover {
-                border-color: #CBD5E1;
-            }
-            QToolButton#ModelVisualTypeButton {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 28px;
-                max-height: 28px;
-                border: 1px solid transparent;
-                border-radius: 6px;
-                background: transparent;
-                color: #475569;
-                padding: 0px;
-            }
-            QToolButton#ModelVisualTypeButton:hover {
-                background: #F3F4F6;
-                border-color: #D7DEE8;
-            }
-            QToolButton#ModelVisualTypeButton:checked {
-                background: #E8EEF6;
-                border-color: #CBD5E1;
-                color: #0F172A;
-            }
-            """
-        )
-        visuals_layout = QVBoxLayout(visuals_card)
-        visuals_layout.setContentsMargins(8, 8, 8, 8)
-        visuals_layout.setSpacing(6)
-        visuals_title = QLabel(_rt("Visualizações"), visuals_card)
-        visuals_title.setObjectName("ModelBuilderSectionTitle")
-        visuals_title.setFont(ui_font(9, weight=500))
-        visuals_title.setStyleSheet("QLabel#ModelBuilderSectionTitle { color: #0F172A; font-size: 9pt; font-weight: 500; background: #FFFFFF; }")
-        visuals_layout.addWidget(visuals_title, 0)
-        visuals_grid = QGridLayout()
-        visuals_grid.setContentsMargins(0, 0, 0, 0)
-        visuals_grid.setHorizontalSpacing(4)
-        visuals_grid.setVerticalSpacing(4)
-        self._builder_visual_specs = [
-            (_rt("Colunas"), "bar", "ModelVisual-Column.svg", _rt("Colunas - compara valores por categoria.")),
-            (_rt("Barras"), "barh", "ModelVisual-Bar.svg", _rt("Barras - compara categorias em eixo horizontal.")),
-            (_rt("Linha"), "line", "ModelVisual-Line.svg", _rt("Linha - mostra tendência ao longo do tempo.")),
-            (_rt("Area"), "area", "ModelVisual-Area.svg", _rt("Area - destaca a evolução acumulada dos valores.")),
-            (_rt("Pizza"), "pie", "ModelVisual-Pie.svg", _rt("Pizza - mostra composição entre partes.")),
-            (_rt("Rosca"), "donut", "ModelVisual-Donut.svg", _rt("Rosca - composição com foco no total.")),
-            (_rt("Card"), "card", "ModelVisual-Card.svg", _rt("Card - destaca um único indicador.")),
-            (_rt("KPI"), "kpi", "ModelVisual-KPI.svg", _rt("KPI - acompanha um indicador principal.")),
-            (_rt("Medidor"), "gauge", "ModelVisual-Gauge.svg", _rt("Medidor - mostra progresso em relação a uma meta.")),
-            (_rt("Matriz"), "matrix", "ModelVisual-Matrix.svg", _rt("Matriz - cruza linhas, colunas e valores.")),
-            (_rt("Segmentador"), "slicer", "ModelVisual-Slicer.svg", _rt("Segmentador - lista categorias para filtragem visual.")),
-            (_rt("Coluna agrupada"), "column_clustered", "ModelVisual-ColumnClustered.svg", _rt("Coluna agrupada - compara séries lado a lado.")),
-            (_rt("Coluna empilhada"), "column_stacked", "ModelVisual-ColumnStacked.svg", _rt("Coluna empilhada - mostra partes dentro de cada coluna.")),
-            (_rt("Barra 100%"), "bar100_stacked", "ModelVisual-Bar100Stacked.svg", _rt("Barra 100% - compara proporções entre categorias.")),
-            (_rt("Combo"), "combo", "ModelVisual-Combo.svg", _rt("Combo - combina barras e linha no mesmo visual.")),
-            (_rt("Dispersao"), "scatter", "ModelVisual-Scatter.svg", _rt("Dispersão - compara X, Y e tamanho.")),
-            (_rt("Treemap"), "treemap", "ModelVisual-Treemap.svg", _rt("Treemap - mostra participação por áreas.")),
-            (_rt("Cascata"), "waterfall", "ModelVisual-Waterfall.svg", _rt("Cascata - destaca variações positivas e negativas.")),
-            (_rt("Funil"), "funnel", "ModelVisual-Funnel.svg", _rt("Funil - mostra etapas em sequência.")),
-        ]
-        self.builder_visual_buttons = {}
-        for index, (label_text, chart_type, icon_name, tooltip_text) in enumerate(self._builder_visual_specs):
-            button = QToolButton(visuals_card)
-            button.setObjectName("ModelVisualTypeButton")
-            button.setCheckable(True)
-            button.setText("")
-            button.setIcon(svg_icon(icon_name))
-            button.setToolTip(label_text)
-            button.setStatusTip("")
-            button.setWhatsThis("")
-            button.setAccessibleName(label_text)
-            button.setAccessibleDescription(tooltip_text)
-            button.setToolButtonStyle(Qt.ToolButtonIconOnly)
-            button.setAutoRaise(True)
-            button.setFixedSize(30, 28)
-            button.setIconSize(QSize(18, 18))
-            button.clicked.connect(lambda checked=False, value=chart_type: self._select_visual_type_from_builder(value))
-            button.setProperty("visualType", chart_type)
-            self.builder_visual_buttons[chart_type] = button
-            visuals_grid.addWidget(button, index // 6, index % 6)
-        visuals_layout.addLayout(visuals_grid)
-        host_layout.addWidget(visuals_card, 0)
 
         self.builder_empty_label = QFrame(panel)
         self.builder_empty_label.setObjectName("ModelBuilderEmptyState")
@@ -2064,8 +2680,9 @@ class ModelTab(QWidget):
         self.data_panel_icon.setObjectName("ModelDataPanelIcon")
         self.data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
         header.addWidget(self.data_panel_icon, 0, Qt.AlignVCenter)
-        self.data_panel_title = QLabel(_rt("Painel dados"), self.data_panel_header)
+        self.data_panel_title = QLabel(_rt("Campos"), self.data_panel_header)
         self.data_panel_title.setObjectName("ModelBuilderTitle")
+        self.data_panel_title.setFont(_model_fields_panel_font())
         header.addWidget(self.data_panel_title, 1, Qt.AlignVCenter)
         self.data_panel_toggle_btn = QToolButton(self.data_panel_header)
         self.data_panel_toggle_btn.setObjectName("ModelDataPanelToggle")
@@ -2094,6 +2711,11 @@ class ModelTab(QWidget):
         layer_layout.addWidget(layer_title, 0, Qt.AlignVCenter)
         self.builder_layer_combo = QgsMapLayerComboBox(panel)
         self.builder_layer_combo.setObjectName("ModelBuilderCombo")
+        self.builder_layer_combo.setFont(_model_fields_panel_font())
+        try:
+            self.builder_layer_combo.view().setFont(_model_fields_panel_font())
+        except Exception:
+            log_exception("falha opcional ignorada")
         self.builder_layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
         self.builder_layer_combo.layerChanged.connect(self._on_builder_layer_changed)
         layer_layout.addWidget(self.builder_layer_combo, 1)
@@ -2113,13 +2735,14 @@ class ModelTab(QWidget):
         fields_body_layout.setSpacing(0)
         self.builder_fields_list = _ModelFieldList(fields_body)
         self.builder_fields_list.setObjectName("ModelBuilderFieldList")
+        self.builder_fields_list.setFont(_model_fields_panel_font())
         self.builder_fields_list.viewport().setObjectName("ModelBuilderFieldListViewport")
         _force_model_white_background(self.builder_fields_list)
         _force_model_white_background(self.builder_fields_list.viewport())
         self.builder_fields_list.setMinimumHeight(220)
         self.builder_fields_list.setUniformItemSizes(True)
         self.builder_fields_list.setSpacing(1)
-        self.builder_fields_list.setIconSize(QSize(16, 16))
+        self.builder_fields_list.setIconSize(QSize(14, 14))
         self.builder_fields_list.fieldActivated.connect(self._handle_field_list_activation)
         fields_body_layout.addWidget(self.builder_fields_list, 1)
         fields_layout.addWidget(fields_body, 1)
@@ -2139,13 +2762,49 @@ class ModelTab(QWidget):
         self.data_panel_collapsed_btn.setFixedSize(22, 22)
         self.data_panel_collapsed_btn.clicked.connect(self._toggle_data_panel)
         rail_layout.addWidget(self.data_panel_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
-        self.data_panel_collapsed_title = _ModelVerticalPanelLabel(_rt("Painel dados"), self.data_panel_collapsed_rail)
+        self.data_panel_collapsed_title = _ModelVerticalPanelLabel(_rt("Campos"), self.data_panel_collapsed_rail)
         self.data_panel_collapsed_title.setObjectName("ModelDataPanelCollapsedTitle")
         rail_layout.addWidget(self.data_panel_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
         rail_layout.addStretch(1)
         layout.addWidget(self.data_panel_collapsed_rail, 1)
 
         return panel
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        harmonize_widget_fonts(self)
+        self._refresh_builder_data_fonts()
+        self._refresh_theme_icons()
+
+    def _refresh_builder_data_fonts(self):
+        for widget in (
+            getattr(self, "data_panel_title", None),
+            getattr(self, "builder_layer_combo", None),
+            getattr(self, "builder_fields_list", None),
+        ):
+            if widget is None:
+                continue
+            try:
+                widget.setFont(_model_fields_panel_font())
+            except Exception:
+                log_exception("falha opcional ignorada")
+        try:
+            self.data_panel_title.setText(_rt("Campos"))
+            self.data_panel_title.setFont(_model_fields_panel_font())
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
+            self.builder_layer_combo.view().setFont(_model_fields_panel_font())
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
+            for index in range(self.builder_fields_list.count()):
+                item = self.builder_fields_list.item(index)
+                if item is not None:
+                    item.setFont(_model_fields_panel_font())
+                    item.setFlags(item.flags() | Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def _field_is_numeric(self, field_def) -> bool:
         if field_def is None:
@@ -2340,6 +2999,8 @@ class ModelTab(QWidget):
         for payload in list(self._builder_field_catalog.get("all") or []):
             label = str(payload.get("field_name") or "")
             field_kind = str(payload.get("field_kind") or "other")
+            is_numeric = normalize_field_kind(field_kind) == "numeric"
+            display_label = f"# {label}" if is_numeric else label
             tooltip = _rt("{name}\nTipo: {kind}", name=label, kind=str(payload.get("field_type") or field_kind).strip() or field_kind)
             item = QListWidgetItem()
             configure_field_item(
@@ -2349,8 +3010,11 @@ class ModelTab(QWidget):
                 tooltip=tooltip,
                 payload=dict(payload),
                 role=_MODEL_FIELD_ROLE,
-                include_badge=True,
+                include_badge=False,
             )
+            item.setText(display_label)
+            item.setFont(_model_fields_panel_font())
+            item.setForeground(QColor(_model_theme_color("text")))
             self.builder_fields_list.addItem(item)
         self._sync_data_panel_width_to_content()
 
@@ -2367,7 +3031,7 @@ class ModelTab(QWidget):
                 item = self.builder_fields_list.item(index)
                 if item is None:
                     continue
-                text = str(item.data(Qt.UserRole + 2) or item.text() or "")
+                text = str(item.text() or item.data(Qt.UserRole + 2) or "")
                 max_text = max(max_text, self._text_width(metrics, text))
             layer_text = ""
             try:
@@ -2375,7 +3039,8 @@ class ModelTab(QWidget):
             except Exception:
                 layer_text = ""
             max_text = max(max_text, self._text_width(metrics, layer_text))
-            chrome = 44
+            icon_width = int(self.builder_fields_list.iconSize().width() or 14)
+            chrome = icon_width + 54
             desired = max(_MODEL_DATA_PANEL_MIN_WIDTH, max_text + chrome)
             return min(_MODEL_DATA_PANEL_MAX_WIDTH, desired)
         except Exception:
@@ -2420,12 +3085,17 @@ class ModelTab(QWidget):
             self.data_panel_collapsed_rail.setVisible(collapsed)
         if hasattr(self, "data_panel_toggle_btn"):
             self.data_panel_toggle_btn.setArrowType(Qt.NoArrow)
-            self.data_panel_toggle_btn.setText("›")
-            self.data_panel_toggle_btn.setToolTip(_rt("Recolher painel dados"))
+            self.data_panel_toggle_btn.setIcon(QIcon())
+            self.data_panel_toggle_btn.setText("‹")
+            self.data_panel_toggle_btn.setFixedSize(22, 22)
+            self.data_panel_toggle_btn.setToolTip(_rt("Recolher campos"))
         if hasattr(self, "data_panel_collapsed_btn"):
             self.data_panel_collapsed_btn.setArrowType(Qt.NoArrow)
-            self.data_panel_collapsed_btn.setText("‹")
-            self.data_panel_collapsed_btn.setToolTip(_rt("Expandir painel dados"))
+            self.data_panel_collapsed_btn.setIcon(QIcon())
+            self.data_panel_collapsed_btn.setText("›")
+            self.data_panel_collapsed_btn.setFixedSize(22, 22)
+            self.data_panel_collapsed_btn.setToolTip(_rt("Expandir campos"))
+        self._apply_collapsed_panel_chrome()
         try:
             self.data_panel.style().unpolish(self.data_panel)
             self.data_panel.style().polish(self.data_panel)
@@ -3256,8 +3926,11 @@ class ModelTab(QWidget):
         }
         return updated_item
 
-    def _configure_toolbar_icon_button(self, button, icon_name: str, tooltip: str, icon_size: int = 18):
+    def _configure_toolbar_icon_button(self, button, icon_name: str, tooltip: str, icon_size: int = 18, icon_color: str = ""):
         button.setProperty("toolbarMode", "icon")
+        button.setProperty("modelIconName", icon_name)
+        button.setProperty("modelIconSize", int(icon_size))
+        button.setProperty("modelIconColor", str(icon_color or ""))
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.NoFocus)
         button.setToolTip(tooltip)
@@ -3270,7 +3943,7 @@ class ModelTab(QWidget):
             button.setText("")
         except Exception:
             log_exception("falha opcional ignorada")
-        icon = svg_icon(icon_name)
+        icon = _model_tinted_svg_icon(icon_name, icon_size, icon_color)
         if not icon.isNull():
             button.setIcon(icon)
         button.setIconSize(QSize(icon_size, icon_size))
@@ -3278,8 +3951,8 @@ class ModelTab(QWidget):
             button.setToolButtonStyle(Qt.ToolButtonIconOnly)
             button.setAutoRaise(False)
 
-    def _configure_toolbar_text_icon_button(self, button, icon_name: str, text: str, tooltip: str, icon_size: int = 18):
-        self._configure_toolbar_icon_button(button, icon_name, tooltip, icon_size=icon_size)
+    def _configure_toolbar_text_icon_button(self, button, icon_name: str, text: str, tooltip: str, icon_size: int = 18, icon_color: str = ""):
+        self._configure_toolbar_icon_button(button, icon_name, tooltip, icon_size=icon_size, icon_color=icon_color)
         button.setProperty("toolbarMode", "label")
         try:
             button.setText(text)
@@ -3292,6 +3965,17 @@ class ModelTab(QWidget):
         separator.setFrameShape(QFrame.VLine)
         separator.setFrameShadow(QFrame.Plain)
         return separator
+
+    def _sync_toolbar_separator_visibility(self):
+        visual_strip = getattr(self, "toolbar_visuals_strip", None)
+        visual_types_visible = bool(visual_strip is not None and visual_strip.isVisible())
+        has_project = self.current_project is not None
+        for separator, visible in (
+            (getattr(self, "visual_types_leading_separator", None), visual_types_visible),
+            (getattr(self, "visual_types_trailing_separator", None), has_project),
+        ):
+            if separator is not None:
+                separator.setVisible(bool(visible))
 
     def _normalize_hex_color(self, value: object, fallback: str) -> str:
         color = QColor(str(value or "").strip())
@@ -3527,6 +4211,120 @@ class ModelTab(QWidget):
             }
             """
         )
+        if _is_dark_theme():
+            dialog.setStyleSheet(
+                """
+                QDialog#WalkerCanvasStyleDialog {
+                    background: #111827;
+                    border: 1px solid #374151;
+                    border-radius: 10px;
+                    color: #F8FAFC;
+                }
+                QFrame#WalkerDialogCard {
+                    background: #1F2937;
+                    border: 1px solid #374151;
+                    border-radius: 8px;
+                }
+                QFrame#WalkerDialogDragHandle,
+                QLabel {
+                    background: transparent;
+                }
+                QLabel#WalkerDialogTitle,
+                QLabel#WalkerFieldLabel,
+                QCheckBox#WalkerDialogCheck {
+                    color: #F8FAFC;
+                }
+                QLabel#WalkerDialogSubtitle,
+                QLabel#WalkerAuxText {
+                    color: #CBD5E1;
+                }
+                QLineEdit#WalkerDialogInput,
+                QComboBox#WalkerDialogInput,
+                QSpinBox#WalkerDialogInput {
+                    min-height: 30px;
+                    padding: 0 9px;
+                    color: #F8FAFC;
+                    background: #111827;
+                    border: 1px solid #374151;
+                    border-radius: 8px;
+                    selection-background-color: #374151;
+                    selection-color: #F8FAFC;
+                }
+                QLineEdit#WalkerDialogInput:focus,
+                QComboBox#WalkerDialogInput:focus,
+                QSpinBox#WalkerDialogInput:focus {
+                    border-color: #7C6CFF;
+                }
+                QComboBox#WalkerDialogInput QAbstractItemView {
+                    background: #1F2937;
+                    color: #F8FAFC;
+                    border: 1px solid #374151;
+                    selection-background-color: #374151;
+                    selection-color: #F8FAFC;
+                }
+                QSpinBox#WalkerDialogInput::up-button,
+                QSpinBox#WalkerDialogInput::down-button,
+                QSpinBox#WalkerDialogInput::up-arrow,
+                QSpinBox#WalkerDialogInput::down-arrow {
+                    width: 0px;
+                    height: 0px;
+                    border: none;
+                    background: transparent;
+                    image: none;
+                }
+                QPushButton#WalkerDialogPrimaryButton,
+                QPushButton#WalkerDialogSecondaryButton {
+                    min-height: 32px;
+                    border-radius: 8px;
+                    padding: 0 14px;
+                    font-size: 12px;
+                }
+                QPushButton#WalkerDialogSecondaryButton {
+                    color: #F8FAFC;
+                    background: #1F2937;
+                    border: 1px solid #374151;
+                    font-weight: 400;
+                }
+                QPushButton#WalkerDialogSecondaryButton:hover {
+                    background: #273449;
+                    border-color: #475569;
+                }
+                QPushButton#WalkerDialogPrimaryButton {
+                    color: #0B1020;
+                    background: #F8FAFC;
+                    border: 1px solid #F8FAFC;
+                    font-weight: 500;
+                }
+                QPushButton#WalkerDialogPrimaryButton:hover {
+                    background: #E2E8F0;
+                    border-color: #E2E8F0;
+                }
+                QPushButton#WalkerColorChip {
+                    min-width: 22px;
+                    max-width: 22px;
+                    min-height: 22px;
+                    max-height: 22px;
+                    border-radius: 5px;
+                    border: 1px solid #475569;
+                    padding: 0;
+                }
+                QToolButton#ConfigDialogCloseButton {
+                    min-width: 22px;
+                    max-width: 22px;
+                    min-height: 22px;
+                    max-height: 22px;
+                    border: 1px solid transparent;
+                    border-radius: 6px;
+                    background: transparent;
+                    color: #CBD5E1;
+                    font-size: 14px;
+                }
+                QToolButton#ConfigDialogCloseButton:hover {
+                    color: #F8FAFC;
+                    background: #273449;
+                }
+                """
+            )
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(14, 12, 14, 12)
@@ -4827,7 +5625,7 @@ class ModelTab(QWidget):
             if len(sizes) >= 2 and sizes[1] > _MODEL_SIDE_PANEL_COLLAPSED_WIDTH:
                 self._visual_side_width = min(
                     _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH,
-                    max(260, int(sizes[1])),
+                    max(_MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH, int(sizes[1])),
                 )
         self._visual_side_collapsed = not bool(getattr(self, "_visual_side_collapsed", False))
         self._sync_visual_side_panel_chrome()
@@ -4844,7 +5642,9 @@ class ModelTab(QWidget):
         if not hasattr(self, "visual_side_panel"):
             return
         collapsed = bool(getattr(self, "_visual_side_collapsed", False))
-        self.visual_side_panel.setMinimumWidth(_MODEL_SIDE_PANEL_COLLAPSED_WIDTH if collapsed else 260)
+        self.visual_side_panel.setMinimumWidth(
+            _MODEL_SIDE_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH
+        )
         self.visual_side_panel.setMaximumWidth(
             _MODEL_SIDE_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH
         )
@@ -4862,12 +5662,17 @@ class ModelTab(QWidget):
         if hasattr(self, "visual_side_toggle_btn"):
             self.visual_side_toggle_btn.setVisible(not collapsed)
             self.visual_side_toggle_btn.setArrowType(Qt.NoArrow)
+            self.visual_side_toggle_btn.setIcon(QIcon())
             self.visual_side_toggle_btn.setText("›")
+            self.visual_side_toggle_btn.setFixedSize(22, 22)
             self.visual_side_toggle_btn.setToolTip(_rt("Recolher visualizações"))
         if hasattr(self, "visual_side_collapsed_btn"):
             self.visual_side_collapsed_btn.setArrowType(Qt.NoArrow)
+            self.visual_side_collapsed_btn.setIcon(QIcon())
             self.visual_side_collapsed_btn.setText("‹")
+            self.visual_side_collapsed_btn.setFixedSize(22, 22)
             self.visual_side_collapsed_btn.setToolTip(_rt("Expandir visualizações"))
+        self._apply_collapsed_panel_chrome()
         try:
             self.visual_side_panel.style().unpolish(self.visual_side_panel)
             self.visual_side_panel.style().polish(self.visual_side_panel)
@@ -4932,7 +5737,9 @@ class ModelTab(QWidget):
                     getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH)
                     or _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
                 )
-                target_visual = int(min(max(preferred_visual, 260), _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH))
+                target_visual = int(
+                    min(max(preferred_visual, _MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH), _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH)
+                )
             else:
                 target_visual = 0
             if data_visible and getattr(self, "_data_panel_collapsed", False):
@@ -5008,6 +5815,9 @@ class ModelTab(QWidget):
                 continue
         self.create_chart_btn.setVisible(enabled and self.current_project is not None)
         self.format_visual_btn.setVisible(enabled and self.current_project is not None)
+        if hasattr(self, "toolbar_visuals_strip"):
+            self.toolbar_visuals_strip.setVisible(enabled and self.current_project is not None)
+        self._sync_toolbar_separator_visibility()
         if enabled and self.current_project is not None:
             self._builder_panel_open = True
             self._visual_panel_open = False
@@ -5095,6 +5905,9 @@ class ModelTab(QWidget):
         edit_enabled = bool(self.edit_mode_btn.isChecked())
         self.create_chart_btn.setVisible(show_project_actions and edit_enabled)
         self.format_visual_btn.setVisible(show_project_actions and edit_enabled)
+        if hasattr(self, "toolbar_visuals_strip"):
+            self.toolbar_visuals_strip.setVisible(show_project_actions and edit_enabled)
+        self._sync_toolbar_separator_visibility()
         self.mode_switch_wrap.setVisible(show_project_actions)
         if has_project:
             self._configure_toolbar_icon_button(self.new_btn, "Walker-New.svg", _rt("Novo"))

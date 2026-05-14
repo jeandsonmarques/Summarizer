@@ -5,7 +5,7 @@ import json
 import os
 from typing import Optional
 
-from qgis.PyQt.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, QSettings, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QBrush, QIcon, QPainter, QPainterPath, QPen
 from qgis.PyQt.QtWidgets import (
     QAction,
@@ -43,11 +43,24 @@ from .dashboard_models import (
 from .report_view.charts import ChartVisualState
 from .report_view.chart_factory import ReportChartWidget
 from .slim_dialogs import slim_get_text
-from .utils.fonts import ui_font
+from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
 
 
 from .utils.logging_utils import log_exception
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
+
+
+def _dark_default(value: str, mapping: dict) -> str:
+    if not _is_dark_theme():
+        return value
+    return mapping.get(str(value or "").strip().upper(), value)
 
 _MODEL_FIELD_MIME = "application/x-summarizer-model-field"
 def _icon_from_resource(name: str) -> QIcon:
@@ -200,15 +213,18 @@ class _EmptyVisualPreview(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
         bounds = QRectF(self.rect()).adjusted(2, 2, -2, -2)
-        painter.fillRect(bounds, QColor("#F3F4F6"))
-        painter.setPen(QPen(QColor("#FFFFFF"), 1))
+        dark_mode = _is_dark_theme()
+        preview_bg = QColor("#111827" if dark_mode else "#F3F4F6")
+        grid_color = QColor("#243044" if dark_mode else "#FFFFFF")
+        bar_color = QColor("#4B5563" if dark_mode else "#C9CDD2")
+        darker = QColor("#64748B" if dark_mode else "#B8BDC3")
+        painter.fillRect(bounds, preview_bg)
+        painter.setPen(QPen(grid_color, 1))
         for step in range(1, 4):
             y = bounds.top() + bounds.height() * step / 4.0
             painter.drawLine(QPoint(int(bounds.left()), int(y)), QPoint(int(bounds.right()), int(y)))
 
         chart_type = str(self._chart_type or "bar").lower()
-        bar_color = QColor("#C9CDD2")
-        darker = QColor("#B8BDC3")
         painter.setPen(Qt.NoPen)
         painter.setBrush(QBrush(bar_color))
 
@@ -234,7 +250,9 @@ class _EmptyVisualPreview(QWidget):
                 path.lineTo(QPointF(points[-1].x(), bounds.bottom() - 12))
                 path.lineTo(QPointF(points[0].x(), bounds.bottom() - 12))
                 path.closeSubpath()
-                painter.setBrush(QBrush(QColor(201, 205, 210, 105)))
+                area = QColor("#64748B" if dark_mode else "#C9CDD2")
+                area.setAlpha(105)
+                painter.setBrush(QBrush(area))
                 painter.drawPath(path)
             painter.setPen(QPen(darker, 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
             for index in range(len(points) - 1):
@@ -250,20 +268,20 @@ class _EmptyVisualPreview(QWidget):
             painter.drawPie(rect, 30 * 16, 130 * 16)
             painter.setBrush(QBrush(darker))
             painter.drawPie(rect, 160 * 16, 90 * 16)
-            painter.setBrush(QBrush(QColor("#D9DDE2")))
+            painter.setBrush(QBrush(QColor("#334155" if dark_mode else "#D9DDE2")))
             painter.drawPie(rect, 250 * 16, 140 * 16)
             if chart_type == "donut":
-                painter.setBrush(QBrush(QColor("#F3F4F6")))
+                painter.setBrush(QBrush(preview_bg))
                 painter.drawEllipse(rect.adjusted(rect.width() * 0.28, rect.height() * 0.28, -rect.width() * 0.28, -rect.height() * 0.28))
         elif chart_type in {"matrix", "table", "slicer"}:
             left = bounds.left() + 16
             top = bounds.top() + 22
             col_w = (bounds.width() - 32) / 3.0
             row_h = (bounds.height() - 44) / 5.0
-            painter.setPen(QPen(QColor("#FFFFFF"), 1))
+            painter.setPen(QPen(grid_color, 1))
             for row in range(5):
                 for col in range(3):
-                    shade = QColor("#C9CDD2") if row == 0 else QColor("#D9DDE2")
+                    shade = QColor("#4B5563" if dark_mode else "#C9CDD2") if row == 0 else QColor("#334155" if dark_mode else "#D9DDE2")
                     painter.fillRect(QRectF(left + col * col_w, top + row * row_h, col_w - 2, row_h - 2), shade)
         else:
             values = [0.36, 0.44, 0.38, 0.72, 0.88, 0.60]
@@ -457,6 +475,8 @@ class VisualPropertiesDialog(QDialog):
     def __init__(self, state: ChartVisualState, default_state: ChartVisualState, apply_callback, parent=None):
         super().__init__(parent)
         self.setWindowTitle(_rt("Propriedades visuais"))
+        self.setFont(ui_font())
+        self._font_enforcer = attach_ui_font_enforcer(self)
         self._state = copy.deepcopy(state)
         self._default_state = copy.deepcopy(default_state)
         self._apply_callback = apply_callback
@@ -464,8 +484,71 @@ class VisualPropertiesDialog(QDialog):
         self._controls = {}
         self._palette_buttons = []
         self._build_ui()
+        self._apply_dialog_theme()
         self._load_state(self._state)
+        harmonize_widget_fonts(self)
         self._loading = False
+
+    def _apply_dialog_theme(self):
+        if not _is_dark_theme():
+            return
+        self.setProperty("themeMode", "dark")
+        self.setStyleSheet(
+            """
+            QDialog {
+                background: #111827;
+                color: #F8FAFC;
+            }
+            QLabel, QCheckBox, QGroupBox {
+                color: #F8FAFC;
+                background: transparent;
+            }
+            QGroupBox {
+                border: 1px solid #374151;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 4px;
+                color: #CBD5E1;
+            }
+            QLineEdit, QComboBox, QSpinBox {
+                background: #1F2937;
+                color: #F8FAFC;
+                border: 1px solid #374151;
+                border-radius: 6px;
+                min-height: 26px;
+                selection-background-color: #374151;
+                selection-color: #F8FAFC;
+            }
+            QComboBox QAbstractItemView {
+                background: #1F2937;
+                color: #F8FAFC;
+                border: 1px solid #374151;
+                selection-background-color: #374151;
+                selection-color: #F8FAFC;
+            }
+            QPushButton {
+                background: #1F2937;
+                color: #F8FAFC;
+                border: 1px solid #374151;
+                border-radius: 6px;
+                padding: 6px 10px;
+            }
+            QPushButton:hover {
+                background: #273449;
+                border-color: #475569;
+            }
+            QDialogButtonBox QPushButton:default {
+                background: #F8FAFC;
+                color: #0B1020;
+                border-color: #F8FAFC;
+            }
+            """
+        )
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -701,6 +784,8 @@ class DashboardItemWidget(QFrame):
     def __init__(self, item: DashboardChartItem, parent=None):
         super().__init__(parent)
         self.setObjectName("ModelDashboardItem")
+        self.setFont(ui_font())
+        self._font_enforcer = attach_ui_font_enforcer(self)
         self._item = item
         self._edit_mode = True
         self._highlight_mode = "idle"
@@ -780,11 +865,15 @@ class DashboardItemWidget(QFrame):
         self.personalize_btn.clicked.connect(self._request_visual_panel)
         header_layout.addWidget(self.personalize_btn, 0)
 
-        self.link_command_btn = QPushButton("+", self.header)
+        self.link_command_btn = QToolButton(self.header)
         self.link_command_btn.setObjectName("ModelDashboardLinkCommandButton")
         self.link_command_btn.setCursor(Qt.PointingHandCursor)
         self.link_command_btn.setToolTip(_rt("Criar relacao com outro grafico"))
-        self.link_command_btn.setFont(ui_font())
+        link_icon = _icon_from_resource("Model.svg")
+        self.link_command_btn.setIcon(link_icon)
+        self.link_command_btn.setIconSize(QSize(16, 16))
+        if link_icon.isNull():
+            self.link_command_btn.setText("+")
         self.link_command_btn.clicked.connect(lambda checked=False: self.linkCommandRequested.emit(self.item_id))
         header_layout.addWidget(self.link_command_btn, 0)
         self.link_command_btn.hide()
@@ -1018,6 +1107,7 @@ class DashboardItemWidget(QFrame):
         self.model_edit_btn.setIconSize(QSize(icon_side, icon_side))
         self.personalize_btn.setIconSize(QSize(icon_side, icon_side))
         self.remove_btn.setIconSize(QSize(remove_icon_side, remove_icon_side))
+        self.link_command_btn.setIconSize(QSize(icon_side, icon_side))
         self.link_command_btn.setMinimumHeight(button_side)
         self.link_command_btn.setMaximumHeight(button_side)
         self.link_command_btn.setMinimumWidth(button_side)
@@ -1143,14 +1233,17 @@ class DashboardItemWidget(QFrame):
     def _apply_styles(self):
         zoom = max(0.35, min(3.0, float(self._zoom_scale or 1.0)))
         visual_state = getattr(self._item, "visual_state", None)
-        border = "#D1D5DB"
-        header_bg = "#FFFFFF"
-        header_border = "#ECEFF3"
+        border = "#334155" if _is_dark_theme() else "#D1D5DB"
+        header_bg = "#111827" if _is_dark_theme() else "#FFFFFF"
+        header_border = "#334155" if _is_dark_theme() else "#ECEFF3"
         card_bg = str(getattr(visual_state, "background_color", "#FFFFFF") or "#FFFFFF")
+        card_bg = _dark_default(card_bg, {"#FFFFFF": "#111827", "#F8FAFC": "#111827", "#FAFAFA": "#111827"})
         if not bool(getattr(visual_state, "show_background", True)):
             card_bg = "transparent"
         title_color = str(getattr(visual_state, "title_color", "#1F2937") or "#1F2937")
         label_color = str(getattr(visual_state, "label_color", "#64748B") or "#64748B")
+        title_color = _dark_default(title_color, {"#1F2937": "#F8FAFC", "#111827": "#F8FAFC", "#0F172A": "#F8FAFC"})
+        label_color = _dark_default(label_color, {"#64748B": "#CBD5E1", "#475569": "#CBD5E1", "#4B5563": "#CBD5E1"})
         try:
             border_radius = int(getattr(visual_state, "border_radius", 2) or 2)
         except Exception:
@@ -1170,11 +1263,15 @@ class DashboardItemWidget(QFrame):
         label_size = configured_label_size if configured_label_size > 0 else max(4, min(30, int(round(11 * zoom))))
         if bool(getattr(visual_state, "show_border", False)):
             border = str(getattr(visual_state, "border_color", border) or border)
+            border = _dark_default(border, {"#CBD5E1": "#334155", "#D1D5DB": "#334155", "#E2E8F0": "#334155"})
         try:
             border_width = int(getattr(visual_state, "border_width", 1) or 1)
         except Exception:
             border_width = 1
         border_width = max(1, min(6, border_width))
+        icon_color = "#CBD5E1" if _is_dark_theme() else "#374151"
+        link_color = "#CBD5E1" if _is_dark_theme() else "#4B5563"
+        link_hover = "#273449" if _is_dark_theme() else "#F3F4F6"
         card_border = f"{border_width}px solid {border}"
         header_border_rule = f"1px solid {header_border}"
         if not self._edit_mode:
@@ -1227,7 +1324,7 @@ class DashboardItemWidget(QFrame):
                 min-width: {max(8, int(round(24 * zoom)))}px;
                 max-width: {max(8, int(round(24 * zoom)))}px;
                 padding: 0;
-                color: #374151;
+                color: {icon_color};
                 background: transparent;
                 border: none;
                 border-radius: {max(4, int(round(6 * zoom)))}px;
@@ -1235,49 +1332,49 @@ class DashboardItemWidget(QFrame):
             }}
             QToolButton#ModelDashboardRemoveButton:hover,
             QToolButton#ModelDashboardHeaderIconButton:hover {{
-                background: #F3F4F6;
+                background: {"#273449" if _is_dark_theme() else "#F3F4F6"};
             }}
-            QPushButton#ModelDashboardLinkCommandButton {{
+            QToolButton#ModelDashboardLinkCommandButton {{
                 min-height: {max(8, int(round(24 * zoom)))}px;
                 max-height: {max(8, int(round(24 * zoom)))}px;
                 min-width: {max(8, int(round(24 * zoom)))}px;
                 max-width: {max(8, int(round(24 * zoom)))}px;
                 padding: 0;
-                color: #4B5563;
+                color: {link_color};
                 background: transparent;
                 border: none;
                 border-radius: {max(6, int(round(8 * zoom)))}px;
                 font-size: {max(4, min(28, int(round(11 * zoom))))}px;
                 font-weight: 600;
             }}
-            QPushButton#ModelDashboardLinkCommandButton:hover {{
-                background: #F3F4F6;
+            QToolButton#ModelDashboardLinkCommandButton:hover {{
+                background: {link_hover};
             }}
             QFrame#ModelDashboardDropOverlay {{
-                background: #FFFFFF;
+                background: {"#111827" if _is_dark_theme() else "#FFFFFF"};
                 border: none;
                 border-radius: 0px;
             }}
             QLabel#ModelDashboardEmptyVisualText {{
-                color: #374151;
+                color: {"#CBD5E1" if _is_dark_theme() else "#374151"};
                 font-size: {max(4, min(30, int(round(11 * zoom))))}px;
                 font-weight: 400;
             }}
             QWidget#ModelDashboardEmptyPreview {{
-                background: #F3F4F6;
+                background: {"#111827" if _is_dark_theme() else "#F3F4F6"};
                 border: none;
             }}
             QFrame#ModelVisualDropSlot {{
-                background: rgba(255, 255, 255, 235);
-                border: 1px dashed #D6DEE8;
+                background: {"#172033" if _is_dark_theme() else "rgba(255, 255, 255, 235)"};
+                border: 1px dashed {"#475569" if _is_dark_theme() else "#D6DEE8"};
                 border-radius: {max(6, int(round(8 * zoom)))}px;
             }}
             QFrame#ModelVisualDropSlot[dropActive="true"] {{
-                background: #F8FBFF;
-                border: 1px solid #93C5FD;
+                background: {"#1F2A3D" if _is_dark_theme() else "#F8FBFF"};
+                border: 1px solid {"#7C6CFF" if _is_dark_theme() else "#93C5FD"};
             }}
             QLabel#ModelVisualDropSlotLabel {{
-                color: #334155;
+                color: {"#F8FAFC" if _is_dark_theme() else "#334155"};
                 font-size: {max(4, min(28, int(round(10 * zoom))))}px;
                 font-weight: 500;
             }}

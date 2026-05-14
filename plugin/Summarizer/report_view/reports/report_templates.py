@@ -7,11 +7,18 @@ from .report_data import REPORTS_FONT_SCALE
 from .report_models import ReportStyleContext
 
 try:
-    from ...palette import COLORS, TYPOGRAPHY
+    from qgis.PyQt.QtCore import QSettings
+
+    from ...palette import COLORS, DARK_COLORS, TYPOGRAPHY
 except Exception:  # pragma: no cover - fallback for pure-python tests without QGIS
+    QSettings = None
     COLORS = {
         "color_surface": "#FFFFFF",
         "color_secondary": "#2B7DE9",
+    }
+    DARK_COLORS = {
+        "color_surface": "#1F2937",
+        "color_secondary": "#60A5FA",
     }
     TYPOGRAPHY = {
         "font_ui_stack": '"Inter", sans-serif',
@@ -26,6 +33,15 @@ except Exception:  # pragma: no cover - fallback for pure-python tests without Q
         "font_weight_medium": 500,
         "font_weight_semibold": 600,
     }
+
+
+def _is_dark_theme() -> bool:
+    if QSettings is None:
+        return False
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
 
 REPORTS_STYLE_TEMPLATE = Template(
     """
@@ -146,6 +162,10 @@ REPORTS_STYLE_TEMPLATE = Template(
         selection-background-color: transparent;
         alternate-background-color: transparent;
     }
+    QTableWidget#visualPanelTable::viewport,
+    QTableWidget#assistantTable::viewport {
+        background: transparent;
+    }
     QTableWidget#visualPanelTable::item,
     QTableWidget#assistantTable::item {
         padding: 7px 8px;
@@ -186,8 +206,8 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-weight: ${font_weight_semibold};
     }
     QPushButton[actionButton="true"] {
-        background: rgba(255, 255, 255, 0.92);
-        border: 1px solid rgba(15, 23, 42, 0.07);
+        background: ${action_bg};
+        border: 1px solid ${action_border};
         color: ${text_secondary};
         min-height: 29px;
         padding: 0 11px;
@@ -276,7 +296,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         min-height: 36px;
         font-size: ${font_input_px}px;
         font-weight: ${font_weight_regular};
-        color: #1E293B;
+        color: ${text_primary};
         selection-background-color: ${selection_bg};
     }
     QTextEdit#promptInput:focus {
@@ -307,7 +327,7 @@ REPORTS_STYLE_TEMPLATE = Template(
     }
     QPushButton#sendButton {
         background: ${send_bg};
-        color: #FFFFFF;
+        color: ${send_fg};
         border: none;
         border-radius: 18px;
         min-width: 92px;
@@ -370,25 +390,30 @@ def _scaled_font(value: int) -> str:
 
 
 def build_reports_style_context() -> ReportStyleContext:
+    dark_mode = _is_dark_theme()
+    colors = DARK_COLORS if dark_mode else COLORS
     values: Dict[str, str] = {
-        "page_bg": "#F7F7F8",
-        "surface": COLORS.get("color_surface", "#FFFFFF"),
-        "surface_hover": "#F8FAFC",
-        "border_soft": "rgba(15, 23, 42, 0.08)",
-        "border_subtle": "rgba(15, 23, 42, 0.10)",
-        "border_hover": "#D7DEE8",
-        "hover_tint": "rgba(17, 24, 39, 0.06)",
-        "user_bubble": "#ECECF1",
-        "text_primary": "#0F172A",
-        "text_secondary": "#475569",
-        "text_muted": "#64748B",
-        "text_disabled": "#94A3B8",
-        "accent": COLORS.get("color_secondary", "#2B7DE9"),
-        "accent_hover": "#3B82F6",
-        "send_bg": "#10182B",
-        "send_bg_hover": "#1A2740",
-        "selection_bg": "#DBEAFE",
-        "scrollbar_handle": "rgba(100, 116, 139, 0.28)",
+        "page_bg": "#0B1020" if dark_mode else "#F7F7F8",
+        "surface": colors.get("color_surface", "#1F2937" if dark_mode else "#FFFFFF"),
+        "surface_hover": "#273449" if dark_mode else "#F8FAFC",
+        "border_soft": "rgba(148, 163, 184, 0.16)" if dark_mode else "rgba(15, 23, 42, 0.08)",
+        "border_subtle": "rgba(148, 163, 184, 0.22)" if dark_mode else "rgba(15, 23, 42, 0.10)",
+        "border_hover": "#475569" if dark_mode else "#D7DEE8",
+        "hover_tint": "rgba(148, 163, 184, 0.14)" if dark_mode else "rgba(17, 24, 39, 0.06)",
+        "user_bubble": "#1E293B" if dark_mode else "#ECECF1",
+        "text_primary": "#F8FAFC" if dark_mode else "#0F172A",
+        "text_secondary": "#CBD5E1" if dark_mode else "#475569",
+        "text_muted": "#94A3B8" if dark_mode else "#64748B",
+        "text_disabled": "#64748B" if dark_mode else "#94A3B8",
+        "accent": colors.get("color_secondary", "#60A5FA" if dark_mode else "#2B7DE9"),
+        "accent_hover": "#93C5FD" if dark_mode else "#3B82F6",
+        "send_bg": "#F8FAFC" if dark_mode else "#10182B",
+        "send_fg": "#0B1020" if dark_mode else "#FFFFFF",
+        "send_bg_hover": "#E2E8F0" if dark_mode else "#1A2740",
+        "action_bg": "#172033" if dark_mode else "rgba(255, 255, 255, 0.92)",
+        "action_border": "rgba(148, 163, 184, 0.22)" if dark_mode else "rgba(15, 23, 42, 0.07)",
+        "selection_bg": "#1E293B" if dark_mode else "#DBEAFE",
+        "scrollbar_handle": "rgba(148, 163, 184, 0.36)" if dark_mode else "rgba(100, 116, 139, 0.28)",
         "font_ui_stack": TYPOGRAPHY.get("font_ui_stack", '"Inter", sans-serif'),
         "font_page_title_px": _scaled_font(TYPOGRAPHY.get("font_page_title_px", 24)),
         "font_section_title_px": _scaled_font(TYPOGRAPHY.get("font_section_title_px", 16)),

@@ -59,7 +59,7 @@ from qgis.core import (
     Qgis,
 )
 
-from .palette import TYPOGRAPHY
+from .palette import DARK_COLORS, TYPOGRAPHY
 from .pivot import (
     aggregate_series as _pivot_aggregate_series,
     coerce_python_value as _pivot_coerce_python_value,
@@ -75,6 +75,7 @@ from .slim_dialogs import slim_message
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.resources import svg_icon
+from .utils.window_theme import apply_windows_title_bar_theme
 from .report_view.pivot import (
     PivotEngine,
     PivotExportService,
@@ -146,6 +147,13 @@ _SIDEBAR_MIN_WIDTH = 304
 _SIDEBAR_DEFAULT_WIDTH = 320
 _SIDEBAR_MAX_WIDTH = 420
 _INK_COLOR = "#252B33"
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
 _TOOLS_PANEL_COLLAPSED_WIDTH = 40
 _TOOLS_FIELDS_MIN_WIDTH = 120
 _TOOLS_FIELDS_DEFAULT_WIDTH = 148
@@ -160,6 +168,14 @@ _TOOLBAR_SVG_ICONS = {
 </svg>""",
     "clear": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M14.7404 9L14.3942 18M9.60577 18L9.25962 9M19.2276 5.79057C19.5696 5.84221 19.9104 5.89747 20.25 5.95629M19.2276 5.79057L18.1598 19.6726C18.0696 20.8448 17.0921 21.75 15.9164 21.75H8.08357C6.90786 21.75 5.93037 20.8448 5.8402 19.6726L4.77235 5.79057M19.2276 5.79057C18.0812 5.61744 16.9215 5.48485 15.75 5.39432M3.75 5.95629C4.08957 5.89747 4.43037 5.84221 4.77235 5.79057M4.77235 5.79057C5.91878 5.61744 7.07849 5.48485 8.25 5.39432M15.75 5.39432V4.47819C15.75 3.29882 14.8393 2.31423 13.6606 2.27652C13.1092 2.25889 12.5556 2.25 12 2.25C11.4444 2.25 10.8908 2.25889 10.3394 2.27652C9.16065 2.31423 8.25 3.29882 8.25 4.47819V5.39432M15.75 5.39432C14.5126 5.2987 13.262 5.25 12 5.25C10.738 5.25 9.48744 5.2987 8.25 5.39432" stroke="__COLOR__" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>""",
+    "undo": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M9 7.5H15.75C18.6495 7.5 21 9.8505 21 12.75C21 15.6495 18.6495 18 15.75 18H9.75" stroke="__COLOR__" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M9 7.5L12 4.5M9 7.5L12 10.5" stroke="__COLOR__" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>""",
+    "redo": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M15 7.5H8.25C5.3505 7.5 3 9.8505 3 12.75C3 15.6495 5.3505 18 8.25 18H14.25" stroke="__COLOR__" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M15 7.5L12 4.5M15 7.5L12 10.5" stroke="__COLOR__" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>""",
     "dashboard": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M10.5 6C6.35786 6 3 9.35786 3 13.5C3 17.6421 6.35786 21 10.5 21C14.6421 21 18 17.6421 18 13.5H10.5V6Z" stroke="__COLOR__" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -2142,6 +2158,81 @@ class PivotTableWidget(QWidget):
             }
             """
         )
+        if _is_dark_theme():
+            dialog.setStyleSheet(
+                """
+                QDialog#SummaryTableSettingsDialog {
+                    background: #111827;
+                    border: 1px solid #334155;
+                    border-radius: 8px;
+                    color: #F8FAFC;
+                }
+                QLabel#SummarySettingsTitle {
+                    color: #F8FAFC;
+                    font-size: 15px;
+                    font-weight: 500;
+                    background: transparent;
+                }
+                QLabel#SummarySettingsLabel,
+                QCheckBox#SummarySettingsCheck {
+                    color: #F8FAFC;
+                    font-size: 12px;
+                    font-weight: 400;
+                    background: transparent;
+                }
+                QSpinBox#SummarySettingsInput {
+                    min-height: 30px;
+                    padding: 0 8px;
+                    background: #172033;
+                    color: #F8FAFC;
+                    border: 1px solid #334155;
+                    border-radius: 6px;
+                    selection-background-color: #1E293B;
+                    selection-color: #F8FAFC;
+                }
+                QSpinBox#SummarySettingsInput:focus {
+                    border-color: #7C6CFF;
+                }
+                QSpinBox#SummarySettingsInput::up-button,
+                QSpinBox#SummarySettingsInput::down-button,
+                QSpinBox#SummarySettingsInput::up-arrow,
+                QSpinBox#SummarySettingsInput::down-arrow {
+                    width: 0px;
+                    height: 0px;
+                    border: none;
+                    background: transparent;
+                    image: none;
+                }
+                QPushButton#SummarySettingsPrimary,
+                QPushButton#SummarySettingsSecondary {
+                    min-height: 32px;
+                    border-radius: 6px;
+                    padding: 0 14px;
+                    font-size: 12px;
+                    font-weight: 400;
+                }
+                QPushButton#SummarySettingsPrimary {
+                    color: #0B1020;
+                    background: #F8FAFC;
+                    border: 1px solid #F8FAFC;
+                    font-weight: 500;
+                }
+                QPushButton#SummarySettingsPrimary:hover {
+                    background: #E2E8F0;
+                    border-color: #E2E8F0;
+                }
+                QPushButton#SummarySettingsSecondary {
+                    color: #F8FAFC;
+                    background: #111827;
+                    border: 1px solid #334155;
+                }
+                QPushButton#SummarySettingsSecondary:hover {
+                    background: #1F2A3D;
+                    border-color: #475569;
+                }
+                """
+            )
+            apply_windows_title_bar_theme(dialog, True)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(16, 16, 16, 14)
@@ -2217,19 +2308,164 @@ class PivotTableWidget(QWidget):
         dialog.exec_()
 
     def _refresh_toolbar_chrome(self):
+        dark_mode = _is_dark_theme()
         icon_size = QSize(18, 18)
-        search_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["search"], size=18)
+        icon_normal = "#E5E7EB" if dark_mode else _INK_COLOR
+        icon_active = "#FFFFFF" if dark_mode else _INK_COLOR
+        icon_disabled = "#94A3B8" if dark_mode else "#C7CDD6"
         mono_icon_colors = {
-            QIcon.Normal: _INK_COLOR,
-            QIcon.Active: _INK_COLOR,
-            QIcon.Selected: _INK_COLOR,
-            QIcon.Disabled: "#C7CDD6",
+            QIcon.Normal: icon_normal,
+            QIcon.Active: icon_active,
+            QIcon.Selected: icon_active,
+            QIcon.Disabled: icon_disabled,
         }
+        search_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["search"], size=18, color_map=mono_icon_colors)
         clear_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["clear"], size=18, color_map=mono_icon_colors)
-        dashboard_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["dashboard"], size=18)
+        undo_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["undo"], size=18, color_map=mono_icon_colors)
+        redo_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["redo"], size=18, color_map=mono_icon_colors)
+        dashboard_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["dashboard"], size=18, color_map=mono_icon_colors)
         edit_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_edit"], size=18, color_map=mono_icon_colors)
-        panel_field_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["fields"], size=14)
-        panel_filter_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["filter_panel"], size=14)
+        sheet_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_sheet"], size=18, color_map=mono_icon_colors)
+        image_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_image"], size=18, color_map=mono_icon_colors)
+        settings_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_settings"], size=18, color_map=mono_icon_colors)
+        panel_field_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["fields"], size=14, color_map=mono_icon_colors)
+        panel_filter_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["filter_panel"], size=14, color_map=mono_icon_colors)
+        if hasattr(self, "toolbar_strip") and self.toolbar_strip is not None:
+            if dark_mode:
+                toolbar_style = """
+                QFrame#summaryToolbarStrip {
+                    background: transparent;
+                    border: 1px solid #334155;
+                    border-radius: 8px;
+                }
+                QFrame#summaryToolbarSeparator {
+                    min-width: 1px;
+                    max-width: 1px;
+                    margin: 4px 6px;
+                    background: rgba(148, 163, 184, 0.22);
+                    border: none;
+                }
+                QPushButton#summaryToolbarButton {
+                    min-width: 30px;
+                    max-width: 30px;
+                    min-height: 30px;
+                    max-height: 30px;
+                    padding: 0px;
+                    color: #E5E7EB;
+                    background: transparent;
+                    border: none;
+                    border-radius: 6px;
+                    text-align: center;
+                }
+                QPushButton#summaryToolbarButton:hover {
+                    background: #1F2A3D;
+                    color: #FFFFFF;
+                }
+                QPushButton#summaryToolbarButton:checked,
+                QPushButton#summaryToolbarButton:pressed {
+                    background: #312E81;
+                    color: #FFFFFF;
+                }
+                QPushButton#summaryToolbarButton:disabled {
+                    color: #94A3B8;
+                }
+                QPushButton[variant="secondary"] {
+                    background: #172033;
+                    border: 1px solid #334155;
+                    color: #E5E7EB;
+                    border-radius: 8px;
+                    padding: 0 12px;
+                    min-height: 30px;
+                }
+                QPushButton[variant="secondary"]:hover {
+                    background: #1F2A3D;
+                    border-color: #475569;
+                    color: #FFFFFF;
+                }
+                QLineEdit#summarySearch {
+                    min-height: 30px;
+                    padding: 0 9px;
+                    color: #F8FAFC;
+                    background: #111827;
+                    border: 1px solid #334155;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 400;
+                    selection-background-color: #1E293B;
+                    selection-color: #F8FAFC;
+                }
+                QLineEdit#summarySearch:hover,
+                QLineEdit#summarySearch:focus {
+                    background: #111827;
+                    border: 1px solid #475569;
+                }
+                """
+            else:
+                toolbar_style = """
+                QFrame#summaryToolbarStrip {
+                    background: #FFFFFF;
+                    border: 1px solid #D6D9E0;
+                    border-radius: 8px;
+                }
+                QFrame#summaryToolbarSeparator {
+                    min-width: 1px;
+                    max-width: 1px;
+                    margin: 4px 6px;
+                    background: #E5E7EB;
+                    border: none;
+                }
+                QPushButton#summaryToolbarButton {
+                    min-width: 30px;
+                    max-width: 30px;
+                    min-height: 30px;
+                    max-height: 30px;
+                    padding: 0px;
+                    color: #111827;
+                    background: transparent;
+                    border: none;
+                    border-radius: 6px;
+                    text-align: center;
+                }
+                QPushButton#summaryToolbarButton:hover {
+                    background: #F3F4F6;
+                }
+                QPushButton#summaryToolbarButton:checked,
+                QPushButton#summaryToolbarButton:pressed {
+                    background: #E5E7EB;
+                    color: #111827;
+                }
+                QPushButton#summaryToolbarButton:disabled {
+                    color: #C7CDD6;
+                }
+                QPushButton[variant="secondary"] {
+                    background: #FFFFFF;
+                    border: 1px solid #D1D5DB;
+                    color: #111827;
+                    border-radius: 8px;
+                    padding: 0 12px;
+                    min-height: 30px;
+                }
+                QPushButton[variant="secondary"]:hover {
+                    background: #F9FAFB;
+                    border-color: #9CA3AF;
+                }
+                QLineEdit#summarySearch {
+                    min-height: 30px;
+                    padding: 0 9px;
+                    color: #4b5563;
+                    background: #FFFFFF;
+                    border: 1px solid #D1D5DB;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 400;
+                }
+                QLineEdit#summarySearch:hover,
+                QLineEdit#summarySearch:focus {
+                    background: #FFFFFF;
+                    border: 1px solid #9CA3AF;
+                }
+                """
+            self.toolbar_strip.setStyleSheet(toolbar_style)
 
         if hasattr(self, "search_input") and self.search_input is not None:
             if getattr(self, "_search_icon_action", None) is None:
@@ -2252,18 +2488,26 @@ class PivotTableWidget(QWidget):
         if hasattr(self, "export_btn") and self.export_btn is not None:
             self._configure_toolbar_button(self.export_btn)
             self.export_btn.setToolTip(_rt("Exportar"))
+            self.export_btn.setIcon(image_icon)
+            self.export_btn.setIconSize(icon_size)
             self._polish_toolbar_button(self.export_btn)
 
         if hasattr(self, "undo_btn") and self.undo_btn is not None:
             self.undo_btn.setToolTip(_rt("Desfazer (Ctrl+Z)"))
+            self.undo_btn.setIcon(undo_icon)
+            self.undo_btn.setIconSize(icon_size)
             self._polish_toolbar_button(self.undo_btn)
 
         if hasattr(self, "redo_btn") and self.redo_btn is not None:
             self.redo_btn.setToolTip(_rt("Refazer (Ctrl+Shift+Z)"))
+            self.redo_btn.setIcon(redo_icon)
+            self.redo_btn.setIconSize(icon_size)
             self._polish_toolbar_button(self.redo_btn)
 
         if hasattr(self, "import_sheet_btn") and self.import_sheet_btn is not None:
             self.import_sheet_btn.setToolTip(_rt("Importar planilha"))
+            self.import_sheet_btn.setIcon(sheet_icon)
+            self.import_sheet_btn.setIconSize(icon_size)
             self._polish_toolbar_button(self.import_sheet_btn)
 
         if hasattr(self, "sidebar_toggle_btn") and self.sidebar_toggle_btn is not None:
@@ -2278,6 +2522,8 @@ class PivotTableWidget(QWidget):
 
         if hasattr(self, "settings_btn") and self.settings_btn is not None:
             self.settings_btn.setToolTip(_rt("Personalizar tabela"))
+            self.settings_btn.setIcon(settings_icon)
+            self.settings_btn.setIconSize(icon_size)
             self._polish_toolbar_button(self.settings_btn)
 
         if self._external_dashboard_button is not None:
@@ -2474,6 +2720,7 @@ class PivotTableWidget(QWidget):
         self._apply_runtime_i18n()
 
     def _apply_styles(self):
+        dark_mode = _is_dark_theme()
         tokens = {
             "__FONT_UI_STACK__": str(
                 TYPOGRAPHY.get(
@@ -2979,6 +3226,7 @@ class PivotTableWidget(QWidget):
                 color: #111827;
                 min-height: 28px;
                 selection-background-color: rgba(81, 96, 116, 0.14);
+                selection-color: #111827;
             }
             #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch:hover,
             #summaryPivotRoot QFrame#summarySidebarPanel QComboBox#summaryOperationCombo:hover,
@@ -3284,17 +3532,275 @@ class PivotTableWidget(QWidget):
                 border: none;
             }
             """
+        if dark_mode:
+            qss += """
+            QWidget#summaryPivotRoot,
+            #summaryPivotRoot QFrame#summaryEmptyState {
+                background: #0B1020;
+                color: #F8FAFC;
+            }
+            #summaryPivotRoot QFrame#summaryTableCard,
+            #summaryPivotRoot QFrame#summaryFieldsPanel,
+            #summaryPivotRoot QFrame#summaryFiltersPanel,
+            #summaryPivotRoot QScrollArea#summaryFiltersScroll,
+            #summaryPivotRoot QWidget#summaryFiltersViewport,
+            #summaryPivotRoot QWidget#summaryFiltersBuilderContent,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[filterSectionCard="true"],
+            #summaryPivotRoot QFrame#summarySidebarPanel QWidget[sidebarSection="true"],
+            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[sidebarSection="true"],
+            #summaryPivotRoot QFrame#summaryAreaChip,
+            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup,
+            #summaryPivotRoot QFrame#summaryFiltersFooter {
+                background: #0B1020;
+                border-color: #334155;
+                color: #F8FAFC;
+            }
+            #summaryPivotRoot QFrame#summaryTableCard,
+            #summaryPivotRoot QFrame#summaryFieldsPanel,
+            #summaryPivotRoot QFrame#summaryFiltersPanel {
+                border: 1px solid #334155;
+                border-radius: 5px;
+            }
+            #summaryPivotRoot QFrame#summaryFieldsPanel[collapsed="true"],
+            #summaryPivotRoot QFrame#summaryFiltersPanel[collapsed="true"],
+            #summaryPivotRoot QFrame#summaryPanelCollapsedRail,
+            #summaryPivotRoot QHeaderView::section,
+            #summaryPivotRoot QTableCornerButton::section {
+                background: #0B1020;
+                color: #CBD5E1;
+                border-color: rgba(148, 163, 184, 0.16);
+            }
+            #summaryPivotRoot QLabel,
+            #summaryPivotRoot QCheckBox,
+            #summaryPivotRoot QToolButton,
+            #summaryPivotRoot QLabel#summaryWelcomeTitle,
+            #summaryPivotRoot QLabel#summaryAreaChipText,
+            #summaryPivotRoot QToolButton#summarySourceCard {
+                color: #F8FAFC;
+            }
+            #summaryPivotRoot QLabel#summaryWelcomeText,
+            #summaryPivotRoot QLabel#summaryPanelCollapsedTitle,
+            #summaryPivotRoot QFrame#summarySidebarPanel QCheckBox,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QCheckBox,
+            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup::title,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup::title {
+                color: #CBD5E1;
+                background: transparent;
+            }
+            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup::title,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup::title {
+                background: #0B1020;
+            }
+            #summaryPivotRoot QLabel#summaryEmptyTitle {
+                color: #F8FAFC;
+            }
+            #summaryPivotRoot QLabel#summaryEmptyText,
+            #summaryPivotRoot QLabel#summaryStatusLabel,
+            #summaryPivotRoot QLabel#summarySelectionLabel {
+                color: #94A3B8;
+            }
+            #summaryPivotRoot QTableView {
+                background: #0B1020;
+                color: #F8FAFC;
+                border-color: rgba(148, 163, 184, 0.18);
+                gridline-color: rgba(148, 163, 184, 0.14);
+                alternate-background-color: #0F172A;
+                selection-background-color: #1E293B;
+                selection-color: #F8FAFC;
+            }
+            #summaryPivotRoot QTableView::item:selected,
+            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item:selected,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item:selected {
+                background: #1E293B;
+                color: #F8FAFC;
+            }
+            #summaryPivotRoot QFrame#summarySidebarFooter QPushButton#summaryPrimaryButton,
+            #summaryPivotRoot QFrame#summaryFiltersFooter QPushButton#summaryPrimaryButton {
+                background: #1F2937;
+                color: #F8FAFC;
+                border-color: #475569;
+            }
+            #summaryPivotRoot QFrame#summarySidebarFooter QPushButton#summaryPrimaryButton:hover,
+            #summaryPivotRoot QFrame#summaryFiltersFooter QPushButton#summaryPrimaryButton:hover {
+                background: #273449;
+                border-color: #64748B;
+            }
+            #summaryPivotRoot QWidget#summaryToolbar,
+            #summaryPivotRoot QFrame#summaryLayerHost,
+            #summaryPivotRoot QWidget#summaryFieldsContextCard {
+                background: #0B1020;
+                color: #F8FAFC;
+            }
+            #summaryPivotRoot QFrame#summaryToolbarStrip {
+                background: transparent;
+                border: 1px solid #334155;
+                border-radius: 8px;
+            }
+            #summaryPivotRoot QWidget#summaryFieldsContextCard,
+            #summaryPivotRoot QFrame#summaryLayerHost {
+                border: none;
+            }
+            #summaryPivotRoot QWidget#summaryMainColumn,
+            #summaryPivotRoot QWidget#summaryControlsZone,
+            #summaryPivotRoot QWidget#summaryContentZone,
+            #summaryPivotRoot QWidget#summaryTablePane,
+            #summaryPivotRoot QWidget#summaryPanelBody,
+            #summaryPivotRoot QStackedWidget#summaryTableStack,
+            #summaryPivotRoot QSplitter#summaryMainSplitter,
+            #summaryPivotRoot QSplitter#summaryAnalyticsSplitter {
+                background: #0B1020;
+                border: none;
+            }
+            #summaryPivotRoot QFrame#summaryToolbarSeparator,
+            #summaryPivotRoot QFrame#summarySidebarPanel[collapsed="true"] QFrame#summarySidebarHeader {
+                background: rgba(148, 163, 184, 0.22);
+            }
+            #summaryPivotRoot QLineEdit#summarySearch,
+            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch,
+            #summaryPivotRoot QComboBox#summaryLayerCombo,
+            #summaryPivotRoot QComboBox#summaryOperationCombo,
+            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch,
+            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit,
+            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QLineEdit,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox {
+                background: #172033;
+                color: #F8FAFC;
+                border: 1px solid #334155;
+                selection-background-color: #1E293B;
+                selection-color: #F8FAFC;
+            }
+            #summaryPivotRoot QComboBox QAbstractItemView,
+            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox QAbstractItemView,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox QAbstractItemView {
+                background: #172033;
+                color: #F8FAFC;
+                border: 1px solid #334155;
+                selection-background-color: #312E81;
+                selection-color: #F8FAFC;
+            }
+            #summaryPivotRoot QComboBox::drop-down {
+                background: transparent;
+                border: none;
+            }
+            #summaryPivotRoot QLineEdit#summarySearch:hover,
+            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch:hover,
+            #summaryPivotRoot QComboBox#summaryLayerCombo:hover,
+            #summaryPivotRoot QComboBox#summaryOperationCombo:hover,
+            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch:hover,
+            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit:hover,
+            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox:hover,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QLineEdit:hover,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox:hover {
+                background: #1F2A3D;
+                border: 1px solid #475569;
+            }
+            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget#summaryFieldsList,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryFilterList,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList,
+            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget {
+                background: #0B1020;
+                color: #F8FAFC;
+                border: 1px solid #334155;
+                alternate-background-color: #0F172A;
+                selection-background-color: #1E293B;
+                selection-color: #F8FAFC;
+            }
+            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item,
+            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget::item {
+                background: transparent;
+                color: #F8FAFC;
+                border: none;
+            }
+            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item:hover,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item:hover,
+            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget::item:hover {
+                background: #1F2A3D;
+                color: #F8FAFC;
+            }
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList[activeArea="true"],
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList[activeArea="true"],
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList[activeArea="true"],
+            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryFilterList[activeArea="true"] {
+                background: #172033;
+                border: 1px solid #475569;
+            }
+            #summaryPivotRoot QFrame#summaryAreaChip,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[filterSectionCard="true"],
+            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup,
+            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup {
+                background: #0B1020;
+                border: 1px solid #334155;
+                color: #F8FAFC;
+            }
+            #summaryPivotRoot QFrame#summaryFiltersFooter {
+                border: 1px solid #334155;
+                border-radius: 8px;
+            }
+            #summaryPivotRoot QCheckBox::indicator {
+                background: #172033;
+                border-color: #475569;
+            }
+            #summaryPivotRoot QCheckBox::indicator:checked {
+                background: #7C6CFF;
+                border-color: #8B7CFF;
+            }
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton,
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryPrimaryButton[toolbarPrimary="true"],
+            #summaryPivotRoot QPushButton#summarySecondaryButton,
+            #summaryPivotRoot QPushButton#summaryBackButton,
+            #summaryPivotRoot QPushButton#summaryGhostButton,
+            #summaryPivotRoot QToolButton#summarySidebarToggle {
+                color: #E5E7EB;
+                background: transparent;
+                border-color: transparent;
+            }
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton:hover,
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton:checked,
+            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryPrimaryButton[toolbarPrimary="true"]:hover,
+            #summaryPivotRoot QPushButton#summarySecondaryButton:hover,
+            #summaryPivotRoot QPushButton#summaryBackButton:hover,
+            #summaryPivotRoot QPushButton#summaryGhostButton:hover,
+            #summaryPivotRoot QToolButton#summarySidebarToggle:hover {
+                background: #1F2A3D;
+                border-color: #334155;
+                color: #F8FAFC;
+            }
+            """
         for key, value in tokens.items():
             qss = qss.replace(key, value)
-        qss = qss.replace("#111827", _INK_COLOR)
+        if not dark_mode:
+            qss = qss.replace("#111827", _INK_COLOR)
         self.setStyleSheet(qss)
+        self._refresh_toolbar_chrome()
         self._enforce_filters_surface_backgrounds()
 
     def _enforce_filters_surface_backgrounds(self):
-        white = QColor("#ffffff")
+        dark_mode = _is_dark_theme()
+        surface = QColor("#0B1020" if dark_mode else "#ffffff")
+        input_surface = QColor("#111827" if dark_mode else "#ffffff")
+        text = QColor("#F8FAFC" if dark_mode else "#111827")
 
         for widget in (
+            getattr(self, "toolbar_strip", None),
+            getattr(self, "controls_zone", None),
+            getattr(self, "toolbar_frame", None),
+            getattr(self, "main_column", None),
+            getattr(self, "content_zone", None),
+            getattr(self, "table_container", None),
+            getattr(self, "table_stack", None),
+            getattr(self, "table_page", None),
+            getattr(self, "table_card", None),
+            getattr(self, "empty_state_frame", None),
+            getattr(self, "fields_panel", None),
+            getattr(self, "fields_panel_body", None),
             getattr(self, "filters_panel", None),
+            getattr(self, "filters_panel_body", None),
             getattr(self, "filters_builder_scroll", None),
             getattr(self, "filters_builder_scroll", None).viewport() if getattr(self, "filters_builder_scroll", None) is not None else None,
             getattr(self, "filters_builder_content", None),
@@ -3307,14 +3813,17 @@ class PivotTableWidget(QWidget):
                 continue
             try:
                 palette = widget.palette()
-                palette.setColor(QPalette.Window, white)
-                palette.setColor(QPalette.Base, white)
+                palette.setColor(QPalette.Window, surface)
+                palette.setColor(QPalette.Base, surface)
+                palette.setColor(QPalette.Text, text)
+                palette.setColor(QPalette.WindowText, text)
                 widget.setPalette(palette)
                 widget.setAutoFillBackground(True)
             except Exception:
                 log_exception("falha opcional ignorada")
 
         for list_widget in (
+            getattr(self, "fields_list", None),
             getattr(self, "filter_fields_list", None),
             getattr(self, "row_fields_list", None),
             getattr(self, "column_fields_list", None),
@@ -3324,8 +3833,10 @@ class PivotTableWidget(QWidget):
                 continue
             try:
                 palette = list_widget.palette()
-                palette.setColor(QPalette.Base, white)
-                palette.setColor(QPalette.Window, white)
+                palette.setColor(QPalette.Base, surface)
+                palette.setColor(QPalette.Window, surface)
+                palette.setColor(QPalette.Text, text)
+                palette.setColor(QPalette.WindowText, text)
                 list_widget.setPalette(palette)
                 list_widget.setAutoFillBackground(True)
                 viewport = list_widget.viewport()
@@ -3333,6 +3844,58 @@ class PivotTableWidget(QWidget):
                     viewport.setPalette(palette)
                     viewport.setAutoFillBackground(True)
                     viewport.setBackgroundRole(QPalette.Base)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+        combo_style = (
+            """
+            QComboBox {
+                background: #111827;
+                color: #F8FAFC;
+                border: 1px solid #334155;
+                border-radius: 4px;
+                padding: 2px 8px;
+                selection-background-color: #1E293B;
+                selection-color: #F8FAFC;
+            }
+            QComboBox:hover,
+            QComboBox:focus {
+                background: #111827;
+                border-color: #475569;
+            }
+            QComboBox::drop-down {
+                background: transparent;
+                border: none;
+                width: 18px;
+            }
+            QComboBox QAbstractItemView {
+                background: #111827;
+                color: #F8FAFC;
+                border: 1px solid #334155;
+                selection-background-color: #1E293B;
+                selection-color: #F8FAFC;
+            }
+            """
+            if dark_mode
+            else ""
+        )
+        for combo in (
+            getattr(self, "agg_combo", None),
+            getattr(self, "value_field_combo", None),
+        ):
+            if combo is None:
+                continue
+            try:
+                palette = combo.palette()
+                palette.setColor(QPalette.Window, input_surface)
+                palette.setColor(QPalette.Base, input_surface)
+                palette.setColor(QPalette.Button, input_surface)
+                palette.setColor(QPalette.Text, text)
+                palette.setColor(QPalette.ButtonText, text)
+                palette.setColor(QPalette.WindowText, text)
+                combo.setPalette(palette)
+                combo.setAutoFillBackground(True)
+                combo.setStyleSheet(combo_style)
             except Exception:
                 log_exception("falha opcional ignorada")
 

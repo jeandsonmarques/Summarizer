@@ -24,6 +24,7 @@ from .slim_dialogs import slim_message
 
 
 from .utils.logging_utils import log_exception
+from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 def _normalize_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
@@ -99,6 +100,8 @@ class ModelRelationsPopup(QDialog):
         super().__init__(parent)
         self.setObjectName("ModelRelationsPopup")
         self.setWindowTitle("Relacao entre graficos")
+        self.setFont(ui_font())
+        self._font_enforcer = attach_ui_font_enforcer(self)
         self.setMinimumWidth(560)
         self._source_item = source_item
         self._target_item = target_item
@@ -235,8 +238,13 @@ class ModelRelationsPopup(QDialog):
         source_col.setSpacing(4)
         source_col.addWidget(QLabel("Campo origem", self))
         self.source_field_combo = QComboBox(self)
+        self.source_field_combo.setFont(ui_font(8))
         for field in self._source_fields:
             self.source_field_combo.addItem(field.name)
+        try:
+            self.source_field_combo.view().setFont(ui_font(8))
+        except Exception:
+            log_exception("falha opcional ignorada")
         source_col.addWidget(self.source_field_combo)
         fields_row.addLayout(source_col, 1)
 
@@ -245,8 +253,13 @@ class ModelRelationsPopup(QDialog):
         target_col.setSpacing(4)
         target_col.addWidget(QLabel("Campo destino", self))
         self.target_field_combo = QComboBox(self)
+        self.target_field_combo.setFont(ui_font(8))
         for field in self._target_fields:
             self.target_field_combo.addItem(field.name)
+        try:
+            self.target_field_combo.view().setFont(ui_font(8))
+        except Exception:
+            log_exception("falha opcional ignorada")
         target_col.addWidget(self.target_field_combo)
         fields_row.addLayout(target_col, 1)
         root.addLayout(fields_row)
@@ -260,8 +273,13 @@ class ModelRelationsPopup(QDialog):
         mode_col.setSpacing(4)
         mode_col.addWidget(QLabel("Modo da interacao", self))
         self.mode_combo = QComboBox(self)
+        self.mode_combo.setFont(ui_font(8))
         self.mode_combo.addItem("Filtrar", "filter")
         self.mode_combo.addItem("Nenhum", "none")
+        try:
+            self.mode_combo.view().setFont(ui_font(8))
+        except Exception:
+            log_exception("falha opcional ignorada")
         mode_col.addWidget(self.mode_combo)
         config_row.addLayout(mode_col, 1)
 
@@ -270,9 +288,14 @@ class ModelRelationsPopup(QDialog):
         direction_col.setSpacing(4)
         direction_col.addWidget(QLabel("Direcao", self))
         self.direction_combo = QComboBox(self)
+        self.direction_combo.setFont(ui_font(8))
         self.direction_combo.addItem("Ambos", "both")
         self.direction_combo.addItem("Origem -> Destino", "origem_para_destino")
         self.direction_combo.addItem("Destino -> Origem", "destino_para_origem")
+        try:
+            self.direction_combo.view().setFont(ui_font(8))
+        except Exception:
+            log_exception("falha opcional ignorada")
         direction_col.addWidget(self.direction_combo)
         config_row.addLayout(direction_col, 1)
 
@@ -308,6 +331,7 @@ class ModelRelationsPopup(QDialog):
         actions.addWidget(save_btn, 0)
 
         root.addLayout(actions)
+        harmonize_widget_fonts(self)
 
     def _handle_accept(self):
         relation = self.selected_relation()

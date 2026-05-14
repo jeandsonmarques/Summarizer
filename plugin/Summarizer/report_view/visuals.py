@@ -1,7 +1,7 @@
 ﻿from dataclasses import dataclass
 from typing import List, Optional
 
-from qgis.PyQt.QtCore import QPointF, QRectF, Qt, QSize, pyqtSignal
+from qgis.PyQt.QtCore import QPointF, QRectF, Qt, QSize, QSettings, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QCursor
 from qgis.PyQt.QtWidgets import QWidget, QToolTip, QColorDialog, QMenu
 
@@ -9,6 +9,13 @@ from ..utils.fonts import ui_font
 
 
 from ..utils.logging_utils import log_exception
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
 @dataclass
 class VisualDefinition:
     tipo: str  # "colunas", "barra", "linha"
@@ -21,9 +28,14 @@ class VisualDefinition:
 
 class VisualTheme:
     def __init__(self):
-        self.bg = QColor("#FFFFFF")
-        self.axis = QColor("#666666")
-        self.grid = QColor("#E0E0E0")
+        if _is_dark_theme():
+            self.bg = QColor("#111827")
+            self.axis = QColor("#D1D5DB")
+            self.grid = QColor("#334155")
+        else:
+            self.bg = QColor("#FFFFFF")
+            self.axis = QColor("#666666")
+            self.grid = QColor("#E0E0E0")
         self.series = [QColor("#4472C4"), QColor("#ED7D31"), QColor("#70AD47")]
         self.font = ui_font(9)
 

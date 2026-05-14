@@ -42,9 +42,12 @@ class Ui_SummarizerDialog(object):
         header_layout.setSpacing(10)
 
         self.logo_label = QLabel()
+        self.logo_label.setObjectName("appLogoLabel")
+        self.logo_label.setFixedSize(QSize(42, 42))
+        self.logo_label.setAlignment(Qt.AlignCenter)
         logo_icon = svg_icon("PowerPages.svg")
         if not logo_icon.isNull():
-            self.logo_label.setPixmap(logo_icon.pixmap(QSize(40, 40)))
+            self.logo_label.setPixmap(logo_icon.pixmap(QSize(36, 36)))
         header_layout.addWidget(self.logo_label, 0, Qt.AlignLeft | Qt.AlignVCenter)
 
         self.title_label = QLabel(_rt("Summarizer"))

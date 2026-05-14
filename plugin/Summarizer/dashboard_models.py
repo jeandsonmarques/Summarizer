@@ -388,10 +388,10 @@ def serialize_chart_visual_state(state: Optional[ChartVisualState]) -> Dict[str,
 def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisualState:
     payload = dict(data or {})
     try:
-        font_scale = float(payload.get("font_scale") or 1.0)
+        font_scale = float(payload.get("font_scale") or 0.82)
     except Exception:
-        log_warning("[Dashboard] valor invalido de font_scale ao restaurar estado; usando 1.0")
-        font_scale = 1.0
+        log_warning("[Dashboard] valor invalido de font_scale ao restaurar estado; usando 0.82")
+        font_scale = 0.82
     try:
         border_radius = int(payload.get("border_radius", 8) or 8)
     except Exception:

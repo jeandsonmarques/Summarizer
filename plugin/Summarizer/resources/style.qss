@@ -74,6 +74,14 @@ QLabel[role="appTitle"] {
     font-size: ${font_caption_px}px;
     font-weight: ${font_weight_semibold};
     color: ${color_text_primary};
+    background: transparent;
+    border: none;
+}
+
+QLabel#appLogoLabel {
+    background: transparent;
+    border: none;
+    padding: 0;
 }
 
 QLabel[role="title"] {
@@ -200,8 +208,11 @@ QDoubleSpinBox {
     background-color: ${color_surface};
     border: 1px solid ${color_border};
     border-radius: ${radius_input}px;
+    color: ${color_text_primary};
     padding: 6px 10px;
     min-height: ${input_height}px;
+    selection-background-color: ${color_table_selection};
+    selection-color: ${color_text_primary};
 }
 
 QLineEdit:focus,
@@ -281,6 +292,26 @@ QToolButton[navIcon="true"]:checked {
 #sidebarActiveIndicator {
     background: ${color_brand};
     border-radius: 1px;
+}
+
+QFrame#sidebarContainer[themeMode="dark"] QPushButton[navIcon="true"],
+QFrame#sidebarContainer[themeMode="dark"] QToolButton[navIcon="true"] {
+    background: transparent;
+    border: none;
+}
+
+QFrame#sidebarContainer[themeMode="dark"] QPushButton[navIcon="true"]:hover,
+QFrame#sidebarContainer[themeMode="dark"] QToolButton[navIcon="true"]:hover {
+    background: #243044;
+    border: none;
+}
+
+QFrame#sidebarContainer[themeMode="dark"] QPushButton[navIcon="true"][active="true"],
+QFrame#sidebarContainer[themeMode="dark"] QToolButton[navIcon="true"][active="true"],
+QFrame#sidebarContainer[themeMode="dark"] QPushButton[navIcon="true"]:checked,
+QFrame#sidebarContainer[themeMode="dark"] QToolButton[navIcon="true"]:checked {
+    background: #243044;
+    border: none;
 }
 
 /* Tables and lists --------------------------------------------------------- */
@@ -431,6 +462,94 @@ QDialogButtonBox QPushButton:pressed {
     border-color: #6B7280;
 }
 
+QDialog[themeMode="dark"],
+QMessageBox[themeMode="dark"] {
+    background-color: ${color_app_bg};
+    color: ${color_text_primary};
+}
+
+QDialog[themeMode="dark"] QWidget,
+QDialog[themeMode="dark"] QFrame,
+QDialog[themeMode="dark"] QScrollArea,
+QDialog[themeMode="dark"] QAbstractScrollArea,
+QDialog[themeMode="dark"] QAbstractScrollArea::viewport {
+    background-color: ${color_app_bg};
+    color: ${color_text_primary};
+}
+
+QDialog[themeMode="dark"] QLabel,
+QDialog[themeMode="dark"] QCheckBox,
+QDialog[themeMode="dark"] QRadioButton,
+QMessageBox[themeMode="dark"] QLabel {
+    color: ${color_text_primary};
+    background: transparent;
+}
+
+QDialog[themeMode="dark"] QLineEdit,
+QDialog[themeMode="dark"] QComboBox,
+QDialog[themeMode="dark"] QTextEdit,
+QDialog[themeMode="dark"] QPlainTextEdit,
+QDialog[themeMode="dark"] QSpinBox,
+QDialog[themeMode="dark"] QDoubleSpinBox,
+QDialog[themeMode="dark"] QListWidget,
+QDialog[themeMode="dark"] QListView,
+QDialog[themeMode="dark"] QTreeView,
+QDialog[themeMode="dark"] QTableWidget,
+QDialog[themeMode="dark"] QTableView {
+    background-color: ${color_surface};
+    color: ${color_text_primary};
+    border-color: ${color_border};
+    selection-background-color: ${color_table_selection};
+    selection-color: ${color_text_primary};
+    alternate-background-color: ${color_table_zebra};
+}
+
+QDialog[themeMode="dark"] QHeaderView::section,
+QDialog[themeMode="dark"] QTableCornerButton::section {
+    background-color: ${color_surface};
+    color: ${color_text_primary};
+    border-color: ${color_border};
+}
+
+QDialog[themeMode="dark"] QPushButton,
+QDialog[themeMode="dark"] QDialogButtonBox QPushButton,
+QMessageBox[themeMode="dark"] QPushButton {
+    background-color: ${color_surface};
+    border-color: ${color_border};
+    color: ${color_text_primary};
+}
+
+QDialog[themeMode="dark"] QPushButton:hover,
+QDialog[themeMode="dark"] QDialogButtonBox QPushButton:hover,
+QMessageBox[themeMode="dark"] QPushButton:hover {
+    background-color: #273449;
+    border-color: #475569;
+    color: ${color_text_primary};
+}
+
+QDialog[themeMode="dark"] QPushButton:default,
+QDialog[themeMode="dark"] QDialogButtonBox QPushButton:default,
+QMessageBox[themeMode="dark"] QPushButton:default {
+    background-color: #F8FAFC;
+    border-color: #F8FAFC;
+    color: #0B1020;
+}
+
+QDialog[themeMode="dark"] QPushButton:default:hover,
+QDialog[themeMode="dark"] QDialogButtonBox QPushButton:default:hover,
+QMessageBox[themeMode="dark"] QPushButton:default:hover {
+    background-color: #E2E8F0;
+    border-color: #E2E8F0;
+    color: #0B1020;
+}
+
+QDialog[themeMode="dark"] QComboBox QAbstractItemView {
+    background-color: ${color_surface};
+    color: ${color_text_primary};
+    border-color: ${color_border};
+    selection-background-color: ${color_table_selection};
+}
+
 /* Ribbon ------------------------------------------------------------------- */
 #ribbonBar {
     background-color: ${color_surface};
@@ -553,10 +672,53 @@ QTableView[themeMode="dark"] {
 }
 
 QHeaderView::section[themeMode="dark"],
+QHeaderView[themeMode="dark"]::section,
 QTableCornerButton::section[themeMode="dark"] {
     background-color: ${color_surface};
     color: ${color_text_primary};
     border-color: ${color_border};
+}
+
+QWidget[themeMode="dark"] QLabel,
+QWidget[themeMode="dark"] QCheckBox,
+QWidget[themeMode="dark"] QRadioButton,
+QWidget[themeMode="dark"] QToolButton,
+QWidget[themeMode="dark"] QPushButton,
+QWidget[themeMode="dark"] QComboBox,
+QWidget[themeMode="dark"] QLineEdit,
+QWidget[themeMode="dark"] QTextEdit,
+QWidget[themeMode="dark"] QPlainTextEdit,
+QWidget[themeMode="dark"] QListWidget,
+QWidget[themeMode="dark"] QListView,
+QWidget[themeMode="dark"] QTreeView,
+QWidget[themeMode="dark"] QTableView {
+    color: ${color_text_primary};
+}
+
+QWidget[themeMode="dark"] QLineEdit,
+QWidget[themeMode="dark"] QComboBox,
+QWidget[themeMode="dark"] QTextEdit,
+QWidget[themeMode="dark"] QPlainTextEdit,
+QWidget[themeMode="dark"] QSpinBox,
+QWidget[themeMode="dark"] QDoubleSpinBox,
+QWidget[themeMode="dark"] QListWidget,
+QWidget[themeMode="dark"] QListView,
+QWidget[themeMode="dark"] QTreeView,
+QWidget[themeMode="dark"] QTableView {
+    background-color: ${color_surface};
+    border-color: ${color_border};
+    selection-background-color: ${color_table_selection};
+    selection-color: ${color_text_primary};
+}
+
+QWidget[themeMode="dark"] QHeaderView::section,
+QWidget[themeMode="dark"] QTableCornerButton::section,
+QComboBox[themeMode="dark"] QAbstractItemView {
+    background-color: ${color_surface};
+    color: ${color_text_primary};
+    border-color: ${color_border};
+    selection-background-color: ${color_table_selection};
+    selection-color: ${color_text_primary};
 }
 
 QFrame#ModelVisualSidePanel[themeMode="dark"] QWidget,

@@ -30,9 +30,9 @@ COLORS = {
 }
 
 DARK_COLORS = {
-    "color_app_bg": "#111827",
-    "color_surface": "#1F2937",
-    "color_border": "#374151",
+    "color_app_bg": "#0B1020",
+    "color_surface": "#0B1020",
+    "color_border": "#334155",
     "color_text_primary": "#F8FAFC",
     "color_text_secondary": "#CBD5E1",
     "color_primary": "#7C6CFF",

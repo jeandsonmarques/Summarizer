@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from qgis.PyQt.QtCore import Qt, QSize
+from qgis.PyQt.QtCore import QSettings, Qt, QSize
 from qgis.PyQt.QtGui import QFont, QIcon
 from qgis.PyQt.QtWidgets import (
     QAction,
@@ -31,7 +31,7 @@ from qgis.core import QgsFeatureRequest, QgsProject, QgsVectorLayer
 
 from .dashboard_canvas import DashboardCanvas
 from .dashboard_models import DashboardChartBinding, DashboardChartItem, DashboardItemLayout
-from .palette import COLORS, TYPOGRAPHY
+from .palette import COLORS, DARK_COLORS, TYPOGRAPHY
 from .report_view.chart_factory import ReportChartWidget
 from .report_view.charts import ChartVisualState
 from .report_view.pivot.pivot_formatters import PivotFormatter
@@ -47,6 +47,13 @@ def _icon_from_resource(name: str) -> QIcon:
     if os.path.exists(path):
         return QIcon(path)
     return QIcon()
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
 
 
 class DashboardWidget(QWidget):
@@ -653,17 +660,27 @@ class DashboardWidget(QWidget):
                 self.dashboard_canvas.update_items(self._current_dashboard_items() + [new_item])
 
     def _apply_styles(self):
-        surface = COLORS["color_surface"]
-        border = COLORS["color_border"]
-        helper = COLORS["color_text_secondary"]
-        primary_text = COLORS["color_text_primary"]
-        zebra = COLORS["color_table_zebra"]
-        selection = COLORS["color_table_selection"]
+        colors = DARK_COLORS if _is_dark_theme() else COLORS
+        surface = colors["color_surface"]
+        border = colors["color_border"]
+        helper = colors["color_text_secondary"]
+        primary_text = colors["color_text_primary"]
+        zebra = colors["color_table_zebra"]
+        selection = colors["color_table_selection"]
+        page_bg = "#0B1020" if _is_dark_theme() else "#F6F8FC"
+        card_bg = surface
+        ghost_hover = "#273449" if _is_dark_theme() else "#F8FAFC"
+        primary_bg = "#F8FAFC" if _is_dark_theme() else "#111827"
+        primary_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
+        primary_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
+        checked_bg = "#312E81" if _is_dark_theme() else "#DBEAFE"
+        checked_fg = "#EDE9FE" if _is_dark_theme() else "#1D4ED8"
 
         self.setStyleSheet(
             f"""
             QWidget#DashboardRoot {{
-                background-color: #F6F8FC;
+                background-color: {page_bg};
+                color: {primary_text};
             }}
             QFrame#ToolbarFrame,
             QFrame#CanvasShell {{
@@ -672,8 +689,8 @@ class DashboardWidget(QWidget):
                 border: 1px solid {border};
             }}
             QFrame#SecondaryChartCard {{
-                background: #FFFFFF;
-                border: 1px solid #DCE6F2;
+                background: {card_bg};
+                border: 1px solid {border};
                 border-radius: 14px;
             }}
             QWidget#DashboardVisualizationCanvas {{
@@ -696,46 +713,46 @@ class DashboardWidget(QWidget):
                 color: {primary_text};
             }}
             QPushButton#DashboardGhostButton {{
-                border: 1px solid #CBD5E1;
+                border: 1px solid {border};
                 border-radius: 8px;
-                background: #FFFFFF;
-                color: #0F172A;
+                background: {surface};
+                color: {primary_text};
                 padding: 6px 12px;
                 font-weight: 500;
             }}
             QPushButton#DashboardGhostButton:hover {{
-                background: #F8FAFC;
-                border-color: #94A3B8;
+                background: {ghost_hover};
+                border-color: {border};
             }}
             QPushButton#DashboardPrimaryButton {{
-                border: 1px solid #111827;
+                border: 1px solid {primary_bg};
                 border-radius: 8px;
-                background: #111827;
-                color: #FFFFFF;
+                background: {primary_bg};
+                color: {primary_fg};
                 padding: 6px 12px;
                 font-weight: 600;
             }}
             QPushButton#DashboardPrimaryButton:hover {{
-                background: #1F2937;
-                border-color: #1F2937;
+                background: {primary_hover};
+                border-color: {primary_hover};
             }}
             QToolButton#AddChartButton {{
-                border: 1px solid #CBD5E1;
+                border: 1px solid {border};
                 border-radius: 8px;
-                background: #FFFFFF;
-                color: #0F172A;
+                background: {surface};
+                color: {primary_text};
                 padding: 6px 12px;
                 font-weight: 500;
             }}
             QToolButton#AddChartButton:hover {{
-                background: #F8FAFC;
-                border-color: #94A3B8;
+                background: {ghost_hover};
+                border-color: {border};
             }}
             QToolButton#DashboardIconButton {{
-                border: 1px solid #CBD5E1;
+                border: 1px solid {border};
                 border-radius: 8px;
-                background: #FFFFFF;
-                color: #0F172A;
+                background: {surface};
+                color: {primary_text};
                 padding: 0;
                 min-width: 28px;
                 max-width: 28px;
@@ -743,29 +760,57 @@ class DashboardWidget(QWidget):
                 max-height: 28px;
             }}
             QToolButton#DashboardIconButton:hover {{
-                background: #F8FAFC;
-                border-color: #94A3B8;
+                background: {ghost_hover};
+                border-color: {border};
             }}
             QToolButton#DashboardIconButton:checked {{
-                background: #DBEAFE;
-                border-color: #3B82F6;
-                color: #1D4ED8;
+                background: {checked_bg};
+                border-color: {colors["color_primary"]};
+                color: {checked_fg};
             }}
             QPushButton[dashboardChip=\"true\"] {{
-                border: 1px solid #D1D9E6;
+                border: 1px solid {border};
                 border-radius: 14px;
-                background: #FFFFFF;
-                color: #1E293B;
+                background: {surface};
+                color: {primary_text};
                 padding: 6px 10px;
             }}
             QPushButton[dashboardChip=\"true\"]:checked {{
-                background: #DBEAFE;
-                border-color: #3B82F6;
-                color: #1D4ED8;
+                background: {checked_bg};
+                border-color: {colors["color_primary"]};
+                color: {checked_fg};
+                font-weight: 600;
+            }}
+            QTableWidget {{
+                background: {surface};
+                color: {primary_text};
+                border: 1px solid {border};
+                border-radius: 8px;
+                gridline-color: {border};
+                selection-background-color: {selection};
+                selection-color: {primary_text};
+                alternate-background-color: {zebra};
+            }}
+            QTableWidget::item {{
+                border-bottom: 1px solid {border};
+                padding: 6px 8px;
+            }}
+            QHeaderView::section {{
+                background: {surface};
+                color: {helper};
+                border: none;
+                border-bottom: 1px solid {border};
+                padding: 7px 8px;
                 font-weight: 600;
             }}
             """
         )
+        panel = getattr(self, "visual_format_panel", None)
+        if panel is not None and hasattr(panel, "_apply_panel_styles"):
+            try:
+                panel._apply_panel_styles()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ Public API
     def set_pivot_data(

@@ -7,6 +7,8 @@ from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPixmap
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.PyQt.QtWidgets import QListWidgetItem
 
+from .utils.fonts import ui_font
+
 
 _FIELD_SVG_TEMPLATES = {
     "text": """<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -117,6 +119,8 @@ def configure_field_item(
     badge = field_kind_badge(kind_key)
     label = f"{badge}  {display_name}" if include_badge else str(display_name or "")
     item.setText(label)
+    item.setFont(ui_font(8))
+    item.setFlags(item.flags() | Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
     item.setIcon(field_kind_icon(kind_key))
     item.setForeground(QColor(field_kind_color(kind_key)))
     item.setToolTip(str(tooltip or f"{display_name}\nTipo: {field_kind_label(kind_key)}"))
