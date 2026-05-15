@@ -53,9 +53,9 @@ class SidebarController(QObject):
     """Slim icon-only navigation for the Summarizer dialog."""
 
     ICON_MAP = {
-        "relatorios": ("Relatorios", "icone_chat_exato_cropped.png"),
         "resumo": ("Resumo", "Table.svg"),
         "model": ("Model", "Model.svg"),
+        "relatorios": ("Relatorios", "icone_chat_exato_cropped.png"),
         "integracao": ("Conexão", "Linked-Entity.svg"),
     }
 
@@ -88,7 +88,7 @@ class SidebarController(QObject):
         self._indicator_target_rect = QRect()
 
         self._build_sidebar()
-        self._set_mode("relatorios")
+        self._set_mode("resumo")
         self._refresh_nav_styles()
         QTimer.singleShot(0, self._sync_indicator_to_current_mode)
 
@@ -180,7 +180,7 @@ class SidebarController(QObject):
             if mode == "resumo":
                 if getattr(host, "current_summary_data", None):
                     host.display_advanced_summary(host.current_summary_data)
-                else:
+                elif hasattr(host, "pivot_widget"):
                     host.show_summary_prompt()
             elif mode == "relatorios":
                 host.show_reports_page()

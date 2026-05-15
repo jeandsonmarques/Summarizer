@@ -509,8 +509,8 @@ class SummarizerDialog(QDialog):
             builders.append(("integration", self._ensure_integration_page))
 
         for name, builder in (
-            ("reports", self._ensure_reports_page),
             ("model", self._ensure_model_page),
+            ("reports", self._ensure_reports_page),
             ("integration", self._ensure_integration_page),
         ):
             if all(existing_name != name for existing_name, _ in builders):
