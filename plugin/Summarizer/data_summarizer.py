@@ -48,6 +48,7 @@ from qgis.core import (
 )
 
 from .export_manager import ExportManager
+from .presentation import PresentationMapController, create_presentation_button
 from .result_style import apply_result_style
 from .ui_main_dialog import Ui_SummarizerDialog
 from .layout_nav import SidebarController
@@ -262,6 +263,13 @@ class Summarizer:
             log_error(message)
 
     def unload(self):
+        try:
+            if self.dlg is not None:
+                self.dlg.close()
+                self.dlg.deleteLater()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self.dlg = None
         for action in self.actions:
             self.iface.removePluginMenu(self.menu, action)
             self.iface.removeToolBarIcon(action)
@@ -270,6 +278,11 @@ class Summarizer:
                 unregister_browser_provider(self._browser_provider)
             finally:
                 self._browser_provider = None
+        try:
+            if hasattr(self, "presentation_controller") and self.presentation_controller:
+                self.presentation_controller.cleanup()
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def run(self):
         try:
@@ -337,6 +350,16 @@ class SummarizerDialog(QDialog):
                 scope.setProperty("squareScope", True)
                 self._square_scopes.append(scope)
         self._square_theme_applied = False
+        self.presentation_controller = None
+        self.presentation_map_controller = None
+        self.presentation_map_btn = None
+        try:
+            self.presentation_controller = PresentationMapController(self.iface, self)
+            self.presentation_map_controller = self.presentation_controller
+        except Exception:
+            self.presentation_controller = None
+            self.presentation_map_controller = None
+            log_exception("falha opcional ignorada")
         try:
             minimize_btn = getattr(self.ui, "minimize_btn", None)
             if minimize_btn is not None:
@@ -348,6 +371,7 @@ class SummarizerDialog(QDialog):
             log_exception("falha opcional ignorada")
         self._init_language_button()
         self._init_theme_button()
+        self._init_presentation_button()
 
         # External integration state (not used in main dialog anymore)
         self.external_df = None
@@ -493,6 +517,20 @@ class SummarizerDialog(QDialog):
             self.setWindowFlags(flags)
         except Exception:
             log_exception("falha opcional ignorada")
+
+    def closeEvent(self, event):
+        try:
+            if hasattr(self, "presentation_controller") and self.presentation_controller:
+                self.presentation_controller.cleanup()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
+            host = getattr(self, "_plugin_host", None)
+            if host is not None and getattr(host, "dlg", None) is self:
+                host.dlg = None
+        except Exception:
+            log_exception("falha opcional ignorada")
+        super().closeEvent(event)
 
     def _finish_deferred_initial_page_build(self):
         self._defer_page_build = False
@@ -712,6 +750,45 @@ class SummarizerDialog(QDialog):
         except Exception:
             log_exception("falha opcional ignorada")
         self._refresh_theme_button()
+
+    def _init_presentation_button(self):
+        if self.presentation_map_btn is not None:
+            return
+
+        controller = getattr(self, "presentation_controller", None)
+        if controller is None:
+            return
+
+        header_widget = getattr(self.ui, "header_widget", None)
+        if header_widget is None:
+            return
+
+        try:
+            btn = create_presentation_button(header_widget, controller)
+        except Exception:
+            log_exception("falha opcional ignorada")
+            return
+
+        try:
+            layout = header_widget.layout()
+            theme_btn = getattr(self.ui, "theme_btn", None)
+            if layout is not None and theme_btn is not None:
+                index = layout.indexOf(theme_btn)
+                if index >= 0:
+                    layout.insertWidget(index + 1, btn)
+                else:
+                    layout.addWidget(btn)
+            elif layout is not None:
+                layout.addWidget(btn)
+        except Exception:
+            log_exception("falha opcional ignorada")
+            try:
+                btn.setParent(None)
+            except Exception:
+                pass
+            return
+
+        self.presentation_map_btn = btn
 
     def _mark_theme_mode(self, mode: str):
         normalized = self._normalize_theme_mode(mode)

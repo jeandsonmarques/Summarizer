@@ -2336,7 +2336,39 @@ class ReportChartWidget(QWidget):
                 canvas.refresh()
         except Exception:
             log_exception("falha opcional ignorada")
+        self._refresh_presentation_after_selection(layer)
         return True
+
+    def _refresh_presentation_after_selection(self, layer: Optional[QgsVectorLayer]):
+        controller = self._presentation_controller()
+        if controller is None:
+            return
+        try:
+            controller.refresh_after_chart_selection(layer)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _presentation_controller(self):
+        current = self
+        visited = set()
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            for attr in ("presentation_controller", "presentation_map_controller"):
+                controller = getattr(current, attr, None)
+                if controller is not None:
+                    return controller
+            parent = None
+            try:
+                parent = current.parentWidget()
+            except Exception:
+                parent = None
+            if parent is None:
+                try:
+                    parent = current.parent()
+                except Exception:
+                    parent = None
+            current = parent
+        return None
 
     def _activate_category_target(self, target: Dict[str, object], zoom: bool = False):
         category_key = str(target.get("key") or "")
