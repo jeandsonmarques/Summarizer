@@ -213,6 +213,8 @@ class ModelTab(QWidget):
         root.addWidget(self.header, 0)
         root.addWidget(self.filters_bar, 0)
 
+        self.page_strip = None
+
         self.body_stack = QStackedWidget(self)
         root.addWidget(self.body_stack, 1)
 
@@ -393,7 +395,6 @@ class ModelTab(QWidget):
         footer_layout.setContentsMargins(4, 3, 4, 3)
         footer_layout.setSpacing(6)
 
-        self.page_strip = None
         footer_layout.addStretch(1)
 
         self.zoom_label = QLabel("100%")
@@ -2555,8 +2556,8 @@ class ModelTab(QWidget):
                     self.edit_mode_btn.blockSignals(False)
                 self.set_edit_mode(bool(project.edit_mode))
                 self._apply_canvas_style_to_pages(self._project_canvas_style(), persist=False, mark_dirty=False, record_history=False)
-            self._refresh_builder_layers()
-            self._refresh_ui_state()
+                self._refresh_builder_layers()
+                self._refresh_ui_state()
         finally:
             self._suspend_canvas_events = False
             self._history_restoring = False
@@ -3706,6 +3707,8 @@ class ModelTab(QWidget):
         has_project = self.current_project is not None
         self.body_stack.setCurrentWidget(self.canvas_page if has_project else self.empty_page)
         in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
+        if getattr(self, "page_strip", None) is not None:
+            self.page_strip.setVisible(has_project)
         if has_project:
             active_id = self.current_project.active_page_id or (self.current_project.pages[0].page_id if self.current_project.pages else "")
             active_widget = self._active_page_widget()
