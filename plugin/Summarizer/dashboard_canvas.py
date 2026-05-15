@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, Tuple
 
-from qgis.PyQt.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QPoint, QRect, QSize, QSettings, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter, QPen
 from qgis.PyQt.QtWidgets import (
     QComboBox,
@@ -29,6 +29,23 @@ from .model_relations_popup import ModelRelationsPopup
 
 
 from .utils.logging_utils import log_exception
+from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
+
+
+def _dark_aware_color(color: QColor, light_default: str, dark_default: str) -> QColor:
+    current = QColor(color)
+    if _is_dark_theme() and current.name().upper() == str(light_default).upper():
+        return QColor(dark_default)
+    return current
+
+
 class _DashboardCanvasSurface(QWidget):
     def __init__(self, canvas, parent=None):
         super().__init__(parent)
@@ -39,14 +56,35 @@ class _DashboardCanvasSurface(QWidget):
         self._pan_start_h = 0
         self._pan_start_v = 0
 
+    def _event_global_point(self, event) -> QPoint:
+        try:
+            pos = event.globalPosition()
+            return QPoint(int(pos.x()), int(pos.y()))
+        except Exception:
+            try:
+                return QPoint(event.globalPos())
+            except Exception:
+                return self.mapToGlobal(self._canvas._event_pos_to_point(event))
+
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(self.rect(), QColor(self._canvas._background_color))
+        painter.fillRect(self.rect(), self._canvas.resolved_background_color())
+
+        outline_rect = self._canvas.page_outline_rect()
+        if outline_rect.isValid():
+            outline = QColor("#334155" if _is_dark_theme() else "#111827")
+            outline_pen = QPen(outline)
+            outline_pen.setWidth(1)
+            outline_pen.setStyle(Qt.DotLine)
+            outline_pen.setCosmetic(True)
+            painter.setPen(outline_pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(outline_rect.adjusted(0, 0, -1, -1))
 
         if self._canvas._edit_mode and self._canvas._show_grid:
-            grid_color = QColor(self._canvas._grid_color)
+            grid_color = self._canvas.resolved_grid_color()
             try:
                 grid_color.setAlphaF(max(0.1, min(1.0, float(self._canvas._grid_opacity))))
             except Exception:
@@ -105,12 +143,26 @@ class _DashboardCanvasSurface(QWidget):
             painter.fillRect(scaled_preview, fill)
             painter.drawRoundedRect(scaled_preview.adjusted(1, 1, -1, -1), 12, 12)
 
+        if self._canvas._edit_mode:
+            guide_pen = QPen(QColor("#EF4444"))
+            guide_pen.setWidth(1)
+            guide_pen.setStyle(Qt.DashLine)
+            guide_pen.setCosmetic(True)
+            painter.setPen(guide_pen)
+            for guide in self._canvas.alignment_guides():
+                orientation = str(guide.get("orientation") or "")
+                position = int(guide.get("position") or 0)
+                if orientation == "vertical":
+                    painter.drawLine(position, 0, position, self.height())
+                elif orientation == "horizontal":
+                    painter.drawLine(0, position, self.width(), position)
+
     def mousePressEvent(self, event):
         if self._canvas._handle_surface_mouse_press(event):
             return
         if getattr(event, "button", lambda: None)() in (Qt.LeftButton, Qt.MiddleButton):
             self._pan_active = True
-            self._pan_start_pos = self._canvas._event_pos_to_point(event)
+            self._pan_start_pos = self._event_global_point(event)
             self._pan_start_h = self._canvas.scroll.horizontalScrollBar().value()
             self._pan_start_v = self._canvas.scroll.verticalScrollBar().value()
             self.setCursor(Qt.ClosedHandCursor)
@@ -123,12 +175,16 @@ class _DashboardCanvasSurface(QWidget):
 
     def mouseMoveEvent(self, event):
         if self._pan_active:
-            current = self._canvas._event_pos_to_point(event)
+            current = self._event_global_point(event)
             delta = current - self._pan_start_pos
             hbar = self._canvas.scroll.horizontalScrollBar()
             vbar = self._canvas.scroll.verticalScrollBar()
-            hbar.setValue(max(hbar.minimum(), min(hbar.maximum(), self._pan_start_h - delta.x())))
-            vbar.setValue(max(vbar.minimum(), min(vbar.maximum(), self._pan_start_v - delta.y())))
+            target_h = max(hbar.minimum(), min(hbar.maximum(), self._pan_start_h - delta.x()))
+            target_v = max(vbar.minimum(), min(vbar.maximum(), self._pan_start_v - delta.y()))
+            if hbar.value() != target_h:
+                hbar.setValue(target_h)
+            if vbar.value() != target_v:
+                vbar.setValue(target_v)
             try:
                 event.accept()
             except Exception:
@@ -165,11 +221,18 @@ class DashboardCanvas(QWidget):
     itemsChanged = pyqtSignal()
     filtersChanged = pyqtSignal(dict)
     zoomChanged = pyqtSignal(float)
+    editModeChanged = pyqtSignal(bool)
+    chartSelectionChanged = pyqtSignal(str, object)
+    itemSelectionChanged = pyqtSignal(str, object)
+    fieldBindingDropRequested = pyqtSignal(str, str, object)
+    visualPanelRequested = pyqtSignal(str)
     emptyCanvasContextMenuRequested = pyqtSignal(QPoint)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("DashboardCanvasRoot")
+        self.setFont(ui_font())
+        self._font_enforcer = attach_ui_font_enforcer(self)
         self.grid_size = 8
         self._edit_mode = True
         self._margins = (20, 20, 20, 20)
@@ -179,18 +242,21 @@ class DashboardCanvas(QWidget):
         self._visual_links: List[DashboardVisualLink] = []
         self._chart_relations: List[DashboardChartRelation] = []
         self._widgets: Dict[str, DashboardItemWidget] = {}
+        self._selected_item_id: str = ""
         self._interaction: Dict[str, object] = {}
         self._preview_rect: Optional[QRect] = None
+        self._alignment_guides: List[Dict[str, int]] = []
         self._link_preview: Optional[Dict[str, object]] = None
         self._selected_relation_id: str = ""
         self._zoom = 1.0
-        self._min_zoom = 0.6
-        self._max_zoom = 2.0
+        self._min_zoom = 0.35
+        self._max_zoom = 3.0
         self._zoom_step = 1.15
+        self._page_outline_size = QSize(1280, 720)
         self._background_color = QColor("#FFFFFF")
-        self._grid_color = QColor("#E5E7EB")
-        self._show_grid = True
-        self._grid_opacity = 0.72
+        self._grid_color = QColor("#FFFFFF")
+        self._show_grid = False
+        self._grid_opacity = 1.0
         self.interaction_manager = ModelInteractionManager(self)
         self.interaction_manager.filtersChanged.connect(self.filtersChanged.emit)
 
@@ -211,11 +277,14 @@ class DashboardCanvas(QWidget):
         self.scroll.horizontalScrollBar().setObjectName("DashboardCanvasHScrollBar")
         self.scroll.verticalScrollBar().setObjectName("DashboardCanvasVScrollBar")
 
-        self.setStyleSheet(
-            """
+        canvas_bg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
+        scroll_handle = "#475569" if _is_dark_theme() else "#C9D0DB"
+        scroll_handle_hover = "#64748B" if _is_dark_theme() else "#AEB8C8"
+        scroll_border = "#334155" if _is_dark_theme() else "#BFC6D2"
+        style = """
             QWidget#DashboardCanvasRoot,
             QWidget#DashboardCanvasSurface {
-                background: #FFFFFF;
+                background: __CANVAS_BG__;
             }
             QScrollArea#DashboardCanvasScrollArea {
                 border: none;
@@ -233,12 +302,12 @@ class DashboardCanvas(QWidget):
             QScrollBar#DashboardCanvasHScrollBar::handle:horizontal {
                 min-width: 44px;
                 border-radius: 5px;
-                border: 1px solid #BFC6D2;
-                background: #C9D0DB;
+                border: 1px solid __SCROLL_BORDER__;
+                background: __SCROLL_HANDLE__;
             }
             QScrollBar#DashboardCanvasHScrollBar::handle:horizontal:hover {
-                background: #AEB8C8;
-                border-color: #A7B1C0;
+                background: __SCROLL_HANDLE_HOVER__;
+                border-color: __SCROLL_BORDER__;
             }
             QScrollBar#DashboardCanvasHScrollBar::add-line:horizontal,
             QScrollBar#DashboardCanvasHScrollBar::sub-line:horizontal {
@@ -264,12 +333,12 @@ class DashboardCanvas(QWidget):
             QScrollBar#DashboardCanvasVScrollBar::handle:vertical {
                 min-height: 44px;
                 border-radius: 5px;
-                border: 1px solid #BFC6D2;
-                background: #C9D0DB;
+                border: 1px solid __SCROLL_BORDER__;
+                background: __SCROLL_HANDLE__;
             }
             QScrollBar#DashboardCanvasVScrollBar::handle:vertical:hover {
-                background: #AEB8C8;
-                border-color: #A7B1C0;
+                background: __SCROLL_HANDLE_HOVER__;
+                border-color: __SCROLL_BORDER__;
             }
             QScrollBar#DashboardCanvasVScrollBar::add-line:vertical,
             QScrollBar#DashboardCanvasVScrollBar::sub-line:vertical {
@@ -288,7 +357,19 @@ class DashboardCanvas(QWidget):
                 background: transparent;
             }
             """
+        style = (
+            style.replace("__CANVAS_BG__", canvas_bg)
+            .replace("__SCROLL_BORDER__", scroll_border)
+            .replace("__SCROLL_HANDLE_HOVER__", scroll_handle_hover)
+            .replace("__SCROLL_HANDLE__", scroll_handle)
         )
+        self.setStyleSheet(style)
+
+    def resolved_background_color(self) -> QColor:
+        return _dark_aware_color(self._background_color, "#FFFFFF", "#0B1020")
+
+    def resolved_grid_color(self) -> QColor:
+        return _dark_aware_color(self._grid_color, "#FFFFFF", "#334155")
 
     def _event_pos_to_point(self, event) -> QPoint:
         try:
@@ -318,6 +399,16 @@ class DashboardCanvas(QWidget):
         zoom = max(self._zoom, 0.0001)
         return QPoint(int(round(delta.x() / zoom)), int(round(delta.y() / zoom)))
 
+    def page_outline_rect(self) -> QRect:
+        left, top, _right, _bottom = self._margins
+        zoom = max(self._zoom, 0.0001)
+        return QRect(
+            int(round(left * zoom)),
+            int(round(top * zoom)),
+            max(1, int(round(self._page_outline_size.width() * zoom))),
+            max(1, int(round(self._page_outline_size.height() * zoom))),
+        )
+
     def _apply_zoom(self, new_zoom: float, anchor_viewport_pos: Optional[QPoint] = None):
         new_zoom = self._clamp_zoom(new_zoom)
         if abs(new_zoom - self._zoom) < 1e-6:
@@ -341,21 +432,39 @@ class DashboardCanvas(QWidget):
         self.zoomChanged.emit(self._zoom)
 
     def _handle_wheel_zoom(self, event) -> bool:
-        try:
-            modifiers = event.modifiers()
-        except Exception:
-            modifiers = Qt.NoModifier
-        if not (modifiers & Qt.ControlModifier):
+        if not self._edit_mode:
             try:
                 event.ignore()
             except Exception:
                 log_exception("falha opcional ignorada")
             return False
         try:
+            modifiers = event.modifiers()
+        except Exception:
+            modifiers = Qt.NoModifier
+        try:
             delta = event.angleDelta().y()
         except Exception:
             delta = 0
         if delta == 0:
+            try:
+                event.ignore()
+            except Exception:
+                log_exception("falha opcional ignorada")
+            return False
+
+        if modifiers & Qt.ShiftModifier:
+            step = max(1, int(abs(delta) / 2))
+            direction = -1 if delta > 0 else 1
+            hbar = self.scroll.horizontalScrollBar()
+            hbar.setValue(max(hbar.minimum(), min(hbar.maximum(), hbar.value() + (direction * step))))
+            try:
+                event.accept()
+            except Exception:
+                log_exception("falha opcional ignorada")
+            return True
+
+        if not (modifiers & Qt.ControlModifier):
             try:
                 event.ignore()
             except Exception:
@@ -390,16 +499,130 @@ class DashboardCanvas(QWidget):
         visual_links: Optional[List[DashboardVisualLink]] = None,
         chart_relations: Optional[List[DashboardChartRelation]] = None,
     ):
+        active_filters = self.interaction_manager.active_filters()
         self.interaction_manager.clear_registry()
         self._items = [item.clone() for item in list(items or [])]
         self._set_graph_state(visual_links=visual_links, chart_relations=chart_relations)
         self._rebuild_widgets()
         self._normalize_layouts()
+        selection_removed = self._selected_item_id and self._selected_item_id not in {item.item_id for item in self._items}
+        if selection_removed:
+            self._selected_item_id = ""
         self._zoom = 1.0
         self._apply_geometries()
+        self._sync_item_selection_highlights()
+        if selection_removed:
+            self.itemSelectionChanged.emit("", None)
+        if active_filters:
+            self.interaction_manager.set_active_filters(active_filters)
+
+    def update_items(
+        self,
+        items: List[DashboardChartItem],
+        visual_links: Optional[List[DashboardVisualLink]] = None,
+        chart_relations: Optional[List[DashboardChartRelation]] = None,
+    ):
+        current_zoom = self._zoom
+        active_filters = self.interaction_manager.active_filters()
+        self.interaction_manager.clear_registry()
+        self._items = [item.clone() for item in list(items or [])]
+        self._set_graph_state(visual_links=visual_links, chart_relations=chart_relations)
+        self._rebuild_widgets()
+        self._normalize_layouts()
+        selection_removed = self._selected_item_id and self._selected_item_id not in {item.item_id for item in self._items}
+        if selection_removed:
+            self._selected_item_id = ""
+        self._zoom = self._clamp_zoom(current_zoom)
+        self._apply_geometries()
+        self._sync_item_selection_highlights()
+        if selection_removed:
+            self.itemSelectionChanged.emit("", None)
+        if active_filters:
+            self.interaction_manager.set_active_filters(active_filters)
+
+    def center_items(self):
+        if not self._items:
+            return
+        viewport = self.scroll.viewport()
+        min_x = min(item.layout.normalized().x for item in self._items)
+        min_y = min(item.layout.normalized().y for item in self._items)
+        max_right = max(item.layout.normalized().x + item.layout.normalized().width for item in self._items)
+        max_bottom = max(item.layout.normalized().y + item.layout.normalized().height for item in self._items)
+        content_width = max(1, max_right - min_x)
+        content_height = max(1, max_bottom - min_y)
+        padding = 56.0
+        target_zoom = min(
+            (float(viewport.width()) - padding * 2.0) / float(content_width),
+            (float(viewport.height()) - padding * 2.0) / float(content_height),
+        )
+        target_zoom = self._clamp_zoom(target_zoom)
+        self._apply_zoom(target_zoom, viewport.rect().center())
+        self._apply_geometries()
+        hbar = self.scroll.horizontalScrollBar()
+        vbar = self.scroll.verticalScrollBar()
+        scaled_left = min(item.layout.normalized().x * self._zoom for item in self._items)
+        scaled_top = min(item.layout.normalized().y * self._zoom for item in self._items)
+        scaled_right = max((item.layout.normalized().x + item.layout.normalized().width) * self._zoom for item in self._items)
+        scaled_bottom = max((item.layout.normalized().y + item.layout.normalized().height) * self._zoom for item in self._items)
+        center_x = int(round((scaled_left + scaled_right) / 2.0))
+        center_y = int(round((scaled_top + scaled_bottom) / 2.0))
+        hbar.setValue(max(hbar.minimum(), min(hbar.maximum(), center_x - int(viewport.width() / 2))))
+        vbar.setValue(max(vbar.minimum(), min(vbar.maximum(), center_y - int(viewport.height() / 2))))
+        self.surface.update()
 
     def items(self) -> List[DashboardChartItem]:
         return [item.clone() for item in self._items]
+
+    def selected_item_id(self) -> str:
+        return str(self._selected_item_id or "")
+
+    def selected_item(self) -> Optional[DashboardChartItem]:
+        item = self._layout_by_id(self._selected_item_id)
+        return item.clone() if item is not None else None
+
+    def selected_item_widget(self) -> Optional[DashboardItemWidget]:
+        return self._widgets.get(self._selected_item_id)
+
+    def select_item(self, item_id: Optional[str], *, emit_signal: bool = True):
+        normalized = str(item_id or "").strip()
+        if normalized and self._layout_by_id(normalized) is None:
+            normalized = ""
+        brought_to_front = self._bring_item_to_front(normalized) if normalized else False
+        if normalized == self._selected_item_id:
+            if emit_signal:
+                self.itemSelectionChanged.emit(normalized, self._widgets.get(normalized))
+            if brought_to_front:
+                self.itemsChanged.emit()
+            return
+        self._selected_item_id = normalized
+        self._sync_item_selection_highlights()
+        if emit_signal:
+            self.itemSelectionChanged.emit(normalized, self._widgets.get(normalized))
+        if brought_to_front:
+            self.itemsChanged.emit()
+
+    def _bring_item_to_front(self, item_id: str) -> bool:
+        normalized = str(item_id or "").strip()
+        if not normalized:
+            return False
+        current_index = next((index for index, item in enumerate(self._items) if item.item_id == normalized), -1)
+        if current_index < 0:
+            return False
+        changed = current_index != len(self._items) - 1
+        if changed:
+            item = self._items.pop(current_index)
+            self._items.append(item)
+        widget = self._widgets.get(normalized)
+        if widget is not None:
+            try:
+                widget.raise_()
+            except Exception:
+                log_exception("falha opcional ignorada")
+        try:
+            self.surface.update()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return changed
 
     def visual_links(self) -> List[DashboardVisualLink]:
         return [DashboardVisualLink.from_dict(link.to_dict()) for link in self._visual_links]
@@ -507,7 +730,22 @@ class DashboardCanvas(QWidget):
         self._items.append(new_item)
         self._rebuild_widgets()
         self._apply_geometries()
+        self.select_item(new_item.item_id, emit_signal=True)
         self.itemsChanged.emit()
+
+    def set_selected_category(self, category_key: Optional[str], *, emit_signal: bool = False):
+        normalized = str(category_key or "").strip()
+        for widget in self._widgets.values():
+            chart_widget = getattr(widget, "chart_widget", None)
+            if chart_widget is None or not hasattr(chart_widget, "set_selected_category"):
+                continue
+            try:
+                chart_widget.set_selected_category(normalized, emit_signal=emit_signal)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def clear_selection(self, *, emit_signal: bool = False):
+        self.set_selected_category("", emit_signal=emit_signal)
 
     def clear_items(self):
         self._items = []
@@ -517,10 +755,12 @@ class DashboardCanvas(QWidget):
         self._preview_rect = None
         self._link_preview = None
         self._selected_relation_id = ""
+        self._selected_item_id = ""
         self.interaction_manager.clear_registry()
         self._rebuild_widgets()
         self._zoom = 1.0
         self._apply_geometries()
+        self.itemSelectionChanged.emit("", None)
         self.itemsChanged.emit()
 
     def clear_filters(self):
@@ -533,10 +773,18 @@ class DashboardCanvas(QWidget):
         self.interaction_manager.set_active_filters(filters)
 
     def set_edit_mode(self, enabled: bool):
-        self._edit_mode = bool(enabled)
+        enabled = bool(enabled)
+        if self._edit_mode == enabled:
+            self.surface.update()
+            return
+        self._edit_mode = enabled
         for widget in self._widgets.values():
             widget.set_edit_mode(self._edit_mode)
         self.surface.update()
+        self.editModeChanged.emit(self._edit_mode)
+
+    def is_edit_mode(self) -> bool:
+        return bool(self._edit_mode)
 
     def set_canvas_style(
         self,
@@ -723,6 +971,12 @@ class DashboardCanvas(QWidget):
                 widget = DashboardItemWidget(item, self.surface)
                 widget.removeRequested.connect(self._remove_item)
                 widget.selectionChanged.connect(self.interaction_manager.handle_chart_selection)
+                widget.selectionChanged.connect(
+                    lambda payload, item_id=item.item_id: self._emit_chart_selection(item_id, payload)
+                )
+                widget.itemSelected.connect(self._handle_item_selected)
+                widget.visualPanelRequested.connect(self._handle_visual_panel_requested)
+                widget.fieldBindingDropRequested.connect(self.fieldBindingDropRequested.emit)
                 widget.itemChanged.connect(self.itemsChanged.emit)
                 widget.dragStarted.connect(self._start_drag)
                 widget.dragMoved.connect(self._move_drag)
@@ -739,6 +993,23 @@ class DashboardCanvas(QWidget):
             widget.set_edit_mode(self._edit_mode)
             self.interaction_manager.register_chart(widget, item.binding)
         self.interaction_manager.set_chart_relations(self._chart_relations)
+        self._sync_item_selection_highlights()
+
+    def _emit_chart_selection(self, item_id: str, payload):
+        self.chartSelectionChanged.emit(str(item_id or ""), payload)
+
+    def _handle_item_selected(self, item_id: str):
+        self.select_item(item_id, emit_signal=True)
+
+    def _handle_visual_panel_requested(self, item_id: str):
+        self.select_item(item_id, emit_signal=True)
+        self.visualPanelRequested.emit(str(item_id or ""))
+
+    def _sync_item_selection_highlights(self):
+        for item_id, widget in self._widgets.items():
+            if self._interaction and self._interaction.get("item_id") == item_id:
+                continue
+            widget.set_highlight_mode("selected" if item_id == self._selected_item_id else "idle")
 
     def _normalize_layouts(self):
         for item in self._items:
@@ -780,6 +1051,10 @@ class DashboardCanvas(QWidget):
             preview = self._scaled_rect(self._preview_rect)
             max_right = max(max_right, preview.right() + right)
             max_bottom = max(max_bottom, preview.bottom() + bottom)
+        outline = self.page_outline_rect()
+        if outline.isValid():
+            max_right = max(max_right, outline.right() + right)
+            max_bottom = max(max_bottom, outline.bottom() + bottom)
         self.surface.setMinimumSize(QSize(max_right + left, max_bottom + top))
         self.surface.resize(max_right + left, max_bottom + top)
 
@@ -818,11 +1093,69 @@ class DashboardCanvas(QWidget):
 
     def _set_preview_rect(self, rect: Optional[QRect]):
         self._preview_rect = QRect(rect) if rect is not None else None
+        if rect is None:
+            self._alignment_guides = []
         self._sync_surface_size()
+        self.surface.update()
+
+    def alignment_guides(self) -> List[Dict[str, int]]:
+        return [dict(item) for item in list(self._alignment_guides or [])]
+
+    def _rect_alignment_points(self, rect: QRect) -> Dict[str, int]:
+        return {
+            "left": int(rect.left()),
+            "center_x": int(rect.left() + int(round(rect.width() / 2.0))),
+            "right": int(rect.right()),
+            "top": int(rect.top()),
+            "center_y": int(rect.top() + int(round(rect.height() / 2.0))),
+            "bottom": int(rect.bottom()),
+        }
+
+    def _update_alignment_guides(self, active_item_id: str, rect: QRect):
+        tolerance = max(6, int(round(self.grid_size * 1.25)))
+        active_points = self._rect_alignment_points(rect)
+        best_vertical: Optional[Tuple[int, int]] = None
+        best_horizontal: Optional[Tuple[int, int]] = None
+
+        for item in self._items:
+            if str(item.item_id or "") == str(active_item_id or ""):
+                continue
+            other_rect = self._rect_from_layout(item.layout)
+            other_points = self._rect_alignment_points(other_rect)
+            for active_key in ("left", "center_x", "right"):
+                for other_key in ("left", "center_x", "right"):
+                    distance = abs(active_points[active_key] - other_points[other_key])
+                    if distance <= tolerance and (best_vertical is None or distance < best_vertical[0]):
+                        best_vertical = (distance, other_points[other_key])
+            for active_key in ("top", "center_y", "bottom"):
+                for other_key in ("top", "center_y", "bottom"):
+                    distance = abs(active_points[active_key] - other_points[other_key])
+                    if distance <= tolerance and (best_horizontal is None or distance < best_horizontal[0]):
+                        best_horizontal = (distance, other_points[other_key])
+
+        guides: List[Dict[str, int]] = []
+        if best_vertical is not None:
+            guides.append(
+                {
+                    "orientation": "vertical",
+                    "position": int(round(best_vertical[1] * self._zoom)),
+                }
+            )
+        if best_horizontal is not None:
+            guides.append(
+                {
+                    "orientation": "horizontal",
+                    "position": int(round(best_horizontal[1] * self._zoom)),
+                }
+            )
+        self._alignment_guides = guides
         self.surface.update()
 
     def _remove_item(self, item_id: str):
         self._items = [item for item in self._items if item.item_id != item_id]
+        removed_selected = self._selected_item_id == str(item_id or "")
+        if removed_selected:
+            self._selected_item_id = ""
         self._interaction = {}
         self._set_preview_rect(None)
         self._link_preview = None
@@ -833,6 +1166,8 @@ class DashboardCanvas(QWidget):
         self._prune_graph_state()
         self._rebuild_widgets()
         self._apply_geometries()
+        if removed_selected:
+            self.itemSelectionChanged.emit("", None)
         self.itemsChanged.emit()
 
     def _start_drag(self, item_id: str, payload):
@@ -849,6 +1184,7 @@ class DashboardCanvas(QWidget):
             "start_global": payload.get("global_pos"),
             "start_layout": item.layout.normalized(),
         }
+        self._alignment_guides = []
         widget.set_highlight_mode("drag")
         self._set_preview_rect(self._rect_from_layout(item.layout))
 
@@ -867,6 +1203,7 @@ class DashboardCanvas(QWidget):
             start_layout.width,
             start_layout.height,
         )
+        self._update_alignment_guides(item_id, rect)
         self._set_preview_rect(rect)
         widget = self._widgets.get(item_id)
         if widget is not None:
@@ -889,6 +1226,7 @@ class DashboardCanvas(QWidget):
         self._apply_geometries()
         if widget is not None:
             widget.set_highlight_mode("idle")
+        self._sync_item_selection_highlights()
         self.itemsChanged.emit()
 
     def _resize_rect(self, start_layout: DashboardItemLayout, resize_mode: str, delta: QPoint) -> QRect:
@@ -934,6 +1272,7 @@ class DashboardCanvas(QWidget):
             "start_global": payload.get("global_pos"),
             "start_layout": item.layout.normalized(),
         }
+        self._alignment_guides = []
         widget.set_highlight_mode("resize")
         self._set_preview_rect(self._rect_from_layout(item.layout))
 
@@ -948,6 +1287,7 @@ class DashboardCanvas(QWidget):
         current_global = payload.get("global_pos")
         delta = self._logical_delta(current_global - start_global)
         rect = self._resize_rect(start_layout, resize_mode, delta)
+        self._update_alignment_guides(item_id, rect)
         self._set_preview_rect(rect)
         widget = self._widgets.get(item_id)
         if widget is not None:
@@ -970,6 +1310,7 @@ class DashboardCanvas(QWidget):
         self._apply_geometries()
         if widget is not None:
             widget.set_highlight_mode("idle")
+        self._sync_item_selection_highlights()
         self.itemsChanged.emit()
 
     def _start_link_drag(self, item_id: str, payload):
@@ -1095,6 +1436,8 @@ class DashboardCanvas(QWidget):
         dialog = QDialog(self)
         dialog.setObjectName("ModelRelationTargetDialog")
         dialog.setWindowTitle("Nova relacao")
+        dialog.setFont(ui_font())
+        dialog._font_enforcer = attach_ui_font_enforcer(dialog)
         dialog.setModal(True)
         dialog.setMinimumWidth(430)
         dialog.setStyleSheet(
@@ -1151,8 +1494,13 @@ class DashboardCanvas(QWidget):
         root.addWidget(prompt)
 
         combo = QComboBox(dialog)
+        combo.setFont(ui_font(8))
         for label, item_id in options:
             combo.addItem(label, item_id)
+        try:
+            combo.view().setFont(ui_font(8))
+        except Exception:
+            log_exception("falha opcional ignorada")
         root.addWidget(combo)
 
         actions = QHBoxLayout()
@@ -1170,6 +1518,7 @@ class DashboardCanvas(QWidget):
         ok_btn.clicked.connect(dialog.accept)
         actions.addWidget(ok_btn, 0)
         root.addLayout(actions)
+        harmonize_widget_fonts(dialog)
 
         if dialog.exec_() != QDialog.Accepted:
             return ""
@@ -1199,6 +1548,10 @@ class DashboardCanvas(QWidget):
             return False
         hit = self._relation_line_at(event.pos())
         if hit is None:
+            if self._selected_item_id or self._selected_relation_id:
+                self._selected_relation_id = ""
+                self.select_item("", emit_signal=True)
+                self.surface.update()
             return False
         relation_id = str(hit.get("relation_id") or "")
         if not relation_id:

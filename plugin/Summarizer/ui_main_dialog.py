@@ -31,8 +31,8 @@ class Ui_SummarizerDialog(object):
         Dialog.setWindowTitle(_rt("Summarizer - QGIS"))
 
         self.verticalLayout = QVBoxLayout(Dialog)
-        self.verticalLayout.setContentsMargins(6, 6, 6, 12)
-        self.verticalLayout.setSpacing(6)
+        self.verticalLayout.setContentsMargins(0, 0, 0, 0)
+        self.verticalLayout.setSpacing(0)
 
         self.header_widget = QFrame()
         self.header_widget.setObjectName("headerBar")
@@ -42,9 +42,12 @@ class Ui_SummarizerDialog(object):
         header_layout.setSpacing(10)
 
         self.logo_label = QLabel()
+        self.logo_label.setObjectName("appLogoLabel")
+        self.logo_label.setFixedSize(QSize(42, 42))
+        self.logo_label.setAlignment(Qt.AlignCenter)
         logo_icon = svg_icon("PowerPages.svg")
         if not logo_icon.isNull():
-            self.logo_label.setPixmap(logo_icon.pixmap(QSize(40, 40)))
+            self.logo_label.setPixmap(logo_icon.pixmap(QSize(36, 36)))
         header_layout.addWidget(self.logo_label, 0, Qt.AlignLeft | Qt.AlignVCenter)
 
         self.title_label = QLabel(_rt("Summarizer"))
@@ -58,6 +61,16 @@ class Ui_SummarizerDialog(object):
         self.maximize_btn.setAutoRaise(True)
         self.maximize_btn.setCursor(Qt.PointingHandCursor)
         header_layout.addWidget(self.maximize_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+
+        self.theme_btn = QToolButton()
+        self.theme_btn.setIcon(svg_icon("Theme.svg"))
+        self.theme_btn.setIconSize(QSize(16, 16))
+        self.theme_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.theme_btn.setText(_rt("Tema"))
+        self.theme_btn.setToolTip(_rt("Tema"))
+        self.theme_btn.setAutoRaise(True)
+        self.theme_btn.setCursor(Qt.PointingHandCursor)
+        header_layout.addWidget(self.theme_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
 
         self.language_btn = QToolButton()
         self.language_btn.setIcon(svg_icon("Globe.svg"))
@@ -137,21 +150,22 @@ class Ui_SummarizerDialog(object):
 
         self.central_frame = QFrame()
         central_layout = QHBoxLayout(self.central_frame)
-        central_layout.setContentsMargins(0, 4, 0, 4)
+        central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(8)
 
         self.sidebar_container = QFrame()
         self.sidebar_container.setObjectName("sidebarContainer")
+        self.sidebar_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         sidebar_layout = QVBoxLayout(self.sidebar_container)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(12)
-        self.sidebar_container.setMaximumWidth(72)
-        self.sidebar_container.setMinimumWidth(64)
-        central_layout.addWidget(self.sidebar_container, 0, Qt.AlignTop)
+        self.sidebar_container.setMaximumWidth(50)
+        self.sidebar_container.setMinimumWidth(50)
+        central_layout.addWidget(self.sidebar_container, 0)
 
         self.content_frame = QFrame()
         content_layout = QVBoxLayout(self.content_frame)
-        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setContentsMargins(0, 6, 0, 0)
         content_layout.setSpacing(12)
 
         self.stackedWidget = QStackedWidget()

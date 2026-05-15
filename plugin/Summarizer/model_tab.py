@@ -3,16 +3,15 @@
 import json
 import os
 import uuid
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QSize, Qt
-from qgis.PyQt.QtGui import QColor, QKeySequence
+from qgis.PyQt.QtCore import QRect, QSize, Qt
+from qgis.PyQt.QtGui import QColor, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
-    QFormLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -23,6 +22,7 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QShortcut,
     QSlider,
+    QSplitter,
     QSpinBox,
     QToolButton,
     QStackedWidget,
@@ -33,17 +33,135 @@ from qgis.core import QgsProject, QgsVectorLayer
 
 from .dashboard_add_dialog import DashboardAddDialog
 from .dashboard_canvas import DashboardCanvas
-from .dashboard_models import DashboardChartBinding, DashboardChartItem, DashboardPage, DashboardProject
+from .dashboard_models import (
+    DashboardChartBinding,
+    DashboardChartItem,
+    DashboardPage,
+    DashboardProject,
+    FieldBindingItem,
+    ROLE_FILTERS,
+    ROLE_LEGEND,
+    ROLE_SIZE,
+    ROLE_TOOLTIP,
+    ROLE_VALUES,
+    ROLE_X_AXIS,
+    ROLE_Y_AXIS,
+    binding_slot_definitions,
+    is_binding_slot_compatible,
+    normalize_aggregation,
+    normalize_binding_role,
+    normalize_chart_type,
+    suggest_binding_slot,
+)
 from .dashboard_page_widget import DashboardPageWidget
 from .dashboard_project_store import DashboardProjectStore, PROJECT_EXTENSION
+from .field_list_helpers import normalize_field_kind
 from .report_view.charts import ChartVisualState
 from .report_view.result_models import ChartPayload
-from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelModeToggle, _ModelRecentCard
+from .model_view.model_builder_panel import (
+    build_model_builder_panel,
+    build_visual_type_buttons,
+    builder_has_selection,
+    chart_type_label,
+    selected_builder_chart_type_from_buttons,
+    visual_type_specs,
+)
+from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelRecentCard
+from .model_view.model_data_panel import (
+    build_model_data_panel,
+    desired_data_panel_width,
+    field_catalog_for_layer,
+    field_group_for_def,
+    field_is_date_like,
+    field_is_numeric,
+    field_kind_for_layer_field,
+    populate_builder_field_list,
+    refresh_builder_data_fonts,
+    resolve_layer_field_name,
+    sync_data_panel_chrome,
+    toggle_data_panel_state,
+)
+from .model_view.model_header import build_model_header
+from .model_view.model_canvas_style_dialog import (
+    apply_canvas_style_to_source_meta,
+    default_canvas_style,
+    normalize_canvas_style,
+    normalize_hex_color,
+    open_canvas_style_dialog,
+    set_color_preview_chip,
+)
+from .model_view.model_project_controller import (
+    apply_legacy_single_page_compatibility,
+    normalize_loaded_project,
+    normalize_page_payload,
+    normalize_project_payload,
+    normalize_project_source_meta,
+    project_snapshot_payload,
+    resolve_active_page_id,
+    snapshot_signature,
+    snapshot_state,
+    validate_dashboard_project,
+)
+from .model_view.model_theme import (
+    _force_model_white_background,
+    _is_dark_theme,
+    _model_panel_fields_icon,
+    _model_theme_color,
+    _model_tinted_svg_icon,
+    fill_model_theme_tokens,
+)
+from .model_view.model_visual_rebuild import (
+    build_model_chart_item_from_layer,
+    empty_chart_payload,
+    feature_category_from_items,
+    rebuild_chart_item_from_binding,
+    rebuild_matrix_item_from_binding,
+    rebuild_scatter_item_from_binding,
+    resolve_binding_items_for_layer,
+    safe_float,
+)
 from .slim_dialogs import slim_message, slim_question
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
-from .utils.resources import svg_icon
 from .utils.logging_utils import log_exception
+from .visual_format_panel import VisualFormatPanel
+
+_MODEL_SIDE_PANEL_COLLAPSED_WIDTH = 40
+_MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH = 276
+_MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH = 250
+_MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH = 360
+_MODEL_DATA_PANEL_COLLAPSED_WIDTH = 40
+_MODEL_DATA_PANEL_MIN_WIDTH = 120
+_MODEL_DATA_PANEL_DEFAULT_WIDTH = 148
+_MODEL_DATA_PANEL_MAX_WIDTH = 320
+
+
+class _ModelVerticalPanelLabel(QLabel):
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet("color: #111827; font-size: 12px; font-weight: 500; background: transparent;")
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        return QSize(max(28, hint.height() + 10), max(128, hint.width() + 16))
+
+    def minimumSizeHint(self):
+        return QSize(28, 124)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.translate(self.width() / 2, self.height() / 2)
+        painter.rotate(-90)
+        rect = QRect(
+            int(-self.height() / 2),
+            int(-self.width() / 2),
+            int(self.height()),
+            int(self.width()),
+        )
+        painter.setPen(self.palette().color(QPalette.WindowText))
+        painter.setFont(self.font())
+        painter.drawText(rect, Qt.AlignCenter, self.text())
 
 
 class ModelTab(QWidget):
@@ -51,6 +169,8 @@ class ModelTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("ModelTabRoot")
+        self.setFont(ui_font())
+        self._font_enforcer = attach_ui_font_enforcer(self)
         self.store = DashboardProjectStore()
         self.current_project: Optional[DashboardProject] = None
         self.current_path: str = ""
@@ -69,135 +189,31 @@ class ModelTab(QWidget):
         self._history_restoring = False
         self._history_limit = 80
         self._builder_panel_open = False
+        self._visual_panel_open = False
+        self._visual_side_collapsed = False
+        self._visual_side_width = _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
+        self._data_panel_collapsed = False
+        self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
+        self._builder_selected_item_id: str = ""
+        self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
+        self._builder_visual_specs = self._visual_type_specs()
+        self.builder_visual_buttons = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(6)
+        root.setContentsMargins(4, 2, 4, 3)
+        root.setSpacing(4)
 
-        header = QFrame(self)
-        header.setObjectName("ModelHeader")
-        header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(10)
-
-        top_row = QHBoxLayout()
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(0)
-
-        self.new_btn = QPushButton(_rt("Novo"))
-        self.open_btn = QPushButton(_rt("Abrir"))
-        self.save_btn = QPushButton(_rt("Salvar"))
-        self.save_as_btn = QPushButton(_rt("Salvar como"))
-        self.export_btn = QPushButton(_rt("Exportar"))
-        self.undo_btn = QPushButton(_rt("Desfazer"))
-        self.redo_btn = QPushButton(_rt("Refazer"))
-        self.create_chart_btn = QPushButton(_rt("Criar grafico"))
-        self.edit_mode_btn = QPushButton(_rt("Edicao"))
-        self.settings_btn = QPushButton(_rt("Configuracoes"))
-        self.create_chart_btn.setCheckable(True)
-        self.create_chart_btn.setChecked(False)
-        self.edit_mode_btn.setCheckable(True)
-        self.edit_mode_btn.setChecked(True)
-        self.close_project_btn = QToolButton()
-        self.close_project_btn.setObjectName("ModelCloseProjectButton")
-        self._configure_toolbar_icon_button(self.undo_btn, "Walker-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
-        self._configure_toolbar_icon_button(self.redo_btn, "Walker-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
-        self._configure_toolbar_icon_button(self.new_btn, "Walker-New.svg", _rt("Novo"))
-        self._configure_toolbar_icon_button(self.open_btn, "Walker-Open.svg", _rt("Abrir"))
-        self._configure_toolbar_icon_button(self.save_btn, "Walker-Save.svg", _rt("Salvar"))
-        self._configure_toolbar_icon_button(self.save_as_btn, "Walker-SaveAs.svg", _rt("Salvar como"))
-        self._configure_toolbar_icon_button(self.export_btn, "Walker-Image.svg", _rt("Exportar imagem"))
-        self._configure_toolbar_icon_button(self.create_chart_btn, "Walker-Chart.svg", _rt("Criar grafico"))
-        self._configure_toolbar_icon_button(self.edit_mode_btn, "Walker-Edit.svg", _rt("Edicao"))
-        self._configure_toolbar_icon_button(
-            self.settings_btn,
-            "Walker-Settings.svg",
-            _rt("Configurar fundo e grade do canvas"),
+        header_parts = build_model_header(
+            self,
+            configure_toolbar_icon_button=self._configure_toolbar_icon_button,
+            build_visual_type_buttons=self._build_visual_type_buttons,
         )
-        self._configure_toolbar_icon_button(
-            self.close_project_btn,
-            "Close.svg",
-            _rt("Fechar projeto e voltar para a tela inicial"),
-            icon_size=16,
-        )
-        self.close_project_btn.setVisible(False)
-        for button in (
-            self.undo_btn,
-            self.redo_btn,
-            self.new_btn,
-            self.open_btn,
-            self.save_btn,
-            self.save_as_btn,
-            self.export_btn,
-            self.create_chart_btn,
-            self.edit_mode_btn,
-            self.settings_btn,
-            self.close_project_btn,
-        ):
-            button.setObjectName("ModelToolbarButton")
-
-        self.toolbar_strip = QFrame(header)
-        self.toolbar_strip.setObjectName("ModelToolbarStrip")
-        self.toolbar_strip.setAttribute(Qt.WA_StyledBackground, True)
-        toolbar_layout = QHBoxLayout(self.toolbar_strip)
-        toolbar_layout.setContentsMargins(8, 5, 8, 5)
-        toolbar_layout.setSpacing(2)
-        for button in (self.undo_btn, self.redo_btn):
-            toolbar_layout.addWidget(button, 0)
-        toolbar_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
-        for button in (self.new_btn, self.open_btn, self.save_btn, self.save_as_btn, self.export_btn):
-            toolbar_layout.addWidget(button, 0)
-        toolbar_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
-        for button in (self.create_chart_btn, self.edit_mode_btn, self.settings_btn):
-            toolbar_layout.addWidget(button, 0)
-        toolbar_layout.addStretch(1)
-        self.mode_switch_wrap = QWidget(self.toolbar_strip)
-        self.mode_switch_wrap.setObjectName("ModelModeSwitchWrap")
-        mode_layout = QHBoxLayout(self.mode_switch_wrap)
-        mode_layout.setContentsMargins(0, 0, 0, 0)
-        mode_layout.setSpacing(6)
-        self.mode_state_label = QLabel(_rt("Edição"), self.mode_switch_wrap)
-        self.mode_state_label.setObjectName("ModelModeStateLabel")
-        self.mode_toggle = _ModelModeToggle(self.mode_switch_wrap)
-        self.mode_toggle.setObjectName("ModelModeToggle")
-        self.mode_toggle.setChecked(True, animated=False)
-        self.mode_toggle.setToolTip(_rt("Alternar entre modo de edição e pré-visualização"))
-        mode_layout.addWidget(self.mode_state_label, 0)
-        mode_layout.addWidget(self.mode_toggle, 0)
-        self.clear_filters_btn = QPushButton(_rt("Limpar filtros"))
-        self.clear_filters_btn.setObjectName("ModelActionButton")
-        self.clear_filters_btn.setVisible(False)
-        self.clear_filters_btn.clicked.connect(self._clear_model_filters)
-        toolbar_layout.addWidget(self.clear_filters_btn, 0)
-        toolbar_layout.addWidget(self.mode_switch_wrap, 0)
-        toolbar_layout.addSpacing(8)
-        toolbar_layout.addWidget(self.close_project_btn, 0)
-
-        top_row.addWidget(self.toolbar_strip, 1)
-        header_layout.addLayout(top_row)
-
-        self.project_hint_label = QLabel(
-            _rt("Monte painéis com os graficos da aba Resumo e da aba Relatorios. O painel salvo continua editavel.")
-        )
-        self.project_hint_label.setObjectName("ModelHint")
-        self.project_hint_label.setWordWrap(True)
-        self.project_hint_label.setVisible(False)
-        header_layout.addWidget(self.project_hint_label)
-
-        root.addWidget(header, 0)
-
-        self.filters_bar = QFrame(self)
-        self.filters_bar.setObjectName("ModelFiltersBar")
-        self.filters_bar.setAttribute(Qt.WA_StyledBackground, True)
-        filters_layout = QHBoxLayout(self.filters_bar)
-        filters_layout.setContentsMargins(14, 10, 14, 10)
-        filters_layout.setSpacing(10)
-        self.filters_label = QLabel(_rt("Filtros ativos: nenhum"))
-        self.filters_label.setObjectName("ModelFiltersLabel")
-        self.filters_label.setWordWrap(True)
-        filters_layout.addWidget(self.filters_label, 1)
-        self.filters_bar.setVisible(False)
+        for name, widget in header_parts.__dict__.items():
+            setattr(self, name, widget)
+        root.addWidget(self.header, 0)
         root.addWidget(self.filters_bar, 0)
+
+        self.page_strip = None
 
         self.body_stack = QStackedWidget(self)
         root.addWidget(self.body_stack, 1)
@@ -256,16 +272,116 @@ class ModelTab(QWidget):
         self.canvas_page = QWidget(self.body_stack)
         canvas_page_layout = QHBoxLayout(self.canvas_page)
         canvas_page_layout.setContentsMargins(0, 0, 0, 0)
-        canvas_page_layout.setSpacing(10)
+        canvas_page_layout.setSpacing(0)
 
-        self.page_stack = QStackedWidget(self.canvas_page)
+        self.canvas_splitter = QSplitter(Qt.Horizontal, self.canvas_page)
+        self.canvas_splitter.setObjectName("ModelCanvasSplitter")
+        self.canvas_splitter.setChildrenCollapsible(False)
+        canvas_page_layout.addWidget(self.canvas_splitter, 1)
+
+        self.page_stack = QStackedWidget(self.canvas_splitter)
         self.page_stack.setObjectName("ModelPageStack")
         self.page_stack.currentChanged.connect(self._handle_page_stack_current_changed)
-        canvas_page_layout.addWidget(self.page_stack, 1)
+        self.canvas_splitter.addWidget(self.page_stack)
 
-        self.builder_panel = self._build_chart_builder_panel(self.canvas_page)
-        self.builder_panel.setFixedWidth(300)
-        canvas_page_layout.addWidget(self.builder_panel, 0)
+        self.visual_side_panel = QFrame(self.canvas_splitter)
+        self.visual_side_panel.setObjectName("ModelVisualSidePanel")
+        _force_model_white_background(self.visual_side_panel)
+        self.visual_side_panel.setMinimumWidth(_MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH)
+        self.visual_side_panel.setMaximumWidth(_MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH)
+        visual_side_layout = QVBoxLayout(self.visual_side_panel)
+        visual_side_layout.setContentsMargins(8, 8, 8, 8)
+        visual_side_layout.setSpacing(6)
+
+        self.visual_tab_bar = QFrame(self.visual_side_panel)
+        self.visual_tab_bar.setObjectName("ModelVisualPanelTabBar")
+        visual_tab_layout = QHBoxLayout(self.visual_tab_bar)
+        visual_tab_layout.setContentsMargins(4, 4, 4, 4)
+        visual_tab_layout.setSpacing(4)
+        self.visual_data_tab_btn = QPushButton(_rt("Adicionar dados"), self.visual_tab_bar)
+        self.visual_data_tab_btn.setObjectName("ModelVisualPanelTabButton")
+        self.visual_data_tab_btn.setCheckable(True)
+        self.visual_data_tab_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_data_tab_btn.setFlat(True)
+        self.visual_data_tab_btn.setAutoDefault(False)
+        self.visual_data_tab_btn.setDefault(False)
+        self.visual_data_tab_btn.setToolTip("")
+        self.visual_data_tab_btn.setStatusTip("")
+        self.visual_data_tab_btn.setWhatsThis("")
+        self.visual_data_tab_btn.clicked.connect(lambda checked=False: self._set_visual_side_tab("build"))
+        visual_tab_layout.addWidget(self.visual_data_tab_btn, 1)
+        self.visual_format_tab_btn = QPushButton(_rt("Formatar visual"), self.visual_tab_bar)
+        self.visual_format_tab_btn.setObjectName("ModelVisualPanelTabButton")
+        self.visual_format_tab_btn.setCheckable(True)
+        self.visual_format_tab_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_format_tab_btn.setFlat(True)
+        self.visual_format_tab_btn.setAutoDefault(False)
+        self.visual_format_tab_btn.setDefault(False)
+        self.visual_format_tab_btn.setToolTip("")
+        self.visual_format_tab_btn.setStatusTip("")
+        self.visual_format_tab_btn.setWhatsThis("")
+        self.visual_format_tab_btn.clicked.connect(lambda checked=False: self._set_visual_side_tab("format"))
+        visual_tab_layout.addWidget(self.visual_format_tab_btn, 1)
+        self.visual_side_toggle_btn = QToolButton(self.visual_tab_bar)
+        self.visual_side_toggle_btn.setObjectName("ModelSidePanelToggle")
+        self.visual_side_toggle_btn.setAutoRaise(True)
+        self.visual_side_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_side_toggle_btn.setFixedSize(22, 22)
+        self.visual_side_toggle_btn.clicked.connect(self._toggle_visual_side_panel)
+        visual_tab_layout.addWidget(self.visual_side_toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+        visual_side_layout.addWidget(self.visual_tab_bar, 0)
+
+        self.visual_side_stack = QStackedWidget(self.visual_side_panel)
+        self.visual_side_stack.setObjectName("ModelVisualSideStack")
+        _force_model_white_background(self.visual_side_stack)
+        self.builder_panel = self._build_chart_builder_panel(self.visual_side_stack)
+        self.visual_side_stack.addWidget(self.builder_panel)
+        self.visual_panel = VisualFormatPanel(self.visual_side_stack)
+        self.visual_panel.setMinimumWidth(_MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH)
+        self.visual_panel.setMaximumWidth(16777215)
+        self.visual_panel.closeRequested.connect(lambda: self._set_visual_panel_open(False))
+        self.visual_side_stack.addWidget(self.visual_panel)
+        visual_side_layout.addWidget(self.visual_side_stack, 1)
+        self.visual_side_collapsed_rail = QFrame(self.visual_side_panel)
+        self.visual_side_collapsed_rail.setObjectName("ModelSidePanelCollapsedRail")
+        self.visual_side_collapsed_rail.hide()
+        visual_rail_layout = QVBoxLayout(self.visual_side_collapsed_rail)
+        visual_rail_layout.setContentsMargins(2, 6, 2, 6)
+        visual_rail_layout.setSpacing(8)
+        self.visual_side_collapsed_btn = QToolButton(self.visual_side_collapsed_rail)
+        self.visual_side_collapsed_btn.setObjectName("ModelSidePanelToggle")
+        self.visual_side_collapsed_btn.setAutoRaise(True)
+        self.visual_side_collapsed_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_side_collapsed_btn.setFixedSize(22, 22)
+        self.visual_side_collapsed_btn.setStyleSheet(
+            "QToolButton#ModelSidePanelToggle { background: transparent; border: none; padding: 0px; }"
+        )
+        self.visual_side_collapsed_btn.clicked.connect(self._toggle_visual_side_panel)
+        visual_rail_layout.addWidget(self.visual_side_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
+        self.visual_side_collapsed_title = _ModelVerticalPanelLabel(_rt("Visualizações"), self.visual_side_collapsed_rail)
+        self.visual_side_collapsed_title.setObjectName("ModelSidePanelCollapsedTitle")
+        visual_rail_layout.addWidget(self.visual_side_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
+        visual_rail_layout.addStretch(1)
+        visual_side_layout.addWidget(self.visual_side_collapsed_rail, 1)
+        self._active_visual_side_tab = "build"
+        self._apply_visual_tab_button_styles()
+        self._sync_visual_side_tab_buttons()
+        self._sync_visual_side_panel_chrome()
+        self._apply_visual_side_panel_styles()
+        self.visual_side_panel.setVisible(False)
+        self.canvas_splitter.addWidget(self.visual_side_panel)
+
+        self.data_panel = self._build_data_panel(self.canvas_splitter)
+        self.data_panel.setMinimumWidth(_MODEL_DATA_PANEL_MIN_WIDTH)
+        self.data_panel.setMaximumWidth(_MODEL_DATA_PANEL_MAX_WIDTH)
+        self.data_panel.setVisible(False)
+        self.canvas_splitter.addWidget(self.data_panel)
+        self._sync_data_panel_chrome()
+        self._apply_builder_panel_theme_overrides()
+        self.canvas_splitter.setStretchFactor(0, 1)
+        self.canvas_splitter.setStretchFactor(1, 0)
+        self.canvas_splitter.setStretchFactor(2, 0)
+        self.canvas_splitter.setSizes([900, _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH, _MODEL_DATA_PANEL_DEFAULT_WIDTH])
 
         self.body_stack.addWidget(self.empty_page)
         self.body_stack.addWidget(self.canvas_page)
@@ -279,7 +395,6 @@ class ModelTab(QWidget):
         footer_layout.setContentsMargins(4, 3, 4, 3)
         footer_layout.setSpacing(6)
 
-        self.page_strip = None
         footer_layout.addStretch(1)
 
         self.zoom_label = QLabel("100%")
@@ -316,7 +431,9 @@ class ModelTab(QWidget):
         self.undo_btn.clicked.connect(self._undo_last_action)
         self.redo_btn.clicked.connect(self._redo_last_action)
         self.create_chart_btn.toggled.connect(self._handle_create_chart_toggle)
+        self.format_visual_btn.toggled.connect(self._handle_format_visual_toggle)
         self.settings_btn.clicked.connect(self._open_canvas_style_settings)
+        self.clear_filters_btn.clicked.connect(self._clear_model_filters)
         self.zoom_out_btn.clicked.connect(self._zoom_canvas_out)
         self.zoom_reset_btn.clicked.connect(self._zoom_canvas_reset)
         self.zoom_in_btn.clicked.connect(self._zoom_canvas_in)
@@ -350,6 +467,10 @@ class ModelTab(QWidget):
                 max-width: 1px;
                 margin: 4px 6px;
                 background: #E5E7EB;
+            }
+            QFrame#ModelToolbarVisualTypes {
+                background: transparent;
+                border: none;
             }
             QWidget#ModelModeSwitchWrap {
                 background: transparent;
@@ -476,33 +597,382 @@ class ModelTab(QWidget):
                 background: #E5E7EB;
             }
             QFrame#ModelBuilderPanel {
+                background: transparent;
+                border: none;
+                border-radius: 0px;
+            }
+            QFrame#ModelVisualSidePanel {
+                background: #FFFFFF;
+                border: 1px solid #DCE3EC;
+                border-radius: 6px;
+            }
+            QFrame#ModelVisualSidePanel QWidget,
+            QFrame#ModelVisualSidePanel QFrame,
+            QFrame#ModelVisualSidePanel QScrollArea,
+            QFrame#ModelVisualSidePanel QAbstractScrollArea,
+            QFrame#ModelVisualSidePanel QAbstractScrollArea::viewport {
+                background-color: #FFFFFF;
+            }
+            QFrame#ModelVisualSidePanel QWidget,
+            QFrame#ModelVisualSidePanel QFrame,
+            QFrame#ModelVisualSidePanel QScrollArea,
+            QFrame#ModelVisualSidePanel QAbstractScrollArea,
+            QFrame#ModelVisualSidePanel QAbstractScrollArea::viewport {
+                background-color: #FFFFFF;
+            }
+            QFrame#ModelVisualSidePanel[collapsed="true"] {
+                border-color: #E2E8F0;
+            }
+            QSplitter#ModelCanvasSplitter {
+                background: transparent;
+            }
+            QSplitter#ModelCanvasSplitter::handle {
+                background: transparent;
+                width: 8px;
+                margin: 0px 2px;
+            }
+            QSplitter#ModelCanvasSplitter::handle:hover {
+                background: #E2E8F0;
+            }
+            QFrame#ModelVisualPanelTabBar {
+                background: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                border-radius: 6px;
+            }
+            QFrame#ModelSidePanelCollapsedRail {
+                background: transparent;
+                border: none;
+            }
+            QLabel#ModelSidePanelCollapsedTitle {
+                color: #111827;
+                font-size: 8pt;
+                font-weight: 500;
+                background: transparent;
+            }
+            QToolButton#ModelSidePanelToggle,
+            QToolButton#ModelDataPanelToggle {
+                border: none;
+                background: transparent;
+                color: #475569;
+                font-size: 14px;
+                font-weight: 500;
+                padding: 0px;
+            }
+            QToolButton#ModelSidePanelToggle:hover,
+            QToolButton#ModelDataPanelToggle:hover {
+                background: #F1F5F9;
+                border-radius: 4px;
+                color: #111827;
+            }
+            QStackedWidget#ModelVisualSideStack {
+                background: #FFFFFF;
+                border: none;
+            }
+            QStackedWidget#ModelVisualSideStack > QWidget {
+                background: #FFFFFF;
+            }
+            QPushButton#ModelVisualPanelTabButton {
+                min-height: 28px;
+                max-height: 28px;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                background: transparent;
+                color: #334155;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton#ModelVisualPanelTabButton:hover {
                 background: #F8FAFC;
-                border: 1px solid #D6D9E0;
-                border-radius: 12px;
+                border-color: #D7DEE8;
+            }
+            QPushButton#ModelVisualPanelTabButton:checked {
+                background: #EAF4FF;
+                border-color: #93C5FD;
+            }
+            QScrollArea#ModelBuilderScroll {
+                border: none;
+                background: #FFFFFF;
+            }
+            QWidget#ModelBuilderScrollViewport {
+                background: #FFFFFF;
+            }
+            QWidget#ModelBuilderHost {
+                background: #FFFFFF;
             }
             QLabel#ModelBuilderTitle {
-                color: #111827;
-                font-size: 13px;
-                font-weight: 600;
+                color: #0F172A;
+                font-size: 14px;
+                font-weight: 500;
             }
             QLabel#ModelBuilderHint {
+                color: #64748B;
+                font-size: 11px;
+                font-weight: 400;
+            }
+            QFrame#ModelBuilderSection {
+                background: #FFFFFF;
+                border: 1px solid rgba(15, 23, 42, 0.06);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderPlainSection {
+                background: #FFFFFF;
+                border: none;
+                border-radius: 0px;
+            }
+            QFrame#ModelBuilderVisualsSection {
+                background: #FFFFFF;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderVisualsSection:hover {
+                border-color: rgba(17, 24, 39, 0.14);
+            }
+            QFrame#ModelBuilderSoftDividerSection {
+                background: #FFFFFF;
+                border: 1px solid #E5EAF1;
+                border-radius: 5px;
+            }
+            QFrame#ModelBuilderFieldsPanel {
+                background: #FFFFFF;
+                border: 1px solid rgba(15, 23, 42, 0.06);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderDataPanel {
+                background: #FFFFFF;
+                border: 1px solid rgba(15, 23, 42, 0.06);
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderDataPanel QWidget,
+            QFrame#ModelBuilderDataPanel QFrame,
+            QFrame#ModelBuilderDataPanel QListWidget,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea::viewport {
+                background-color: #FFFFFF;
+            }
+            QWidget#ModelDataPanelBody {
+                background: #FFFFFF;
+            }
+            QWidget#ModelDataFieldsBody {
+                background: #FFFFFF;
+            }
+            QFrame#ModelBuilderDataSection {
+                background: #FFFFFF;
+                border: none;
+            }
+            QFrame#ModelBuilderFieldsHeader {
+                background: #FFFFFF;
+                border: none;
+                border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+            }
+            QLabel#ModelBuilderSectionTitle {
+                color: #0F172A;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QToolButton#ModelVisualTypeButton {
+                min-width: 32px;
+                max-width: 32px;
+                min-height: 30px;
+                max-height: 30px;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                background: transparent;
+                color: #475569;
+                padding: 0px;
+                font-size: 10px;
+                font-weight: 500;
+            }
+            QToolButton#ModelVisualTypeButton:hover {
+                background: #F3F4F6;
+                border-color: rgba(17, 24, 39, 0.10);
+            }
+            QToolButton#ModelVisualTypeButton:checked {
+                background: #E8EEF6;
+                color: #0F172A;
+                border-color: rgba(17, 24, 39, 0.12);
+            }
+            QToolButton#ModelVisualTypeButton:checked:hover {
+                background: #E8EEF6;
+            }
+            QFrame#ModelBuilderEmptyState {
+                background: #FFFFFF;
+                border: 1px dashed rgba(17, 24, 39, 0.12);
+                border-radius: 6px;
+            }
+            QLabel#ModelBuilderEmptyStateLabel {
+                color: #64748B;
+                font-size: 10px;
+                font-weight: 400;
+            }
+            QListWidget#ModelBuilderFieldList {
+                border: 1px solid rgba(17, 24, 39, 0.06);
+                border-radius: 6px;
+                background: #FFFFFF;
+                color: #0F172A;
+                padding: 4px;
+                outline: 0;
+                font-size: 12px;
+            }
+            QWidget#ModelBuilderFieldListViewport {
+                background: #FFFFFF;
+            }
+            QListWidget#ModelBuilderFieldList::item {
+                padding: 2px 6px;
+                margin: 0;
+                border-radius: 2px;
+            }
+            QListWidget#ModelBuilderFieldList::item:hover {
+                background: rgba(17, 24, 39, 0.035);
+            }
+            QListWidget#ModelBuilderFieldList::item:selected {
+                background: rgba(81, 96, 116, 0.12);
+                color: #111827;
+            }
+            QLabel#ModelBuilderFieldLabel {
                 color: #6B7280;
                 font-size: 11px;
+                font-weight: 400;
+            }
+            QFrame#ModelBindingSlot {
+                background: #FFFFFF;
+                border: 1px solid rgba(148, 163, 184, 0.32);
+                border-radius: 4px;
+                min-height: 42px;
+            }
+            QFrame#ModelBindingSlot[filled="true"] {
+                border-color: rgba(148, 163, 184, 0.36);
+                background: #FFFFFF;
+            }
+            QFrame#ModelBindingSlot[dropActive="true"] {
+                border-color: rgba(96, 165, 250, 0.45);
+                background: rgba(239, 246, 255, 0.55);
+            }
+            QLabel#ModelBindingSlotLabel {
+                color: #475569;
+                font-size: 10px;
+                font-weight: 500;
+            }
+            QFrame#ModelBindingSlotChips {
+                background: transparent;
+            }
+            QFrame#ModelBindingFieldChip {
+                background: #FFFFFF;
+                border: 1px solid rgba(148, 163, 184, 0.42);
+                border-radius: 3px;
+                min-height: 22px;
+                max-height: 24px;
+            }
+            QLabel#ModelBindingFieldBadge {
+                background: #EEF2FF;
+                color: #334155;
+                border: 1px solid rgba(148, 163, 184, 0.32);
+                border-radius: 2px;
+                min-width: 24px;
+                max-width: 26px;
+                min-height: 16px;
+                font-size: 8px;
+                font-weight: 600;
+            }
+            QLabel#ModelBindingFieldName {
+                color: #111827;
+                font-size: 10px;
+                font-weight: 400;
+                min-width: 0px;
+            }
+            QLabel#ModelBindingSlotValue {
+                color: #94A3B8;
+                font-size: 9px;
+                font-weight: 400;
+            }
+            QComboBox#ModelBindingAggregationCombo {
+                min-height: 18px;
+                max-height: 18px;
+                min-width: 58px;
+                max-width: 58px;
+                border: 1px solid rgba(148, 163, 184, 0.32);
+                border-radius: 2px;
+                padding: 0 2px;
+                background: #F8FAFC;
+                color: #334155;
+                font-size: 9px;
+            }
+            QToolButton#ModelBindingSlotRemove {
+                min-width: 18px;
+                max-width: 18px;
+                min-height: 18px;
+                max-height: 18px;
+                border: 1px solid transparent;
+                border-radius: 2px;
+                background: transparent;
+                padding: 0;
+            }
+            QToolButton#ModelBindingSlotRemove:hover {
+                background: rgba(239, 68, 68, 0.08);
+                border-color: rgba(239, 68, 68, 0.20);
+            }
+            QToolButton#ModelBindingSlotMove {
+                min-width: 14px;
+                max-width: 14px;
+                min-height: 16px;
+                max-height: 16px;
+                border: 1px solid transparent;
+                border-radius: 2px;
+                background: transparent;
+                color: #64748B;
+                padding: 0;
+                font-size: 9px;
+            }
+            QToolButton#ModelBindingSlotMove:hover {
+                background: #F1F5F9;
+                border-color: rgba(148, 163, 184, 0.24);
             }
             QComboBox#ModelBuilderCombo,
             QLineEdit#ModelBuilderLineEdit,
             QSpinBox#ModelBuilderSpin {
-                min-height: 30px;
-                border: 1px solid #D1D5DB;
-                border-radius: 8px;
-                padding: 0 8px;
-                background: #FFFFFF;
+                min-height: 23px;
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 2px;
+                padding: 2px 6px;
+                background: rgba(255, 255, 255, 0.96);
                 color: #111827;
+                font-size: 11px;
             }
             QComboBox#ModelBuilderCombo:focus,
             QLineEdit#ModelBuilderLineEdit:focus,
             QSpinBox#ModelBuilderSpin:focus {
-                border-color: #818CF8;
+                border-color: rgba(81, 96, 116, 0.48);
+            }
+            QSpinBox#ModelBuilderSpin::up-button,
+            QSpinBox#ModelBuilderSpin::down-button {
+                width: 14px;
+                background: #F8FAFC;
+                border-left: 1px solid #E2E8F0;
+            }
+            QSpinBox#ModelBuilderSpin::up-button {
+                border-top-right-radius: 6px;
+                border-bottom: 1px solid #E2E8F0;
+            }
+            QSpinBox#ModelBuilderSpin::down-button {
+                border-bottom-right-radius: 6px;
+            }
+            QSpinBox#ModelBuilderSpin::up-button:hover,
+            QSpinBox#ModelBuilderSpin::down-button:hover {
+                background: #EEF2F7;
+            }
+            QPushButton#ModelBuilderPrimaryButton {
+                border: 1px solid rgba(17, 24, 39, 0.08);
+                border-radius: 2px;
+                background: #FFFFFF;
+                color: #111827;
+                padding: 4px 8px;
+                min-height: 24px;
+                font-size: 10px;
+                font-weight: 500;
+            }
+            QPushButton#ModelBuilderPrimaryButton:hover {
+                background: #FFFFFF;
+                border-color: rgba(17, 24, 39, 0.12);
             }
             QLabel#ModelWelcomeTitle,
             QLabel#ModelRecentsTitle {
@@ -570,7 +1040,7 @@ class ModelTab(QWidget):
             }
             QPushButton#ModelToolbarButton:checked,
             QToolButton#ModelToolbarButton:checked {
-                background: #E5E7EB;
+                background: #E8EEF6;
                 color: #111827;
             }
             QPushButton#ModelToolbarButton:pressed,
@@ -579,10 +1049,10 @@ class ModelTab(QWidget):
             }
             QPushButton#ModelToolbarButton[toolbarMode="icon"],
             QToolButton#ModelToolbarButton[toolbarMode="icon"] {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 30px;
-                max-height: 30px;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
                 padding: 0;
             }
             QPushButton#ModelToolbarButton[toolbarMode="label"] {
@@ -640,12 +1110,15 @@ class ModelTab(QWidget):
             }
             """
         )
+        self._apply_dark_theme_overlay()
+        self._refresh_theme_icons()
 
         self._refresh_recents()
         self._refresh_builder_layers()
         self._sync_mode_switch_state(bool(self.edit_mode_btn.isChecked()))
         self._refresh_ui_state()
         self._reset_history()
+        harmonize_widget_fonts(self)
         project = QgsProject.instance()
         try:
             project.layersAdded.connect(lambda *_: self._refresh_builder_layers())
@@ -654,127 +1127,1166 @@ class ModelTab(QWidget):
         except Exception:
             log_exception("falha opcional ignorada")
 
+    def _apply_dark_theme_overlay(self):
+        if not hasattr(self, "_base_model_stylesheet"):
+            self._base_model_stylesheet = self.styleSheet() or ""
+        if not _is_dark_theme():
+            if self.styleSheet() != self._base_model_stylesheet:
+                self.setStyleSheet(self._base_model_stylesheet)
+            return
+        self.setStyleSheet(self._base_model_stylesheet)
+        overlay = """
+            QWidget#ModelTabRoot {
+                background: #0B1020;
+                color: #F8FAFC;
+            }
+            QFrame#ModelToolbarStrip,
+            QFrame#ModelWelcomeCard,
+            QFrame#ModelRecentsCard,
+            QFrame#ModelFooterBar,
+            QFrame#ModelActionCard,
+            QFrame#ModelRecentCard,
+            QFrame#ModelFiltersBar {
+                background: #111827;
+                border-color: #334155;
+                color: #F8FAFC;
+            }
+            QFrame#ModelToolbarSeparator,
+            QSlider#ModelZoomSlider::groove:horizontal {
+                background: #334155;
+            }
+            QLabel#ModelModeStateLabel,
+            QLabel#ModelFiltersLabel,
+            QLabel#ModelActionCardTitle,
+            QLabel#ModelRecentCardTitle,
+            QLabel#ModelPageStripTabTitle[selected="true"] {
+                color: #F8FAFC;
+            }
+            QLabel#ModelHint,
+            QLabel#ModelWelcomeText,
+            QLabel#ModelRecentsPlaceholder,
+            QLabel#ModelActionCardText,
+            QLabel#ModelRecentCardText,
+            QLabel#ModelPageStripTabTitle,
+            QWidget#ModelPageStripTab,
+            QToolButton#ModelPageStripTabMenu,
+            QToolButton#ModelPageStripTabClose,
+            QToolButton#ModelPageStripNavButton {
+                color: #CBD5E1;
+            }
+            QWidget#ModelPageStripTab:hover,
+            QToolButton#ModelPageStripTabMenu:hover,
+            QToolButton#ModelPageStripTabClose:hover,
+            QToolButton#ModelPageStripNavButton:hover,
+            QPushButton#ModelToolbarButton:hover,
+            QToolButton#ModelToolbarButton:hover,
+            QPushButton#ModelActionButton:hover,
+            QPushButton#ModelZoomButton:hover {
+                background: #1F2A3D;
+                color: #F8FAFC;
+                border-color: #475569;
+            }
+            QPushButton#ModelToolbarButton,
+            QToolButton#ModelToolbarButton,
+            QPushButton#ModelActionButton,
+            QPushButton#ModelZoomButton,
+            QLineEdit#ModelPageStripTabEdit {
+                background: #172033;
+                color: #F8FAFC;
+                border-color: #334155;
+            }
+            QPushButton#ModelToolbarButton:checked,
+            QToolButton#ModelToolbarButton:checked,
+            QPushButton#ModelToolbarButton:pressed,
+            QToolButton#ModelToolbarButton:pressed,
+            QPushButton#ModelActionButton:pressed,
+            QPushButton#ModelZoomButton:pressed {
+                background: #312E81;
+                color: #F8FAFC;
+                border-color: #7C6CFF;
+            }
+            QLabel#ModelActionCardIcon {
+                background: #312E81;
+                border-color: #7C6CFF;
+            }
+        """
+        self.setStyleSheet(f"{self._base_model_stylesheet}\n{overlay}")
+        self._refresh_theme_icons()
+
+    def _refresh_theme_icons(self):
+        for button in (
+            getattr(self, "undo_btn", None),
+            getattr(self, "redo_btn", None),
+            getattr(self, "new_btn", None),
+            getattr(self, "open_btn", None),
+            getattr(self, "save_btn", None),
+            getattr(self, "save_as_btn", None),
+            getattr(self, "export_btn", None),
+            getattr(self, "create_chart_btn", None),
+            getattr(self, "format_visual_btn", None),
+            getattr(self, "edit_mode_btn", None),
+            getattr(self, "settings_btn", None),
+            getattr(self, "close_project_btn", None),
+            getattr(self, "visual_side_toggle_btn", None),
+            getattr(self, "visual_side_collapsed_btn", None),
+            getattr(self, "data_panel_toggle_btn", None),
+            getattr(self, "data_panel_collapsed_btn", None),
+        ):
+            if button is None:
+                continue
+            icon_name = button.property("modelIconName")
+            if not icon_name:
+                continue
+            try:
+                icon_size = int(button.property("modelIconSize") or button.iconSize().width() or 18)
+                icon_color = str(button.property("modelIconColor") or "")
+                button.setIcon(_model_tinted_svg_icon(str(icon_name), icon_size, icon_color))
+                button.setIconSize(QSize(icon_size, icon_size))
+                button.style().unpolish(button)
+                button.style().polish(button)
+                button.update()
+            except Exception:
+                log_exception("falha opcional ignorada")
+        for button in getattr(self, "builder_visual_buttons", {}).values():
+            if button is None:
+                continue
+            icon_name = button.property("modelIconName")
+            if not icon_name:
+                continue
+            try:
+                icon_size = int(button.property("modelIconSize") or button.iconSize().width() or 15)
+                icon_color = str(button.property("modelIconColor") or "")
+                button.setIcon(_model_tinted_svg_icon(str(icon_name), icon_size, icon_color))
+                button.setIconSize(QSize(icon_size, icon_size))
+            except Exception:
+                log_exception("falha opcional ignorada")
+        if getattr(self, "data_panel_icon", None) is not None:
+            self.data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
+
+    def _visual_type_specs(self):
+        return visual_type_specs()
+
+    def _build_visual_type_buttons(self, parent: QWidget, layout, *, button_size: int = 24, icon_size: int = 15):
+        self.builder_visual_buttons = build_visual_type_buttons(
+            parent,
+            layout,
+            self._builder_visual_specs,
+            self._select_visual_type_from_builder,
+            button_size=button_size,
+            icon_size=icon_size,
+        )
+
+    def _fill_model_theme_tokens(self, style: str) -> str:
+        return fill_model_theme_tokens(style)
+
+    def _apply_visual_side_panel_styles(self):
+        style = """
+            QFrame#ModelVisualSidePanel {
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
+                border-radius: 6px;
+            }
+            QFrame#ModelVisualPanelTabBar {
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
+                border-radius: 6px;
+            }
+            QPushButton#ModelVisualPanelTabButton {
+                min-height: 28px;
+                max-height: 28px;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                background: transparent;
+                color: __MUTED__;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton#ModelVisualPanelTabButton:hover {
+                background: __HOVER__;
+                border-color: __BORDER__;
+            }
+            QPushButton#ModelVisualPanelTabButton:checked {
+                background: __CHECKED__;
+                border-color: __CHECKED_BORDER__;
+            }
+            QFrame#ModelBuilderPanel {
+                background: __SURFACE__;
+                border: none;
+            }
+            QStackedWidget#ModelVisualSideStack,
+            QStackedWidget#ModelVisualSideStack > QWidget {
+                background: __SURFACE__;
+                border: none;
+            }
+            QScrollArea#ModelBuilderScroll,
+            QWidget#ModelBuilderScrollViewport,
+            QWidget#ModelBuilderHost {
+                background: __SURFACE__;
+                border: none;
+            }
+            QFrame#ModelBuilderPlainSection {
+                background: __SURFACE__;
+                border: none;
+            }
+            QFrame#ModelBuilderVisualsSection {
+                background: __SURFACE__;
+                border: 1px solid __BORDER_SOFT__;
+                border-radius: 6px;
+            }
+            QFrame#ModelBuilderVisualsSection:hover {
+                border-color: __BORDER__;
+            }
+            QFrame#ModelBuilderSoftDividerSection {
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
+                border-radius: 5px;
+            }
+            QToolButton#ModelVisualTypeButton {
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                color: __MUTED__;
+                padding: 0px;
+            }
+            QToolButton#ModelVisualTypeButton:hover {
+                background: __HOVER__;
+                border-color: __BORDER_SOFT__;
+            }
+            QToolButton#ModelVisualTypeButton:checked {
+                background: __CHECKED__;
+                color: __TEXT__;
+                border-color: __CHECKED_BORDER__;
+            }
+            QFrame#ModelBindingSlot {
+                background: __SURFACE_2__;
+                border: 1px solid __BORDER_SOFT__;
+                border-radius: 4px;
+                min-height: 42px;
+            }
+            QFrame#ModelBindingSlot[filled="true"] {
+                border-color: __BORDER__;
+                background: __SURFACE_2__;
+            }
+            QFrame#ModelBindingFieldChip {
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
+                border-radius: 3px;
+                min-height: 22px;
+                max-height: 24px;
+            }
+            QLabel#ModelBindingFieldBadge {
+                background: __CHECKED__;
+                color: __TEXT__;
+                border: 1px solid __BORDER__;
+                border-radius: 2px;
+                min-width: 24px;
+                max-width: 26px;
+                min-height: 16px;
+                font-size: 8px;
+                font-weight: 600;
+            }
+            QLabel#ModelBindingFieldName,
+            QLabel#ModelBindingSlotValue,
+            QLabel#ModelBindingSlotLabel {
+                font-size: 9px;
+            }
+            QLabel#ModelBindingFieldName {
+                min-width: 0px;
+            }
+            QLabel#ModelBindingSlotValue {
+                color: __MUTED__;
+                font-weight: 400;
+            }
+        """
+        self.visual_side_panel.setStyleSheet(self._fill_model_theme_tokens(style))
+        self._apply_builder_panel_theme_overrides()
+        self._refresh_theme_icons()
+
+    def _apply_builder_panel_theme_overrides(self):
+        style = self._fill_model_theme_tokens(
+            """
+            QScrollArea#ModelBuilderScroll,
+            QWidget#ModelBuilderScrollViewport,
+            QWidget#ModelBuilderHost,
+            QWidget#ModelBuilderBottomSpacer,
+            QFrame#ModelBuilderPanel,
+            QFrame#ModelBuilderVisualsSection,
+            QFrame#ModelBuilderEmptyState,
+            QFrame#ModelBuilderEmptyState QWidget,
+            QFrame#ModelBuilderEmptyState QLabel,
+            QFrame#ModelBuilderSoftDividerSection,
+            QFrame#ModelBuilderPlainSection,
+            QFrame#ModelBuilderDataPanel,
+            QFrame#ModelDataPanelCollapsedRail,
+            QFrame#ModelSidePanelCollapsedRail,
+            QFrame#ModelBuilderDataPanel QWidget,
+            QFrame#ModelBuilderDataPanel QFrame,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea,
+            QFrame#ModelBuilderDataPanel QAbstractScrollArea::viewport,
+            QWidget#ModelDataPanelHeader,
+            QWidget#ModelDataPanelBody,
+            QWidget#ModelDataFieldsBody,
+            QFrame#ModelBuilderDataSection {
+                background: __SURFACE__;
+                background-color: __SURFACE__;
+                color: __TEXT__;
+            }
+            QFrame#ModelBuilderVisualsSection,
+            QFrame#ModelBuilderSoftDividerSection,
+            QFrame#ModelBuilderDataPanel {
+                border: 1px solid __BORDER__;
+                border-radius: 6px;
+            }
+            QFrame#ModelDataPanelCollapsedRail,
+            QFrame#ModelSidePanelCollapsedRail {
+                border: none;
+                border-radius: 0px;
+                background: __SURFACE__;
+                background-color: __SURFACE__;
+            }
+            QFrame#ModelBuilderEmptyState {
+                border: 1px dashed __BORDER__;
+                border-radius: 6px;
+            }
+            QLabel#ModelBuilderTitle,
+            QLabel#ModelBuilderSectionTitle {
+                color: __TEXT__;
+                background: transparent;
+                font-weight: 500;
+            }
+            QLabel#ModelBuilderHint,
+            QLabel#ModelBuilderFieldLabel,
+            QLabel#ModelBuilderEmptyStateLabel,
+            QLabel#ModelDataPanelCollapsedTitle,
+            QLabel#ModelBindingSlotLabel,
+            QLabel#ModelBindingSlotValue {
+                color: __MUTED__;
+                background: transparent;
+            }
+            QLabel#ModelDataPanelCollapsedTitle,
+            QLabel#ModelSidePanelCollapsedTitle {
+                color: __TEXT__;
+                background: transparent;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QListWidget#ModelBuilderFieldList {
+                background: __SURFACE_2__;
+                color: __TEXT__;
+                border: 1px solid __BORDER__;
+                border-radius: 2px;
+                padding: 2px;
+                outline: 0;
+            }
+            QWidget#ModelBuilderFieldListViewport {
+                background: __SURFACE_2__;
+            }
+            QListWidget#ModelBuilderFieldList::item {
+                background: transparent;
+                color: __TEXT__;
+                border: none;
+                padding: 4px 6px;
+                margin: 0px;
+            }
+            QListWidget#ModelBuilderFieldList::item:hover {
+                background: __HOVER__;
+                color: __TEXT__;
+            }
+            QListWidget#ModelBuilderFieldList::item:selected {
+                background: __CHECKED__;
+                color: __TEXT__;
+            }
+            QComboBox#ModelBuilderCombo,
+            QLineEdit#ModelBuilderLineEdit,
+            QSpinBox#ModelBuilderSpin,
+            QComboBox#ModelBindingAggregationCombo {
+                background: __SURFACE_2__;
+                color: __TEXT__;
+                border: 1px solid __BORDER__;
+                border-radius: 2px;
+                selection-background-color: __CHECKED__;
+                selection-color: __TEXT__;
+            }
+            QComboBox#ModelBindingAggregationCombo {
+                min-width: 58px;
+                max-width: 58px;
+                min-height: 18px;
+                max-height: 18px;
+                padding: 0 2px;
+            }
+            QComboBox#ModelBuilderCombo:hover,
+            QLineEdit#ModelBuilderLineEdit:hover,
+            QSpinBox#ModelBuilderSpin:hover,
+            QComboBox#ModelBindingAggregationCombo:hover {
+                background: __HOVER__;
+                border-color: __CHECKED_BORDER__;
+            }
+            QFrame#ModelBindingSlot {
+                background: __SURFACE_2__;
+                border: 1px solid __BORDER__;
+                border-radius: 4px;
+            }
+            QFrame#ModelBindingSlot[filled="true"] {
+                background: __SURFACE_2__;
+                border-color: __CHECKED_BORDER__;
+            }
+            QFrame#ModelBindingFieldChip {
+                background: __SURFACE__;
+                border: 1px solid __BORDER__;
+                border-radius: 3px;
+                min-height: 22px;
+                max-height: 24px;
+            }
+            QLabel#ModelBindingFieldBadge {
+                background: __CHECKED__;
+                color: __TEXT__;
+                border: 1px solid __CHECKED_BORDER__;
+                border-radius: 2px;
+                min-width: 24px;
+                max-width: 26px;
+            }
+            QLabel#ModelBindingFieldName {
+                color: __TEXT__;
+                background: transparent;
+                min-width: 0px;
+            }
+            QToolButton#ModelVisualTypeButton,
+            QToolButton#ModelBindingSlotMove,
+            QToolButton#ModelBindingSlotRemove,
+            QToolButton#ModelSidePanelToggle,
+            QToolButton#ModelDataPanelToggle {
+                background: transparent;
+                border: 1px solid transparent;
+                color: __TEXT__;
+            }
+            QToolButton#ModelVisualTypeButton:hover,
+            QToolButton#ModelBindingSlotMove:hover,
+            QToolButton#ModelSidePanelToggle:hover,
+            QToolButton#ModelDataPanelToggle:hover {
+                background: transparent;
+                border-color: transparent;
+                color: __TEXT__;
+            }
+            QFrame#ModelBuilderVisualsSection QToolButton#ModelVisualTypeButton:hover,
+            QFrame#ModelBuilderVisualsSection QToolButton#ModelBindingSlotMove:hover {
+                background: __HOVER__;
+                border-color: __BORDER__;
+            }
+            QToolButton#ModelBindingSlotRemove:hover {
+                background: rgba(239, 68, 68, 0.08);
+                border-color: rgba(239, 68, 68, 0.20);
+            }
+            QToolButton#ModelVisualTypeButton:checked {
+                background: __CHECKED__;
+                border-color: __CHECKED_BORDER__;
+                color: __TEXT__;
+            }
+            """
+        )
+        for widget in (
+            getattr(self, "builder_panel", None),
+            getattr(self, "visual_side_stack", None),
+            getattr(self, "data_panel", None),
+        ):
+            if widget is None:
+                continue
+            try:
+                widget.setStyleSheet(style)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        for name in (
+            "ModelBuilderScroll",
+            "ModelBuilderScrollViewport",
+            "ModelBuilderHost",
+            "ModelBuilderBottomSpacer",
+            "ModelBuilderVisualsSection",
+            "ModelBuilderEmptyState",
+            "ModelBuilderSoftDividerSection",
+            "ModelBuilderDataPanel",
+            "ModelDataPanelCollapsedRail",
+            "ModelSidePanelCollapsedRail",
+            "ModelDataPanelHeader",
+            "ModelDataPanelBody",
+            "ModelDataFieldsBody",
+            "ModelBuilderDataSection",
+            "ModelBuilderFieldList",
+            "ModelBuilderFieldListViewport",
+        ):
+            for widget in self.findChildren(QWidget, name):
+                try:
+                    palette = widget.palette()
+                    palette.setColor(QPalette.Window, QColor(_model_theme_color("surface")))
+                    palette.setColor(QPalette.Base, QColor(_model_theme_color("surface_2")))
+                    palette.setColor(QPalette.AlternateBase, QColor(_model_theme_color("surface")))
+                    palette.setColor(QPalette.Text, QColor(_model_theme_color("text")))
+                    palette.setColor(QPalette.WindowText, QColor(_model_theme_color("text")))
+                    widget.setPalette(palette)
+                    widget.setAutoFillBackground(True)
+                    widget.setStyleSheet(style)
+                except Exception:
+                    log_exception("falha opcional ignorada")
+        label_style = (
+            "background: transparent; "
+            f"color: {_model_theme_color('muted')}; "
+            "font-weight: 400;"
+        )
+        title_style = (
+            "background: transparent; "
+            f"color: {_model_theme_color('text')}; "
+            "font-weight: 500;"
+        )
+        for name, style_text in (
+            ("ModelBuilderSectionTitle", title_style),
+            ("ModelBuilderEmptyStateLabel", label_style),
+            ("ModelBindingSlotValue", label_style),
+            ("ModelDataPanelCollapsedTitle", title_style),
+            ("ModelSidePanelCollapsedTitle", title_style),
+        ):
+            for label in self.findChildren(QLabel, name):
+                try:
+                    label.setStyleSheet(style_text)
+                except Exception:
+                    log_exception("falha opcional ignorada")
+        self._apply_visual_tab_button_styles()
+        self._apply_collapsed_panel_chrome()
+
+    def _apply_collapsed_panel_chrome(self):
+        surface = _model_theme_color("surface")
+        text = _model_theme_color("text")
+        button_style = f"""
+            QToolButton#ModelSidePanelToggle,
+            QToolButton#ModelDataPanelToggle,
+            QToolButton {{
+                background: transparent;
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                color: {text};
+                padding: 0px;
+                font-size: 16px;
+                font-weight: 500;
+            }}
+            QToolButton#ModelSidePanelToggle:hover,
+            QToolButton#ModelDataPanelToggle:hover,
+            QToolButton:hover,
+            QToolButton:pressed {{
+                background: {_model_theme_color("hover")};
+                background-color: {_model_theme_color("hover")};
+                border: 1px solid {_model_theme_color("border")};
+                color: {text};
+            }}
+        """
+        rail_style = f"background: {surface}; background-color: {surface}; border: none; border-radius: 0px;"
+        label_style = f"background: transparent; color: {text}; font-size: 12px; font-weight: 500;"
+
+        for rail_name in ("visual_side_collapsed_rail", "data_panel_collapsed_rail"):
+            rail = getattr(self, rail_name, None)
+            if rail is None:
+                continue
+            try:
+                rail.setStyleSheet(rail_style)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+        for button_name in (
+            "visual_side_toggle_btn",
+            "visual_side_collapsed_btn",
+            "data_panel_toggle_btn",
+            "data_panel_collapsed_btn",
+        ):
+            button = getattr(self, button_name, None)
+            if button is None:
+                continue
+            try:
+                button.setAutoRaise(True)
+                button.setFixedSize(22, 22)
+                button.setStyleSheet(button_style)
+                button.style().unpolish(button)
+                button.style().polish(button)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+        for label_name in ("visual_side_collapsed_title", "data_panel_collapsed_title"):
+            label = getattr(self, label_name, None)
+            if label is None:
+                continue
+            try:
+                label.setStyleSheet(label_style)
+                label.updateGeometry()
+                label.update()
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _apply_visual_tab_button_styles(self):
+        style = """
+            QPushButton#ModelVisualPanelTabButton {
+                min-height: 28px;
+                max-height: 28px;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                background-color: transparent;
+                color: __MUTED__;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 500;
+                text-align: center;
+            }
+            QPushButton#ModelVisualPanelTabButton:hover {
+                background-color: __HOVER__;
+                border-color: __BORDER__;
+                color: __TEXT__;
+            }
+            QPushButton#ModelVisualPanelTabButton:checked,
+            QPushButton#ModelVisualPanelTabButton:checked:hover {
+                background-color: __CHECKED__;
+                border-color: __CHECKED_BORDER__;
+                color: __TEXT__;
+            }
+            QPushButton#ModelVisualPanelTabButton:pressed {
+                background-color: __CHECKED__;
+                border-color: __CHECKED_BORDER__;
+                color: __TEXT__;
+            }
+        """
+        style = self._fill_model_theme_tokens(style)
+        for button in (
+            getattr(self, "visual_data_tab_btn", None),
+            getattr(self, "visual_format_tab_btn", None),
+        ):
+            if button is None:
+                continue
+            button.setStyleSheet(style)
+            try:
+                button.style().unpolish(button)
+                button.style().polish(button)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
     def _build_chart_builder_panel(self, parent: QWidget) -> QFrame:
-        panel = QFrame(parent)
-        panel.setObjectName("ModelBuilderPanel")
-        panel.setAttribute(Qt.WA_StyledBackground, True)
+        parts = build_model_builder_panel(
+            parent,
+            visual_specs=self._builder_visual_specs,
+            on_value_changed=self._on_builder_value_changed,
+            on_binding_controls_changed=self._update_selected_visual_binding_controls,
+            on_field_dropped=self._apply_dropped_field_to_selected_visual,
+            on_remove_requested=self._remove_selected_visual_slot_field,
+            on_aggregation_changed=self._change_selected_visual_slot_aggregation,
+            on_move_requested=self._move_selected_visual_slot_field,
+        )
+        self.builder_empty_label = parts.builder_empty_label
+        self.builder_construct_card = parts.builder_construct_card
+        self.builder_selected_visual_label = parts.builder_selected_visual_label
+        self._builder_selection_widgets = parts.builder_selection_widgets
+        self.builder_binding_slots = parts.builder_binding_slots
+        self.builder_format_card = parts.builder_format_card
+        self.builder_option_labels = parts.builder_option_labels
+        self.builder_agg_combo = parts.builder_agg_combo
+        self.builder_topn_spin = parts.builder_topn_spin
+        self.builder_title_edit = parts.builder_title_edit
+        self.builder_dimension_combo = parts.builder_dimension_combo
+        self.builder_value_combo = parts.builder_value_combo
+        return parts.panel
 
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+    def _build_data_panel(self, parent: QWidget) -> QFrame:
+        parts = build_model_data_panel(
+            parent,
+            toggle_data_panel=self._toggle_data_panel,
+            on_builder_layer_changed=self._on_builder_layer_changed,
+            handle_field_list_activation=self._handle_field_list_activation,
+            vertical_label_cls=_ModelVerticalPanelLabel,
+        )
+        for name, widget in parts.__dict__.items():
+            if name == "panel":
+                continue
+            setattr(self, name, widget)
+        return parts.panel
 
-        title = QLabel(_rt("Camada e campos"))
-        title.setObjectName("ModelBuilderTitle")
-        layout.addWidget(title, 0)
+    def showEvent(self, event):
+        super().showEvent(event)
+        harmonize_widget_fonts(self)
+        self._refresh_builder_data_fonts()
+        self._refresh_theme_icons()
 
-        helper = QLabel(_rt("Selecione a camada, campos e crie um grafico direto no canvas."))
-        helper.setObjectName("ModelBuilderHint")
-        helper.setWordWrap(True)
-        layout.addWidget(helper, 0)
-
-        form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(8)
-        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        form.setFormAlignment(Qt.AlignTop)
-
-        self.builder_layer_combo = QComboBox(panel)
-        self.builder_layer_combo.setObjectName("ModelBuilderCombo")
-        form.addRow(_rt("Camada"), self.builder_layer_combo)
-
-        self.builder_dimension_combo = QComboBox(panel)
-        self.builder_dimension_combo.setObjectName("ModelBuilderCombo")
-        form.addRow(_rt("Categoria"), self.builder_dimension_combo)
-
-        self.builder_value_combo = QComboBox(panel)
-        self.builder_value_combo.setObjectName("ModelBuilderCombo")
-        form.addRow(_rt("Metrica"), self.builder_value_combo)
-
-        self.builder_agg_combo = QComboBox(panel)
-        self.builder_agg_combo.setObjectName("ModelBuilderCombo")
-        self.builder_agg_combo.addItem(_rt("Contagem"), "count")
-        self.builder_agg_combo.addItem(_rt("Soma"), "sum")
-        self.builder_agg_combo.addItem(_rt("Media"), "avg")
-        self.builder_agg_combo.addItem(_rt("Minimo"), "min")
-        self.builder_agg_combo.addItem(_rt("Maximo"), "max")
-        form.addRow(_rt("Agregacao"), self.builder_agg_combo)
-
-        self.builder_chart_type_combo = QComboBox(panel)
-        self.builder_chart_type_combo.setObjectName("ModelBuilderCombo")
-        self.builder_chart_type_combo.addItem(_rt("Colunas"), "bar")
-        self.builder_chart_type_combo.addItem(_rt("Barras"), "barh")
-        self.builder_chart_type_combo.addItem(_rt("Linha"), "line")
-        self.builder_chart_type_combo.addItem(_rt("Pizza"), "pie")
-        self.builder_chart_type_combo.addItem(_rt("Rosca"), "donut")
-        self.builder_chart_type_combo.addItem(_rt("Card"), "card")
-        form.addRow(_rt("Tipo"), self.builder_chart_type_combo)
-
-        self.builder_topn_spin = QSpinBox(panel)
-        self.builder_topn_spin.setObjectName("ModelBuilderSpin")
-        self.builder_topn_spin.setRange(3, 50)
-        self.builder_topn_spin.setValue(12)
-        form.addRow(_rt("Top N"), self.builder_topn_spin)
-
-        self.builder_title_edit = QLineEdit(panel)
-        self.builder_title_edit.setObjectName("ModelBuilderLineEdit")
-        self.builder_title_edit.setPlaceholderText(_rt("Titulo do grafico (opcional)"))
-        form.addRow(_rt("Titulo"), self.builder_title_edit)
-        layout.addLayout(form, 0)
-
-        actions = QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(8)
-        self.builder_refresh_btn = QPushButton(_rt("Atualizar"))
-        self.builder_refresh_btn.setObjectName("ModelActionButton")
-        self.builder_add_btn = QPushButton(_rt("Adicionar grafico"))
-        self.builder_add_btn.setObjectName("ModelActionButton")
-        actions.addWidget(self.builder_refresh_btn, 0)
-        actions.addWidget(self.builder_add_btn, 1)
-        layout.addLayout(actions, 0)
-        layout.addStretch(1)
-
-        self.builder_layer_combo.currentIndexChanged.connect(self._on_builder_layer_changed)
-        self.builder_value_combo.currentIndexChanged.connect(self._on_builder_value_changed)
-        self.builder_refresh_btn.clicked.connect(self._refresh_builder_layers)
-        self.builder_add_btn.clicked.connect(self._add_chart_from_builder)
-        return panel
+    def _refresh_builder_data_fonts(self):
+        refresh_builder_data_fonts(self)
 
     def _field_is_numeric(self, field_def) -> bool:
-        if field_def is None:
-            return False
+        return field_is_numeric(field_def)
+
+    def _field_is_date_like(self, field_def) -> bool:
+        return field_is_date_like(field_def)
+
+    def _field_group_for_def(self, field_def) -> str:
+        return field_group_for_def(field_def)
+
+    def _suggested_role_for_group(self, group: str) -> str:
+        mapping = {
+            "dimension": ROLE_X_AXIS,
+            "measure": ROLE_VALUES,
+            "date": ROLE_X_AXIS,
+            "other": ROLE_TOOLTIP,
+        }
+        return mapping.get(str(group or "").strip().lower(), ROLE_X_AXIS)
+
+    def _slot_values_for_binding(self, binding: DashboardChartBinding, slot_name: str) -> List[FieldBindingItem]:
+        role = normalize_binding_role(slot_name)
+        return list(binding.normalized().bindings.get(role) or [])
+
+    def _chart_type_label(self, chart_type: str) -> str:
+        return chart_type_label(chart_type)
+
+    def _empty_chart_payload(self, chart_type: str, title: str = "") -> ChartPayload:
+        return empty_chart_payload(chart_type, title)
+
+    def _selected_canvas_item(self) -> Optional[DashboardChartItem]:
+        active_canvas = self._active_canvas()
+        if active_canvas is None:
+            return None
+        return active_canvas.selected_item()
+
+    def _selected_canvas_item_widget(self):
+        active_canvas = self._active_canvas()
+        if active_canvas is None:
+            return None
+        return active_canvas.selected_item_widget()
+
+    def _replace_canvas_item(self, updated_item: DashboardChartItem, *, page_id: Optional[str] = None, select: bool = True):
+        active_widget = self._active_page_widget()
+        if active_widget is None:
+            return
+        if page_id and str(active_widget.page_id or "").strip() != str(page_id or "").strip():
+            active_widget = self._page_widget_for_id(page_id)
+        if active_widget is None:
+            return
+        canvas = active_widget.canvas
+        items = canvas.items()
+        replaced = False
+        for index, item in enumerate(items):
+            if str(item.item_id or "") == str(updated_item.item_id or ""):
+                items[index] = updated_item.clone()
+                replaced = True
+                break
+        if not replaced:
+            return
+        canvas.update_items(items, canvas.visual_links(), canvas.chart_relations())
+        if select:
+            canvas.select_item(updated_item.item_id, emit_signal=True)
+        self._sync_project_from_pages(active_widget.page_id)
+        self._dirty = True
+        self._commit_history_if_changed()
+        self._refresh_ui_state()
+
+    def _create_blank_visual_from_type(self, chart_type: str):
+        if self.current_project is None:
+            self._create_blank_project(_rt("Novo painel"))
+        active_canvas = self._active_canvas()
+        active_widget = self._active_page_widget()
+        if active_canvas is None or active_widget is None:
+            return
+        item_id = uuid.uuid4().hex
+        binding = DashboardChartBinding(
+            chart_id=item_id,
+            chart_type=str(chart_type or "bar").strip().lower(),
+            aggregation="count",
+            top_n=max(1, int(self.builder_topn_spin.value() or 12)),
+        ).normalized()
+        title = self._chart_type_label(chart_type)
+        item = DashboardChartItem(
+            item_id=item_id,
+            origin="model_builder_v2",
+            payload=self._empty_chart_payload(chart_type, title=""),
+            visual_state=ChartVisualState(chart_type=str(chart_type or "bar").strip().lower()),
+            binding=binding,
+            title="",
+            subtitle=_rt("Arraste campos para configurar este visual"),
+            source_meta={"builder_version": "v2", "empty_visual": True},
+        )
+        active_canvas.add_item(item)
+        self._sync_project_from_pages(active_widget.page_id)
+        self._dirty = True
+        self._commit_history_if_changed()
+        self._refresh_ui_state()
+        self._set_builder_panel_open(True, focus=False)
+        self._sync_builder_selection_state()
+
+    def _select_visual_type_from_builder(self, chart_type: str):
+        normalized_type = normalize_chart_type(chart_type)
+        item = self._selected_canvas_item()
+        if item is None:
+            self._create_blank_visual_from_type(normalized_type)
+            return
+        binding = item.binding.normalized()
+        binding.chart_type = normalized_type
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is None:
+            return
+        updated_item.visual_state.chart_type = normalized_type
+        self._replace_canvas_item(updated_item, select=True)
+        self._set_builder_panel_open(True, focus=False)
+        self._sync_builder_selection_state()
+
+    def _field_catalog_for_layer(self, layer: Optional[QgsVectorLayer]) -> Dict[str, List[Dict[str, str]]]:
+        return field_catalog_for_layer(layer)
+
+    def _refresh_builder_field_lists(self, layer: Optional[QgsVectorLayer]):
+        self._builder_field_catalog = populate_builder_field_list(self, layer)
+        self._sync_data_panel_width_to_content()
+
+    def _text_width(self, metrics: QFontMetrics, text: str) -> int:
+        if hasattr(metrics, "horizontalAdvance"):
+            return int(metrics.horizontalAdvance(text))
+        return int(metrics.width(text))
+
+    def _desired_data_panel_width(self) -> int:
+        return desired_data_panel_width(
+            self.builder_fields_list,
+            self.builder_layer_combo,
+            minimum_width=_MODEL_DATA_PANEL_MIN_WIDTH,
+            maximum_width=_MODEL_DATA_PANEL_MAX_WIDTH,
+            default_width=_MODEL_DATA_PANEL_DEFAULT_WIDTH,
+        )
+
+    def _sync_data_panel_width_to_content(self):
+        if not hasattr(self, "data_panel"):
+            return
+        self._data_panel_width = self._desired_data_panel_width()
+        self._sync_data_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
+    def _toggle_data_panel(self):
+        toggle_data_panel_state(
+            self,
+            collapsed_width=_MODEL_DATA_PANEL_COLLAPSED_WIDTH,
+            min_width=_MODEL_DATA_PANEL_MIN_WIDTH,
+            max_width=_MODEL_DATA_PANEL_MAX_WIDTH,
+            default_width=_MODEL_DATA_PANEL_DEFAULT_WIDTH,
+        )
+        self._sync_data_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
+    def _set_data_panel_available(self, available: bool):
+        if not hasattr(self, "data_panel"):
+            return
+        self.data_panel.setVisible(bool(available))
+        if available:
+            self._sync_data_panel_chrome()
+
+    def _sync_data_panel_chrome(self):
+        sync_data_panel_chrome(
+            self,
+            collapsed_width=_MODEL_DATA_PANEL_COLLAPSED_WIDTH,
+            min_width=_MODEL_DATA_PANEL_MIN_WIDTH,
+            max_width=_MODEL_DATA_PANEL_MAX_WIDTH,
+        )
+        self._apply_collapsed_panel_chrome()
+
+    def _active_selected_binding(self) -> Optional[DashboardChartBinding]:
+        item = self._selected_canvas_item()
+        if item is None:
+            return None
+        return item.binding.normalized()
+
+    def _sync_builder_selection_state(self):
+        item = self._selected_canvas_item()
+        binding = item.binding.normalized() if item is not None else None
+        if not builder_has_selection(item, binding):
+            self._builder_selected_item_id = ""
+            if hasattr(self, "builder_empty_label"):
+                self.builder_empty_label.setVisible(True)
+            if hasattr(self, "builder_construct_card"):
+                self.builder_construct_card.setVisible(False)
+            if hasattr(self, "builder_format_card"):
+                self.builder_format_card.setVisible(False)
+            self.builder_selected_visual_label.setText(_rt("Selecione um visual para começar."))
+            for button in self.builder_visual_buttons.values():
+                button.blockSignals(True)
+                button.setChecked(False)
+                button.blockSignals(False)
+            for widget in list(getattr(self, "_builder_selection_widgets", []) or []):
+                widget.setVisible(False)
+            for slot in self.builder_binding_slots.values():
+                slot.set_value("")
+            self.builder_agg_combo.setEnabled(False)
+            self.builder_topn_spin.setEnabled(False)
+            self.builder_title_edit.setEnabled(False)
+            return
+        self._builder_selected_item_id = str(item.item_id or "")
+        if hasattr(self, "builder_empty_label"):
+            self.builder_empty_label.setVisible(False)
+        if hasattr(self, "builder_construct_card"):
+            self.builder_construct_card.setVisible(True)
+        if hasattr(self, "builder_format_card"):
+            self.builder_format_card.setVisible(True)
+        active_chart_type = normalize_chart_type(binding.chart_type or getattr(item.visual_state, "chart_type", ""))
+        layer_name = binding.source_name or _rt("Sem camada")
+        visual_label = self._chart_type_label(binding.chart_type or getattr(item.visual_state, "chart_type", "bar"))
+        self.builder_selected_visual_label.setText(_rt("{visual} · {layer}", visual=visual_label, layer=layer_name))
+        for widget in list(getattr(self, "_builder_selection_widgets", []) or []):
+            widget.setVisible(True)
+        slot_defs = binding_slot_definitions(binding.chart_type or getattr(item.visual_state, "chart_type", "bar"))
+        visible_slots = {str(slot.get("name") or "") for slot in slot_defs}
+        labels_by_slot = {str(slot.get("name") or ""): str(slot.get("label") or "") for slot in slot_defs}
+        for slot_name, slot in self.builder_binding_slots.items():
+            slot.setVisible(slot_name in visible_slots)
+            if slot_name in visible_slots:
+                label = labels_by_slot.get(slot_name) or slot_name
+                slot.set_label(_rt(label))
+                slot.set_values(
+                    self._slot_values_for_binding(binding, slot_name),
+                    placeholder=_rt("Opcional"),
+                    source_item_id=item.item_id,
+                )
+        self.builder_agg_combo.setEnabled(True)
+        self.builder_topn_spin.setEnabled(True)
+        self.builder_title_edit.setEnabled(True)
+        self.builder_agg_combo.setVisible(True)
+        label = self.builder_option_labels.get("aggregation")
+        if label is not None:
+            label.setVisible(True)
+        topn_visible = active_chart_type not in {"card", "kpi", "gauge", "scatter"}
+        self.builder_topn_spin.setVisible(topn_visible)
+        label = self.builder_option_labels.get("top_n")
+        if label is not None:
+            label.setVisible(topn_visible)
+        label = self.builder_option_labels.get("title")
+        if label is not None:
+            label.setVisible(True)
+        agg_index = self.builder_agg_combo.findData(binding.aggregation or "count")
+        if agg_index < 0:
+            agg_index = self.builder_agg_combo.findData("count")
+        self.builder_agg_combo.blockSignals(True)
+        self.builder_agg_combo.setCurrentIndex(max(0, agg_index))
+        self.builder_agg_combo.blockSignals(False)
+        self.builder_topn_spin.blockSignals(True)
+        self.builder_topn_spin.setValue(max(1, int(binding.top_n or 12)))
+        self.builder_topn_spin.blockSignals(False)
+        self.builder_title_edit.blockSignals(True)
+        self.builder_title_edit.setText(str(binding.title_override or item.title or ""))
+        self.builder_title_edit.blockSignals(False)
+        for chart_type, button in self.builder_visual_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(chart_type == active_chart_type)
+            button.blockSignals(False)
+
+    def _selected_layer(self) -> Optional[QgsVectorLayer]:
+        return self._current_builder_layer()
+
+    def _current_builder_layer(self) -> Optional[QgsVectorLayer]:
         try:
-            return bool(field_def.isNumeric())
+            layer = self.builder_layer_combo.currentLayer()
         except Exception:
-            log_exception("falha opcional ignorada")
-        type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
-        return any(token in type_name for token in ("int", "double", "float", "real", "numeric", "decimal"))
+            layer = None
+        if isinstance(layer, QgsVectorLayer) and layer.isValid():
+            return layer
+        layer_id = str(getattr(self.builder_layer_combo, "currentData", lambda: "")() or "")
+        return self._builder_layers.get(layer_id)
+
+    def _current_builder_layer_id(self) -> str:
+        layer = self._current_builder_layer()
+        if layer is not None:
+            return str(layer.id() or "")
+        return ""
+
+    def _current_builder_chart_type(self) -> str:
+        item = self._selected_canvas_item()
+        if item is not None:
+            binding = item.binding.normalized() if item.binding is not None else None
+            selected_type = normalize_chart_type(
+                (binding.chart_type if binding is not None else "")
+                or getattr(item.visual_state, "chart_type", "")
+            )
+            if selected_type:
+                return selected_type
+        return selected_builder_chart_type_from_buttons(getattr(self, "builder_visual_buttons", {}))
+
+    def _field_binding_item_from_payload(self, role: str, payload: Dict[str, object], order: int = 0) -> Optional[FieldBindingItem]:
+        field_name = str(payload.get("field_name") or payload.get("field") or "").strip()
+        if not field_name:
+            return None
+        field_kind = normalize_field_kind(str(payload.get("field_kind") or payload.get("field_group") or "unknown"))
+        aggregation = normalize_aggregation("", field_kind, role)
+        return FieldBindingItem(
+            field=field_name,
+            display_name=str(payload.get("display_name") or field_name).strip() or field_name,
+            type=field_kind,
+            aggregation=aggregation,
+            role=role,
+            order=order,
+        ).normalized(role, order)
+
+    def _apply_field_payload_to_binding(self, binding: DashboardChartBinding, slot_name: str, payload: Dict[str, object]) -> DashboardChartBinding:
+        slot_name = normalize_binding_role(slot_name)
+        field_name = str(payload.get("field_name") or "").strip()
+        field_group = str(payload.get("field_group") or "other").strip().lower() or "other"
+        layer_id = str(payload.get("layer_id") or "").strip()
+        layer_name = str(payload.get("layer_name") or "").strip()
+        source_slot = normalize_binding_role(str(payload.get("source_slot") or "").strip())
+        source_item_id = str(payload.get("source_item_id") or "").strip()
+        if not field_name:
+            return binding.normalized()
+        updated = binding.normalized()
+        updated.source_id = layer_id or updated.source_id
+        updated.source_name = layer_name or updated.source_name
+        if not updated.chart_type:
+            updated.chart_type = "bar"
+        if not slot_name or slot_name == "auto":
+            slot_name = suggest_binding_slot(updated.chart_type, field_group, updated)
+        if not slot_name or not is_binding_slot_compatible(updated.chart_type, slot_name, field_group):
+            self.builder_selected_visual_label.setText(_rt("Campo incompativel com este slot"))
+            return updated.normalized()
+        current_bindings = {
+            role: [item.normalized(role, index) for index, item in enumerate(list(items or []))]
+            for role, items in dict(updated.bindings or {}).items()
+        }
+        if source_slot and source_item_id and source_item_id == str(updated.chart_id or "") and source_slot != slot_name:
+            current_bindings[source_slot] = [
+                item.normalized(source_slot, index)
+                for index, item in enumerate(list(current_bindings.get(source_slot) or []))
+                if item.field != field_name
+            ]
+        role_items = list(current_bindings.get(slot_name) or [])
+        item = self._field_binding_item_from_payload(slot_name, payload, len(role_items))
+        if item is None:
+            return updated.normalized()
+        if any(existing.field.lower() == item.field.lower() for existing in role_items):
+            return updated.normalized()
+        slot_def = next((slot for slot in binding_slot_definitions(updated.chart_type) if str(slot.get("name") or "") == slot_name), {})
+        if not bool(slot_def.get("multiple", True)):
+            role_items = []
+        role_items.append(item)
+        current_bindings[slot_name] = role_items
+        updated.bindings = current_bindings
+        return updated.normalized()
+
+    def _remove_binding_slot_value(self, binding: DashboardChartBinding, slot_name: str, field_name: str = "") -> DashboardChartBinding:
+        updated = binding.normalized()
+        slot_name = normalize_binding_role(slot_name)
+        field_name = str(field_name or "").strip()
+        role_items = list(updated.bindings.get(slot_name) or [])
+        if field_name:
+            role_items = [item for item in role_items if item.field != field_name]
+        else:
+            role_items = []
+        updated.bindings[slot_name] = [item.normalized(slot_name, index) for index, item in enumerate(role_items)]
+        return updated.normalized()
+
+    def _change_binding_slot_aggregation(self, binding: DashboardChartBinding, slot_name: str, field_name: str, aggregation: str) -> DashboardChartBinding:
+        updated = binding.normalized()
+        role = normalize_binding_role(slot_name)
+        items = []
+        for index, item in enumerate(list(updated.bindings.get(role) or [])):
+            if item.field == field_name:
+                item = FieldBindingItem(item.field, item.display_name, item.type, aggregation, role, index).normalized(role, index)
+            items.append(item.normalized(role, index))
+        updated.bindings[role] = items
+        return updated.normalized()
+
+    def _move_binding_slot_field(self, binding: DashboardChartBinding, slot_name: str, field_name: str, delta: int) -> DashboardChartBinding:
+        updated = binding.normalized()
+        role = normalize_binding_role(slot_name)
+        items = list(updated.bindings.get(role) or [])
+        current = next((index for index, item in enumerate(items) if item.field == field_name), -1)
+        if current < 0:
+            return updated
+        target = max(0, min(len(items) - 1, current + int(delta or 0)))
+        if target == current:
+            return updated
+        item = items.pop(current)
+        items.insert(target, item)
+        updated.bindings[role] = [item.normalized(role, index) for index, item in enumerate(items)]
+        return updated.normalized()
+
+    def _update_selected_visual_binding_controls(self):
+        item = self._selected_canvas_item()
+        if item is None:
+            return
+        binding = item.binding.normalized()
+        binding.aggregation = str(self.builder_agg_combo.currentData() or "count").strip().lower() or "count"
+        binding.top_n = max(1, int(self.builder_topn_spin.value()))
+        binding.title_override = str(self.builder_title_edit.text() or "").strip()
+        for role in (ROLE_VALUES, ROLE_Y_AXIS):
+            items = list(binding.bindings.get(role) or [])
+            if items:
+                first = items[0]
+                items[0] = FieldBindingItem(first.field, first.display_name, first.type, binding.aggregation, first.role, first.order).normalized(first.role, first.order)
+                binding.bindings[role] = items
+                break
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _apply_dropped_field_to_selected_visual(self, slot_name: str, payload):
+        item = self._selected_canvas_item()
+        if item is None or not isinstance(payload, dict):
+            return
+        binding = self._apply_field_payload_to_binding(item.binding, slot_name, payload)
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _remove_selected_visual_slot_field(self, slot_name: str, field_name: str = ""):
+        item = self._selected_canvas_item()
+        if item is None:
+            return
+        binding = self._remove_binding_slot_value(item.binding, slot_name, field_name)
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _change_selected_visual_slot_aggregation(self, slot_name: str, field_name: str, aggregation: str):
+        item = self._selected_canvas_item()
+        if item is None:
+            return
+        binding = self._change_binding_slot_aggregation(item.binding, slot_name, field_name, aggregation)
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _move_selected_visual_slot_field(self, slot_name: str, field_name: str, delta: int):
+        item = self._selected_canvas_item()
+        if item is None:
+            return
+        binding = self._move_binding_slot_field(item.binding, slot_name, field_name, delta)
+        updated_item = self._rebuild_chart_item_from_binding(item, binding)
+        if updated_item is not None:
+            self._replace_canvas_item(updated_item)
+
+    def _handle_field_list_activation(self, payload):
+        if not isinstance(payload, dict):
+            return
+        binding = self._active_selected_binding() or DashboardChartBinding(chart_type="bar")
+        suggested = suggest_binding_slot(binding.chart_type or "bar", str(payload.get("field_group") or "other"), binding)
+        self._apply_dropped_field_to_selected_visual(suggested, payload)
 
     def _refresh_builder_layers(self):
-        previous_layer_id = str(self.builder_layer_combo.currentData() or "")
+        previous_layer_id = self._current_builder_layer_id()
+        selected_binding = self._active_selected_binding()
+        if selected_binding is not None and selected_binding.source_id:
+            previous_layer_id = str(selected_binding.source_id or previous_layer_id)
         self._builder_layers = {}
         self.builder_layer_combo.blockSignals(True)
-        self.builder_layer_combo.clear()
         project = QgsProject.instance()
         for layer in list(project.mapLayers().values()):
             if not isinstance(layer, QgsVectorLayer) or not layer.isValid():
                 continue
             self._builder_layers[layer.id()] = layer
-            self.builder_layer_combo.addItem(layer.name(), layer.id())
-        self.builder_layer_combo.blockSignals(False)
         if previous_layer_id and previous_layer_id in self._builder_layers:
-            index = self.builder_layer_combo.findData(previous_layer_id)
-            if index >= 0:
-                self.builder_layer_combo.setCurrentIndex(index)
+            try:
+                self.builder_layer_combo.setLayer(self._builder_layers[previous_layer_id])
+            except Exception:
+                log_exception("falha opcional ignorada")
+        self.builder_layer_combo.blockSignals(False)
         self._on_builder_layer_changed()
+        self._sync_builder_selection_state()
 
-    def _on_builder_layer_changed(self):
-        layer_id = str(self.builder_layer_combo.currentData() or "")
-        layer = self._builder_layers.get(layer_id)
+    def _on_builder_layer_changed(self, *_args):
+        layer = self._current_builder_layer()
         self.builder_dimension_combo.blockSignals(True)
         self.builder_value_combo.blockSignals(True)
         self.builder_dimension_combo.clear()
         self.builder_value_combo.clear()
-        self.builder_value_combo.addItem(_rt("Contagem de registros"), "__count__")
+        self.builder_value_combo.addItem(_rt("Contagem"), "__count__")
         if layer is not None:
             for field_def in list(layer.fields()):
                 field_name = str(field_def.name() or "").strip()
@@ -785,9 +2297,17 @@ class ModelTab(QWidget):
                     self.builder_value_combo.addItem(field_name, field_name)
         self.builder_dimension_combo.blockSignals(False)
         self.builder_value_combo.blockSignals(False)
+        self._refresh_builder_field_lists(layer)
         self._on_builder_value_changed()
-        has_layer = layer is not None and self.builder_dimension_combo.count() > 0
-        self.builder_add_btn.setEnabled(has_layer)
+        selected_item = self._selected_canvas_item()
+        if selected_item is not None:
+            binding = selected_item.binding.normalized()
+            if layer is not None and binding.source_id != layer.id():
+                binding.source_id = layer.id()
+                binding.source_name = layer.name()
+                updated_item = self._rebuild_chart_item_from_binding(selected_item, binding)
+                if updated_item is not None:
+                    self._replace_canvas_item(updated_item)
 
     def _on_builder_value_changed(self):
         value_key = str(self.builder_value_combo.currentData() or "__count__")
@@ -797,50 +2317,40 @@ class ModelTab(QWidget):
             self.builder_agg_combo.setCurrentIndex(index)
 
     def _safe_float(self, value) -> Optional[float]:
-        if value is None:
-            return None
-        text = str(value).strip()
-        if not text:
-            return None
-        text = text.replace(" ", "")
-        if "," in text and "." in text:
-            text = text.replace(".", "").replace(",", ".")
-        elif "," in text:
-            text = text.replace(",", ".")
-        try:
-            return float(text)
-        except Exception:
-            return None
+        return safe_float(value)
 
     def _resolve_layer_field_name(self, layer: QgsVectorLayer, field_name: str) -> str:
-        candidate = str(field_name or "").strip()
-        if layer is None or not candidate:
-            return ""
-        try:
-            fields = layer.fields()
-        except Exception:
-            return candidate
-        try:
-            index = fields.lookupField(candidate)
-        except Exception:
-            index = -1
-        if index is not None and index >= 0:
-            try:
-                return str(fields.field(index).name() or candidate).strip()
-            except Exception:
-                return candidate
-        lowered = candidate.lower()
-        try:
-            for field in fields:
-                name = str(field.name() or "").strip()
-                if name and (name == candidate or name.lower() == lowered):
-                    return name
-        except Exception:
-            log_exception("falha opcional ignorada")
-        return ""
+        return resolve_layer_field_name(layer, field_name)
 
-    def _configure_toolbar_icon_button(self, button, icon_name: str, tooltip: str, icon_size: int = 18):
+    def _field_kind_for_layer_field(self, layer: QgsVectorLayer, field_name: str) -> str:
+        return field_kind_for_layer_field(layer, field_name)
+
+    def _resolve_binding_items_for_layer(self, binding: DashboardChartBinding, role: str, layer: QgsVectorLayer) -> List[FieldBindingItem]:
+        return resolve_binding_items_for_layer(binding, role, layer)
+
+    def _feature_category_from_items(self, feature, items: List[FieldBindingItem]) -> tuple[str, object]:
+        return feature_category_from_items(feature, items)
+
+    def _rebuild_scatter_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding, layer: QgsVectorLayer) -> DashboardChartItem:
+        return rebuild_scatter_item_from_binding(item, binding, layer)
+
+    def _rebuild_matrix_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding, layer: QgsVectorLayer) -> DashboardChartItem:
+        return rebuild_matrix_item_from_binding(item, binding, layer)
+
+    def _rebuild_chart_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding) -> Optional[DashboardChartItem]:
+        if item is None:
+            return None
+        updated_binding = binding.normalized()
+        layer = self._builder_layers.get(str(updated_binding.source_id or ""))
+        if layer is None:
+            layer = self._selected_layer()
+        return rebuild_chart_item_from_binding(item, updated_binding, layer)
+
+    def _configure_toolbar_icon_button(self, button, icon_name: str, tooltip: str, icon_size: int = 18, icon_color: str = ""):
         button.setProperty("toolbarMode", "icon")
+        button.setProperty("modelIconName", icon_name)
+        button.setProperty("modelIconSize", int(icon_size))
+        button.setProperty("modelIconColor", str(icon_color or ""))
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.NoFocus)
         button.setToolTip(tooltip)
@@ -853,7 +2363,7 @@ class ModelTab(QWidget):
             button.setText("")
         except Exception:
             log_exception("falha opcional ignorada")
-        icon = svg_icon(icon_name)
+        icon = _model_tinted_svg_icon(icon_name, icon_size, icon_color)
         if not icon.isNull():
             button.setIcon(icon)
         button.setIconSize(QSize(icon_size, icon_size))
@@ -861,8 +2371,8 @@ class ModelTab(QWidget):
             button.setToolButtonStyle(Qt.ToolButtonIconOnly)
             button.setAutoRaise(False)
 
-    def _configure_toolbar_text_icon_button(self, button, icon_name: str, text: str, tooltip: str, icon_size: int = 18):
-        self._configure_toolbar_icon_button(button, icon_name, tooltip, icon_size=icon_size)
+    def _configure_toolbar_text_icon_button(self, button, icon_name: str, text: str, tooltip: str, icon_size: int = 18, icon_color: str = ""):
+        self._configure_toolbar_icon_button(button, icon_name, tooltip, icon_size=icon_size, icon_color=icon_color)
         button.setProperty("toolbarMode", "label")
         try:
             button.setText(text)
@@ -876,41 +2386,25 @@ class ModelTab(QWidget):
         separator.setFrameShadow(QFrame.Plain)
         return separator
 
+    def _sync_toolbar_separator_visibility(self):
+        visual_strip = getattr(self, "toolbar_visuals_strip", None)
+        visual_types_visible = bool(visual_strip is not None and visual_strip.isVisible())
+        has_project = self.current_project is not None
+        for separator, visible in (
+            (getattr(self, "visual_types_leading_separator", None), visual_types_visible),
+            (getattr(self, "visual_types_trailing_separator", None), has_project),
+        ):
+            if separator is not None:
+                separator.setVisible(bool(visible))
+
     def _normalize_hex_color(self, value: object, fallback: str) -> str:
-        color = QColor(str(value or "").strip())
-        if not color.isValid():
-            color = QColor(str(fallback or "#FFFFFF"))
-        return color.name().upper()
+        return normalize_hex_color(value, fallback)
 
     def _default_canvas_style(self) -> Dict[str, object]:
-        return {
-            "background": "#FFFFFF",
-            "grid_color": "#E5E7EB",
-            "show_grid": True,
-            "grid_size": 8,
-            "grid_opacity": 0.72,
-        }
+        return default_canvas_style()
 
     def _normalized_canvas_style(self, style: Optional[Dict[str, object]] = None) -> Dict[str, object]:
-        base = self._default_canvas_style()
-        payload = dict(style or {})
-        try:
-            grid_size = int(round(float(payload.get("grid_size", base["grid_size"]))))
-        except Exception:
-            grid_size = int(base["grid_size"])
-        grid_size = max(4, min(48, grid_size))
-        try:
-            grid_opacity = float(payload.get("grid_opacity", base["grid_opacity"]))
-        except Exception:
-            grid_opacity = float(base["grid_opacity"])
-        grid_opacity = max(0.1, min(1.0, grid_opacity))
-        return {
-            "background": self._normalize_hex_color(payload.get("background"), str(base["background"])),
-            "grid_color": self._normalize_hex_color(payload.get("grid_color"), str(base["grid_color"])),
-            "show_grid": bool(payload.get("show_grid", base["show_grid"])),
-            "grid_size": grid_size,
-            "grid_opacity": grid_opacity,
-        }
+        return normalize_canvas_style(style, base=self._default_canvas_style())
 
     def _project_canvas_style(self) -> Dict[str, object]:
         if self.current_project is None:
@@ -944,8 +2438,7 @@ class ModelTab(QWidget):
         canvas_style = self._normalized_canvas_style(style if style is not None else self._project_canvas_style())
         if persist and self.current_project is not None:
             source_meta = dict(getattr(self.current_project, "source_meta", {}) or {})
-            source_meta["canvas_style"] = dict(canvas_style)
-            self.current_project.source_meta = source_meta
+            self.current_project.source_meta = apply_canvas_style_to_source_meta(source_meta, canvas_style)
         for widget in self._page_widgets_in_order():
             self._apply_canvas_style_to_widget(widget, canvas_style)
         if self.current_project is not None and mark_dirty:
@@ -955,424 +2448,45 @@ class ModelTab(QWidget):
         self._refresh_ui_state()
 
     def _set_color_preview_chip(self, label: QLabel, color_value: object, fallback: str):
-        color_hex = self._normalize_hex_color(color_value, fallback)
-        label.setText(" ")
-        label.setStyleSheet(
-            f"""
-            QLabel {{
-                min-width: 22px;
-                max-width: 22px;
-                min-height: 22px;
-                max-height: 22px;
-                border-radius: 6px;
-                border: 1px solid #D1D5DB;
-                background: {color_hex};
-            }}
-            """
+        set_color_preview_chip(label, color_value, fallback)
+
+    def _normalize_page_payload(self, payload: object) -> Dict[str, object]:
+        return normalize_page_payload(payload)
+
+    def _normalize_project_payload(self, payload: object) -> Dict[str, object]:
+        return normalize_project_payload(
+            payload,
+            page_title_provider=self._page_display_title,
+            canvas_style_normalizer=self._normalized_canvas_style,
         )
+
+    def _normalize_project_source_meta(self, source_meta: Optional[Dict[str, object]]) -> Dict[str, object]:
+        return normalize_project_source_meta(source_meta, canvas_style_normalizer=self._normalized_canvas_style)
+
+    def _normalize_loaded_project(self, project: DashboardProject) -> DashboardProject:
+        return normalize_loaded_project(
+            project,
+            page_title_provider=self._page_display_title,
+            canvas_style_normalizer=self._normalized_canvas_style,
+        )
+
+    def _apply_legacy_single_page_compatibility(self, payload: object) -> Dict[str, object]:
+        return apply_legacy_single_page_compatibility(payload, page_title_provider=self._page_display_title)
+
+    def _resolve_active_page_id(self, payload: object, pages: Optional[List[object]] = None) -> str:
+        return resolve_active_page_id(payload, pages)
+
+    def _validate_dashboard_project(self, project: object) -> bool:
+        return validate_dashboard_project(project)
 
     def _open_canvas_style_settings(self):
         if self.current_project is None:
             return
         style = self._project_canvas_style()
-        draft = dict(style)
-
-        dialog = QDialog(self)
-        dialog.setObjectName("WalkerCanvasStyleDialog")
-        dialog.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
-        dialog.setModal(True)
-        dialog.resize(560, 392)
-        dialog.setFont(ui_font())
-        dialog._font_enforcer = attach_ui_font_enforcer(dialog)
-        dialog.setStyleSheet(
-            """
-            QDialog#WalkerCanvasStyleDialog {
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                border-radius: 10px;
-            }
-            QFrame#WalkerDialogCard {
-                background: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-radius: 8px;
-            }
-            QFrame#WalkerDialogDragHandle {
-                background: transparent;
-                border: none;
-            }
-            QLabel#WalkerDialogTitle {
-                color: #111827;
-                font-size: 14px;
-                font-weight: 500;
-            }
-            QLabel#WalkerDialogSubtitle {
-                color: #6B7280;
-                font-size: 11px;
-            }
-            QLabel#WalkerFieldLabel {
-                color: #111827;
-                font-size: 12px;
-                font-weight: 400;
-            }
-            QLineEdit#WalkerDialogInput,
-            QComboBox#WalkerDialogInput,
-            QSpinBox#WalkerDialogInput {
-                min-height: 30px;
-                padding: 0 9px;
-                color: #111827;
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                border-radius: 8px;
-            }
-            QLineEdit#WalkerDialogInput:focus,
-            QComboBox#WalkerDialogInput:focus,
-            QSpinBox#WalkerDialogInput:focus {
-                border-color: #9CA3AF;
-            }
-            QSpinBox#WalkerDialogInput::up-button,
-            QSpinBox#WalkerDialogInput::down-button {
-                width: 0px;
-                border: none;
-                background: transparent;
-                margin: 0;
-                padding: 0;
-            }
-            QSpinBox#WalkerDialogInput::up-arrow,
-            QSpinBox#WalkerDialogInput::down-arrow {
-                width: 0px;
-                height: 0px;
-                image: none;
-            }
-            QCheckBox#WalkerDialogCheck {
-                color: #111827;
-                font-size: 12px;
-                font-weight: 400;
-            }
-            QPushButton#WalkerDialogPrimaryButton,
-            QPushButton#WalkerDialogSecondaryButton {
-                min-height: 32px;
-                border-radius: 8px;
-                padding: 0 14px;
-                font-size: 12px;
-            }
-            QPushButton#WalkerDialogSecondaryButton {
-                color: #111827;
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                font-weight: 400;
-            }
-            QPushButton#WalkerDialogSecondaryButton:hover {
-                background: #F9FAFB;
-                border-color: #9CA3AF;
-            }
-            QPushButton#WalkerDialogPrimaryButton {
-                color: #FFFFFF;
-                background: #111827;
-                border: 1px solid #111827;
-                font-weight: 500;
-            }
-            QPushButton#WalkerDialogPrimaryButton:hover {
-                background: #1F2937;
-                border-color: #1F2937;
-            }
-            QPushButton#WalkerColorChip {
-                min-width: 22px;
-                max-width: 22px;
-                min-height: 22px;
-                max-height: 22px;
-                border-radius: 5px;
-                border: 1px solid #D1D5DB;
-                padding: 0;
-            }
-            QLabel#WalkerAuxText {
-                color: #6B7280;
-                font-size: 10px;
-            }
-            QToolButton#ConfigDialogCloseButton {
-                min-width: 22px;
-                max-width: 22px;
-                min-height: 22px;
-                max-height: 22px;
-                border: 1px solid transparent;
-                border-radius: 6px;
-                background: transparent;
-                color: #6B7280;
-                font-size: 14px;
-            }
-            QToolButton#ConfigDialogCloseButton:hover {
-                color: #111827;
-                background: #F3F4F6;
-            }
-            """
-        )
-
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(10)
-
-        title_font = ui_font()
-        title_font.setPixelSize(14)
-        title_font.setWeight(600)
-
-        body_font = ui_font()
-        body_font.setPixelSize(12)
-
-        helper_font = ui_font()
-        helper_font.setPixelSize(11)
-
-        drag_handle = _DialogDragHandle(dialog, dialog)
-        drag_handle.setObjectName("WalkerDialogDragHandle")
-        drag_handle.setFixedHeight(24)
-        top_bar = QHBoxLayout(drag_handle)
-        top_bar.setContentsMargins(0, 0, 0, 0)
-        top_bar.setSpacing(8)
-        top_hint = QLabel(_rt("Configuração visual"), dialog)
-        top_hint.setObjectName("WalkerDialogSubtitle")
-        top_hint.setFont(helper_font)
-        top_bar.addWidget(top_hint, 0)
-        top_bar.addStretch(1)
-        close_btn = QToolButton(dialog)
-        close_btn.setObjectName("ConfigDialogCloseButton")
-        close_btn.setText("×")
-        close_btn.clicked.connect(dialog.reject)
-        top_bar.addWidget(close_btn, 0)
-        layout.addWidget(drag_handle, 0)
-
-        title = QLabel(_rt("Configurar canvas"), dialog)
-        title.setObjectName("WalkerDialogTitle")
-        title.setFont(title_font)
-        layout.addWidget(title, 0)
-
-        subtitle = QLabel(_rt("Ajuste fundo, grade e densidade visual com visual minimalista."), dialog)
-        subtitle.setObjectName("WalkerDialogSubtitle")
-        subtitle.setWordWrap(True)
-        subtitle.setFont(helper_font)
-        layout.addWidget(subtitle, 0)
-
-        card = QFrame(dialog)
-        card.setObjectName("WalkerDialogCard")
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(12, 12, 12, 12)
-        card_layout.setSpacing(10)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
-
-        def _build_label(text: str) -> QLabel:
-            label = QLabel(text, card)
-            label.setObjectName("WalkerFieldLabel")
-            label.setFont(body_font)
-            return label
-
-        theme_label = _build_label(_rt("Tema"))
-        theme_combo = QComboBox(card)
-        theme_combo.setObjectName("WalkerDialogInput")
-        presets = {
-            "clean": {
-                "background": "#FFFFFF",
-                "grid_color": "#E5E7EB",
-                "show_grid": True,
-                "grid_size": 8,
-                "grid_opacity": 0.72,
-            },
-            "soft": {
-                "background": "#F8FAFC",
-                "grid_color": "#D1D5DB",
-                "show_grid": True,
-                "grid_size": 10,
-                "grid_opacity": 0.66,
-            },
-            "dark": {
-                "background": "#111827",
-                "grid_color": "#374151",
-                "show_grid": True,
-                "grid_size": 8,
-                "grid_opacity": 0.6,
-            },
-        }
-        theme_combo.addItem(_rt("Personalizado"), "custom")
-        theme_combo.addItem(_rt("Padrão clean"), "clean")
-        theme_combo.addItem(_rt("Padrão suave"), "soft")
-        theme_combo.addItem(_rt("Noturno"), "dark")
-        grid.addWidget(theme_label, 0, 0)
-        grid.addWidget(theme_combo, 0, 1, 1, 3)
-
-        bg_label = _build_label(_rt("Cor do fundo"))
-        bg_edit = QLineEdit(str(draft.get("background") or ""), card)
-        bg_edit.setObjectName("WalkerDialogInput")
-        bg_preview = QLabel(card)
-        self._set_color_preview_chip(bg_preview, bg_edit.text(), "#FFFFFF")
-        grid.addWidget(bg_label, 1, 0)
-        grid.addWidget(bg_edit, 1, 1, 1, 2)
-        grid.addWidget(bg_preview, 1, 3)
-
-        grid_label = _build_label(_rt("Cor da grade"))
-        grid_edit = QLineEdit(str(draft.get("grid_color") or ""), card)
-        grid_edit.setObjectName("WalkerDialogInput")
-        grid_preview = QLabel(card)
-        self._set_color_preview_chip(grid_preview, grid_edit.text(), "#E5E7EB")
-        grid.addWidget(grid_label, 2, 0)
-        grid.addWidget(grid_edit, 2, 1, 1, 2)
-        grid.addWidget(grid_preview, 2, 3)
-
-        show_grid_check = QCheckBox(_rt("Mostrar grade no modo de edicao"), card)
-        show_grid_check.setObjectName("WalkerDialogCheck")
-        show_grid_check.setFont(body_font)
-        show_grid_check.setChecked(bool(draft.get("show_grid", True)))
-        grid.addWidget(show_grid_check, 3, 0, 1, 4)
-
-        grid_size_label = _build_label(_rt("Tamanho da grade"))
-        grid_size_spin = QSpinBox(card)
-        grid_size_spin.setObjectName("WalkerDialogInput")
-        grid_size_spin.setRange(4, 48)
-        grid_size_spin.setValue(int(draft.get("grid_size", 8)))
-        grid_size_spin.setButtonSymbols(QSpinBox.NoButtons)
-        grid_size_spin.setAlignment(Qt.AlignCenter)
-        grid.addWidget(grid_size_label, 4, 0)
-        grid.addWidget(grid_size_spin, 4, 1)
-
-        grid_opacity_label = _build_label(_rt("Opacidade da grade (%)"))
-        grid_opacity_spin = QSpinBox(card)
-        grid_opacity_spin.setObjectName("WalkerDialogInput")
-        grid_opacity_spin.setRange(10, 100)
-        grid_opacity_spin.setValue(int(round(float(draft.get("grid_opacity", 0.72)) * 100.0)))
-        grid_opacity_spin.setButtonSymbols(QSpinBox.NoButtons)
-        grid_opacity_spin.setAlignment(Qt.AlignCenter)
-        grid.addWidget(grid_opacity_label, 4, 2)
-        grid.addWidget(grid_opacity_spin, 4, 3)
-
-        card_layout.addLayout(grid)
-
-        palette_bg = QHBoxLayout()
-        palette_bg.setContentsMargins(0, 0, 0, 0)
-        palette_bg.setSpacing(6)
-        palette_bg.addWidget(QLabel(_rt("Paleta fundo"), card))
-        bg_quick_colors = ["#FFFFFF", "#F8FAFC", "#F3F4F6", "#F1F5F9", "#111827"]
-        for color in bg_quick_colors:
-            chip = QPushButton("", card)
-            chip.setObjectName("WalkerColorChip")
-            chip.setToolTip(color)
-            chip.setStyleSheet(
-                f"QPushButton#WalkerColorChip{{background:{color};border:1px solid #D1D5DB;border-radius:6px;}}"
-            )
-            chip.clicked.connect(lambda checked=False, value=color: bg_edit.setText(value))
-            palette_bg.addWidget(chip)
-        palette_bg.addStretch(1)
-        card_layout.addLayout(palette_bg)
-
-        palette_grid = QHBoxLayout()
-        palette_grid.setContentsMargins(0, 0, 0, 0)
-        palette_grid.setSpacing(6)
-        palette_grid.addWidget(QLabel(_rt("Paleta grade"), card))
-        grid_quick_colors = ["#E5E7EB", "#D1D5DB", "#9CA3AF", "#6B7280", "#374151"]
-        for color in grid_quick_colors:
-            chip = QPushButton("", card)
-            chip.setObjectName("WalkerColorChip")
-            chip.setToolTip(color)
-            chip.setStyleSheet(
-                f"QPushButton#WalkerColorChip{{background:{color};border:1px solid #D1D5DB;border-radius:6px;}}"
-            )
-            chip.clicked.connect(lambda checked=False, value=color: grid_edit.setText(value))
-            palette_grid.addWidget(chip)
-        palette_grid.addStretch(1)
-        card_layout.addLayout(palette_grid)
-
-        helper = QLabel(_rt("Dica: use fundo claro com grade suave para um visual limpo."), card)
-        helper.setObjectName("WalkerAuxText")
-        helper.setWordWrap(True)
-        helper.setFont(helper_font)
-        card_layout.addWidget(helper, 0)
-
-        layout.addWidget(card, 1)
-        harmonize_widget_fonts(dialog)
-
-        actions = QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(8)
-        actions.addStretch(1)
-
-        reset_btn = QPushButton(_rt("Restaurar padrao"), dialog)
-        reset_btn.setObjectName("WalkerDialogSecondaryButton")
-        reset_btn.setFont(body_font)
-        cancel_btn = QPushButton(_rt("Cancelar"), dialog)
-        cancel_btn.setObjectName("WalkerDialogSecondaryButton")
-        cancel_btn.setFont(body_font)
-        apply_btn = QPushButton(_rt("Aplicar"), dialog)
-        apply_btn.setObjectName("WalkerDialogPrimaryButton")
-        apply_btn.setFont(body_font)
-
-        actions.addWidget(reset_btn, 0)
-        actions.addWidget(cancel_btn, 0)
-        actions.addWidget(apply_btn, 0)
-        layout.addLayout(actions)
-
-        def _refresh_color_previews():
-            self._set_color_preview_chip(bg_preview, bg_edit.text(), "#FFFFFF")
-            self._set_color_preview_chip(grid_preview, grid_edit.text(), "#E5E7EB")
-
-        bg_edit.textChanged.connect(lambda *_: _refresh_color_previews())
-        grid_edit.textChanged.connect(lambda *_: _refresh_color_previews())
-
-        preset_signal_lock = {"active": False}
-
-        def _apply_style_to_controls(style_payload: Dict[str, object]):
-            normalized = self._normalized_canvas_style(style_payload)
-            bg_edit.setText(str(normalized.get("background") or "#FFFFFF"))
-            grid_edit.setText(str(normalized.get("grid_color") or "#E5E7EB"))
-            show_grid_check.setChecked(bool(normalized.get("show_grid", True)))
-            grid_size_spin.setValue(int(normalized.get("grid_size", 8)))
-            grid_opacity_spin.setValue(int(round(float(normalized.get("grid_opacity", 0.72)) * 100.0)))
-            _refresh_color_previews()
-
-        def _handle_preset_changed(index: int):
-            key = str(theme_combo.itemData(index) or "")
-            if key not in presets:
-                return
-            preset_signal_lock["active"] = True
-            try:
-                _apply_style_to_controls(dict(presets[key]))
-            finally:
-                preset_signal_lock["active"] = False
-
-        theme_combo.currentIndexChanged.connect(_handle_preset_changed)
-
-        def _mark_custom():
-            if preset_signal_lock["active"]:
-                return
-            custom_index = theme_combo.findData("custom")
-            if custom_index >= 0 and theme_combo.currentIndex() != custom_index:
-                theme_combo.setCurrentIndex(custom_index)
-
-        bg_edit.textChanged.connect(lambda *_: _mark_custom())
-        grid_edit.textChanged.connect(lambda *_: _mark_custom())
-        show_grid_check.toggled.connect(lambda *_: _mark_custom())
-        grid_size_spin.valueChanged.connect(lambda *_: _mark_custom())
-        grid_opacity_spin.valueChanged.connect(lambda *_: _mark_custom())
-
-        def _reset_defaults():
-            preset_signal_lock["active"] = True
-            try:
-                _apply_style_to_controls(self._default_canvas_style())
-                default_index = theme_combo.findData("clean")
-                if default_index >= 0:
-                    theme_combo.setCurrentIndex(default_index)
-            finally:
-                preset_signal_lock["active"] = False
-
-        reset_btn.clicked.connect(_reset_defaults)
-        cancel_btn.clicked.connect(dialog.reject)
-        apply_btn.clicked.connect(dialog.accept)
-
-        if dialog.exec_() != QDialog.Accepted:
+        updated = open_canvas_style_dialog(self, style)
+        if updated is None:
             return
-
-        draft["background"] = self._normalize_hex_color(bg_edit.text(), str(style.get("background") or "#FFFFFF"))
-        draft["grid_color"] = self._normalize_hex_color(grid_edit.text(), str(style.get("grid_color") or "#E5E7EB"))
-        draft["show_grid"] = bool(show_grid_check.isChecked())
-        draft["grid_size"] = int(grid_size_spin.value())
-        draft["grid_opacity"] = max(0.1, min(1.0, float(grid_opacity_spin.value()) / 100.0))
-        self._apply_canvas_style_to_pages(draft, persist=True, mark_dirty=True, record_history=True)
+        self._apply_canvas_style_to_pages(updated, persist=True, mark_dirty=True, record_history=True)
 
     def _project_snapshot_payload(self) -> Optional[Dict[str, object]]:
         if self.current_project is None:
@@ -1381,52 +2495,13 @@ class ModelTab(QWidget):
             self._sync_project_from_pages(self._current_page_id())
         except Exception:
             log_exception("falha opcional ignorada")
-        project = self.current_project
-        pages = [page.normalized() for page in list(project.pages or [])]
-        if not pages:
-            pages = [DashboardPage(title=self._page_display_title(1)).normalized()]
-        active_page_id = str(project.active_page_id or pages[0].page_id or "").strip() or pages[0].page_id
-        active_page = pages[0]
-        for page in pages:
-            if str(page.page_id or "").strip() == active_page_id:
-                active_page = page
-                break
-        payload = {
-            "version": int(project.version or 2),
-            "project_id": str(project.project_id or ""),
-            "name": str(project.name or ""),
-            "created_at": str(project.created_at or ""),
-            "updated_at": str(project.updated_at or ""),
-            "edit_mode": bool(project.edit_mode),
-            "source_meta": dict(project.source_meta or {}),
-            "active_page_id": active_page_id,
-            "pages": [page.to_dict() for page in pages],
-            "items": [item.to_dict() for item in list(active_page.items or [])],
-            "visual_links": [link.to_dict() for link in list(active_page.visual_links or [])],
-            "chart_relations": [relation.to_dict() for relation in list(active_page.chart_relations or [])],
-        }
-        try:
-            return json.loads(json.dumps(payload, ensure_ascii=False))
-        except Exception:
-            return payload
+        return project_snapshot_payload(self.current_project, page_title_provider=self._page_display_title)
 
     def _snapshot_state(self) -> Dict[str, object]:
-        return {
-            "project": self._project_snapshot_payload(),
-            "path": str(self.current_path or ""),
-            "dirty": bool(self._dirty),
-        }
+        return snapshot_state(self._project_snapshot_payload(), self.current_path, self._dirty)
 
     def _snapshot_signature(self, snapshot: Optional[Dict[str, object]]) -> str:
-        payload = dict(snapshot or {})
-        serial = {
-            "project": payload.get("project"),
-            "path": str(payload.get("path") or ""),
-        }
-        try:
-            return json.dumps(serial, sort_keys=True, ensure_ascii=False)
-        except Exception:
-            return str(serial)
+        return snapshot_signature(snapshot)
 
     def _reset_history(self):
         self._history_undo.clear()
@@ -1481,8 +2556,8 @@ class ModelTab(QWidget):
                     self.edit_mode_btn.blockSignals(False)
                 self.set_edit_mode(bool(project.edit_mode))
                 self._apply_canvas_style_to_pages(self._project_canvas_style(), persist=False, mark_dirty=False, record_history=False)
-            self._refresh_builder_layers()
-            self._refresh_ui_state()
+                self._refresh_builder_layers()
+                self._refresh_ui_state()
         finally:
             self._suspend_canvas_events = False
             self._history_restoring = False
@@ -1682,6 +2757,15 @@ class ModelTab(QWidget):
             lambda page_id, summary, self=self: self._handle_canvas_filters_changed(summary, page_id)
         )
         widget.zoomChanged.connect(lambda page_id, zoom, self=self: self._handle_canvas_zoom_changed(zoom, page_id))
+        widget.itemSelectionChanged.connect(
+            lambda page_id, item_id, item_widget, self=self: self._handle_canvas_item_selection(page_id, item_id, item_widget)
+        )
+        widget.fieldBindingDropRequested.connect(
+            lambda page_id, item_id, slot_name, payload, self=self: self._handle_canvas_field_binding_drop(page_id, item_id, slot_name, payload)
+        )
+        widget.visualPanelRequested.connect(
+            lambda page_id, item_id, self=self: self._handle_canvas_visual_panel_requested(page_id, item_id)
+        )
         widget.canvas.emptyCanvasContextMenuRequested.connect(
             lambda pos, page_id=widget.page_id, self=self: self._open_canvas_context_menu(pos, page_id)
         )
@@ -1925,8 +3009,7 @@ class ModelTab(QWidget):
         self._refresh_ui_state()
 
     def _build_model_chart_item_from_builder(self) -> Optional[DashboardChartItem]:
-        layer_id = str(self.builder_layer_combo.currentData() or "")
-        layer = self._builder_layers.get(layer_id)
+        layer = self._current_builder_layer()
         if layer is None or not layer.isValid():
             slim_message(self, _rt("Model"), _rt("Selecione uma camada valida para criar o grafico."))
             return None
@@ -1936,156 +3019,22 @@ class ModelTab(QWidget):
             return None
         value_field = str(self.builder_value_combo.currentData() or "__count__").strip() or "__count__"
         aggregation = str(self.builder_agg_combo.currentData() or "count").strip().lower() or "count"
-        chart_type = str(self.builder_chart_type_combo.currentData() or "bar").strip().lower() or "bar"
+        chart_type = self._current_builder_chart_type()
         top_n = max(3, int(self.builder_topn_spin.value()))
-
-        dimension_field = self._resolve_layer_field_name(layer, dimension_field)
-        if not dimension_field:
-            slim_message(self, _rt("Model"), _rt("O campo de categoria nao existe na camada selecionada."))
-            return None
-        if value_field != "__count__":
-            value_field = self._resolve_layer_field_name(layer, value_field)
-            if not value_field:
-                slim_message(self, _rt("Model"), _rt("O campo de metrica nao existe na camada selecionada."))
-                return None
-
-        grouped: Dict[str, Dict[str, object]] = {}
-        has_numeric_values = False
-        for feature in layer.getFeatures():
-            raw_category = feature.attribute(dimension_field)
-            category = str(raw_category).strip() if raw_category is not None else ""
-            if not category:
-                category = "(vazio)"
-            bucket = grouped.setdefault(
-                category,
-                {
-                    "raw_category": raw_category if raw_category is not None else category,
-                    "feature_ids": [],
-                    "sum": 0.0,
-                    "count": 0,
-                    "min": None,
-                    "max": None,
-                },
-            )
-            try:
-                bucket["feature_ids"].append(int(feature.id()))
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-            if value_field == "__count__":
-                value = 1.0
-            else:
-                value = self._safe_float(feature.attribute(value_field))
-                if value is None:
-                    continue
-                has_numeric_values = True
-
-            bucket["sum"] = float(bucket.get("sum") or 0.0) + float(value)
-            bucket["count"] = int(bucket.get("count") or 0) + 1
-            current_min = bucket.get("min")
-            current_max = bucket.get("max")
-            bucket["min"] = float(value) if current_min is None else min(float(current_min), float(value))
-            bucket["max"] = float(value) if current_max is None else max(float(current_max), float(value))
-
-        if value_field != "__count__" and not has_numeric_values:
-            slim_message(self, _rt("Model"), _rt("Nao foi possivel calcular valores numericos para esse campo."))
-            return None
-        if not grouped:
-            slim_message(self, _rt("Model"), _rt("A camada nao possui dados suficientes para montar o grafico."))
-            return None
-
-        rows: List[Dict[str, object]] = []
-        for category, bucket in grouped.items():
-            count = int(bucket.get("count") or 0)
-            if count <= 0:
-                continue
-            if aggregation == "avg":
-                metric_value = float(bucket.get("sum") or 0.0) / float(count)
-            elif aggregation == "min":
-                metric_value = float(bucket.get("min") or 0.0)
-            elif aggregation == "max":
-                metric_value = float(bucket.get("max") or 0.0)
-            elif aggregation == "sum":
-                metric_value = float(bucket.get("sum") or 0.0)
-            else:
-                metric_value = float(count)
-            rows.append(
-                {
-                    "category": str(category),
-                    "value": metric_value,
-                    "raw_category": bucket.get("raw_category"),
-                    "feature_ids": list(bucket.get("feature_ids") or []),
-                }
-            )
-
-        if not rows:
-            slim_message(self, _rt("Model"), _rt("Sem resultados para os campos selecionados."))
-            return None
-
-        rows.sort(key=lambda item: float(item.get("value") or 0.0), reverse=True)
-        truncated = len(rows) > top_n
-        rows = rows[:top_n]
-
-        categories = [str(item.get("category") or "") for item in rows]
-        values = [float(item.get("value") or 0.0) for item in rows]
-        raw_categories = [item.get("raw_category") for item in rows]
-        feature_groups = [list(item.get("feature_ids") or []) for item in rows]
-
-        agg_label = {
-            "count": _rt("Contagem"),
-            "sum": _rt("Soma"),
-            "avg": _rt("Media"),
-            "min": _rt("Minimo"),
-            "max": _rt("Maximo"),
-        }.get(aggregation, _rt("Contagem"))
-        value_label = _rt("Contagem") if value_field == "__count__" else _rt("{agg_label} de {value_field}", agg_label=agg_label, value_field=value_field)
         title_text = str(self.builder_title_edit.text() or "").strip()
-        if not title_text:
-            if value_field == "__count__":
-                title_text = _rt("Contagem por {dimension_field}", dimension_field=dimension_field)
-            else:
-                title_text = _rt("{agg_label} de {value_field} por {dimension_field}", agg_label=agg_label, value_field=value_field, dimension_field=dimension_field)
-
-        payload = ChartPayload.build(
-            chart_type=chart_type,
-            title=title_text,
-            categories=categories,
-            values=values,
-            value_label=value_label,
-            truncated=truncated,
-            selection_layer_id=layer.id(),
-            selection_layer_name=layer.name(),
-            category_field=dimension_field,
-            raw_categories=raw_categories,
-            category_feature_ids=feature_groups,
-        )
-
-        item_id = uuid.uuid4().hex
-        visual_state = ChartVisualState(chart_type=chart_type, show_legend=chart_type in {"pie", "donut", "funnel"})
-        binding = DashboardChartBinding(
-            chart_id=item_id,
-            source_id=layer.id(),
+        result = build_model_chart_item_from_layer(
+            layer,
             dimension_field=dimension_field,
-            semantic_field_key=dimension_field,
-            semantic_field_aliases=[dimension_field],
-            measure_field="" if value_field == "__count__" else value_field,
+            value_field=value_field,
             aggregation=aggregation,
-            source_name=layer.name(),
-        ).normalized()
-        subtitle = f"{layer.name()} - {dimension_field} - {value_label}"
-        return DashboardChartItem(
-            item_id=item_id,
-            origin="model_builder",
-            payload=payload,
-            visual_state=visual_state,
-            binding=binding,
-            title=title_text,
-            subtitle=subtitle,
-            source_meta={
-                "metadata": {"layer_id": layer.id(), "layer_name": layer.name()},
-                "config": {"row_field": dimension_field, "semantic_field_key": dimension_field, "aggregation": aggregation},
-            },
+            chart_type=chart_type,
+            top_n=top_n,
+            title_text=title_text,
         )
+        if result.error:
+            slim_message(self, _rt("Model"), result.error)
+            return None
+        return result.item
 
     def _add_chart_from_builder(self):
         item = self._build_model_chart_item_from_builder()
@@ -2216,7 +3165,9 @@ class ModelTab(QWidget):
             active_page_id=page.page_id,
         )
         self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
-        self.current_project.source_meta["canvas_style"] = self._default_canvas_style()
+        self.current_project.source_meta = self._normalize_project_source_meta(
+            {"canvas_style": self._default_canvas_style()}
+        )
         self.current_path = ""
         self._dirty = False
         self._rebuild_page_stack(page.page_id)
@@ -2242,21 +3193,7 @@ class ModelTab(QWidget):
         except Exception as exc:
             slim_message(self, _rt("Model"), _rt("Nao foi possivel abrir o painel: {error}", error=exc))
             return
-        try:
-            if bool(project.source_meta.get("_legacy_single_page")) and len(list(project.pages or [])) == 1:
-                legacy_page = list(project.pages or [])[0].normalized()
-                project_name = str(project.name or "").strip().lower()
-                page_title = str(legacy_page.title or "").strip().lower()
-                if not page_title or page_title == project_name:
-                    legacy_page.title = self._page_display_title(1)
-                    project.pages = [legacy_page]
-                    project.active_page_id = legacy_page.page_id
-                    project.set_active_page(legacy_page.page_id)
-        except Exception:
-            log_exception("falha opcional ignorada")
-        source_meta = dict(getattr(project, "source_meta", {}) or {})
-        source_meta["canvas_style"] = self._normalized_canvas_style(source_meta.get("canvas_style"))
-        project.source_meta = source_meta
+        project = self._normalize_loaded_project(project)
         self.current_project = project
         self.current_path = self.store.normalize_path(path)
         self._dirty = False
@@ -2344,17 +3281,117 @@ class ModelTab(QWidget):
             self.edit_mode_btn.blockSignals(False)
         self.set_edit_mode(target)
 
+    def _sync_visual_side_tab_buttons(self):
+        active_tab = str(getattr(self, "_active_visual_side_tab", "build") or "build")
+        if active_tab not in {"build", "format"}:
+            active_tab = "build"
+        if hasattr(self, "visual_side_stack"):
+            self.visual_side_stack.setCurrentIndex(1 if active_tab == "format" else 0)
+        for button, checked in (
+            (getattr(self, "visual_data_tab_btn", None), active_tab == "build"),
+            (getattr(self, "visual_format_tab_btn", None), active_tab == "format"),
+        ):
+            if button is None:
+                continue
+            button.blockSignals(True)
+            try:
+                button.setChecked(bool(checked))
+            finally:
+                button.blockSignals(False)
+            if hasattr(self, "_apply_visual_tab_button_styles"):
+                self._apply_visual_tab_button_styles()
+
+    def _toggle_visual_side_panel(self):
+        if not getattr(self, "_visual_side_collapsed", False):
+            sizes = self.canvas_splitter.sizes() if hasattr(self, "canvas_splitter") else []
+            if len(sizes) >= 2 and sizes[1] > _MODEL_SIDE_PANEL_COLLAPSED_WIDTH:
+                self._visual_side_width = min(
+                    _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH,
+                    max(_MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH, int(sizes[1])),
+                )
+        self._visual_side_collapsed = not bool(getattr(self, "_visual_side_collapsed", False))
+        self._sync_visual_side_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
+    def _set_visual_side_panel_available(self, available: bool):
+        if not hasattr(self, "visual_side_panel"):
+            return
+        self.visual_side_panel.setVisible(bool(available))
+        if available:
+            self._sync_visual_side_panel_chrome()
+
+    def _sync_visual_side_panel_chrome(self):
+        if not hasattr(self, "visual_side_panel"):
+            return
+        collapsed = bool(getattr(self, "_visual_side_collapsed", False))
+        self.visual_side_panel.setMinimumWidth(
+            _MODEL_SIDE_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH
+        )
+        self.visual_side_panel.setMaximumWidth(
+            _MODEL_SIDE_PANEL_COLLAPSED_WIDTH if collapsed else _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH
+        )
+        self.visual_side_panel.setProperty("collapsed", collapsed)
+        if hasattr(self, "visual_tab_bar"):
+            self.visual_tab_bar.setVisible(not collapsed)
+        if hasattr(self, "visual_side_stack"):
+            self.visual_side_stack.setVisible(not collapsed)
+        if hasattr(self, "visual_data_tab_btn"):
+            self.visual_data_tab_btn.setVisible(not collapsed)
+        if hasattr(self, "visual_format_tab_btn"):
+            self.visual_format_tab_btn.setVisible(not collapsed)
+        if hasattr(self, "visual_side_collapsed_rail"):
+            self.visual_side_collapsed_rail.setVisible(collapsed)
+        if hasattr(self, "visual_side_toggle_btn"):
+            self.visual_side_toggle_btn.setVisible(not collapsed)
+            self.visual_side_toggle_btn.setArrowType(Qt.NoArrow)
+            self.visual_side_toggle_btn.setIcon(QIcon())
+            self.visual_side_toggle_btn.setText("›")
+            self.visual_side_toggle_btn.setFixedSize(22, 22)
+            self.visual_side_toggle_btn.setToolTip(_rt("Recolher visualizações"))
+        if hasattr(self, "visual_side_collapsed_btn"):
+            self.visual_side_collapsed_btn.setArrowType(Qt.NoArrow)
+            self.visual_side_collapsed_btn.setIcon(QIcon())
+            self.visual_side_collapsed_btn.setText("‹")
+            self.visual_side_collapsed_btn.setFixedSize(22, 22)
+            self.visual_side_collapsed_btn.setToolTip(_rt("Expandir visualizações"))
+        self._apply_collapsed_panel_chrome()
+        try:
+            self.visual_side_panel.style().unpolish(self.visual_side_panel)
+            self.visual_side_panel.style().polish(self.visual_side_panel)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _set_visual_side_tab(self, tab_name: str):
+        target = "format" if str(tab_name or "").strip().lower() == "format" else "build"
+        if target == "format":
+            self._set_visual_panel_open(True, focus=False)
+        else:
+            self._set_builder_panel_open(True, focus=False)
+
     def _set_builder_panel_open(self, enabled: bool, *, focus: bool = False):
         in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
         active = bool(enabled) and bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page
         self._builder_panel_open = bool(active)
-        self.builder_panel.setVisible(active)
+        if active:
+            self._visual_panel_open = False
+            self._active_visual_side_tab = "build"
+            self._sync_builder_selection_state()
+            self._sync_visual_side_tab_buttons()
+        self._set_visual_side_panel_available(active or self._visual_panel_open)
+        self._set_data_panel_available(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
+        self._ensure_canvas_splitter_sizes()
         self.create_chart_btn.blockSignals(True)
         try:
             if self.create_chart_btn.isChecked() != active:
                 self.create_chart_btn.setChecked(active)
         finally:
             self.create_chart_btn.blockSignals(False)
+        self.format_visual_btn.blockSignals(True)
+        try:
+            if self.format_visual_btn.isChecked() != bool(self._visual_panel_open):
+                self.format_visual_btn.setChecked(bool(self._visual_panel_open))
+        finally:
+            self.format_visual_btn.blockSignals(False)
         if active and focus:
             try:
                 self.builder_layer_combo.setFocus(Qt.TabFocusReason)
@@ -2364,6 +3401,93 @@ class ModelTab(QWidget):
     def _handle_create_chart_toggle(self, checked: bool):
         self._set_builder_panel_open(bool(checked), focus=bool(checked))
 
+    def _ensure_canvas_splitter_sizes(self):
+        splitter = getattr(self, "canvas_splitter", None)
+        if splitter is None:
+            return
+        try:
+            sizes = list(splitter.sizes())
+            total = sum(int(size or 0) for size in sizes)
+            if total <= 0 or len(sizes) < 3:
+                return
+            visual_visible = bool(self.visual_side_panel.isVisible())
+            data_visible = bool(self.data_panel.isVisible())
+            if visual_visible and getattr(self, "_visual_side_collapsed", False):
+                target_visual = _MODEL_SIDE_PANEL_COLLAPSED_WIDTH
+            elif visual_visible:
+                preferred_visual = int(
+                    getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH)
+                    or _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
+                )
+                target_visual = int(
+                    min(max(preferred_visual, _MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH), _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH)
+                )
+            else:
+                target_visual = 0
+            if data_visible and getattr(self, "_data_panel_collapsed", False):
+                target_data = _MODEL_DATA_PANEL_COLLAPSED_WIDTH
+            elif data_visible:
+                preferred_data = int(getattr(self, "_data_panel_width", _MODEL_DATA_PANEL_DEFAULT_WIDTH) or _MODEL_DATA_PANEL_DEFAULT_WIDTH)
+                target_data = int(min(max(preferred_data, _MODEL_DATA_PANEL_MIN_WIDTH), _MODEL_DATA_PANEL_MAX_WIDTH))
+            else:
+                target_data = 0
+            if visual_visible and not getattr(self, "_visual_side_collapsed", False) and sizes[1] < 180:
+                target_visual = int(
+                    getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH)
+                    or _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
+                )
+            if data_visible and not getattr(self, "_data_panel_collapsed", False) and sizes[2] < 120:
+                target_data = int(getattr(self, "_data_panel_width", _MODEL_DATA_PANEL_DEFAULT_WIDTH) or _MODEL_DATA_PANEL_DEFAULT_WIDTH)
+            target_canvas = max(360, total - target_visual - target_data)
+            splitter.setSizes([target_canvas, target_visual, target_data])
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _set_visual_panel_open(self, enabled: bool, *, focus: bool = False):
+        in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
+        active = bool(enabled) and bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page
+        self._visual_panel_open = bool(active)
+        if active:
+            self._builder_panel_open = False
+            self._active_visual_side_tab = "format"
+            self._sync_visual_side_tab_buttons()
+        self._set_visual_side_panel_available(active or self._builder_panel_open)
+        self._set_data_panel_available(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
+        self._ensure_canvas_splitter_sizes()
+        self.format_visual_btn.blockSignals(True)
+        try:
+            if self.format_visual_btn.isChecked() != active:
+                self.format_visual_btn.setChecked(active)
+        finally:
+            self.format_visual_btn.blockSignals(False)
+        self.create_chart_btn.blockSignals(True)
+        try:
+            if self.create_chart_btn.isChecked() != self._builder_panel_open:
+                self.create_chart_btn.setChecked(self._builder_panel_open)
+        finally:
+            self.create_chart_btn.blockSignals(False)
+        if not active:
+            self._sync_visual_side_tab_buttons()
+        if not active:
+            self.visual_panel.clear_selection()
+            return
+        item_widget = None
+        active_page = self._active_page_widget()
+        if active_page is not None:
+            item_widget = active_page.canvas.selected_item_widget()
+        if item_widget is None:
+            self.visual_panel.clear_selection()
+            return
+        self.visual_panel.set_current_item(item_widget)
+        if focus:
+            try:
+                self.visual_panel.setFocus(Qt.TabFocusReason)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _handle_format_visual_toggle(self, checked: bool):
+        self._set_visual_panel_open(bool(checked), focus=bool(checked))
+
     def set_edit_mode(self, enabled: bool):
         enabled = bool(enabled)
         for widget in self._page_widgets_in_order():
@@ -2372,9 +3496,20 @@ class ModelTab(QWidget):
             except Exception:
                 continue
         self.create_chart_btn.setVisible(enabled and self.current_project is not None)
-        if not enabled:
+        self.format_visual_btn.setVisible(enabled and self.current_project is not None)
+        if hasattr(self, "toolbar_visuals_strip"):
+            self.toolbar_visuals_strip.setVisible(enabled and self.current_project is not None)
+        self._sync_toolbar_separator_visibility()
+        if enabled and self.current_project is not None:
+            self._builder_panel_open = True
+            self._visual_panel_open = False
+        else:
             self._builder_panel_open = False
+            self._visual_panel_open = False
         self._set_builder_panel_open(self._builder_panel_open)
+        self._set_visual_panel_open(self._visual_panel_open)
+        self._set_data_panel_available(enabled and self.current_project is not None and self.body_stack.currentWidget() is self.canvas_page)
+        self._ensure_canvas_splitter_sizes()
         if self.edit_mode_btn.isChecked() != enabled:
             self.edit_mode_btn.blockSignals(True)
             try:
@@ -2444,11 +3579,17 @@ class ModelTab(QWidget):
             self.save_as_btn,
             self.export_btn,
             self.edit_mode_btn,
+            self.format_visual_btn,
             self.settings_btn,
             self.close_project_btn,
         ):
             button.setVisible(show_project_actions)
-        self.create_chart_btn.setVisible(show_project_actions and bool(self.edit_mode_btn.isChecked()))
+        edit_enabled = bool(self.edit_mode_btn.isChecked())
+        self.create_chart_btn.setVisible(show_project_actions and edit_enabled)
+        self.format_visual_btn.setVisible(show_project_actions and edit_enabled)
+        if hasattr(self, "toolbar_visuals_strip"):
+            self.toolbar_visuals_strip.setVisible(show_project_actions and edit_enabled)
+        self._sync_toolbar_separator_visibility()
         self.mode_switch_wrap.setVisible(show_project_actions)
         if has_project:
             self._configure_toolbar_icon_button(self.new_btn, "Walker-New.svg", _rt("Novo"))
@@ -2482,6 +3623,38 @@ class ModelTab(QWidget):
         self._dirty = True
         self._commit_history_if_changed()
         self._refresh_ui_state()
+
+    def _handle_canvas_item_selection(self, page_id: str, item_id: str, item_widget):
+        if page_id and page_id != self._current_page_id():
+            return
+        self._sync_builder_selection_state()
+        if not self.visual_side_panel.isVisible():
+            return
+        if item_widget is None:
+            self.visual_panel.clear_selection()
+            return
+        self.visual_panel.set_current_item(item_widget)
+
+    def _handle_canvas_field_binding_drop(self, page_id: str, item_id: str, slot_name: str, payload):
+        if page_id and page_id != self._current_page_id():
+            self._set_active_page(page_id, sync_project=True, update_tabs=True)
+        active_canvas = self._active_canvas()
+        if active_canvas is None:
+            return
+        active_canvas.select_item(item_id, emit_signal=True)
+        self._sync_builder_selection_state()
+        self._apply_dropped_field_to_selected_visual(slot_name, payload)
+
+    def _handle_canvas_visual_panel_requested(self, page_id: str, item_id: str):
+        if page_id and page_id != self._current_page_id():
+            self._set_active_page(page_id, sync_project=True, update_tabs=True)
+        active_page = self._active_page_widget()
+        if active_page is not None and item_id:
+            active_page.canvas.select_item(item_id, emit_signal=False)
+            item_widget = active_page.canvas.selected_item_widget()
+            if item_widget is not None:
+                self.visual_panel.set_current_item(item_widget)
+        self._set_visual_panel_open(True, focus=False)
 
     def _update_filters_bar(self, summary: Optional[Dict[str, object]] = None):
         active_canvas = self._active_canvas()
@@ -2534,6 +3707,8 @@ class ModelTab(QWidget):
         has_project = self.current_project is not None
         self.body_stack.setCurrentWidget(self.canvas_page if has_project else self.empty_page)
         in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
+        if getattr(self, "page_strip", None) is not None:
+            self.page_strip.setVisible(has_project)
         if has_project:
             active_id = self.current_project.active_page_id or (self.current_project.pages[0].page_id if self.current_project.pages else "")
             active_widget = self._active_page_widget()
@@ -2553,6 +3728,10 @@ class ModelTab(QWidget):
         self._update_toolbar_visibility()
         self.close_project_btn.setVisible(has_project)
         self._set_builder_panel_open(self._builder_panel_open)
+        self._set_visual_panel_open(self._visual_panel_open)
+        self._set_data_panel_available(has_project and bool(self.edit_mode_btn.isChecked()) and in_canvas_page)
+        self._ensure_canvas_splitter_sizes()
+        self._sync_builder_selection_state()
         self._update_footer_visibility()
         self._update_filters_bar()
         self.filters_bar.setVisible(bool(self.edit_mode_btn.isChecked()) and self.filters_bar.isVisible())

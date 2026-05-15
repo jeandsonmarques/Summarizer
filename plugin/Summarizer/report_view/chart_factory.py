@@ -1,12 +1,13 @@
 import math
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation, pyqtSignal
+from qgis.PyQt.QtCore import QEasingCurve, QPointF, QRect, QRectF, QSize, QSettings, Qt, QVariantAnimation, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from qgis.PyQt.QtWidgets import (
     QAction,
     QActionGroup,
     QApplication,
+    QColorDialog,
     QFileDialog,
     QMenu,
     QWidget,
@@ -22,6 +23,13 @@ from .charts import ChartDataProfile, ChartVisualState
 from .charts.chart_animation import chart_popup_icon
 from .charts.chart_utils import extract_chart_payload_rows, value_scale_bounds, value_scale_ratio
 from .result_models import ChartPayload, QueryResult
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
 
 class ChartFactory:
     MAX_RENDER_ITEMS = 160
@@ -154,6 +162,7 @@ class ReportChartWidget(QWidget):
         "teal": "Paleta teal",
         "sunset": "Paleta sunset",
         "grayscale": "Paleta cinza",
+        "custom": "Personalizada",
     }
 
     SORT_LABELS: Dict[str, str] = {
@@ -192,9 +201,10 @@ class ReportChartWidget(QWidget):
         self._empty_text = ""
         self._embedded_mode = False
         self._display_scale = 1.0
+        self._fixed_render_size = QSize()
         self._base_font = harmonize_font_family(QFont(self.font()))
         self._ensure_base_font_scalable()
-        self._font_scale = 1.0
+        self._font_scale = 0.82
         self.chart_state = ChartVisualState()
         self._interactive_regions: List[Dict[str, object]] = []
         self._active_category_keys: List[str] = []
@@ -281,7 +291,7 @@ class ReportChartWidget(QWidget):
             normalized = float(scale)
         except Exception:
             normalized = 1.0
-        normalized = max(0.6, min(2.0, normalized))
+        normalized = max(0.35, min(3.0, normalized))
         if abs(normalized - self._display_scale) < 1e-3:
             return
         self._display_scale = normalized
@@ -299,11 +309,23 @@ class ReportChartWidget(QWidget):
         self.setMinimumSize(max(120, int(round(220 * normalized))), max(90, int(round(180 * normalized))))
         self.update()
 
+    def set_fixed_render_size(self, size: QSize):
+        try:
+            next_size = QSize(size)
+        except Exception:
+            next_size = QSize()
+        if next_size.width() < 20 or next_size.height() < 20:
+            next_size = QSize()
+        if next_size == self._fixed_render_size:
+            return
+        self._fixed_render_size = next_size
+        self.update()
+
     def _apply_font_scale_to_widget(self):
         try:
-            self._font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+            self._font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
         except Exception:
-            self._font_scale = 1.0
+            self._font_scale = 0.82
         self.setFont(self._resolved_scaled_font())
 
     def _resolved_scaled_font(self, extra_scale: float = 1.0) -> QFont:
@@ -321,7 +343,7 @@ class ReportChartWidget(QWidget):
         self.update()
 
     def _effective_font_scale(self) -> float:
-        raw_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+        raw_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
         # Make the visible response a little stronger so the user can feel the change
         # without turning the charts into oversized UI.
         adjusted = 1.0 + (raw_scale - 1.0) * 1.85
@@ -497,7 +519,49 @@ class ReportChartWidget(QWidget):
                 "show_values": bool(getattr(self.chart_state, "show_values", False)),
                 "show_percent": bool(getattr(self.chart_state, "show_percent", False)),
                 "show_grid": bool(getattr(self.chart_state, "show_grid", False)),
+                "show_title": bool(getattr(self.chart_state, "show_title", True)),
                 "show_border": bool(getattr(self.chart_state, "show_border", False)),
+                "show_background": bool(getattr(self.chart_state, "show_background", True)),
+                "background_color": str(getattr(self.chart_state, "background_color", "") or ""),
+                "background_opacity": int(getattr(self.chart_state, "background_opacity", 100) or 100),
+                "border_color": str(getattr(self.chart_state, "border_color", "") or ""),
+                "border_width": int(getattr(self.chart_state, "border_width", 1) or 1),
+                "border_radius": int(getattr(self.chart_state, "border_radius", 8) or 8),
+                "padding": int(getattr(self.chart_state, "padding", 8) or 8),
+                "shadow_enabled": bool(getattr(self.chart_state, "shadow_enabled", False)),
+                "shadow_opacity": int(getattr(self.chart_state, "shadow_opacity", 18) or 18),
+                "grid_color": str(getattr(self.chart_state, "grid_color", "") or ""),
+                "grid_width": int(getattr(self.chart_state, "grid_width", 1) or 1),
+                "grid_opacity": int(getattr(self.chart_state, "grid_opacity", 100) or 100),
+                "show_axis_labels": bool(getattr(self.chart_state, "show_axis_labels", True)),
+                "axis_label_color": str(getattr(self.chart_state, "axis_label_color", "") or ""),
+                "axis_label_size": int(getattr(self.chart_state, "axis_label_size", 0) or 0),
+                "show_zero_line": bool(getattr(self.chart_state, "show_zero_line", True)),
+                "zero_line_color": str(getattr(self.chart_state, "zero_line_color", "") or ""),
+                "title_color": str(getattr(self.chart_state, "title_color", "") or ""),
+                "title_size": int(getattr(self.chart_state, "title_size", 0) or 0),
+                "label_color": str(getattr(self.chart_state, "label_color", "") or ""),
+                "label_size": int(getattr(self.chart_state, "label_size", 0) or 0),
+                "data_label_position": str(getattr(self.chart_state, "data_label_position", "") or ""),
+                "text_align": str(getattr(self.chart_state, "text_align", "") or ""),
+                "number_prefix": str(getattr(self.chart_state, "number_prefix", "") or ""),
+                "number_suffix": str(getattr(self.chart_state, "number_suffix", "") or ""),
+                "decimal_places": int(getattr(self.chart_state, "decimal_places", 2)),
+                "display_units": str(getattr(self.chart_state, "display_units", "") or ""),
+                "null_value": str(getattr(self.chart_state, "null_value", "") or ""),
+                "primary_color": str(getattr(self.chart_state, "primary_color", "") or ""),
+                "category_palette": list(getattr(self.chart_state, "category_palette", []) or []),
+                "bar_width_percent": int(getattr(self.chart_state, "bar_width_percent", 62) or 62),
+                "line_width": int(getattr(self.chart_state, "line_width", 2) or 2),
+                "show_markers": bool(getattr(self.chart_state, "show_markers", True)),
+                "marker_size": int(getattr(self.chart_state, "marker_size", 4) or 4),
+                "value_color": str(getattr(self.chart_state, "value_color", "") or ""),
+                "value_size": int(getattr(self.chart_state, "value_size", 0) or 0),
+                "value_align": str(getattr(self.chart_state, "value_align", "") or ""),
+                "card_density": str(getattr(self.chart_state, "card_density", "") or ""),
+                "show_card_accent": bool(getattr(self.chart_state, "show_card_accent", True)),
+                "show_card_sparkline": bool(getattr(self.chart_state, "show_card_sparkline", True)),
+                "alt_text": str(getattr(self.chart_state, "alt_text", "") or ""),
                 "sort_mode": str(getattr(self.chart_state, "sort_mode", "") or ""),
                 "corner": str(getattr(self.chart_state, "bar_corner_style", "") or ""),
                 "font_scale": round(self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0)), 3),
@@ -525,10 +589,11 @@ class ReportChartWidget(QWidget):
     def _draw_fallback_state(self, painter: QPainter, rect: QRectF, title: str, detail: str = ""):
         painter.save()
         panel = rect.adjusted(8, 8, -8, -8)
-        painter.setPen(QPen(QColor("#E5E7EB"), 1))
-        painter.setBrush(QColor("#FFFFFF"))
+        dark_mode = _is_dark_theme()
+        painter.setPen(QPen(QColor("#334155" if dark_mode else "#E5E7EB"), 1))
+        painter.setBrush(QColor("#111827" if dark_mode else "#FFFFFF"))
         painter.drawRoundedRect(panel, 10, 10)
-        painter.setPen(QPen(QColor("#374151")))
+        painter.setPen(QPen(QColor("#F8FAFC" if dark_mode else "#374151")))
         title_font = harmonize_font_family(QFont(self.font()))
         title_font.setBold(True)
         painter.setFont(title_font)
@@ -537,7 +602,7 @@ class ReportChartWidget(QWidget):
             detail_font = harmonize_font_family(QFont(self.font()))
             detail_font.setBold(False)
             painter.setFont(detail_font)
-            painter.setPen(QPen(QColor("#6B7280")))
+            painter.setPen(QPen(QColor("#CBD5E1" if dark_mode else "#6B7280")))
             painter.drawText(panel.adjusted(14, 34, -14, -10), Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, str(detail))
         painter.restore()
 
@@ -1057,12 +1122,54 @@ class ReportChartWidget(QWidget):
                 "show_values": bool(self.chart_state.show_values),
                 "show_percent": bool(self.chart_state.show_percent),
                 "show_grid": bool(self.chart_state.show_grid),
+                "show_title": bool(getattr(self.chart_state, "show_title", True)),
                 "show_border": bool(self.chart_state.show_border),
                 "sort_mode": str(self.chart_state.sort_mode or "default"),
                 "bar_corner_style": str(self.chart_state.bar_corner_style or "square"),
                 "title_override": str(self.chart_state.title_override or ""),
                 "legend_label_override": str(self.chart_state.legend_label_override or ""),
                 "legend_item_overrides": dict(self.chart_state.legend_item_overrides or {}),
+                "show_background": bool(getattr(self.chart_state, "show_background", True)),
+                "background_color": str(getattr(self.chart_state, "background_color", "#FFFFFF") or "#FFFFFF"),
+                "background_opacity": int(getattr(self.chart_state, "background_opacity", 100) or 100),
+                "border_color": str(getattr(self.chart_state, "border_color", "#CBD5E1") or "#CBD5E1"),
+                "border_width": int(getattr(self.chart_state, "border_width", 1) or 1),
+                "border_radius": int(getattr(self.chart_state, "border_radius", 8) or 8),
+                "padding": int(getattr(self.chart_state, "padding", 8) or 8),
+                "shadow_enabled": bool(getattr(self.chart_state, "shadow_enabled", False)),
+                "shadow_opacity": int(getattr(self.chart_state, "shadow_opacity", 18) or 18),
+                "grid_color": str(getattr(self.chart_state, "grid_color", "#E5E7EB") or "#E5E7EB"),
+                "grid_width": int(getattr(self.chart_state, "grid_width", 1) or 1),
+                "grid_opacity": int(getattr(self.chart_state, "grid_opacity", 100) or 100),
+                "show_axis_labels": bool(getattr(self.chart_state, "show_axis_labels", True)),
+                "axis_label_color": str(getattr(self.chart_state, "axis_label_color", "#4B5563") or "#4B5563"),
+                "axis_label_size": int(getattr(self.chart_state, "axis_label_size", 0) or 0),
+                "show_zero_line": bool(getattr(self.chart_state, "show_zero_line", True)),
+                "zero_line_color": str(getattr(self.chart_state, "zero_line_color", "#CBD5E1") or "#CBD5E1"),
+                "title_color": str(getattr(self.chart_state, "title_color", "#1F2937") or "#1F2937"),
+                "title_size": int(getattr(self.chart_state, "title_size", 0) or 0),
+                "label_color": str(getattr(self.chart_state, "label_color", "#4B5563") or "#4B5563"),
+                "label_size": int(getattr(self.chart_state, "label_size", 0) or 0),
+                "data_label_position": str(getattr(self.chart_state, "data_label_position", "outside") or "outside"),
+                "text_align": str(getattr(self.chart_state, "text_align", "left") or "left"),
+                "number_prefix": str(getattr(self.chart_state, "number_prefix", "") or ""),
+                "number_suffix": str(getattr(self.chart_state, "number_suffix", "") or ""),
+                "decimal_places": int(getattr(self.chart_state, "decimal_places", 2)),
+                "display_units": str(getattr(self.chart_state, "display_units", "none") or "none"),
+                "null_value": str(getattr(self.chart_state, "null_value", "-") or "-"),
+                "primary_color": str(getattr(self.chart_state, "primary_color", "#5A3FE6") or "#5A3FE6"),
+                "category_palette": list(getattr(self.chart_state, "category_palette", []) or []),
+                "bar_width_percent": int(getattr(self.chart_state, "bar_width_percent", 62) or 62),
+                "line_width": int(getattr(self.chart_state, "line_width", 2) or 2),
+                "show_markers": bool(getattr(self.chart_state, "show_markers", True)),
+                "marker_size": int(getattr(self.chart_state, "marker_size", 4) or 4),
+                "value_color": str(getattr(self.chart_state, "value_color", "#111827") or "#111827"),
+                "value_size": int(getattr(self.chart_state, "value_size", 0) or 0),
+                "value_align": str(getattr(self.chart_state, "value_align", "left") or "left"),
+                "card_density": str(getattr(self.chart_state, "card_density", "normal") or "normal"),
+                "show_card_accent": bool(getattr(self.chart_state, "show_card_accent", True)),
+                "show_card_sparkline": bool(getattr(self.chart_state, "show_card_sparkline", True)),
+                "alt_text": str(getattr(self.chart_state, "alt_text", "") or ""),
             },
             "title": str(
                 self._chart_context.get("title")
@@ -1078,7 +1185,7 @@ class ReportChartWidget(QWidget):
     def _default_visual_state(self, payload: Optional[ChartPayload]) -> ChartVisualState:
         chart_type = self._normalize_chart_type(getattr(payload, "chart_type", "bar"))
         state = ChartVisualState(chart_type=chart_type, palette=self._preferred_palette_for_chart_type(chart_type))
-        state.font_scale = 1.0
+        state.font_scale = 0.82
         state.bar_corner_style = "square"
         if chart_type in {"pie", "donut"}:
             state.show_legend = True
@@ -1227,6 +1334,19 @@ class ReportChartWidget(QWidget):
         border_action.setChecked(bool(getattr(self.chart_state, "show_border", False)))
         border_action.triggered.connect(self._toggle_show_border)
         personalize_menu.addAction(border_action)
+
+        background_action = QAction(_rt("Cor de fundo..."), menu)
+        background_action.triggered.connect(lambda checked=False: self._pick_visual_color("background_color", "#FFFFFF"))
+        personalize_menu.addAction(background_action)
+
+        primary_action = QAction(_rt("Cor principal..."), menu)
+        primary_action.triggered.connect(lambda checked=False: self._pick_visual_color("primary_color", "#5A3FE6"))
+        personalize_menu.addAction(primary_action)
+
+        border_color_action = QAction(_rt("Cor da borda..."), menu)
+        border_color_action.setEnabled(bool(getattr(self.chart_state, "show_border", False)))
+        border_color_action.triggered.connect(lambda checked=False: self._pick_visual_color("border_color", "#CBD5E1"))
+        personalize_menu.addAction(border_color_action)
 
         sort_group = QActionGroup(menu)
         sort_group.setExclusive(True)
@@ -1432,13 +1552,81 @@ class ReportChartWidget(QWidget):
     def _ensure_visual_state_compatibility(self):
         if self.chart_state.chart_type not in self.TYPE_LABELS:
             self.chart_state.chart_type = self._fallback_chart_type()
-        self.chart_state.font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
+        self.chart_state.font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
 
         if not self._supports_percentage():
             self.chart_state.show_percent = False
 
         if not hasattr(self.chart_state, "show_border"):
             self.chart_state.show_border = False
+        defaults = {
+            "background_color": "#FFFFFF",
+            "show_background": True,
+            "show_title": True,
+            "background_opacity": 100,
+            "border_color": "#CBD5E1",
+            "border_width": 1,
+            "border_radius": 8,
+            "padding": 8,
+            "shadow_enabled": False,
+            "shadow_opacity": 18,
+            "grid_color": "#E5E7EB",
+            "grid_width": 1,
+            "grid_opacity": 100,
+            "show_axis_labels": True,
+            "axis_label_color": "#4B5563",
+            "axis_label_size": 0,
+            "show_zero_line": True,
+            "zero_line_color": "#CBD5E1",
+            "title_color": "#1F2937",
+            "title_size": 0,
+            "label_color": "#4B5563",
+            "label_size": 0,
+            "data_label_position": "outside",
+            "text_align": "left",
+            "number_prefix": "",
+            "number_suffix": "",
+            "decimal_places": 2,
+            "display_units": "none",
+            "null_value": "-",
+            "primary_color": "#5A3FE6",
+            "category_palette": [],
+            "bar_width_percent": 62,
+            "line_width": 2,
+            "show_markers": True,
+            "marker_size": 4,
+            "value_color": "#111827",
+            "value_size": 0,
+            "value_align": "left",
+            "card_density": "normal",
+            "show_card_accent": True,
+            "show_card_sparkline": True,
+            "alt_text": "",
+        }
+        for attr, default in defaults.items():
+            if not hasattr(self.chart_state, attr):
+                setattr(self.chart_state, attr, default)
+        self.chart_state.border_radius = self._visual_int("border_radius", 8, 0, 32)
+        self.chart_state.border_width = self._visual_int("border_width", 1, 1, 6)
+        self.chart_state.padding = self._visual_int("padding", 8, 0, 40)
+        self.chart_state.background_opacity = self._visual_int("background_opacity", 100, 0, 100)
+        self.chart_state.shadow_opacity = self._visual_int("shadow_opacity", 18, 0, 60)
+        self.chart_state.grid_width = self._visual_int("grid_width", 1, 1, 4)
+        self.chart_state.grid_opacity = self._visual_int("grid_opacity", 100, 0, 100)
+        self.chart_state.axis_label_size = self._visual_int("axis_label_size", 0, 0, 36)
+        self.chart_state.title_size = self._visual_int("title_size", 0, 0, 48)
+        self.chart_state.label_size = self._visual_int("label_size", 0, 0, 36)
+        self.chart_state.decimal_places = self._visual_int("decimal_places", 2, 0, 8)
+        self.chart_state.value_size = self._visual_int("value_size", 0, 0, 72)
+        self.chart_state.bar_width_percent = self._visual_int("bar_width_percent", 62, 20, 100)
+        self.chart_state.line_width = self._visual_int("line_width", 2, 1, 8)
+        self.chart_state.marker_size = self._visual_int("marker_size", 4, 2, 12)
+        if str(getattr(self.chart_state, "card_density", "") or "").strip().lower() not in {"compact", "normal", "expanded"}:
+            self.chart_state.card_density = "normal"
+        if str(getattr(self.chart_state, "display_units", "") or "").strip().lower() not in {"none", "auto", "thousand", "million"}:
+            self.chart_state.display_units = "none"
+        if str(getattr(self.chart_state, "data_label_position", "") or "").strip().lower() not in {"auto", "inside", "outside"}:
+            self.chart_state.data_label_position = "outside"
 
         if self.chart_state.chart_type in {"pie", "donut"}:
             self.chart_state.show_grid = False
@@ -1481,6 +1669,16 @@ class ReportChartWidget(QWidget):
 
     def _toggle_show_border(self, checked: bool):
         self.chart_state.show_border = bool(checked)
+        self._rerender_chart(transition="data")
+
+    def _pick_visual_color(self, attr: str, fallback: str):
+        self._ensure_visual_state_compatibility()
+        current = self._visual_color(attr, fallback)
+        chosen = QColorDialog.getColor(current, self, _rt("Escolher cor"))
+        if not chosen.isValid():
+            return
+        setattr(self.chart_state, attr, chosen.name().upper())
+        self._reset_item_color_cache()
         self._rerender_chart(transition="data")
 
     def _set_sort_mode(self, sort_mode: str):
@@ -1780,12 +1978,26 @@ class ReportChartWidget(QWidget):
 
     def _event_point(self, event) -> QPointF:
         try:
-            return QPointF(event.localPos())
+            point = QPointF(event.localPos())
         except Exception:
             try:
-                return QPointF(event.pos())
+                point = QPointF(event.pos())
             except Exception:
                 return QPointF()
+        fixed_size = QSize(self._fixed_render_size)
+        if (
+            fixed_size.isValid()
+            and fixed_size.width() > 0
+            and fixed_size.height() > 0
+            and self.width() > 0
+            and self.height() > 0
+            and (fixed_size.width() != self.width() or fixed_size.height() != self.height())
+        ):
+            return QPointF(
+                point.x() * float(fixed_size.width()) / float(self.width()),
+                point.y() * float(fixed_size.height()) / float(self.height()),
+            )
+        return point
 
     def _interactive_target_at(self, point: QPointF):
         for target in reversed(self._interactive_regions):
@@ -1868,7 +2080,16 @@ class ReportChartWidget(QWidget):
         self.unsetCursor()
         super().leaveEvent(event)
 
-    def _prompt_for_text(self, dialog_title: str, field_label: str, current_text: str) -> Optional[str]:
+    def _prompt_for_text(
+        self,
+        dialog_title: str,
+        field_label: str,
+        current_text: str,
+        *,
+        icon: Optional[QIcon] = None,
+        show_icon: bool = True,
+        preferred_width: int = 420,
+    ) -> Optional[str]:
         helper_text = _rt("Atualize apenas o texto exibido neste gráfico.")
         if _rt("Legenda") in field_label or "Legenda" in field_label:
             helper_text = _rt("Atualize apenas o texto exibido na legenda deste gráfico.")
@@ -1882,7 +2103,8 @@ class ReportChartWidget(QWidget):
                 geometry_key="",
                 helper_text=helper_text,
                 accept_label=_rt("Salvar"),
-                icon=chart_popup_icon(),
+                icon=(icon if icon is not None else chart_popup_icon()) if show_icon else None,
+                preferred_width=preferred_width,
             )
         except Exception:
             return None
@@ -1914,7 +2136,13 @@ class ReportChartWidget(QWidget):
             category_key = str(target.get("key") or "")
             if not category_key:
                 return
-            new_text = self._prompt_for_text(_rt("Editar item da legenda"), _rt("Legenda:"), current_text)
+            new_text = self._prompt_for_text(
+                _rt("Editar item da legenda"),
+                _rt("Legenda:"),
+                current_text,
+                show_icon=False,
+                preferred_width=560,
+            )
             if new_text is None:
                 return
             if new_text:
@@ -1939,6 +2167,9 @@ class ReportChartWidget(QWidget):
 
         raw_categories = list(getattr(self._payload, "raw_categories", []) or [])
         feature_ids_matrix = list(getattr(self._payload, "category_feature_ids", []) or [])
+        x_values = list(getattr(self._payload, "x_values", []) or [])
+        size_values = list(getattr(self._payload, "size_values", []) or [])
+        series_labels = list(getattr(self._payload, "series_labels", []) or [])
         items: List[Dict[str, object]] = []
         for index, (category, value) in enumerate(zip(self._payload.categories, self._payload.values)):
             try:
@@ -1955,6 +2186,9 @@ class ReportChartWidget(QWidget):
                     "raw_category": raw_category,
                     "key": self._category_key(raw_category),
                     "feature_ids": [int(fid) for fid in list(feature_ids or []) if fid is not None],
+                    "x_value": float(x_values[index]) if index < len(x_values) else float(index),
+                    "size_value": float(size_values[index]) if index < len(size_values) else 1.0,
+                    "series_label": str(series_labels[index]) if index < len(series_labels) else "",
                 }
             )
         return items
@@ -2223,6 +2457,9 @@ class ReportChartWidget(QWidget):
 
         raw_categories = list(getattr(self._payload, "raw_categories", []) or [])
         feature_ids_matrix = list(getattr(self._payload, "category_feature_ids", []) or [])
+        x_values = list(getattr(self._payload, "x_values", []) or [])
+        size_values = list(getattr(self._payload, "size_values", []) or [])
+        series_labels = list(getattr(self._payload, "series_labels", []) or [])
 
         pairs = []
         for index, (category, value) in enumerate(zip(self._payload.categories, self._payload.values)):
@@ -2241,6 +2478,9 @@ class ReportChartWidget(QWidget):
                     "raw_category": raw_category,
                     "key": category_key,
                     "feature_ids": [int(fid) for fid in list(feature_ids or []) if fid is not None],
+                    "x_value": float(x_values[index]) if index < len(x_values) else float(index),
+                    "size_value": float(size_values[index]) if index < len(size_values) else 1.0,
+                    "series_label": str(series_labels[index]) if index < len(series_labels) else "",
                 }
             )
 
@@ -2364,12 +2604,38 @@ class ReportChartWidget(QWidget):
         return visible_pairs
 
     def paintEvent(self, event):
+        fixed_size = QSize(self._fixed_render_size)
+        if (
+            fixed_size.isValid()
+            and fixed_size.width() > 0
+            and fixed_size.height() > 0
+            and self.width() > 0
+            and self.height() > 0
+            and (fixed_size.width() != self.width() or fixed_size.height() != self.height())
+        ):
+            painter = QPainter(self)
+            painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+            painter.save()
+            try:
+                painter.scale(
+                    float(self.width()) / float(fixed_size.width()),
+                    float(self.height()) / float(fixed_size.height()),
+                )
+                self._paint_chart_surface(painter, QRect(0, 0, fixed_size.width(), fixed_size.height()))
+            finally:
+                painter.restore()
+            return
+
         painter = QPainter(self)
+        self._paint_chart_surface(painter, self.rect())
+
+    def _paint_chart_surface(self, painter: QPainter, bounds: QRect):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
         painter.setFont(self._resolved_scaled_font())
-        painter.fillRect(self.rect(), QColor("#FFFFFF"))
+        if bool(getattr(self.chart_state, "show_background", True)):
+            painter.fillRect(bounds, self._visual_color("background_color", "#FFFFFF"))
         self._interactive_regions = []
-        rect = QRectF(self.rect()).adjusted(12, 12, -12, -12)
+        rect = QRectF(bounds).adjusted(12, 12, -12, -12)
 
         render_payload = self._render_payload()
         if render_payload is None:
@@ -2377,7 +2643,7 @@ class ReportChartWidget(QWidget):
             self._active_render_payload = None
             self._paint_context = {}
             if self._empty_text:
-                painter.setPen(QPen(QColor("#6B7280")))
+                painter.setPen(QPen(QColor("#CBD5E1" if _is_dark_theme() else "#6B7280")))
                 painter.drawText(rect, Qt.AlignCenter, self._empty_text)
             return
 
@@ -2392,6 +2658,10 @@ class ReportChartWidget(QWidget):
             return
 
         chart_rect = rect.adjusted(0, 0, 0, 0)
+        if self._uses_visual_surface(str(render_payload.get("chart_type") or "")):
+            self._draw_visual_surface(painter, chart_rect)
+            padding = float(self._visual_int("padding", 8, 0, 40))
+            chart_rect = chart_rect.adjusted(padding, padding, -padding, -padding)
         self._active_render_payload = dict(render_payload)
         self.current_visual_snapshot = self._capture_visual_snapshot(render_payload)
         self._paint_context = {
@@ -2468,12 +2738,16 @@ class ReportChartWidget(QWidget):
 
     def _draw_title(self, painter: QPainter, rect: QRectF, title: str):
         title_font = harmonize_font_family(QFont(self.font()))
-        title_font.setPointSize(self._scaled_size(title_font.pointSize() + 1, minimum=7))
+        configured_size = self._visual_int("title_size", 0, 0, 48)
+        if configured_size > 0:
+            title_font.setPointSize(self._scaled_size(configured_size, minimum=7, maximum=64))
+        else:
+            title_font.setPointSize(self._scaled_size(title_font.pointSize() + 1, minimum=7))
         title_font.setBold(True)
         painter.save()
         painter.setFont(title_font)
-        painter.setPen(QPen(QColor("#1F2937")))
-        painter.drawText(rect, Qt.AlignLeft | Qt.AlignTop, title)
+        painter.setPen(QPen(self._visual_color("title_color", "#1F2937")))
+        painter.drawText(rect, self._visual_alignment(Qt.AlignLeft) | Qt.AlignTop, title)
         metrics = QFontMetrics(title_font)
         hit_rect = QRectF(rect.left(), rect.top(), min(rect.width(), metrics.horizontalAdvance(title) + 18), metrics.height() + 8)
         self._register_interactive_region(hit_rect, "title", None, title)
@@ -2531,9 +2805,14 @@ class ReportChartWidget(QWidget):
             "#D1D5DB",
         ]
 
+        custom_palette = self._valid_color_list(getattr(self.chart_state, "category_palette", []) or [])
+        if custom_palette and str(getattr(self.chart_state, "palette", "") or "") in {"custom", "category", "default"}:
+            return [QColor(custom_palette[index % len(custom_palette)]) for index in range(max(1, count))]
+
+        primary = self._visual_color("primary_color", "#5A3FE6")
         palette = self.chart_state.palette
         if palette == "single":
-            base = [QColor("#5A3FE6")] * max(1, count)
+            base = [QColor(primary)] * max(1, count)
         elif palette == "category":
             base = [QColor(default_multi[index % len(default_multi)]) for index in range(max(1, count))]
         elif palette == "purple":
@@ -2549,6 +2828,146 @@ class ReportChartWidget(QWidget):
         else:
             base = [QColor(purple_multi[index % len(purple_multi)]) for index in range(max(1, count))]
         return base
+
+    def _valid_color_list(self, values: List[object]) -> List[QColor]:
+        colors: List[QColor] = []
+        for value in list(values or []):
+            color = QColor(str(value or ""))
+            if color.isValid():
+                colors.append(color)
+        return colors
+
+    def _visual_color(self, attr: str, fallback: str) -> QColor:
+        raw_value = str(getattr(self.chart_state, attr, "") or fallback)
+        if _is_dark_theme():
+            normalized = raw_value.strip().upper()
+            dark_defaults = {
+                "background_color": {"#FFFFFF": "#111827", "#F8FAFC": "#111827", "#FAFAFA": "#111827"},
+                "border_color": {"#CBD5E1": "#334155", "#D1D5DB": "#334155", "#E2E8F0": "#334155"},
+                "grid_color": {"#E5E7EB": "#334155", "#D1D5DB": "#334155", "#FFFFFF": "#334155"},
+                "zero_line_color": {"#CBD5E1": "#475569", "#D1D5DB": "#475569"},
+                "title_color": {"#111827": "#F8FAFC", "#1F2937": "#F8FAFC", "#0F172A": "#F8FAFC"},
+                "label_color": {"#4B5563": "#CBD5E1", "#64748B": "#CBD5E1", "#475569": "#CBD5E1"},
+                "axis_label_color": {"#4B5563": "#CBD5E1", "#64748B": "#CBD5E1", "#475569": "#CBD5E1"},
+                "value_color": {"#111827": "#F8FAFC", "#1F2937": "#F8FAFC", "#0F172A": "#F8FAFC"},
+            }
+            raw_value = dark_defaults.get(str(attr or ""), {}).get(normalized, raw_value)
+        color = QColor(raw_value)
+        if color.isValid():
+            return color
+        return QColor(fallback)
+
+    def _visual_int(self, attr: str, fallback: int, minimum: int, maximum: int) -> int:
+        try:
+            value = int(getattr(self.chart_state, attr, fallback))
+        except Exception:
+            value = fallback
+        return max(minimum, min(maximum, value))
+
+    def _visual_alignment(self, default: Qt.AlignmentFlag = Qt.AlignLeft) -> Qt.AlignmentFlag:
+        value = str(getattr(self.chart_state, "text_align", "") or "").strip().lower()
+        if value in {"center", "centro"}:
+            return Qt.AlignHCenter
+        if value in {"right", "direita"}:
+            return Qt.AlignRight
+        return default
+
+    def _visual_label_font(self, delta: int = -1) -> QFont:
+        font = harmonize_font_family(QFont(self.font()))
+        configured_size = self._visual_int("label_size", 0, 0, 36)
+        if configured_size > 0:
+            font.setPointSize(self._scaled_size(configured_size, minimum=6, maximum=48))
+        else:
+            font.setPointSize(self._scaled_size(font.pointSize() + delta, minimum=6))
+        return font
+
+    def _axis_label_font(self, delta: int = -1) -> QFont:
+        font = harmonize_font_family(QFont(self.font()))
+        configured_size = self._visual_int("axis_label_size", 0, 0, 36)
+        if configured_size > 0:
+            font.setPointSize(self._scaled_size(configured_size, minimum=6, maximum=48))
+        else:
+            font.setPointSize(self._scaled_size(font.pointSize() + delta, minimum=6))
+        return font
+
+    def _axis_label_color(self) -> QColor:
+        return self._visual_color("axis_label_color", "#4B5563")
+
+    def _surface_fill_color(self, fallback: str = "#FFFFFF") -> QColor:
+        color = self._visual_color("background_color", fallback)
+        opacity = self._visual_int("background_opacity", 100, 0, 100)
+        color.setAlpha(max(0, min(255, int(round(255 * opacity / 100.0)))))
+        return color
+
+    def _draw_configured_shadow(self, painter: QPainter, rect: QRectF, radius: float):
+        if not bool(getattr(self.chart_state, "shadow_enabled", False)):
+            return
+        opacity = self._visual_int("shadow_opacity", 18, 0, 60)
+        if opacity <= 0:
+            return
+        shadow = QColor("#0F172A")
+        shadow.setAlpha(max(0, min(160, int(round(255 * opacity / 100.0)))))
+        painter.save()
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(shadow)
+        painter.drawRoundedRect(rect.adjusted(2.0, 3.0, 2.0, 3.0), radius, radius)
+        painter.restore()
+
+    def _data_label_position(self) -> str:
+        value = str(getattr(self.chart_state, "data_label_position", "outside") or "outside").strip().lower()
+        if value not in {"auto", "inside", "outside"}:
+            return "outside"
+        return value
+
+    def _bar_width_factor(self) -> float:
+        return self._visual_int("bar_width_percent", 62, 20, 100) / 100.0
+
+    def _line_width_value(self) -> float:
+        return float(self._visual_int("line_width", 2, 1, 8))
+
+    def _marker_radius_value(self, level: float, progress: float) -> float:
+        base = float(self._visual_int("marker_size", 4, 2, 12))
+        return (base + level * 1.4) * (0.82 + progress * 0.28)
+
+    def _draw_zero_line(self, painter: QPainter, start: QPointF, end: QPointF):
+        if not bool(getattr(self.chart_state, "show_zero_line", True)):
+            return
+        painter.save()
+        painter.setPen(QPen(self._visual_color("zero_line_color", "#CBD5E1"), 1, Qt.SolidLine))
+        painter.drawLine(start, end)
+        painter.restore()
+
+    def _visual_value_font(self, delta: int = 12) -> QFont:
+        font = harmonize_font_family(QFont(self.font()))
+        configured_size = self._visual_int("value_size", 0, 0, 72)
+        if configured_size > 0:
+            font.setPointSize(self._scaled_size(configured_size, minimum=8, maximum=88))
+        else:
+            font.setPointSize(self._scaled_size(font.pointSize() + delta, minimum=9))
+        font.setBold(True)
+        return font
+
+    def _visual_value_color(self) -> QColor:
+        value_color = QColor(str(getattr(self.chart_state, "value_color", "") or ""))
+        if value_color.isValid():
+            return value_color
+        return self._visual_color("title_color", "#111827")
+
+    def _visual_value_alignment(self, default: Qt.AlignmentFlag = Qt.AlignLeft) -> Qt.AlignmentFlag:
+        value = str(getattr(self.chart_state, "value_align", "") or "").strip().lower()
+        if value in {"center", "centro"}:
+            return Qt.AlignHCenter
+        if value in {"right", "direita"}:
+            return Qt.AlignRight
+        return default
+
+    def _card_density_padding(self) -> float:
+        density = str(getattr(self.chart_state, "card_density", "normal") or "normal").strip().lower()
+        if density == "compact":
+            return 12.0
+        if density == "expanded":
+            return 28.0
+        return 20.0
 
     def _reset_item_color_cache(self):
         self._item_color_cache = {}
@@ -2596,7 +3015,7 @@ class ReportChartWidget(QWidget):
         painter.setPen(Qt.NoPen)
         painter.setBrush(color)
         painter.drawRoundedRect(QRectF(legend_rect.left(), legend_rect.top() + 4, 12, 12), 3, 3)
-        painter.setPen(QPen(QColor("#4B5563")))
+        painter.setPen(QPen(self._visual_color("label_color", "#4B5563")))
         text_rect = QRectF(legend_rect.left() + 18, legend_rect.top(), legend_rect.width() - 18, legend_rect.height())
         painter.drawText(
             text_rect,
@@ -2646,7 +3065,14 @@ class ReportChartWidget(QWidget):
         if not self.chart_state.show_grid:
             return
         painter.save()
-        painter.setPen(QPen(QColor("#E5E7EB"), 1))
+        color = self._visual_color("grid_color", "#E5E7EB")
+        try:
+            opacity = int(getattr(self.chart_state, "grid_opacity", 100) or 100)
+        except Exception:
+            opacity = 100
+        color.setAlpha(max(0, min(255, int(round(255 * max(0, min(100, opacity)) / 100.0)))))
+        width = float(self._visual_int("grid_width", 1, 1, 4))
+        painter.setPen(QPen(color, width))
         if vertical:
             for index in range(5):
                 x = chart_rect.left() + (chart_rect.width() * index / 4.0)
@@ -2663,8 +3089,43 @@ class ReportChartWidget(QWidget):
             return
         painter.save()
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QColor("#CBD5E1"), 1))
-        painter.drawRoundedRect(border_rect, 8, 8)
+        radius = float(self._visual_int("border_radius", 8, 0, 32))
+        painter.setPen(QPen(self._visual_color("border_color", "#CBD5E1"), self._visual_int("border_width", 1, 1, 6)))
+        painter.drawRoundedRect(border_rect, radius, radius)
+        painter.restore()
+
+    def _uses_visual_surface(self, chart_type: str) -> bool:
+        return str(chart_type or "").strip().lower() in {
+            "bar",
+            "barh",
+            "line",
+            "area",
+            "pie",
+            "donut",
+            "card",
+            "kpi",
+            "gauge",
+            "column_clustered",
+            "column_stacked",
+            "bar100_stacked",
+        }
+
+    def _draw_visual_surface(self, painter: QPainter, rect: QRectF):
+        surface_rect = rect.adjusted(1.0, 1.0, -1.0, -1.0)
+        if surface_rect.width() <= 0 or surface_rect.height() <= 0:
+            return
+        radius = float(self._visual_int("border_radius", 8, 0, 32))
+        self._draw_configured_shadow(painter, surface_rect, radius)
+        painter.save()
+        if bool(getattr(self.chart_state, "show_background", True)):
+            painter.setBrush(self._surface_fill_color("#FFFFFF"))
+        else:
+            painter.setBrush(Qt.NoBrush)
+        if bool(getattr(self.chart_state, "show_border", False)):
+            painter.setPen(QPen(self._visual_color("border_color", "#CBD5E1"), self._visual_int("border_width", 1, 1, 6)))
+        else:
+            painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(surface_rect, radius, radius)
         painter.restore()
 
     def _draw_horizontal_bar_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
@@ -2674,8 +3135,11 @@ class ReportChartWidget(QWidget):
         reason = self._payload_animation_reason(payload)
         colors = self._palette_colors(len(values), "barh")
         min_value, max_value = value_scale_bounds(values)
-        label_width = min(220.0, rect.width() * 0.34)
-        annotation_width = 96.0 if (self.chart_state.show_values or self.chart_state.show_percent) else 16.0
+        show_axis_labels = bool(getattr(self.chart_state, "show_axis_labels", True))
+        label_width = min(220.0, rect.width() * 0.34) if show_axis_labels else 4.0
+        label_position = self._data_label_position()
+        outside_labels = label_position != "inside"
+        annotation_width = 96.0 if outside_labels and (self.chart_state.show_values or self.chart_state.show_percent) else 16.0
         top_offset = 28.0 if self.chart_state.show_legend else 8.0
         chart_rect = rect.adjusted(label_width + 12, top_offset, -annotation_width, -8)
         if chart_rect.width() <= 0 or chart_rect.height() <= 0:
@@ -2687,15 +3151,13 @@ class ReportChartWidget(QWidget):
 
         self._draw_grid_lines(painter, chart_rect, vertical=True)
         if min_value < 0.0 and max_value > 0.0:
-            painter.save()
-            painter.setPen(QPen(QColor("#CBD5E1"), 1, Qt.SolidLine))
-            painter.drawLine(QPointF(zero_x, chart_rect.top()), QPointF(zero_x, chart_rect.bottom()))
-            painter.restore()
+            self._draw_zero_line(painter, QPointF(zero_x, chart_rect.top()), QPointF(zero_x, chart_rect.bottom()))
 
         count = max(1, len(categories))
         row_height = chart_rect.height() / count
-        bar_height = max(12.0, row_height * 0.5)
-        metrics = QFontMetrics(self.font())
+        bar_height = max(8.0, row_height * self._bar_width_factor())
+        painter.setFont(self._axis_label_font(-1))
+        metrics = QFontMetrics(painter.font())
         label_stride = self._label_stride(len(categories))
         radius = 0.0 if self._normalized_corner_style() == "square" else 4.0
         zero_ratio = value_scale_ratio(0.0, min_value, max_value)
@@ -2731,8 +3193,8 @@ class ReportChartWidget(QWidget):
                 painter.drawRect(bar_rect)
             self._register_data_point_region(bar_rect.adjusted(-2, -2, 2, 2), item)
 
-            if index % label_stride == 0 or index == len(categories) - 1:
-                painter.setPen(QPen(QColor("#4B5563")))
+            if show_axis_labels and (index % label_stride == 0 or index == len(categories) - 1):
+                painter.setPen(QPen(self._axis_label_color()))
                 label_rect = QRectF(rect.left(), y - 2, label_width, bar_height + 4)
                 painter.drawText(
                     label_rect,
@@ -2744,8 +3206,12 @@ class ReportChartWidget(QWidget):
             annotation = self._format_annotation(values[index], float(payload["total"]))
             if annotation:
                 painter.setOpacity(0.84 + 0.16 * max(progress, level))
-                painter.setPen(QPen(QColor("#1F2937")))
-                if value >= 0:
+                painter.setPen(QPen(self._visual_color("label_color", "#1F2937")))
+                if label_position == "inside" and bar_rect.width() >= 42:
+                    value_rect = bar_rect.adjusted(6, -2, -6, 2)
+                    align = Qt.AlignVCenter | Qt.AlignRight
+                    painter.setPen(QPen(self._visual_color("background_color", "#FFFFFF")))
+                elif value >= 0:
                     value_rect = QRectF(chart_rect.right() + 10, y - 2, annotation_width - 10, bar_height + 4)
                     align = Qt.AlignVCenter | Qt.AlignRight
                 else:
@@ -2762,8 +3228,11 @@ class ReportChartWidget(QWidget):
         reason = self._payload_animation_reason(payload)
         colors = self._palette_colors(len(values), "bar")
         min_value, max_value = value_scale_bounds(values)
+        show_axis_labels = bool(getattr(self.chart_state, "show_axis_labels", True))
+        label_position = self._data_label_position()
         top_offset = 28.0 if self.chart_state.show_legend else 8.0
-        chart_rect = rect.adjusted(18, top_offset, -18, -56)
+        bottom_offset = 56 if show_axis_labels else 16
+        chart_rect = rect.adjusted(18, top_offset, -18, -bottom_offset)
         if chart_rect.width() <= 0 or chart_rect.height() <= 0:
             return
         zero_y = chart_rect.bottom() - chart_rect.height() * value_scale_ratio(0.0, min_value, max_value)
@@ -2773,15 +3242,13 @@ class ReportChartWidget(QWidget):
 
         self._draw_grid_lines(painter, chart_rect, vertical=False)
         if min_value < 0.0 and max_value > 0.0:
-            painter.save()
-            painter.setPen(QPen(QColor("#CBD5E1"), 1, Qt.SolidLine))
-            painter.drawLine(QPointF(chart_rect.left(), zero_y), QPointF(chart_rect.right(), zero_y))
-            painter.restore()
+            self._draw_zero_line(painter, QPointF(chart_rect.left(), zero_y), QPointF(chart_rect.right(), zero_y))
 
         count = max(1, len(categories))
         slot_width = chart_rect.width() / count
-        bar_width = min(max(16.0, slot_width * 0.62), 72.0)
-        metrics = QFontMetrics(self.font())
+        bar_width = min(max(8.0, slot_width * self._bar_width_factor()), 96.0)
+        painter.setFont(self._axis_label_font(-1))
+        metrics = QFontMetrics(painter.font())
         label_stride = self._label_stride(len(categories))
         radius = 0.0 if self._normalized_corner_style() == "square" else 4.0
 
@@ -2819,13 +3286,20 @@ class ReportChartWidget(QWidget):
             annotation = self._format_annotation(values[index], float(payload["total"]))
             if annotation:
                 painter.setOpacity(0.84 + 0.16 * max(progress, level))
-                painter.setPen(QPen(QColor("#1F2937")))
-                annotation_y = y - 22 if value_y <= zero_y else zero_y + 4
-                painter.drawText(QRectF(x - 18, annotation_y, bar_width + 36, 18), Qt.AlignHCenter | Qt.AlignBottom, annotation)
+                if label_position == "inside" and bar_rect.height() >= 24:
+                    painter.setPen(QPen(self._visual_color("background_color", "#FFFFFF")))
+                    label_rect = QRectF(x - 18, bar_rect.top() + 3, bar_width + 36, 18)
+                    align = Qt.AlignHCenter | Qt.AlignTop
+                else:
+                    painter.setPen(QPen(self._visual_color("label_color", "#1F2937")))
+                    annotation_y = y - 22 if value_y <= zero_y else zero_y + 4
+                    label_rect = QRectF(x - 18, annotation_y, bar_width + 36, 18)
+                    align = Qt.AlignHCenter | Qt.AlignBottom
+                painter.drawText(label_rect, align, annotation)
                 painter.setOpacity(1.0)
 
-            if index % label_stride == 0 or index == len(categories) - 1:
-                painter.setPen(QPen(QColor("#4B5563")))
+            if show_axis_labels and (index % label_stride == 0 or index == len(categories) - 1):
+                painter.setPen(QPen(self._axis_label_color()))
                 label_rect = QRectF(x - 12, chart_rect.bottom() + 8, bar_width + 24, 36)
                 painter.drawText(
                     label_rect,
@@ -2898,19 +3372,20 @@ class ReportChartWidget(QWidget):
 
         if donut:
             hole_rect = pie_rect.adjusted(pie_rect.width() * 0.24, pie_rect.height() * 0.24, -pie_rect.width() * 0.24, -pie_rect.height() * 0.24)
-            painter.setBrush(QColor("#FFFFFF"))
+            painter.setBrush(self._visual_color("background_color", "#FFFFFF"))
             painter.setPen(Qt.NoPen)
             painter.drawEllipse(hole_rect)
             label_opacity = 0.9
             if reason in {"entry", "type"}:
                 label_opacity = 0.82 + 0.18 * progress
             painter.setOpacity(label_opacity)
-            painter.setPen(QPen(QColor("#6B7280")))
+            painter.setPen(QPen(self._visual_color("label_color", "#6B7280")))
             painter.drawText(hole_rect, Qt.AlignCenter, payload["value_label"])
             painter.setOpacity(1.0)
 
         if show_legend:
-            metrics = QFontMetrics(self.font())
+            painter.setFont(self._visual_label_font(-1))
+            metrics = QFontMetrics(painter.font())
             line_height = 24
             legend_categories = list(payload.get("legend_categories") or categories)
             legend_opacity = 0.9
@@ -2931,7 +3406,7 @@ class ReportChartWidget(QWidget):
                     if index < len(legend_categories):
                         text = f"{legend_categories[index]} ({annotation})"
 
-                painter.setPen(QPen(QColor("#374151")))
+                painter.setPen(QPen(self._visual_color("label_color", "#374151")))
                 text_rect = QRectF(legend_rect.left() + 20, y, legend_rect.width() - 20, line_height)
                 painter.drawText(
                     text_rect,
@@ -2958,7 +3433,8 @@ class ReportChartWidget(QWidget):
         main_color = colors[0]
         left_margin = 24
         right_margin = 16
-        bottom_margin = 36
+        show_axis_labels = bool(getattr(self.chart_state, "show_axis_labels", True))
+        bottom_margin = 36 if show_axis_labels else 14
         top_margin = 28 if self.chart_state.show_legend else 12
         chart_rect = rect.adjusted(left_margin, top_margin, -right_margin, -bottom_margin)
         if chart_rect.width() <= 0 or chart_rect.height() <= 0:
@@ -2971,10 +3447,7 @@ class ReportChartWidget(QWidget):
 
         self._draw_grid_lines(painter, chart_rect, vertical=False)
         if min_value < 0.0 and max_value > 0.0:
-            painter.save()
-            painter.setPen(QPen(QColor("#CBD5E1"), 1, Qt.SolidLine))
-            painter.drawLine(QPointF(chart_rect.left(), zero_y), QPointF(chart_rect.right(), zero_y))
-            painter.restore()
+            self._draw_zero_line(painter, QPointF(chart_rect.left(), zero_y), QPointF(chart_rect.right(), zero_y))
 
         steps = max(1, len(values) - 1)
         points = []
@@ -3000,24 +3473,26 @@ class ReportChartWidget(QWidget):
             fill.setAlpha(58)
             painter.fillPath(area_path, fill)
 
-        painter.setPen(QPen(main_color, 2))
+        painter.setPen(QPen(main_color, self._line_width_value()))
         for index in range(1, len(points)):
             painter.drawLine(points[index - 1], points[index])
         painter.restore()
 
         painter.save()
+        show_markers = bool(getattr(self.chart_state, "show_markers", True))
         for index, point in enumerate(points):
             item = self._payload_item(payload, index)
             fill_color, border_color, border_width, level = self._item_interaction_style(main_color, item)
-            radius = (3.4 + level * 1.4) * (0.85 + progress * 0.35)
-            if border_width > 0.0:
-                painter.setPen(QPen(border_color, border_width))
-            else:
-                painter.setPen(Qt.NoPen)
-            painter.setBrush(fill_color)
+            radius = self._marker_radius_value(level, progress)
             if point.x() > reveal_x + radius:
                 continue
-            painter.drawEllipse(point, radius, radius)
+            if show_markers:
+                if border_width > 0.0:
+                    painter.setPen(QPen(border_color, border_width))
+                else:
+                    painter.setPen(Qt.NoPen)
+                painter.setBrush(fill_color)
+                painter.drawEllipse(point, radius, radius)
             self._register_data_point_region(
                 QRectF(point.x() - 10 - level * 2, point.y() - 10 - level * 2, 20 + level * 4, 20 + level * 4),
                 item,
@@ -3025,7 +3500,7 @@ class ReportChartWidget(QWidget):
             annotation = self._format_annotation(values[index], float(payload["total"]))
             if annotation:
                 painter.setOpacity(0.86 + 0.14 * max(progress, level))
-                painter.setPen(QPen(QColor("#1F2937")))
+                painter.setPen(QPen(self._visual_color("label_color", "#1F2937")))
                 painter.drawText(
                     QRectF(point.x() - 36, point.y() - 24, 72, 18),
                     Qt.AlignHCenter | Qt.AlignBottom,
@@ -3034,22 +3509,24 @@ class ReportChartWidget(QWidget):
                 painter.setOpacity(1.0)
                 painter.setPen(Qt.NoPen)
 
-        painter.setPen(QPen(QColor("#4B5563")))
-        metrics = QFontMetrics(self.font())
+        painter.setFont(self._axis_label_font(-1))
+        painter.setPen(QPen(self._axis_label_color()))
+        metrics = QFontMetrics(painter.font())
         step = chart_rect.width() / max(1, len(categories))
         label_stride = self._label_stride(len(categories))
-        for index, category in enumerate(categories):
-            if index % label_stride != 0 and index != len(categories) - 1:
-                continue
-            x = chart_rect.left() + step * index
-            label_rect = QRectF(x - step / 2, chart_rect.bottom() + 8, step, 24)
-            painter.drawText(
-                label_rect,
-                Qt.AlignHCenter | Qt.AlignTop,
-                metrics.elidedText(category, Qt.ElideRight, int(step) - 4),
-            )
-            item = self._payload_item(payload, index)
-            self._register_data_point_region(label_rect, item)
+        if show_axis_labels:
+            for index, category in enumerate(categories):
+                if index % label_stride != 0 and index != len(categories) - 1:
+                    continue
+                x = chart_rect.left() + step * index
+                label_rect = QRectF(x - step / 2, chart_rect.bottom() + 8, step, 24)
+                painter.drawText(
+                    label_rect,
+                    Qt.AlignHCenter | Qt.AlignTop,
+                    metrics.elidedText(category, Qt.ElideRight, int(step) - 4),
+                )
+                item = self._payload_item(payload, index)
+                self._register_data_point_region(label_rect, item)
         painter.restore()
 
     def _category_parts(self, item: Dict[str, object]) -> List[str]:
@@ -3130,15 +3607,22 @@ class ReportChartWidget(QWidget):
         return rect.adjusted(left * padding_factor, top * padding_factor, -(right * padding_factor), -(bottom * padding_factor))
 
     def _draw_surface_card(self, painter: QPainter, rect: QRectF, radius: float = 14.0):
+        configured_radius = float(self._visual_int("border_radius", int(radius), 0, 32))
+        self._draw_configured_shadow(painter, rect, configured_radius)
         painter.save()
+        show_background = bool(getattr(self.chart_state, "show_background", True))
+        background = self._surface_fill_color("#FFFFFF")
         if self._embedded_mode:
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor("#FFFFFF"))
-            painter.drawRect(rect)
+            painter.setBrush(background if show_background else Qt.NoBrush)
+            painter.drawRoundedRect(rect, configured_radius, configured_radius)
         else:
-            painter.setPen(QPen(QColor("#E5E7EB")))
-            painter.setBrush(QColor("#FFFFFF"))
-            painter.drawRoundedRect(rect, radius, radius)
+            if bool(getattr(self.chart_state, "show_border", False)):
+                painter.setPen(QPen(self._visual_color("border_color", "#E5E7EB"), self._visual_int("border_width", 1, 1, 6)))
+            else:
+                painter.setPen(Qt.NoPen)
+            painter.setBrush(background if show_background else Qt.NoBrush)
+            painter.drawRoundedRect(rect, configured_radius, configured_radius)
         painter.restore()
 
     def _draw_axis_label(self, painter: QPainter, rect: QRectF, text: str, align: Qt.AlignmentFlag = Qt.AlignLeft):
@@ -3146,7 +3630,7 @@ class ReportChartWidget(QWidget):
         axis_font = harmonize_font_family(QFont(self.font()))
         axis_font.setPointSize(self._scaled_size(axis_font.pointSize() - 1, minimum=6))
         painter.setFont(axis_font)
-        painter.setPen(QPen(QColor("#6B7280")))
+        painter.setPen(QPen(QColor("#CBD5E1" if _is_dark_theme() else "#6B7280")))
         painter.drawText(rect, align, text)
         painter.restore()
 
@@ -3158,37 +3642,36 @@ class ReportChartWidget(QWidget):
         reason = self._payload_animation_reason(payload)
         accent = self._palette_colors(1, "single")[0]
         frame = self._chart_surface(rect, 6, 6, 6, 6)
+        content_pad = self._card_density_padding()
         painter.save()
         if reason in {"entry", "type"}:
             painter.setOpacity(0.42 + 0.58 * progress)
             painter.translate(0.0, (1.0 - progress) * 7.5)
         self._draw_surface_card(painter, frame, 16)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(accent)
-        painter.drawRoundedRect(QRectF(frame.left(), frame.top(), 5, frame.height()), 3, 3)
+        if bool(getattr(self.chart_state, "show_card_accent", True)):
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(accent)
+            painter.drawRoundedRect(QRectF(frame.left(), frame.top(), 5, frame.height()), 3, 3)
 
-        label_font = harmonize_font_family(QFont(self.font()))
-        label_font.setPointSize(self._scaled_size(label_font.pointSize() - 1, minimum=6))
+        label_font = self._visual_label_font(-1)
         painter.setFont(label_font)
-        painter.setPen(QPen(QColor("#6B7280")))
+        painter.setPen(QPen(self._visual_color("label_color", "#6B7280")))
         painter.drawText(
-            QRectF(frame.left() + 20, frame.top() + 14, frame.width() - 40, 18),
-            Qt.AlignLeft | Qt.AlignTop,
+            QRectF(frame.left() + content_pad, frame.top() + 14, frame.width() - (content_pad * 2), 18),
+            self._visual_value_alignment(Qt.AlignLeft) | Qt.AlignTop,
             str(payload.get("value_label") or "Total"),
         )
 
-        value_font = harmonize_font_family(QFont(self.font()))
-        value_font.setPointSize(self._scaled_size(value_font.pointSize() + 12, minimum=9))
-        value_font.setBold(True)
+        value_font = self._visual_value_font(12)
         painter.setFont(value_font)
-        painter.setPen(QPen(QColor("#111827")))
+        painter.setPen(QPen(self._visual_value_color()))
         displayed_value = total if values else current
         if self._is_transition_active():
             start_total = float(self.previous_visual_snapshot.get("total") or 0.0)
             displayed_value = start_total + (displayed_value - start_total) * self._countup_progress(progress)
         painter.drawText(
-            QRectF(frame.left() + 20, frame.top() + 32, frame.width() - 40, frame.height() * 0.42),
-            Qt.AlignLeft | Qt.AlignVCenter,
+            QRectF(frame.left() + content_pad, frame.top() + 32, frame.width() - (content_pad * 2), frame.height() * 0.42),
+            self._visual_value_alignment(Qt.AlignLeft) | Qt.AlignVCenter,
             self._format_value(displayed_value),
         )
 
@@ -3198,18 +3681,18 @@ class ReportChartWidget(QWidget):
         elif values:
             subtitle = f"{self._format_value(current)} selecionado"
         painter.setFont(label_font)
-        painter.setPen(QPen(QColor("#4B5563")))
+        painter.setPen(QPen(self._visual_color("label_color", "#4B5563")))
         subtitle_opacity = 0.92
         if reason in {"entry", "type"}:
             subtitle_opacity = 0.82 + 0.18 * progress
         painter.setOpacity(subtitle_opacity)
         painter.drawText(
-            QRectF(frame.left() + 20, frame.bottom() - 50, frame.width() - 40, 18),
-            Qt.AlignLeft | Qt.AlignBottom,
+            QRectF(frame.left() + content_pad, frame.bottom() - 50, frame.width() - (content_pad * 2), 18),
+            self._visual_value_alignment(Qt.AlignLeft) | Qt.AlignBottom,
             subtitle or "Indicador resumido",
         )
 
-        if len(values) > 1:
+        if bool(getattr(self.chart_state, "show_card_sparkline", True)) and len(values) > 1:
             spark_rect = QRectF(frame.left() + 20, frame.bottom() - 24, frame.width() - 40, 10)
             spark_values = [max(0.0, float(value)) for value in values]
             spark_max = max(max(spark_values), 1.0)
@@ -3225,9 +3708,11 @@ class ReportChartWidget(QWidget):
             painter.setPen(Qt.NoPen)
             for point in spark_points:
                 painter.drawEllipse(point, 2.6, 2.6)
-        painter.setPen(QPen(QColor("#E5E7EB")))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(frame, 16, 16)
+        if bool(getattr(self.chart_state, "show_border", False)):
+            painter.setPen(QPen(self._visual_color("border_color", "#E5E7EB"), self._visual_int("border_width", 1, 1, 6)))
+            painter.setBrush(Qt.NoBrush)
+            radius = float(self._visual_int("border_radius", 16, 0, 32))
+            painter.drawRoundedRect(frame, radius, radius)
         painter.setOpacity(1.0)
         painter.restore()
 
@@ -3243,24 +3728,29 @@ class ReportChartWidget(QWidget):
         painter.save()
         if reason in {"entry", "type"}:
             painter.setOpacity(0.56 + 0.44 * progress)
-        painter.setPen(QPen(QColor("#DDE5F3")))
-        painter.setBrush(QColor("#FFFFFF"))
-        painter.drawRoundedRect(frame, 18, 18)
-        painter.setPen(QPen(accent.darker(106), 2.8))
-        painter.drawLine(QPointF(frame.left() + 18, frame.top() + 16), QPointF(frame.left() + 92, frame.top() + 16))
-        painter.setPen(QPen(QColor("#64748B")))
-        painter.setFont(harmonize_font_family(QFont(self.font())))
+        if bool(getattr(self.chart_state, "show_border", False)):
+            painter.setPen(QPen(self._visual_color("border_color", "#DDE5F3"), self._visual_int("border_width", 1, 1, 6)))
+        else:
+            painter.setPen(Qt.NoPen)
+        painter.setBrush(self._surface_fill_color("#FFFFFF") if bool(getattr(self.chart_state, "show_background", True)) else Qt.NoBrush)
+        radius = float(self._visual_int("border_radius", 18, 0, 32))
+        self._draw_configured_shadow(painter, frame, radius)
+        painter.drawRoundedRect(frame, radius, radius)
+        if bool(getattr(self.chart_state, "show_card_accent", True)):
+            painter.setPen(QPen(accent.darker(106), 2.8))
+            painter.drawLine(QPointF(frame.left() + 18, frame.top() + 16), QPointF(frame.left() + 92, frame.top() + 16))
+        painter.setPen(QPen(self._visual_color("label_color", "#64748B")))
+        painter.setFont(self._visual_label_font(0))
+        content_pad = self._card_density_padding()
         painter.drawText(
-            QRectF(frame.left() + 20, frame.top() + 24, frame.width() - 40, 22),
-            Qt.AlignLeft | Qt.AlignTop,
+            QRectF(frame.left() + content_pad, frame.top() + 24, frame.width() - (content_pad * 2), 22),
+            self._visual_value_alignment(Qt.AlignLeft) | Qt.AlignTop,
             str(payload.get("value_label") or "KPI"),
         )
 
-        value_font = harmonize_font_family(QFont(self.font()))
-        value_font.setPointSize(self._scaled_size(value_font.pointSize() + 12, minimum=9))
-        value_font.setBold(True)
+        value_font = self._visual_value_font(12)
         painter.setFont(value_font)
-        painter.setPen(QPen(QColor("#111827")))
+        painter.setPen(QPen(self._visual_value_color()))
         display_current = current
         if self._is_transition_active():
             first_item = self._payload_item(payload, 0)
@@ -3269,8 +3759,8 @@ class ReportChartWidget(QWidget):
             start_current = float(previous_values.get(first_key, 0.0))
             display_current = start_current + (current - start_current) * self._countup_progress(progress)
         painter.drawText(
-            QRectF(frame.left() + 20, frame.top() + 48, frame.width() - 40, frame.height() * 0.36),
-            Qt.AlignLeft | Qt.AlignVCenter,
+            QRectF(frame.left() + content_pad, frame.top() + 48, frame.width() - (content_pad * 2), frame.height() * 0.36),
+            self._visual_value_alignment(Qt.AlignLeft) | Qt.AlignVCenter,
             self._format_value(display_current),
         )
 
@@ -3302,10 +3792,10 @@ class ReportChartWidget(QWidget):
             Qt.AlignLeft | Qt.AlignVCenter,
             delta_text,
         )
-        painter.setPen(QPen(QColor("#64748B")))
+        painter.setPen(QPen(self._visual_color("label_color", "#64748B")))
         painter.drawText(
-            QRectF(frame.left() + 20, frame.bottom() - 24, frame.width() - 40, 16),
-            Qt.AlignLeft | Qt.AlignBottom,
+            QRectF(frame.left() + content_pad, frame.bottom() - 24, frame.width() - (content_pad * 2), 16),
+            self._visual_value_alignment(Qt.AlignLeft) | Qt.AlignBottom,
             helper_text,
         )
         painter.setOpacity(1.0)
@@ -3340,7 +3830,7 @@ class ReportChartWidget(QWidget):
             target_inner = QPointF(center.x() + math.cos(target_angle) * (radius * 0.83), center.y() - math.sin(target_angle) * (radius * 0.83))
             target_outer = QPointF(center.x() + math.cos(target_angle) * (radius * 0.95), center.y() - math.sin(target_angle) * (radius * 0.95))
             painter.setOpacity(0.45 + 0.55 * progress)
-            painter.setPen(QPen(QColor("#A855F7"), 2))
+            painter.setPen(QPen(self._visual_color("primary_color", "#A855F7"), 2))
             painter.drawLine(target_inner, target_outer)
             painter.setOpacity(0.42 + 0.58 * progress)
 
@@ -3355,11 +3845,9 @@ class ReportChartWidget(QWidget):
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(center, 5, 5)
 
-        value_font = harmonize_font_family(QFont(self.font()))
-        value_font.setPointSize(self._scaled_size(value_font.pointSize() + 11, minimum=9))
-        value_font.setBold(True)
+        value_font = self._visual_value_font(11)
         painter.setFont(value_font)
-        painter.setPen(QPen(QColor("#111827")))
+        painter.setPen(QPen(self._visual_value_color()))
         display_current = current
         if self._is_transition_active():
             first_item = self._payload_item(payload, 0)
@@ -3376,8 +3864,8 @@ class ReportChartWidget(QWidget):
         if reason in {"entry", "type"}:
             helper_opacity = 0.84 + 0.16 * progress
         painter.setOpacity(helper_opacity)
-        painter.setFont(harmonize_font_family(QFont(self.font())))
-        painter.setPen(QPen(QColor("#6B7280")))
+        painter.setFont(self._visual_label_font(0))
+        painter.setPen(QPen(self._visual_color("label_color", "#6B7280")))
         painter.drawText(
             QRectF(frame.left(), frame.top() + frame.height() * 0.66, frame.width(), 20),
             Qt.AlignHCenter | Qt.AlignTop,
@@ -3410,18 +3898,36 @@ class ReportChartWidget(QWidget):
         self._draw_surface_card(painter, frame, 12)
         painter.setClipRect(frame.adjusted(3, 3, -3, -3))
 
-        palette = {
-            "border": QColor("#E7EAF0"),
-            "header_fill": QColor("#F8FAFC"),
-            "header_fill_alt": QColor("#F3F4F6"),
-            "row_fill": QColor("#FFFFFF"),
-            "row_fill_alt": QColor("#FAFAFC"),
-            "total_fill": QColor("#EEF2FF"),
-            "total_fill_alt": QColor("#EDE9FE"),
-            "header_text": QColor("#5B43D6"),
-            "value_text": QColor("#111827"),
-            "value_accent": QColor("#4F46E5"),
-        }
+        if _is_dark_theme():
+            palette = {
+                "border": QColor("#334155"),
+                "header_fill": QColor("#172033"),
+                "header_fill_alt": QColor("#1F2A3D"),
+                "row_fill": QColor("#111827"),
+                "row_fill_alt": QColor("#0F172A"),
+                "total_fill": QColor("#312E81"),
+                "total_fill_alt": QColor("#3730A3"),
+                "header_text": QColor("#C4B5FD"),
+                "value_text": QColor("#F8FAFC"),
+                "value_accent": QColor("#A78BFA"),
+                "band": QColor("#7C6CFF"),
+                "total_header_text": QColor("#F8FAFC"),
+            }
+        else:
+            palette = {
+                "border": QColor("#E7EAF0"),
+                "header_fill": QColor("#F8FAFC"),
+                "header_fill_alt": QColor("#F3F4F6"),
+                "row_fill": QColor("#FFFFFF"),
+                "row_fill_alt": QColor("#FAFAFC"),
+                "total_fill": QColor("#EEF2FF"),
+                "total_fill_alt": QColor("#EDE9FE"),
+                "header_text": QColor("#5B43D6"),
+                "value_text": QColor("#111827"),
+                "value_accent": QColor("#4F46E5"),
+                "band": QColor("#5A3FE6"),
+                "total_header_text": QColor("#111827"),
+            }
 
         font = harmonize_font_family(QFont(self.font()))
         font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
@@ -3442,7 +3948,7 @@ class ReportChartWidget(QWidget):
         cell_width = max(74.0, (frame.width() - row_header_width - 20.0) / column_count)
 
         top_band = QRectF(frame.left() + 10, frame.top() + 8, frame.width() - 20, 2)
-        painter.fillRect(top_band, QColor("#5A3FE6"))
+        painter.fillRect(top_band, palette["band"])
 
         painter.setFont(header_font)
         painter.setPen(QPen(palette["header_text"]))
@@ -3460,7 +3966,7 @@ class ReportChartWidget(QWidget):
             painter.setPen(QPen(palette["border"], 0.9))
             painter.setBrush(header_fill)
             painter.drawRoundedRect(header_rect, 4, 4)
-            painter.setPen(QPen(QColor("#111827" if is_total_header else "#4F46E5")))
+            painter.setPen(QPen(palette["total_header_text"] if is_total_header else palette["header_text"]))
             painter.setFont(header_font if is_total_header else font)
             painter.drawText(header_rect.adjusted(8, 0, -8, 0), Qt.AlignLeft | Qt.AlignVCenter, header)
 
@@ -3489,7 +3995,7 @@ class ReportChartWidget(QWidget):
             painter.setBrush(row_fill)
             painter.drawRoundedRect(row_rect, 4, 4)
             painter.setFont(font)
-            painter.setPen(QPen(QColor("#1F2937")))
+            painter.setPen(QPen(palette["value_text"]))
             painter.drawText(
                 row_rect.adjusted(8, 0, -8, 0),
                 Qt.AlignVCenter | Qt.AlignLeft,
@@ -3519,7 +4025,7 @@ class ReportChartWidget(QWidget):
                     painter.setFont(total_font if (show_total and header == "Total") else font)
                     text_opacity = 0.92 + 0.08 * progress if reason in {"data", "filter"} else 1.0
                     painter.setOpacity(row_opacity * text_opacity)
-                    painter.setPen(QPen(QColor("#111827" if (show_total and header == "Total") else palette["value_accent"])))
+                    painter.setPen(QPen(palette["value_text"] if (show_total and header == "Total") else palette["value_accent"]))
                     painter.drawText(
                         cell_rect.adjusted(8, 0, -8, 0),
                         Qt.AlignVCenter | Qt.AlignRight,
@@ -3545,7 +4051,7 @@ class ReportChartWidget(QWidget):
                 painter.setFont(font)
                 text_opacity = 0.92 + 0.08 * progress if reason in {"data", "filter"} else 1.0
                 painter.setOpacity(row_opacity * text_opacity)
-                painter.setPen(QPen(QColor("#111827")))
+                painter.setPen(QPen(palette["value_text"]))
                 painter.drawText(
                     cell_rect.adjusted(8, 0, -8, 0),
                     Qt.AlignVCenter | Qt.AlignRight,
@@ -3852,6 +4358,9 @@ class ReportChartWidget(QWidget):
     def _draw_scatter_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = [float(value or 0.0) for value in list(payload.get("values") or [])]
         categories = [str(item or "") for item in list(payload.get("categories") or [])]
+        items = [self._payload_item(payload, index) for index in range(len(values))]
+        x_values = [float(item.get("x_value", index) or 0.0) for index, item in enumerate(items)]
+        y_values = [float(item.get("value") or values[index] or 0.0) for index, item in enumerate(items)]
         progress = self._payload_animation_progress(payload)
         reason = self._payload_animation_reason(payload)
         if len(values) < 2:
@@ -3863,7 +4372,8 @@ class ReportChartWidget(QWidget):
         if chart_rect.width() <= 0 or chart_rect.height() <= 0:
             return
         self._draw_surface_card(painter, frame, 14)
-        min_value, max_value = value_scale_bounds(values)
+        min_x, max_x = value_scale_bounds(x_values)
+        min_value, max_value = value_scale_bounds(y_values)
         zero_y = chart_rect.bottom() - chart_rect.height() * value_scale_ratio(0.0, min_value, max_value)
         self._draw_grid_lines(painter, chart_rect, vertical=False)
         self._draw_grid_lines(painter, chart_rect, vertical=True)
@@ -3872,19 +4382,19 @@ class ReportChartWidget(QWidget):
             painter.setPen(QPen(QColor("#CBD5E1"), 1, Qt.SolidLine))
             painter.drawLine(QPointF(chart_rect.left(), zero_y), QPointF(chart_rect.right(), zero_y))
             painter.restore()
-        step = chart_rect.width() / max(1, len(values) - 1)
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing, True)
         points: List[QPointF] = []
-        items = [self._payload_item(payload, index) for index in range(len(values))]
         for index, item in enumerate(items):
             value = float(item.get("value") or values[index] or 0.0)
-            animated_index = float(item.get("animated_index", float(index)))
-            x = chart_rect.left() + step * animated_index
+            x_value = float(item.get("x_value", x_values[index]) or 0.0)
+            x = chart_rect.left() + chart_rect.width() * value_scale_ratio(x_value, min_x, max_x)
             y = chart_rect.bottom() - chart_rect.height() * value_scale_ratio(value, min_value, max_value)
             points.append(QPointF(x, y))
             abs_max = max(abs(min_value), abs(max_value), 1.0)
-            base_radius = 4 + 9 * math.sqrt(abs(value) / abs_max)
+            size_value = max(0.0, float(item.get("size_value", abs(value)) or 0.0))
+            size_scale = math.sqrt(size_value / max(size_value, abs_max, 1.0))
+            base_radius = 4 + 9 * max(math.sqrt(abs(value) / abs_max), size_scale)
             fill_color, border_color, border_width, level = self._item_interaction_style(
                 self._resolve_item_color(item, index),
                 item,
@@ -3906,13 +4416,14 @@ class ReportChartWidget(QWidget):
         for index, category in enumerate(categories):
             if index % label_stride != 0 and index != len(categories) - 1:
                 continue
-            x = chart_rect.left() + step * index
-            label_rect = QRectF(x - step / 2, chart_rect.bottom() + 6, step, 22)
+            x_value = x_values[index] if index < len(x_values) else float(index)
+            x = chart_rect.left() + chart_rect.width() * value_scale_ratio(x_value, min_x, max_x)
+            label_rect = QRectF(x - 42, chart_rect.bottom() + 6, 84, 22)
             label_opacity = 0.92
             if reason in {"entry", "type"}:
                 label_opacity = 0.86 + 0.14 * progress
             painter.setOpacity(label_opacity)
-            painter.drawText(label_rect, Qt.AlignHCenter | Qt.AlignTop, metrics.elidedText(category, Qt.ElideRight, int(step) - 4))
+            painter.drawText(label_rect, Qt.AlignHCenter | Qt.AlignTop, metrics.elidedText(category, Qt.ElideRight, 80))
             painter.setOpacity(1.0)
         painter.setPen(QPen(QColor("#94A3B8")))
         axis_opacity = 0.9
@@ -4215,8 +4726,34 @@ class ReportChartWidget(QWidget):
         painter.restore()
 
     def _format_value(self, value: float) -> str:
-        if math.isclose(value, round(value), rel_tol=0.0, abs_tol=1e-6):
-            return f"{int(round(value)):,}".replace(",", ".")
-        return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        try:
+            numeric = float(value)
+        except Exception:
+            return str(getattr(self.chart_state, "null_value", "-") or "-")
+        if not math.isfinite(numeric):
+            return str(getattr(self.chart_state, "null_value", "-") or "-")
+        decimals = self._visual_int("decimal_places", 2, 0, 8)
+        display_numeric = numeric
+        unit_suffix = ""
+        unit_mode = str(getattr(self.chart_state, "display_units", "none") or "none").strip().lower()
+        absolute_value = abs(numeric)
+        if unit_mode == "auto":
+            if absolute_value >= 1000000.0:
+                display_numeric = numeric / 1000000.0
+                unit_suffix = "M"
+            elif absolute_value >= 1000.0:
+                display_numeric = numeric / 1000.0
+                unit_suffix = "K"
+        elif unit_mode == "million":
+            display_numeric = numeric / 1000000.0
+            unit_suffix = "M"
+        elif unit_mode == "thousand":
+            display_numeric = numeric / 1000.0
+            unit_suffix = "K"
+        if decimals <= 0 or math.isclose(display_numeric, round(display_numeric), rel_tol=0.0, abs_tol=1e-6):
+            text = f"{int(round(display_numeric)):,}".replace(",", ".")
+        else:
+            text = f"{display_numeric:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"{getattr(self.chart_state, 'number_prefix', '') or ''}{text}{unit_suffix}{getattr(self.chart_state, 'number_suffix', '') or ''}"
 
 

@@ -1,37 +1,61 @@
 ﻿import os
 import random
+from copy import deepcopy
+import uuid
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtGui import QFont
+from qgis.PyQt.QtCore import QSettings, Qt, QSize
+from qgis.PyQt.QtGui import QFont, QIcon
 from qgis.PyQt.QtWidgets import (
+    QAction,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSplitter,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 from qgis.core import QgsFeatureRequest, QgsProject, QgsVectorLayer
 
-from .palette import COLORS, TYPOGRAPHY
+from .dashboard_canvas import DashboardCanvas
+from .dashboard_models import DashboardChartBinding, DashboardChartItem, DashboardItemLayout
+from .palette import COLORS, DARK_COLORS, TYPOGRAPHY
 from .report_view.chart_factory import ReportChartWidget
+from .report_view.charts import ChartVisualState
 from .report_view.pivot.pivot_formatters import PivotFormatter
 from .report_view.result_models import ChartPayload
 from .utils.fonts import ui_font
-
-
 from .utils.logging_utils import log_exception
+from .visual_format_panel import VisualFormatPanel
+
+def _icon_from_resource(name: str) -> QIcon:
+    path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "resources", "icons", str(name or "").strip())
+    )
+    if os.path.exists(path):
+        return QIcon(path)
+    return QIcon()
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
+
+
 class DashboardWidget(QWidget):
     """Dashboard that reuses the same chart system used by the Reports tab."""
 
@@ -52,6 +76,8 @@ class DashboardWidget(QWidget):
         self.active_category_keys: List[str] = []
         self._category_filters: Dict[str, Dict[str, Any]] = {}
         self._updating_filter_chips = False
+        self._chart_variant_index = 0
+        self._dashboard_locked = False
 
         self._build_ui()
         self._apply_styles()
@@ -72,31 +98,24 @@ class DashboardWidget(QWidget):
         helper_font = ui_font()
         helper_font.setPixelSize(int(TYPOGRAPHY.get("font_caption_px", 11)))
 
-        hero_frame = QFrame()
-        hero_frame.setObjectName("HeroFrame")
-        hero_layout = QVBoxLayout(hero_frame)
-        hero_layout.setContentsMargins(16, 14, 16, 14)
-        hero_layout.setSpacing(6)
-
         self.title_label = QLabel("Dashboard Interativo")
         self.title_label.setFont(header_font)
         self.title_label.setProperty("role", "title")
         self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        hero_layout.addWidget(self.title_label)
+        self.title_label.hide()
 
         self.subtitle_label = QLabel("Selecione uma camada e gere um resumo para visualizar o dashboard.")
         self.subtitle_label.setObjectName("Subtitle")
         self.subtitle_label.setProperty("role", "helper")
         self.subtitle_label.setFont(body_font)
-        hero_layout.addWidget(self.subtitle_label)
+        self.subtitle_label.hide()
 
         self.summary_line_label = QLabel("")
         self.summary_line_label.setObjectName("SummaryLine")
         self.summary_line_label.setProperty("role", "helper")
         self.summary_line_label.setWordWrap(True)
         self.summary_line_label.setFont(helper_font)
-        hero_layout.addWidget(self.summary_line_label)
-        layout.addWidget(hero_frame)
+        self.summary_line_label.hide()
 
         toolbar_frame = QFrame()
         toolbar_frame.setObjectName("ToolbarFrame")
@@ -104,7 +123,7 @@ class DashboardWidget(QWidget):
         toolbar_layout.setContentsMargins(12, 10, 12, 10)
         toolbar_layout.setSpacing(10)
 
-        self.chart_kind_label = QLabel("Canvas livre")
+        self.chart_kind_label = QLabel("Canvas aleatório")
         self.chart_kind_label.setObjectName("SectionTitle")
         self.chart_kind_label.setFont(body_font)
         toolbar_layout.addWidget(self.chart_kind_label, 0)
@@ -125,6 +144,48 @@ class DashboardWidget(QWidget):
         self.export_dashboard_btn.setObjectName("DashboardPrimaryButton")
         self.export_dashboard_btn.setFont(body_font)
         toolbar_layout.addWidget(self.export_dashboard_btn, 0)
+
+        self.add_chart_btn = QToolButton()
+        self.add_chart_btn.setObjectName("AddChartButton")
+        self.add_chart_btn.setText("Novo gráfico")
+        self.add_chart_btn.setFont(body_font)
+        self.add_chart_btn.setPopupMode(QToolButton.InstantPopup)
+        self.add_chart_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.add_chart_btn.setCursor(Qt.PointingHandCursor)
+        self.add_chart_menu = QMenu(self.add_chart_btn)
+        self._populate_add_chart_menu(self.add_chart_menu)
+        self.add_chart_btn.setMenu(self.add_chart_menu)
+        toolbar_layout.addWidget(self.add_chart_btn, 0)
+
+        self.center_btn = QToolButton()
+        self.center_btn.setObjectName("DashboardIconButton")
+        self.center_btn.setCursor(Qt.PointingHandCursor)
+        self.center_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.center_btn.setIcon(_icon_from_resource("dashboard_center.svg"))
+        self.center_btn.setIconSize(QSize(16, 16))
+        self.center_btn.setToolTip("Ajustar visualização")
+        self.center_btn.clicked.connect(self._center_dashboard_items)
+        toolbar_layout.addWidget(self.center_btn, 0)
+
+        self.visual_panel_btn = QToolButton()
+        self.visual_panel_btn.setObjectName("DashboardIconButton")
+        self.visual_panel_btn.setCheckable(True)
+        self.visual_panel_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_panel_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.visual_panel_btn.setIcon(_icon_from_resource("icon_chart.svg"))
+        self.visual_panel_btn.setIconSize(QSize(16, 16))
+        self.visual_panel_btn.setToolTip("Formatar visual")
+        self.visual_panel_btn.clicked.connect(self.toggle_visual_panel)
+        toolbar_layout.addWidget(self.visual_panel_btn, 0)
+
+        self.lock_btn = QToolButton()
+        self.lock_btn.setObjectName("DashboardIconButton")
+        self.lock_btn.setCheckable(True)
+        self.lock_btn.setCursor(Qt.PointingHandCursor)
+        self.lock_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.lock_btn.setIconSize(QSize(16, 16))
+        self.lock_btn.toggled.connect(self._set_dashboard_locked)
+        toolbar_layout.addWidget(self.lock_btn, 0)
         layout.addWidget(toolbar_frame)
 
         self.filter_chip_container = QWidget(self)
@@ -151,36 +212,32 @@ class DashboardWidget(QWidget):
         charts_layout.setContentsMargins(14, 14, 14, 14)
         charts_layout.setSpacing(10)
 
-        chart_title = QLabel("Visão de Categorias")
         chart_title = QLabel("Canvas de visualização")
         chart_title.setObjectName("SectionTitle")
         chart_title.setFont(body_font)
         charts_layout.addWidget(chart_title)
 
-        self.primary_chart = ReportChartWidget(self)
-        self.primary_chart.setMinimumHeight(540)
-        self.primary_chart.set_payload(None, empty_text="Sem dados para exibir")
-        self.primary_chart.selectionChanged.connect(lambda payload: self._handle_chart_selection(self.primary_chart, payload))
+        self.dashboard_canvas = DashboardCanvas(self)
+        self.dashboard_canvas.setObjectName("DashboardVisualizationCanvas")
+        self.dashboard_canvas.chartSelectionChanged.connect(self._handle_canvas_chart_selection)
+        self.dashboard_canvas.itemSelectionChanged.connect(self._handle_canvas_item_selection)
+        self.dashboard_canvas.visualPanelRequested.connect(self._handle_visual_panel_requested)
+        self.dashboard_canvas.editModeChanged.connect(self._sync_dashboard_lock_button)
+        self.dashboard_canvas.setMinimumHeight(560)
+        charts_layout.addWidget(self.dashboard_canvas, stretch=1)
 
-        self.secondary_chart = ReportChartWidget(self)
-        self.secondary_chart.hide()
+        self.visual_format_panel = VisualFormatPanel(self)
+        self.visual_format_panel.hide()
+        self.visual_format_panel.closeRequested.connect(self.hide_visual_panel)
 
-        self.chart_scroll = QScrollArea(self)
-        self.chart_scroll.setWidgetResizable(True)
-        self.chart_scroll.setFrameShape(QFrame.NoFrame)
-        self.chart_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.chart_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-
-        self.chart_canvas = QWidget()
-        self.chart_canvas.setObjectName("ChartCanvas")
-        chart_canvas_layout = QVBoxLayout(self.chart_canvas)
-        chart_canvas_layout.setContentsMargins(20, 20, 20, 20)
-        chart_canvas_layout.setSpacing(0)
-        chart_canvas_layout.addWidget(self.primary_chart)
-        self.chart_scroll.setWidget(self.chart_canvas)
-        charts_layout.addWidget(self.chart_scroll, stretch=1)
-
-        layout.addWidget(canvas_shell, stretch=1)
+        self.dashboard_area_splitter = QSplitter(Qt.Horizontal, self)
+        self.dashboard_area_splitter.setChildrenCollapsible(False)
+        self.dashboard_area_splitter.addWidget(canvas_shell)
+        self.dashboard_area_splitter.addWidget(self.visual_format_panel)
+        self.dashboard_area_splitter.setStretchFactor(0, 1)
+        self.dashboard_area_splitter.setStretchFactor(1, 0)
+        self.dashboard_area_splitter.setSizes([900, 0])
+        layout.addWidget(self.dashboard_area_splitter, stretch=1)
 
         self.table_filter_label = QLabel("")
         self.table_filter_label.setObjectName("FilterStatus")
@@ -200,6 +257,8 @@ class DashboardWidget(QWidget):
 
         self.refresh_btn.clicked.connect(self._refresh_current)
         self.export_dashboard_btn.clicked.connect(self._export_dashboard)
+        self.add_chart_btn.setMenu(self.add_chart_menu)
+        self._sync_dashboard_lock_button(self.dashboard_canvas.is_edit_mode())
 
         self._render_empty_state()
 
@@ -217,23 +276,411 @@ class DashboardWidget(QWidget):
         card_layout.addWidget(label)
         return card, value_label, label
 
+    def _populate_add_chart_menu(self, menu: QMenu):
+        menu.clear()
+        chart_types = [
+            ("Card", "card"),
+            ("Barras", "bar"),
+            ("Rosca", "donut"),
+            ("Linha", "line"),
+            ("Área", "area"),
+            ("Funil", "funnel"),
+        ]
+        for label, chart_type in chart_types:
+            action = QAction(label, menu)
+            action.triggered.connect(
+                lambda checked=False, value=chart_type, title=label: self._add_dashboard_chart_card(value, title)
+            )
+            menu.addAction(action)
+
+    def _set_dashboard_locked(self, locked: bool):
+        if not hasattr(self, "dashboard_canvas"):
+            return
+        try:
+            self.dashboard_canvas.set_edit_mode(not bool(locked))
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _sync_dashboard_lock_button(self, edit_mode: bool):
+        locked = not bool(edit_mode)
+        self._dashboard_locked = locked
+        if not hasattr(self, "lock_btn"):
+            return
+        try:
+            self.lock_btn.blockSignals(True)
+            self.lock_btn.setChecked(locked)
+            self.lock_btn.setIcon(_icon_from_resource("dashboard_lock.svg" if locked else "dashboard_unlock.svg"))
+            self.lock_btn.setToolTip("Destravar tela" if locked else "Travar tela")
+        finally:
+            self.lock_btn.blockSignals(False)
+
+    def _dashboard_palette_for_item(self, role: str, chart_type: str, item_id: str) -> str:
+        if role == "chart":
+            return "category"
+        if role == "table":
+            return "category"
+        return "blue"
+
+    def _center_dashboard_items(self):
+        if not hasattr(self, "dashboard_canvas"):
+            return
+        try:
+            self.dashboard_canvas.center_items()
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def toggle_visual_panel(self):
+        if self.is_visual_panel_visible():
+            self.hide_visual_panel()
+        else:
+            self.show_visual_panel()
+
+    def show_visual_panel(self):
+        if not hasattr(self, "visual_format_panel"):
+            return
+        self.visual_format_panel.show()
+        self.visual_panel_btn.blockSignals(True)
+        self.visual_panel_btn.setChecked(True)
+        self.visual_panel_btn.blockSignals(False)
+        widget = self.dashboard_canvas.selected_item_widget() if hasattr(self, "dashboard_canvas") else None
+        if widget is None:
+            self.visual_format_panel.clear_selection()
+        else:
+            self.visual_format_panel.set_current_item(widget)
+        try:
+            self.dashboard_area_splitter.setSizes([900, 320])
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def hide_visual_panel(self):
+        if not hasattr(self, "visual_format_panel"):
+            return
+        self.visual_format_panel.hide()
+        self.visual_panel_btn.blockSignals(True)
+        self.visual_panel_btn.setChecked(False)
+        self.visual_panel_btn.blockSignals(False)
+        try:
+            self.dashboard_area_splitter.setSizes([1, 0])
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def is_visual_panel_visible(self) -> bool:
+        return bool(hasattr(self, "visual_format_panel") and not self.visual_format_panel.isHidden())
+
+    def _handle_canvas_item_selection(self, item_id: str, item_widget):
+        if not self.is_visual_panel_visible():
+            return
+        if item_widget is None:
+            self.visual_format_panel.clear_selection()
+            return
+        self.visual_format_panel.set_current_item(item_widget)
+
+    def _handle_visual_panel_requested(self, item_id: str):
+        if not hasattr(self, "dashboard_canvas"):
+            return
+        item_widget = self.dashboard_canvas.selected_item_widget()
+        if item_widget is None and item_id:
+            self.dashboard_canvas.select_item(item_id, emit_signal=False)
+            item_widget = self.dashboard_canvas.selected_item_widget()
+        self.show_visual_panel()
+        if item_widget is not None:
+            self.visual_format_panel.set_current_item(item_widget)
+
+    def _set_chart_widget_payload(
+        self,
+        chart_widget: ReportChartWidget,
+        payload: Optional[ChartPayload],
+        *,
+        empty_text: str,
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        chart_widget.set_payload(payload, empty_text=empty_text)
+        chart_widget.set_chart_context(context or {})
+
+    def _dashboard_chart_type_label(self, chart_type: str) -> str:
+        chart_titles = {
+            "bar": "Barras",
+            "barh": "Barras horizontais",
+            "line": "Linha",
+            "area": "Área",
+            "pie": "Pizza",
+            "donut": "Rosca",
+            "funnel": "Funil",
+            "card": "Card",
+        }
+        return chart_titles.get(str(chart_type or "").strip().lower(), "Gráfico")
+
+    def _next_dashboard_chart_type(self, previous: str = "") -> str:
+        choices = ["bar", "barh", "line", "area", "pie", "donut", "funnel"]
+        if not choices:
+            return "bar"
+        index = int(self._chart_variant_index % len(choices))
+        self._chart_variant_index += 1
+        candidate = choices[index]
+        previous = str(previous or "").strip().lower()
+        if previous and candidate == previous:
+            candidate = choices[self._chart_variant_index % len(choices)]
+            self._chart_variant_index += 1
+        return candidate
+
+    def _current_dashboard_items(self) -> List[DashboardChartItem]:
+        if not hasattr(self, "dashboard_canvas"):
+            return []
+        try:
+            return self.dashboard_canvas.items()
+        except Exception:
+            return []
+
+    def _dashboard_chart_binding(self, item_id: str) -> DashboardChartBinding:
+        row_fields = [str(field) for field in list(self.current_config.get("row_fields") or []) if str(field).strip()]
+        column_fields = [str(field) for field in list(self.current_config.get("column_fields") or []) if str(field).strip()]
+        semantic_field = (
+            self.current_config.get("row_label")
+            or self.current_config.get("row_field")
+            or self.current_config.get("column_label")
+            or self.current_config.get("column_field")
+            or (row_fields[0] if row_fields else "")
+            or (column_fields[0] if column_fields else "")
+            or "Categoria"
+        )
+        return DashboardChartBinding(
+            chart_id=str(item_id or "").strip(),
+            source_id=str(self.current_metadata.get("layer_id") or "").strip(),
+            dimension_field=str(semantic_field or "").strip(),
+            semantic_field_key=str(
+                self.current_config.get("row_field")
+                or (row_fields[0] if row_fields else semantic_field)
+            ).strip(),
+            semantic_field_aliases=[semantic_field, *row_fields, *column_fields],
+            measure_field=str(self.current_config.get("value_label") or self.current_config.get("aggregation") or "Valor"),
+            aggregation=str(self.current_config.get("aggregation") or "").strip(),
+            source_name=str(self.current_metadata.get("layer_name") or "").strip(),
+        ).normalized()
+
+    def _dashboard_item_subtitle(self) -> str:
+        return ""
+
+    def _dashboard_total_payload(self, chart_df: pd.DataFrame) -> Optional[ChartPayload]:
+        if chart_df is None or chart_df.empty:
+            return None
+        total = float(chart_df["Valor"].fillna(0).sum())
+        return ChartPayload.build(
+            chart_type="card",
+            title="Total",
+            categories=["Total"],
+            values=[total],
+            value_label="Total",
+            truncated=False,
+            selection_layer_id=str(self.current_metadata.get("layer_id") or ""),
+            selection_layer_name="",
+            category_field="",
+            raw_categories=["Total"],
+            category_feature_ids=[[]],
+        )
+
+    def _dashboard_chart_payload(self, chart_df: pd.DataFrame, chart_type: str) -> Optional[ChartPayload]:
+        payload = self._build_chart_payload(
+            chart_df,
+            title="Gráfico",
+            chart_type=chart_type,
+            limit=max(1, min(12, int(len(chart_df.index)))) if isinstance(chart_df, pd.DataFrame) else 1,
+        )
+        if payload is None:
+            return None
+        payload.title = "Gráfico"
+        payload.value_label = "Valor"
+        payload.selection_layer_name = ""
+        return payload
+
+    def _dashboard_table_payload(self, chart_df: pd.DataFrame) -> Optional[ChartPayload]:
+        payload = self._build_chart_payload(
+            chart_df,
+            title="Tabela",
+            chart_type="matrix",
+            limit=max(1, min(12, int(len(chart_df.index)))) if isinstance(chart_df, pd.DataFrame) else 1,
+        )
+        if payload is None:
+            return None
+        payload.title = "Tabela"
+        payload.value_label = "Valor"
+        payload.selection_layer_name = ""
+        return payload
+
+    def _dashboard_item_from_payload(
+        self,
+        *,
+        role: str,
+        payload: Optional[ChartPayload],
+        layout: DashboardItemLayout,
+        item_id: str,
+        chart_type: str,
+        title: str,
+        item: Optional[DashboardChartItem] = None,
+    ) -> DashboardChartItem:
+        base_item = item.clone() if item is not None else DashboardChartItem(
+            item_id=item_id,
+            origin="summary",
+            payload=payload or ChartPayload.build(
+                chart_type=chart_type,
+                title=title,
+                categories=[],
+                values=[],
+                value_label="Valor",
+            ),
+        )
+        base_item.item_id = item_id
+        base_item.origin = "summary"
+        base_item.payload = payload
+        base_item.title = title
+        base_item.subtitle = ""
+        base_item.source_meta = dict(base_item.source_meta or {})
+        base_item.source_meta["dashboard_role"] = role
+        base_item.binding = self._dashboard_chart_binding(item_id)
+        if item is None:
+            base_item.layout = layout.normalized()
+        else:
+            base_item.layout = item.layout.normalized()
+        base_item.visual_state = deepcopy(item.visual_state if item is not None else ChartVisualState(chart_type=chart_type))
+        base_item.visual_state.chart_type = chart_type
+        try:
+            base_item.visual_state.palette = self._dashboard_palette_for_item(role, chart_type, item_id)
+            if item is None:
+                base_item.visual_state.show_border = True
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return base_item
+
+    def _refresh_dashboard_canvas(self, chart_df: pd.DataFrame):
+        if not hasattr(self, "dashboard_canvas"):
+            return
+
+        if chart_df is None or chart_df.empty or float(chart_df["Valor"].fillna(0).sum()) == 0.0:
+            try:
+                self.dashboard_canvas.clear_items()
+            except Exception:
+                log_exception("falha opcional ignorada")
+            self.chart_kind_label.setText("Canvas aleatório")
+            return
+
+        current_items = self._current_dashboard_items()
+        items_by_role: Dict[str, DashboardChartItem] = {}
+        extra_items: List[DashboardChartItem] = []
+        for item in current_items:
+            role = str(dict(getattr(item, "source_meta", {}) or {}).get("dashboard_role") or "").strip().lower()
+            if role in {"total", "chart", "table"} and role not in items_by_role:
+                items_by_role[role] = item
+            else:
+                extra_items.append(item)
+
+        previous_chart_type = ""
+        if "chart" in items_by_role:
+            previous_chart_type = str(getattr(items_by_role["chart"].visual_state, "chart_type", "") or "").strip().lower()
+        chart_type = self._next_dashboard_chart_type(previous_chart_type)
+
+        total_item = self._dashboard_item_from_payload(
+            role="total",
+            payload=self._dashboard_total_payload(chart_df),
+            layout=DashboardItemLayout(x=24, y=24, width=300, height=240),
+            item_id="dashboard-total",
+            chart_type="card",
+            title="Total",
+            item=items_by_role.get("total"),
+        )
+        chart_item = self._dashboard_item_from_payload(
+            role="chart",
+            payload=self._dashboard_chart_payload(chart_df, chart_type),
+            layout=DashboardItemLayout(x=344, y=24, width=560, height=360),
+            item_id="dashboard-chart",
+            chart_type=chart_type,
+            title="Gráfico",
+            item=items_by_role.get("chart"),
+        )
+        table_item = self._dashboard_item_from_payload(
+            role="table",
+            payload=self._dashboard_table_payload(chart_df),
+            layout=DashboardItemLayout(x=24, y=288, width=880, height=360),
+            item_id="dashboard-table",
+            chart_type="matrix",
+            title="Tabela",
+            item=items_by_role.get("table"),
+        )
+
+        updated_items: List[DashboardChartItem] = [total_item, chart_item, table_item]
+        updated_items.extend(extra_items)
+        try:
+            self.dashboard_canvas.update_items(updated_items)
+        except Exception:
+            self.dashboard_canvas.set_items(updated_items)
+        self.chart_kind_label.setText(f"Canvas aleatório | {self._dashboard_chart_type_label(chart_type)}")
+
+    def _add_dashboard_chart_card(self, chart_type: str, title: str):
+        chart_df = self._build_chart_dataset()
+        if chart_df.empty or float(chart_df["Valor"].fillna(0).sum()) == 0.0:
+            QMessageBox.information(self, "Novo gráfico", "Nao ha dados suficientes para criar outro grafico.")
+            return
+
+        payload_map = {
+            "card": (self._dashboard_total_payload(chart_df), "Total"),
+            "matrix": (self._dashboard_table_payload(chart_df), "Tabela"),
+        }
+        if chart_type in payload_map:
+            payload, label = payload_map[chart_type]
+        else:
+            payload = self._dashboard_chart_payload(chart_df, chart_type)
+            label = self._dashboard_chart_type_label(chart_type)
+        if payload is None:
+            return
+
+        item_id = uuid.uuid4().hex
+        role = "chart"
+        layout = DashboardItemLayout(x=36, y=36, width=560, height=360)
+        if chart_type == "card":
+            role = "total"
+            layout = DashboardItemLayout(x=24, y=24, width=300, height=240)
+            item_id = f"dashboard-total-{item_id}"
+        elif chart_type == "matrix":
+            role = "table"
+            layout = DashboardItemLayout(x=24, y=288, width=880, height=360)
+            item_id = f"dashboard-table-{item_id}"
+        else:
+            item_id = f"dashboard-chart-{item_id}"
+
+        new_item = self._dashboard_item_from_payload(
+            role=role,
+            payload=payload,
+            layout=layout,
+            item_id=item_id,
+            chart_type=str(chart_type or "bar"),
+            title="Total" if role == "total" else ("Tabela" if role == "table" else "Gráfico"),
+        )
+        if hasattr(self, "dashboard_canvas"):
+            try:
+                self.dashboard_canvas.add_item(new_item)
+            except Exception:
+                self.dashboard_canvas.update_items(self._current_dashboard_items() + [new_item])
+
     def _apply_styles(self):
-        surface = COLORS["color_surface"]
-        border = COLORS["color_border"]
-        helper = COLORS["color_text_secondary"]
-        primary_text = COLORS["color_text_primary"]
-        zebra = COLORS["color_table_zebra"]
-        selection = COLORS["color_table_selection"]
+        colors = DARK_COLORS if _is_dark_theme() else COLORS
+        surface = colors["color_surface"]
+        border = colors["color_border"]
+        helper = colors["color_text_secondary"]
+        primary_text = colors["color_text_primary"]
+        zebra = colors["color_table_zebra"]
+        selection = colors["color_table_selection"]
+        page_bg = "#0B1020" if _is_dark_theme() else "#F6F8FC"
+        card_bg = surface
+        ghost_hover = "#273449" if _is_dark_theme() else "#F8FAFC"
+        primary_bg = "#F8FAFC" if _is_dark_theme() else "#111827"
+        primary_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
+        primary_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
+        checked_bg = "#312E81" if _is_dark_theme() else "#DBEAFE"
+        checked_fg = "#EDE9FE" if _is_dark_theme() else "#1D4ED8"
 
         self.setStyleSheet(
             f"""
             QWidget#DashboardRoot {{
-                background-color: #F6F8FC;
-            }}
-            QFrame#HeroFrame {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F8FBFF, stop:1 #F3FBF8);
-                border: 1px solid #DCE6F2;
-                border-radius: 12px;
+                background-color: {page_bg};
+                color: {primary_text};
             }}
             QFrame#ToolbarFrame,
             QFrame#CanvasShell {{
@@ -241,10 +688,13 @@ class DashboardWidget(QWidget):
                 border-radius: 12px;
                 border: 1px solid {border};
             }}
-            QWidget#ChartCanvas {{
-                background-color: #FFFFFF;
-                border: 1px solid #E6EBF2;
+            QFrame#SecondaryChartCard {{
+                background: {card_bg};
+                border: 1px solid {border};
                 border-radius: 14px;
+            }}
+            QWidget#DashboardVisualizationCanvas {{
+                background-color: transparent;
             }}
             QLabel#Subtitle {{
                 color: {helper};
@@ -263,44 +713,104 @@ class DashboardWidget(QWidget):
                 color: {primary_text};
             }}
             QPushButton#DashboardGhostButton {{
-                border: 1px solid #CBD5E1;
+                border: 1px solid {border};
                 border-radius: 8px;
-                background: #FFFFFF;
-                color: #0F172A;
+                background: {surface};
+                color: {primary_text};
                 padding: 6px 12px;
                 font-weight: 500;
             }}
             QPushButton#DashboardGhostButton:hover {{
-                background: #F8FAFC;
-                border-color: #94A3B8;
+                background: {ghost_hover};
+                border-color: {border};
             }}
             QPushButton#DashboardPrimaryButton {{
-                border: 1px solid #111827;
+                border: 1px solid {primary_bg};
                 border-radius: 8px;
-                background: #111827;
-                color: #FFFFFF;
+                background: {primary_bg};
+                color: {primary_fg};
                 padding: 6px 12px;
                 font-weight: 600;
             }}
             QPushButton#DashboardPrimaryButton:hover {{
-                background: #1F2937;
-                border-color: #1F2937;
+                background: {primary_hover};
+                border-color: {primary_hover};
+            }}
+            QToolButton#AddChartButton {{
+                border: 1px solid {border};
+                border-radius: 8px;
+                background: {surface};
+                color: {primary_text};
+                padding: 6px 12px;
+                font-weight: 500;
+            }}
+            QToolButton#AddChartButton:hover {{
+                background: {ghost_hover};
+                border-color: {border};
+            }}
+            QToolButton#DashboardIconButton {{
+                border: 1px solid {border};
+                border-radius: 8px;
+                background: {surface};
+                color: {primary_text};
+                padding: 0;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
+            }}
+            QToolButton#DashboardIconButton:hover {{
+                background: {ghost_hover};
+                border-color: {border};
+            }}
+            QToolButton#DashboardIconButton:checked {{
+                background: {checked_bg};
+                border-color: {colors["color_primary"]};
+                color: {checked_fg};
             }}
             QPushButton[dashboardChip=\"true\"] {{
-                border: 1px solid #D1D9E6;
+                border: 1px solid {border};
                 border-radius: 14px;
-                background: #FFFFFF;
-                color: #1E293B;
+                background: {surface};
+                color: {primary_text};
                 padding: 6px 10px;
             }}
             QPushButton[dashboardChip=\"true\"]:checked {{
-                background: #DBEAFE;
-                border-color: #3B82F6;
-                color: #1D4ED8;
+                background: {checked_bg};
+                border-color: {colors["color_primary"]};
+                color: {checked_fg};
+                font-weight: 600;
+            }}
+            QTableWidget {{
+                background: {surface};
+                color: {primary_text};
+                border: 1px solid {border};
+                border-radius: 8px;
+                gridline-color: {border};
+                selection-background-color: {selection};
+                selection-color: {primary_text};
+                alternate-background-color: {zebra};
+            }}
+            QTableWidget::item {{
+                border-bottom: 1px solid {border};
+                padding: 6px 8px;
+            }}
+            QHeaderView::section {{
+                background: {surface};
+                color: {helper};
+                border: none;
+                border-bottom: 1px solid {border};
+                padding: 7px 8px;
                 font-weight: 600;
             }}
             """
         )
+        panel = getattr(self, "visual_format_panel", None)
+        if panel is not None and hasattr(panel, "_apply_panel_styles"):
+            try:
+                panel._apply_panel_styles()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ Public API
     def set_pivot_data(
@@ -449,7 +959,8 @@ class DashboardWidget(QWidget):
             primary_path = os.path.join(directory, f"{base_name}_grafico_1.png")
             table_path = os.path.join(directory, f"{base_name}_dados.csv")
 
-            self.primary_chart.grab().save(primary_path, "PNG")
+            if hasattr(self, "dashboard_canvas") and not self.dashboard_canvas.export_image(primary_path):
+                raise RuntimeError("Nao foi possivel exportar o canvas do dashboard.")
             saved_paths.append(primary_path)
 
             export_df = self.current_view_df if not self.current_view_df.empty else self.current_df
@@ -468,11 +979,14 @@ class DashboardWidget(QWidget):
         self._update_summary_line(chart_df)
 
     def _render_empty_state(self, message: Optional[str] = None):
-        self.subtitle_label.setText(message or "Selecione uma camada e gere um resumo para visualizar o dashboard.")
+        self.subtitle_label.setText("")
         self.summary_line_label.setText("")
-        self.chart_kind_label.setText("Canvas livre")
-        self.primary_chart.set_payload(None, empty_text="Sem dados para exibir")
-        self.primary_chart.set_chart_context({})
+        self.chart_kind_label.setText("Canvas aleatório")
+        if hasattr(self, "dashboard_canvas"):
+            try:
+                self.dashboard_canvas.clear_items()
+            except Exception:
+                log_exception("falha opcional ignorada")
         self._adjust_chart_height(0)
         self.current_source_df = pd.DataFrame()
         self.current_view_df = pd.DataFrame()
@@ -496,11 +1010,7 @@ class DashboardWidget(QWidget):
                 continue
 
     def _update_subtitle(self):
-        layer = self.current_metadata.get("layer_name") or "Camada"
-        value_label = self.current_config.get("value_label") or "Campo"
-        agg_label = self.current_config.get("aggregation_label") or self.current_config.get("aggregation")
-        pivot_desc = f"{agg_label} de {value_label}" if agg_label else value_label
-        self.subtitle_label.setText(f"Canvas livre com base em {layer} | métrica: {pivot_desc}")
+        self.subtitle_label.setText("")
 
     def _update_summary_line(self, chart_df: Optional[pd.DataFrame] = None):
         base_df = self.current_source_df if not self.current_source_df.empty else self.current_df
@@ -523,33 +1033,9 @@ class DashboardWidget(QWidget):
 
     def _update_charts(self):
         chart_df = self._build_chart_dataset()
-        if chart_df.empty or float(chart_df["Valor"].fillna(0).sum()) == 0.0:
-            self.primary_chart.set_payload(None, empty_text="Sem metricas numericas")
-            self._adjust_chart_height(0)
-            self.chart_kind_label.setText("Canvas livre")
-            return chart_df
-
-        chart_type = random.choice(["bar", "barh", "line", "area", "pie", "donut", "funnel"])
-        chart_titles = {
-            "bar": "Canvas aleatório | Barras",
-            "barh": "Canvas aleatório | Barras horizontais",
-            "line": "Canvas aleatório | Linha",
-            "area": "Canvas aleatório | Área",
-            "pie": "Canvas aleatório | Pizza",
-            "donut": "Canvas aleatório | Rosca",
-            "funnel": "Canvas aleatório | Funil",
-        }
-        primary_payload = self._build_chart_payload(
-            chart_df,
-            title=chart_titles.get(chart_type, "Canvas aleatório"),
-            chart_type=chart_type,
-            limit=max(1, min(12, int(len(chart_df.index)))),
-        )
-
-        self.primary_chart.set_payload(primary_payload, empty_text="Sem dados para o grafico principal")
-        self.primary_chart.set_chart_context(self._chart_context_for_model(primary_payload))
-        self.chart_kind_label.setText(primary_payload.title if primary_payload is not None else "Canvas livre")
-        self._adjust_chart_height(len(primary_payload.categories) if primary_payload is not None else 0)
+        self._refresh_dashboard_canvas(chart_df)
+        self._sync_chart_selection()
+        self._adjust_chart_height(len(chart_df.index))
         return chart_df
 
     def _build_chart_dataset(self) -> pd.DataFrame:
@@ -814,17 +1300,24 @@ class DashboardWidget(QWidget):
             },
         }
 
+    def _category_key(self, raw_category: Any) -> str:
+        if raw_category is None:
+            return ""
+        if isinstance(raw_category, (list, tuple, set)):
+            parts = [str(item).strip() for item in raw_category if str(item).strip()]
+            return " / ".join(parts)
+        return str(raw_category).strip()
+
     def _set_kpi_values(self, *, total: float, rows: int, categories: int):
         del total, rows, categories
 
     def _adjust_chart_height(self, category_count: int):
-        count = max(0, int(category_count or 0))
-        dynamic_height = 220 + (count * 34)
-        bounded = max(360, min(dynamic_height, 24000))
-        self.primary_chart.setMinimumHeight(bounded)
-        self.primary_chart.setMaximumHeight(bounded)
-        self.primary_chart.resize(self.primary_chart.width(), bounded)
-        self.chart_canvas.setMinimumHeight(bounded + 8)
+        del category_count
+        if hasattr(self, "dashboard_canvas"):
+            try:
+                self.dashboard_canvas.updateGeometry()
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def _clear_filter_chips(self):
         while self.filter_chip_layout.count() > 0:
@@ -848,9 +1341,9 @@ class DashboardWidget(QWidget):
                 value = float(getattr(row, "Valor", 0.0) or 0.0)
                 raw_category = getattr(row, "RawCategoria", category)
                 feature_ids = list(getattr(row, "FeatureIds", []) or [])
-                key = self.primary_chart._category_key(raw_category)
+                key = self._category_key(raw_category)
                 if not key:
-                    key = self.primary_chart._category_key(category)
+                    key = self._category_key(category)
                 if not key:
                     continue
                 self._category_filters[key] = {
@@ -913,6 +1406,12 @@ class DashboardWidget(QWidget):
                     widget.setChecked(False)
         finally:
             self._updating_filter_chips = False
+        try:
+            if hasattr(self, "dashboard_canvas"):
+                self.dashboard_canvas.clear_filters()
+                self.dashboard_canvas.clear_selection(emit_signal=False)
+        except Exception:
+            log_exception("falha opcional ignorada")
         self._apply_active_filters()
         self._sync_chart_selection()
         self._update_summary_line()
@@ -1010,11 +1509,12 @@ class DashboardWidget(QWidget):
     def _sync_chart_selection(self):
         category_key = self.active_category_keys[0] if self.active_category_keys else ""
         try:
-            self.primary_chart.set_selected_category(category_key, emit_signal=False)
+            if hasattr(self, "dashboard_canvas"):
+                self.dashboard_canvas.set_selected_category(category_key, emit_signal=False)
         except Exception:
             log_exception("falha opcional ignorada")
 
-    def _handle_chart_selection(self, source_chart, payload):
+    def _handle_canvas_chart_selection(self, source_item_id: str, payload):
         if not payload or not isinstance(payload, dict):
             self._clear_category_filters()
             return
@@ -1060,6 +1560,7 @@ class DashboardWidget(QWidget):
             self._updating_filter_chips = False
 
         self._apply_active_filters()
+        self._sync_chart_selection()
         self._update_summary_line()
         self._update_filter_label()
 

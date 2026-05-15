@@ -1,14 +1,54 @@
 ﻿import os
 from typing import Dict, Optional
 
-from qgis.PyQt.QtCore import QEasingCurve, QEvent, QObject, QRect, QSize, Qt, QTimer, QVariantAnimation
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtCore import QByteArray, QEasingCurve, QEvent, QObject, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, QSettings
+from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPixmap
+from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.PyQt.QtWidgets import QFrame, QPushButton, QToolTip, QVBoxLayout, QWidget
 
 from .utils.resources import svg_icon
 
 
 from .utils.logging_utils import log_exception
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
+
+
+def _tinted_svg_icon(filename: str, color: str, size: QSize) -> QIcon:
+    path = os.path.join(os.path.dirname(__file__), "resources", "SVG", filename)
+    if not os.path.exists(path):
+        return svg_icon(filename)
+    try:
+        with open(path, "rb") as handle:
+            renderer = QSvgRenderer(QByteArray(handle.read()))
+        side_w = max(1, int(size.width() or 24))
+        side_h = max(1, int(size.height() or 24))
+        pixmap = QPixmap(side_w, side_h)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        viewbox = renderer.viewBoxF()
+        if viewbox.isValid() and viewbox.width() > 0 and viewbox.height() > 0:
+            scale = min(side_w / viewbox.width(), side_h / viewbox.height()) * 0.86
+            target_w = viewbox.width() * scale
+            target_h = viewbox.height() * scale
+            target = QRectF((side_w - target_w) / 2, (side_h - target_h) / 2, target_w, target_h)
+            renderer.render(painter, target)
+        else:
+            renderer.render(painter)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color))
+        painter.end()
+        return QIcon(pixmap)
+    except Exception:
+        log_exception("falha opcional ignorada")
+        return svg_icon(filename)
+
+
 class SidebarController(QObject):
     """Slim icon-only navigation for the Summarizer dialog."""
 
@@ -36,6 +76,7 @@ class SidebarController(QObject):
             self.ui = ui_or_host
 
         self.buttons: Dict[str, QPushButton] = {}
+        self._button_icon_names: Dict[str, str] = {}
         self.current_mode: Optional[str] = None
         self._all_nav_buttons = []
         self._sidebar_container: Optional[QWidget] = None
@@ -78,10 +119,10 @@ class SidebarController(QObject):
             btn.setCursor(Qt.PointingHandCursor)
             btn.setToolTip(tooltip)
             if mode == "relatorios":
-                btn.setFixedSize(52, 52)
+                btn.setFixedSize(50, 51)
             else:
-                btn.setFixedSize(36, 36)
-            btn.setIconSize(QSize(36, 36) if mode == "relatorios" else QSize(20, 20))
+                btn.setFixedSize(50, 37)
+            btn.setIconSize(QSize(35, 35) if mode == "relatorios" else QSize(22, 22))
             btn.setProperty("navIcon", "true")
             btn.setProperty("active", False)
             if mode == "relatorios":
@@ -92,6 +133,7 @@ class SidebarController(QObject):
                     btn.setIcon(svg_icon(icon_name))
             else:
                 btn.setIcon(svg_icon(icon_name))
+                self._button_icon_names[mode] = icon_name
             btn.clicked.connect(lambda checked, m=mode: self._handle_nav_click(m))
             layout.addWidget(btn, 0, Qt.AlignTop)
             btn.installEventFilter(self)
@@ -173,9 +215,19 @@ class SidebarController(QObject):
         self._refresh_nav_styles()
 
     def _refresh_nav_styles(self):
+        dark_mode = _is_dark_theme()
         for btn in self._all_nav_buttons:
             if btn is None:
                 continue
+            mode = ""
+            for key, value in self.buttons.items():
+                if value is btn:
+                    mode = key
+                    break
+            if mode in self._button_icon_names:
+                active = bool(btn.property("active"))
+                icon_color = "#F8FAFC" if (active and dark_mode) else ("#111827" if active else ("#E5E7EB" if dark_mode else "#111827"))
+                btn.setIcon(_tinted_svg_icon(self._button_icon_names[mode], icon_color, btn.iconSize()))
             try:
                 btn.style().unpolish(btn)
                 btn.style().polish(btn)
@@ -196,7 +248,7 @@ class SidebarController(QObject):
             return QRect()
         indicator_width = 3
         indicator_height = min(max(28, geo.height() - 8), 44)
-        x = 0
+        x = 4
         y = geo.center().y() - (indicator_height // 2)
         return QRect(x, y, indicator_width, indicator_height)
 

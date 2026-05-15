@@ -25,6 +25,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .utils.window_theme import apply_windows_title_bar_theme
 
 from .utils.logging_utils import log_exception
 SLIM_DIALOG_STYLE = """
@@ -52,6 +53,7 @@ QLineEdit, QComboBox, QSpinBox {
     background-color: #FFFFFF;
     color: #0F172A;
     selection-background-color: rgba(90, 63, 230, 0.18);
+    selection-color: #0F172A;
 }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
     border: 1px solid #8B7CF6;
@@ -65,6 +67,7 @@ QComboBox QAbstractItemView {
     border-radius: 8px;
     background-color: #FFFFFF;
     selection-background-color: rgba(90, 63, 230, 0.12);
+    selection-color: #0F172A;
     padding: 6px;
 }
 QPushButton {
@@ -134,6 +137,99 @@ QScrollBar::sub-line:vertical {
 }
 """
 
+SLIM_DIALOG_DARK_OVERLAY = """
+QDialog#SlimDialog {
+    background-color: #111827;
+    color: #F8FAFC;
+}
+QDialog#SlimDialog QWidget,
+QDialog#SlimDialog QFrame {
+    background-color: #111827;
+    color: #F8FAFC;
+}
+QLabel,
+QLabel[sublabel="true"],
+QLabel[caption="true"] {
+    color: #CBD5E1;
+    background: transparent;
+}
+QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit, QTableWidget, QListWidget {
+    min-height: 34px;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 0 10px;
+    font-size: 11px;
+    background-color: #1F2937;
+    color: #F8FAFC;
+    selection-background-color: #374151;
+    selection-color: #F8FAFC;
+    alternate-background-color: #182230;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus, QTextEdit:focus {
+    border: 1px solid #7C6CFF;
+}
+QComboBox QAbstractItemView {
+    border: 1px solid #374151;
+    border-radius: 8px;
+    background-color: #1F2937;
+    color: #F8FAFC;
+    selection-background-color: #374151;
+    padding: 6px;
+}
+QHeaderView::section,
+QTableCornerButton::section {
+    background-color: #1F2937;
+    color: #CBD5E1;
+    border-color: #374151;
+}
+QCheckBox {
+    color: #F8FAFC;
+    background: transparent;
+}
+QPushButton {
+    min-height: 32px;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 0 12px;
+    font-size: 11px;
+    font-weight: 400;
+    background-color: #1F2937;
+    color: #F8FAFC;
+}
+QPushButton:hover {
+    background-color: #273449;
+    border-color: #475569;
+}
+QPushButton#SlimPrimaryButton {
+    border: 1px solid #F8FAFC;
+    background-color: #F8FAFC;
+    color: #0B1020;
+    font-weight: 600;
+}
+QPushButton#SlimPrimaryButton:hover {
+    background-color: #E2E8F0;
+    border-color: #E2E8F0;
+}
+QPushButton#SlimSecondaryButton {
+    background-color: #1F2937;
+    color: #F8FAFC;
+}
+QPushButton#SlimSecondaryButton:hover {
+    background-color: #273449;
+}
+QListWidget::item:selected,
+QTableWidget::item:selected {
+    background-color: #374151;
+    color: #F8FAFC;
+}
+QScrollBar::handle:vertical {
+    background: #475569;
+}
+QScrollBar::handle:vertical:hover {
+    background: #64748B;
+}
+"""
+
 SLIM_POPOVER_STYLE = """
 QDialog#SlimPopoverDialog {
     background: transparent;
@@ -187,6 +283,7 @@ QLineEdit#SlimDialogLineEdit {
     background: #FFFFFF;
     color: #0F172A;
     selection-background-color: rgba(90, 63, 230, 0.18);
+    selection-color: #0F172A;
 }
 QLineEdit#SlimDialogLineEdit:focus {
     border: 1px solid #8B7CF6;
@@ -236,6 +333,63 @@ QToolButton#SlimPopoverCloseButton:hover {
 }
 """
 
+SLIM_POPOVER_DARK_OVERLAY = """
+QFrame#SlimPopoverPanel {
+    background: #111827;
+    border: 1px solid #374151;
+}
+QLabel#SlimPopoverTitle,
+QLabel#SlimMessageBody {
+    color: #F8FAFC;
+}
+QLabel#SlimPopoverSubtitle,
+QLabel#SlimDialogPrompt,
+QLabel#SlimDialogHint {
+    color: #CBD5E1;
+}
+QFrame#SlimPopoverIconWrap {
+    background: #1F2937;
+    border-color: #374151;
+}
+QLineEdit#SlimDialogLineEdit {
+    border-color: #374151;
+    background: #1F2937;
+    color: #F8FAFC;
+}
+QPushButton#SlimPrimaryButton {
+    border-color: #F8FAFC;
+    background: #F8FAFC;
+    color: #0B1020;
+}
+QPushButton#SlimPrimaryButton:hover {
+    background: #E2E8F0;
+    border-color: #E2E8F0;
+}
+QPushButton#SlimSecondaryButton {
+    border-color: #374151;
+    background: #1F2937;
+    color: #F8FAFC;
+}
+QPushButton#SlimSecondaryButton:hover {
+    background: #273449;
+    border-color: #475569;
+}
+QToolButton#SlimPopoverCloseButton {
+    color: #CBD5E1;
+}
+QToolButton#SlimPopoverCloseButton:hover {
+    color: #F8FAFC;
+    background: #273449;
+}
+"""
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
+
 
 def _build_dialog_font() -> QFont:
     font = ui_font(10)
@@ -263,10 +417,17 @@ class SlimDialogBase(QDialog):
 
         self.setFont(_build_dialog_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
-        self.setStyleSheet(SLIM_DIALOG_STYLE)
+        self._refresh_dialog_style()
+
+    def _refresh_dialog_style(self):
+        dark = _is_dark_theme()
+        self.setProperty("themeMode", "dark" if dark else "light")
+        self.setStyleSheet(SLIM_DIALOG_STYLE + (SLIM_DIALOG_DARK_OVERLAY if dark else ""))
+        apply_windows_title_bar_theme(self, dark)
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._refresh_dialog_style()
         harmonize_widget_fonts(self)
         if not self._geometry_key:
             return
@@ -295,7 +456,7 @@ class SlimPopoverDialog(QDialog):
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setFont(_build_dialog_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
-        self.setStyleSheet(SLIM_POPOVER_STYLE)
+        self._refresh_dialog_style()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -316,8 +477,15 @@ class SlimPopoverDialog(QDialog):
         self.panel_layout.setContentsMargins(18, 18, 18, 18)
         self.panel_layout.setSpacing(12)
 
+    def _refresh_dialog_style(self):
+        dark = _is_dark_theme()
+        self.setProperty("themeMode", "dark" if dark else "light")
+        self.setStyleSheet(SLIM_POPOVER_STYLE + (SLIM_POPOVER_DARK_OVERLAY if dark else ""))
+        apply_windows_title_bar_theme(self, dark)
+
     def showEvent(self, event):
         super().showEvent(event)
+        self._refresh_dialog_style()
         harmonize_widget_fonts(self)
         if self._did_restore_geometry:
             return
@@ -364,12 +532,16 @@ class SlimTextInputDialog(SlimPopoverDialog):
         accept_label: str = "Salvar",
         cancel_label: str = "Cancelar",
         icon: Optional[QIcon] = None,
+        preferred_width: int = 420,
         geometry_key: str = "",
     ):
         super().__init__(parent, geometry_key=geometry_key)
         self.setWindowTitle(title)
-        self.setMinimumWidth(420)
-        self.setMaximumWidth(420)
+        width = max(360, int(preferred_width or 420))
+        if icon is None or icon.isNull():
+            width = max(width, 520)
+        self.setMinimumWidth(width)
+        self.setMaximumWidth(max(width, 640))
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -943,6 +1115,7 @@ def slim_get_text(
     helper_text: str = "",
     accept_label: str = "Salvar",
     icon: Optional[QIcon] = None,
+    preferred_width: int = 420,
 ) -> Tuple[str, bool]:
     dialog = SlimTextInputDialog(
         title=title,
@@ -953,6 +1126,7 @@ def slim_get_text(
         helper_text=helper_text,
         accept_label=accept_label,
         icon=icon,
+        preferred_width=preferred_width,
         geometry_key=geometry_key,
     )
     accepted = dialog.exec_() == QDialog.Accepted
