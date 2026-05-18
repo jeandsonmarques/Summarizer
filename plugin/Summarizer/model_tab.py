@@ -57,7 +57,6 @@ from .dashboard_page_widget import DashboardPageWidget
 from .dashboard_project_store import DashboardProjectStore, PROJECT_EXTENSION
 from .field_list_helpers import normalize_field_kind
 from .report_view.charts import ChartVisualState
-from .report_view.result_models import ChartPayload
 from .model_view.model_builder_panel import (
     build_model_builder_panel,
     build_visual_type_buttons,
@@ -70,14 +69,9 @@ from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelR
 from .model_view.model_data_panel import (
     build_model_data_panel,
     desired_data_panel_width,
-    field_catalog_for_layer,
-    field_group_for_def,
-    field_is_date_like,
     field_is_numeric,
-    field_kind_for_layer_field,
     populate_builder_field_list,
     refresh_builder_data_fonts,
-    resolve_layer_field_name,
     sync_data_panel_chrome,
     toggle_data_panel_state,
 )
@@ -86,21 +80,14 @@ from .model_view.model_canvas_style_dialog import (
     apply_canvas_style_to_source_meta,
     default_canvas_style,
     normalize_canvas_style,
-    normalize_hex_color,
     open_canvas_style_dialog,
-    set_color_preview_chip,
 )
 from .model_view.model_project_controller import (
-    apply_legacy_single_page_compatibility,
     normalize_loaded_project,
-    normalize_page_payload,
-    normalize_project_payload,
     normalize_project_source_meta,
     project_snapshot_payload,
-    resolve_active_page_id,
     snapshot_signature,
     snapshot_state,
-    validate_dashboard_project,
 )
 from .model_view.model_theme import (
     _force_model_white_background,
@@ -113,12 +100,7 @@ from .model_view.model_theme import (
 from .model_view.model_visual_rebuild import (
     build_model_chart_item_from_layer,
     empty_chart_payload,
-    feature_category_from_items,
     rebuild_chart_item_from_binding,
-    rebuild_matrix_item_from_binding,
-    rebuild_scatter_item_from_binding,
-    resolve_binding_items_for_layer,
-    safe_float,
 )
 from .slim_dialogs import slim_message, slim_question
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
@@ -196,7 +178,7 @@ class ModelTab(QWidget):
         self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
         self._builder_selected_item_id: str = ""
         self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
-        self._builder_visual_specs = self._visual_type_specs()
+        self._builder_visual_specs = visual_type_specs()
         self.builder_visual_buttons = {}
 
         root = QVBoxLayout(self)
@@ -1263,9 +1245,6 @@ class ModelTab(QWidget):
         if getattr(self, "data_panel_icon", None) is not None:
             self.data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
 
-    def _visual_type_specs(self):
-        return visual_type_specs()
-
     def _build_visual_type_buttons(self, parent: QWidget, layout, *, button_size: int = 24, icon_size: int = 15):
         self.builder_visual_buttons = build_visual_type_buttons(
             parent,
@@ -1275,9 +1254,6 @@ class ModelTab(QWidget):
             button_size=button_size,
             icon_size=icon_size,
         )
-
-    def _fill_model_theme_tokens(self, style: str) -> str:
-        return fill_model_theme_tokens(style)
 
     def _apply_visual_side_panel_styles(self):
         style = """
@@ -1399,12 +1375,12 @@ class ModelTab(QWidget):
                 font-weight: 400;
             }
         """
-        self.visual_side_panel.setStyleSheet(self._fill_model_theme_tokens(style))
+        self.visual_side_panel.setStyleSheet(fill_model_theme_tokens(style))
         self._apply_builder_panel_theme_overrides()
         self._refresh_theme_icons()
 
     def _apply_builder_panel_theme_overrides(self):
-        style = self._fill_model_theme_tokens(
+        style = fill_model_theme_tokens(
             """
             QScrollArea#ModelBuilderScroll,
             QWidget#ModelBuilderScrollViewport,
@@ -1749,7 +1725,7 @@ class ModelTab(QWidget):
                 color: __TEXT__;
             }
         """
-        style = self._fill_model_theme_tokens(style)
+        style = fill_model_theme_tokens(style)
         for button in (
             getattr(self, "visual_data_tab_btn", None),
             getattr(self, "visual_format_tab_btn", None),
@@ -1805,20 +1781,8 @@ class ModelTab(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         harmonize_widget_fonts(self)
-        self._refresh_builder_data_fonts()
-        self._refresh_theme_icons()
-
-    def _refresh_builder_data_fonts(self):
         refresh_builder_data_fonts(self)
-
-    def _field_is_numeric(self, field_def) -> bool:
-        return field_is_numeric(field_def)
-
-    def _field_is_date_like(self, field_def) -> bool:
-        return field_is_date_like(field_def)
-
-    def _field_group_for_def(self, field_def) -> str:
-        return field_group_for_def(field_def)
+        self._refresh_theme_icons()
 
     def _suggested_role_for_group(self, group: str) -> str:
         mapping = {
@@ -1832,12 +1796,6 @@ class ModelTab(QWidget):
     def _slot_values_for_binding(self, binding: DashboardChartBinding, slot_name: str) -> List[FieldBindingItem]:
         role = normalize_binding_role(slot_name)
         return list(binding.normalized().bindings.get(role) or [])
-
-    def _chart_type_label(self, chart_type: str) -> str:
-        return chart_type_label(chart_type)
-
-    def _empty_chart_payload(self, chart_type: str, title: str = "") -> ChartPayload:
-        return empty_chart_payload(chart_type, title)
 
     def _selected_canvas_item(self) -> Optional[DashboardChartItem]:
         active_canvas = self._active_canvas()
@@ -1891,11 +1849,11 @@ class ModelTab(QWidget):
             aggregation="count",
             top_n=max(1, int(self.builder_topn_spin.value() or 12)),
         ).normalized()
-        title = self._chart_type_label(chart_type)
+        title = chart_type_label(chart_type)
         item = DashboardChartItem(
             item_id=item_id,
             origin="model_builder_v2",
-            payload=self._empty_chart_payload(chart_type, title=""),
+            payload=empty_chart_payload(chart_type, title=""),
             visual_state=ChartVisualState(chart_type=str(chart_type or "bar").strip().lower()),
             binding=binding,
             title="",
@@ -1926,9 +1884,6 @@ class ModelTab(QWidget):
         self._set_builder_panel_open(True, focus=False)
         self._sync_builder_selection_state()
 
-    def _field_catalog_for_layer(self, layer: Optional[QgsVectorLayer]) -> Dict[str, List[Dict[str, str]]]:
-        return field_catalog_for_layer(layer)
-
     def _refresh_builder_field_lists(self, layer: Optional[QgsVectorLayer]):
         self._builder_field_catalog = populate_builder_field_list(self, layer)
         self._sync_data_panel_width_to_content()
@@ -1938,19 +1893,16 @@ class ModelTab(QWidget):
             return int(metrics.horizontalAdvance(text))
         return int(metrics.width(text))
 
-    def _desired_data_panel_width(self) -> int:
-        return desired_data_panel_width(
+    def _sync_data_panel_width_to_content(self):
+        if not hasattr(self, "data_panel"):
+            return
+        self._data_panel_width = desired_data_panel_width(
             self.builder_fields_list,
             self.builder_layer_combo,
             minimum_width=_MODEL_DATA_PANEL_MIN_WIDTH,
             maximum_width=_MODEL_DATA_PANEL_MAX_WIDTH,
             default_width=_MODEL_DATA_PANEL_DEFAULT_WIDTH,
         )
-
-    def _sync_data_panel_width_to_content(self):
-        if not hasattr(self, "data_panel"):
-            return
-        self._data_panel_width = self._desired_data_panel_width()
         self._sync_data_panel_chrome()
         self._ensure_canvas_splitter_sizes()
 
@@ -2020,7 +1972,7 @@ class ModelTab(QWidget):
             self.builder_format_card.setVisible(True)
         active_chart_type = normalize_chart_type(binding.chart_type or getattr(item.visual_state, "chart_type", ""))
         layer_name = binding.source_name or _rt("Sem camada")
-        visual_label = self._chart_type_label(binding.chart_type or getattr(item.visual_state, "chart_type", "bar"))
+        visual_label = chart_type_label(binding.chart_type or getattr(item.visual_state, "chart_type", "bar"))
         self.builder_selected_visual_label.setText(_rt("{visual} · {layer}", visual=visual_label, layer=layer_name))
         for widget in list(getattr(self, "_builder_selection_widgets", []) or []):
             widget.setVisible(True)
@@ -2293,7 +2245,7 @@ class ModelTab(QWidget):
                 if not field_name:
                     continue
                 self.builder_dimension_combo.addItem(field_name, field_name)
-                if self._field_is_numeric(field_def):
+                if field_is_numeric(field_def):
                     self.builder_value_combo.addItem(field_name, field_name)
         self.builder_dimension_combo.blockSignals(False)
         self.builder_value_combo.blockSignals(False)
@@ -2315,27 +2267,6 @@ class ModelTab(QWidget):
         index = self.builder_agg_combo.findData(preferred)
         if index >= 0:
             self.builder_agg_combo.setCurrentIndex(index)
-
-    def _safe_float(self, value) -> Optional[float]:
-        return safe_float(value)
-
-    def _resolve_layer_field_name(self, layer: QgsVectorLayer, field_name: str) -> str:
-        return resolve_layer_field_name(layer, field_name)
-
-    def _field_kind_for_layer_field(self, layer: QgsVectorLayer, field_name: str) -> str:
-        return field_kind_for_layer_field(layer, field_name)
-
-    def _resolve_binding_items_for_layer(self, binding: DashboardChartBinding, role: str, layer: QgsVectorLayer) -> List[FieldBindingItem]:
-        return resolve_binding_items_for_layer(binding, role, layer)
-
-    def _feature_category_from_items(self, feature, items: List[FieldBindingItem]) -> tuple[str, object]:
-        return feature_category_from_items(feature, items)
-
-    def _rebuild_scatter_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding, layer: QgsVectorLayer) -> DashboardChartItem:
-        return rebuild_scatter_item_from_binding(item, binding, layer)
-
-    def _rebuild_matrix_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding, layer: QgsVectorLayer) -> DashboardChartItem:
-        return rebuild_matrix_item_from_binding(item, binding, layer)
 
     def _rebuild_chart_item_from_binding(self, item: DashboardChartItem, binding: DashboardChartBinding) -> Optional[DashboardChartItem]:
         if item is None:
@@ -2397,18 +2328,12 @@ class ModelTab(QWidget):
             if separator is not None:
                 separator.setVisible(bool(visible))
 
-    def _normalize_hex_color(self, value: object, fallback: str) -> str:
-        return normalize_hex_color(value, fallback)
-
-    def _default_canvas_style(self) -> Dict[str, object]:
-        return default_canvas_style()
-
     def _normalized_canvas_style(self, style: Optional[Dict[str, object]] = None) -> Dict[str, object]:
-        return normalize_canvas_style(style, base=self._default_canvas_style())
+        return normalize_canvas_style(style, base=default_canvas_style())
 
     def _project_canvas_style(self) -> Dict[str, object]:
         if self.current_project is None:
-            return self._default_canvas_style()
+            return default_canvas_style()
         source_meta = dict(getattr(self.current_project, "source_meta", {}) or {})
         return self._normalized_canvas_style(source_meta.get("canvas_style"))
 
@@ -2447,19 +2372,6 @@ class ModelTab(QWidget):
             self._commit_history_if_changed()
         self._refresh_ui_state()
 
-    def _set_color_preview_chip(self, label: QLabel, color_value: object, fallback: str):
-        set_color_preview_chip(label, color_value, fallback)
-
-    def _normalize_page_payload(self, payload: object) -> Dict[str, object]:
-        return normalize_page_payload(payload)
-
-    def _normalize_project_payload(self, payload: object) -> Dict[str, object]:
-        return normalize_project_payload(
-            payload,
-            page_title_provider=self._page_display_title,
-            canvas_style_normalizer=self._normalized_canvas_style,
-        )
-
     def _normalize_project_source_meta(self, source_meta: Optional[Dict[str, object]]) -> Dict[str, object]:
         return normalize_project_source_meta(source_meta, canvas_style_normalizer=self._normalized_canvas_style)
 
@@ -2469,15 +2381,6 @@ class ModelTab(QWidget):
             page_title_provider=self._page_display_title,
             canvas_style_normalizer=self._normalized_canvas_style,
         )
-
-    def _apply_legacy_single_page_compatibility(self, payload: object) -> Dict[str, object]:
-        return apply_legacy_single_page_compatibility(payload, page_title_provider=self._page_display_title)
-
-    def _resolve_active_page_id(self, payload: object, pages: Optional[List[object]] = None) -> str:
-        return resolve_active_page_id(payload, pages)
-
-    def _validate_dashboard_project(self, project: object) -> bool:
-        return validate_dashboard_project(project)
 
     def _open_canvas_style_settings(self):
         if self.current_project is None:
