@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import pytest
 import pandas as pd
+import pytest
 
 from Summarizer.summary_view.summary_calculations import (
     build_dataframe_summary,
@@ -107,7 +107,7 @@ def test_calculate_advanced_summary_preserves_payload_shape():
         values=[1, 3, 2],
         grouped_values={"A": [1, 3], "B": [2]},
         filter_description='group contains "A"',
-        filter_expression='"group" ILIKE \'%A%\'',
+        filter_expression="\"group\" ILIKE '%A%'",
         timestamp="2026-05-18T10:00:00",
         total_features=9,
     )
@@ -152,7 +152,7 @@ def test_calculate_advanced_summary_preserves_payload_shape():
         "field_name": "value",
         "timestamp": "2026-05-18T10:00:00",
         "total_features": 9,
-        "filter_expression": '"group" ILIKE \'%A%\'',
+        "filter_expression": "\"group\" ILIKE '%A%'",
     }
     assert summary["filter_description"] == 'group contains "A"'
     assert summary["raw_data"] == {

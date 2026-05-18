@@ -1,79 +1,151 @@
-import base64
-import os
+﻿import os
 import re
 import tempfile
 import uuid
 from datetime import datetime
-from typing import Dict, Optional, List
 from string import Template
+from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
-from pandas.api import types as ptypes
-from qgis.PyQt.QtCore import QBuffer, QCoreApplication, QSettings, QTimer, QTranslator, Qt, QVariant, QRectF, QUrl
-from qgis.PyQt.QtGui import QFont, QImage, QPainter
+from qgis.core import (
+    Qgis,
+    QgsDataSourceUri,
+    QgsFeatureRequest,
+    QgsMapLayerStyle,
+    QgsMessageLog,
+    QgsProject,
+    QgsVectorFileWriter,
+    QgsVectorLayer,
+)
+from qgis.PyQt.QtCore import (
+    QCoreApplication,
+    QSettings,
+    Qt,
+    QTimer,
+    QTranslator,
+    QUrl,
+    QVariant,
+)
+from qgis.PyQt.QtGui import QFont
 from qgis.PyQt.QtWidgets import (
     QAction,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QHBoxLayout,
+    QFrame,
     QLabel,
-    QMessageBox,
     QMenu,
+    QMessageBox,
     QPushButton,
-    QStackedWidget,
     QScrollArea,
-    QTextEdit,
     QSizePolicy,
+    QStackedWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
-    QFrame,
 )
 
-from .report_view.visuals import BarChartRenderer, VisualDefinition, VisualTheme
-from qgis.core import (
-    QgsDataSourceUri,
-    QgsFeature,
-    QgsFeatureRequest,
-    QgsGeometry,
-    QgsMapLayerStyle,
-    QgsProject,
-    QgsMessageLog,
-    QgsVectorFileWriter,
-    QgsVectorLayer,
-    QgsWkbTypes,
-    Qgis,
-)
-
-from .export_manager import ExportManager
-from .presentation import PresentationMapController, create_presentation_button
-from .result_style import apply_result_style
-from .ui_main_dialog import Ui_SummarizerDialog
-from .layout_nav import SidebarController
-from .interactive_table import InteractiveTable
-from .pivot_table_widget import PivotTableWidget
-from .palette import palette_context
-from .slim_dialogs import SlimDialogBase, SlimLayerSelectionDialog, slim_get_item
-from .utils.resources import svg_icon
-from .utils.i18n_runtime import tr_text as _rt_runtime, apply_widget_translations as _apply_i18n_widgets
 from .browser_integration import (
+    connection_registry,
     register_browser_provider,
     unregister_browser_provider,
-    connection_registry,
 )
-from .utils.fonts import attach_ui_font_enforcer, ensure_ui_fonts_registered, harmonize_widget_fonts
-from .utils.plugin_logging import log_error
-from .utils.window_theme import apply_windows_title_bar_theme
+from .export_manager import ExportManager
+from .interactive_table import InteractiveTable
+from .layout_nav import SidebarController
+from .palette import palette_context
+from .pivot_table_widget import PivotTableWidget
+from .presentation import PresentationMapController, create_presentation_button
+from .slim_dialogs import SlimDialogBase, SlimLayerSelectionDialog
 from .summary_view.summary_calculations import (
     build_dataframe_summary as _summary_build_dataframe_summary,
+)
+from .summary_view.summary_calculations import (
     calculate_advanced_summary as _summary_calculate_advanced_summary,
+)
+from .summary_view.summary_calculations import (
     filter_empty_matches as _summary_filter_empty_matches,
+)
+from .summary_view.summary_calculations import (
     is_meaningful_value as _summary_is_meaningful_value,
 )
-
+from .summary_view.summary_chart_preview import (
+    chart_preview_style_block as _summary_chart_preview_style_block,
+)
+from .summary_view.summary_chart_preview import (
+    update_charts_preview as _summary_update_charts_preview,
+)
+from .summary_view.summary_export_controller import SummaryExportController
+from .summary_view.summary_layer_io import (
+    build_geometry_lookup as _summary_build_geometry_lookup,
+)
+from .summary_view.summary_layer_io import (
+    create_layer_from_dataframe as _summary_create_layer_from_dataframe,
+)
+from .summary_view.summary_layer_io import (
+    create_memory_table_from_dataframe as _summary_create_memory_table_from_dataframe,
+)
+from .summary_view.summary_layer_io import (
+    export_layer_to_gpkg as _summary_export_layer_to_gpkg,
+)
+from .summary_view.summary_layer_io import (
+    format_comparison_values as _summary_format_comparison_values,
+)
+from .summary_view.summary_layer_io import (
+    geometry_from_lookup as _summary_geometry_from_lookup,
+)
+from .summary_view.summary_layer_io import (
+    make_unique_field_name as _summary_make_unique_field_name,
+)
+from .summary_view.summary_layer_io import (
+    map_series_to_variant as _summary_map_series_to_variant,
+)
+from .summary_view.summary_layer_io import (
+    python_value as _summary_python_value,
+)
+from .summary_view.summary_layer_io import (
+    sanitize_field_name as _summary_sanitize_field_name,
+)
+from .summary_view.summary_layer_io import (
+    unique_layer_name as _summary_unique_layer_name,
+)
+from .summary_view.summary_layer_io import (
+    variant_type_for_series as _summary_variant_type_for_series,
+)
+from .summary_view.summary_materialize_dialog import (
+    materialize_dataframe_dialog as _summary_materialize_dataframe_dialog,
+)
+from .summary_view.summary_results_view import (
+    build_summary_unavailable_html as _summary_build_unavailable_html,
+)
+from .summary_view.summary_results_view import (
+    build_summary_welcome_html as _summary_build_welcome_html,
+)
+from .summary_view.summary_results_view import (
+    display_advanced_summary as _summary_display_advanced_summary,
+)
+from .summary_view.summary_results_view import (
+    escape_html as _summary_escape_html,
+)
+from .summary_view.summary_results_view import (
+    set_results_view as _summary_set_results_view,
+)
+from .summary_view.summary_results_view import (
+    show_results_message as _summary_show_results_message,
+)
+from .summary_view.summary_results_view import (
+    show_summary_welcome as _summary_show_summary_welcome,
+)
+from .ui_main_dialog import Ui_SummarizerDialog
+from .utils.fonts import attach_ui_font_enforcer, ensure_ui_fonts_registered, harmonize_widget_fonts
+from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets
+from .utils.i18n_runtime import tr_text as _rt_runtime
 from .utils.logging_utils import log_exception
+from .utils.plugin_logging import log_error
+from .utils.resources import svg_icon
+from .utils.window_theme import apply_windows_title_bar_theme
+
 PROTECTED_COLUMNS_DEFAULT = {"__feature_id", "__geometry_wkb", "__target_feature_id"}
 
 
@@ -338,7 +410,13 @@ class Summarizer:
 
 
 class SummarizerDialog(QDialog):
-    def __init__(self, iface, plugin_host=None, active_locale: str = "", has_translation: bool = False):
+    def __init__(
+        self,
+        iface,
+        plugin_host=None,
+        active_locale: str = "",
+        has_translation: bool = False,
+    ):
         super().__init__(iface.mainWindow())
         self._enable_native_window_controls()
         self.iface = iface
@@ -435,7 +513,11 @@ class SummarizerDialog(QDialog):
         # Prepare widgets for the Results view
         try:
             layout = self.ui.results_body_layout
-            self.pivot_widget = PivotTableWidget(iface=self.iface, parent=self.ui.results_body, host=self)
+            self.pivot_widget = PivotTableWidget(
+                iface=self.iface,
+                parent=self.ui.results_body,
+                host=self,
+            )
             self.pivot_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             layout.addWidget(self.pivot_widget)
             try:
@@ -701,7 +783,9 @@ class SummarizerDialog(QDialog):
         return self._normalize_theme_mode(raw)
 
     def _theme_label(self, mode: str) -> str:
-        return _rt_runtime("Escuro") if self._normalize_theme_mode(mode) == "dark" else _rt_runtime("Claro")
+        if self._normalize_theme_mode(mode) == "dark":
+            return _rt_runtime("Escuro")
+        return _rt_runtime("Claro")
 
     def _refresh_theme_button(self):
         btn = getattr(self.ui, "theme_btn", None)
@@ -946,45 +1030,33 @@ class SummarizerDialog(QDialog):
 
     def _set_results_view(self, mode: str):
         """Switch between pivot (summary), message (HTML) and table (comparison) views."""
-        pivot_visible = mode == "pivot"
-        message_visible = mode == "message"
-        table_visible = mode == "table"
-
-        pivot_widget = getattr(self, "pivot_widget", None)
-        if pivot_widget is not None:
-            pivot_widget.setVisible(pivot_visible)
-
-        message_widget = getattr(self, "summary_message_widget", None)
-        if message_widget is not None:
-            message_widget.setVisible(message_visible)
-
-        table_widget = getattr(self, "table_view", None)
-        if table_widget is not None:
-            table_widget.setVisible(table_visible)
+        _summary_set_results_view(
+            getattr(self, "pivot_widget", None),
+            getattr(self, "summary_message_widget", None),
+            getattr(self, "table_view", None),
+            mode,
+        )
 
     def show_results_message(self, html: str):
         """Display HTML content in the results area."""
         message_widget = getattr(self, "summary_message_widget", None)
         if message_widget is None:
             return
-        try:
-            message_widget.setHtml(apply_result_style(html))
-        except Exception:
-            message_widget.setHtml(html)
-        self._set_results_view("message")
+        _summary_show_results_message(
+            message_widget,
+            html,
+            set_results_view=self._set_results_view,
+        )
 
     def show_summary_welcome(self):
-        self._set_ribbon_visible(False)
-        pivot = getattr(self, "pivot_widget", None)
-        if pivot is not None:
-            try:
-                pivot.show_welcome_message()
-                self._set_results_view("pivot")
-                return
-            except Exception:
-                log_exception("falha opcional ignorada")
-        self.show_results_message(
-            f"<p style='margin:8px 0;'>{_rt_runtime('Selecione uma camada e clique em Gerar Resumo.')}</p>"
+        _summary_show_summary_welcome(
+            getattr(self, "pivot_widget", None),
+            getattr(self, "summary_message_widget", None),
+            set_results_view=self._set_results_view,
+            set_ribbon_visible=self._set_ribbon_visible,
+            welcome_html=_summary_build_welcome_html(
+                _rt_runtime("Selecione uma camada e clique em Gerar Resumo.")
+            ),
         )
 
     def _reset_initial_summary_layer_selection(self):
@@ -1144,7 +1216,11 @@ class SummarizerDialog(QDialog):
         try:
             added = bool(model_tab.request_add_chart(dict(snapshot or {})))
         except Exception as exc:
-            QMessageBox.warning(self, "Model", f"Nao foi possivel adicionar o grafico ao Model: {exc}")
+            QMessageBox.warning(
+                self,
+                "Model",
+                f"Nao foi possivel adicionar o grafico ao Model: {exc}",
+            )
             return
         if not added:
             return
@@ -1186,7 +1262,10 @@ class SummarizerDialog(QDialog):
         descriptor.setdefault("display_name", descriptor.get("source_path") or "Dados externos")
         descriptor.setdefault("connector", descriptor.get("connector") or "Fonte externa")
         descriptor.setdefault("record_count", int(len(df)))
-        descriptor.setdefault("timestamp", descriptor.get("timestamp") or datetime.now().isoformat())
+        descriptor.setdefault(
+            "timestamp",
+            descriptor.get("timestamp") or datetime.now().isoformat(),
+        )
         import_target = str(descriptor.get("import_target") or "").strip().lower()
 
         layer = self._create_integration_project_layer(df, descriptor)
@@ -1213,7 +1292,11 @@ class SummarizerDialog(QDialog):
         self.sidebar.show_results_page()
         return descriptor
 
-    def _create_integration_project_layer(self, df: pd.DataFrame, descriptor: Dict) -> Optional[QgsVectorLayer]:
+    def _create_integration_project_layer(
+        self,
+        df: pd.DataFrame,
+        descriptor: Dict,
+    ) -> Optional[QgsVectorLayer]:
         connector = str(descriptor.get("connector") or "").strip().lower()
         source_path = str(descriptor.get("source_path") or "").strip()
         geometry_column = str(descriptor.get("geometry_column") or "").strip()
@@ -1235,8 +1318,16 @@ class SummarizerDialog(QDialog):
             log_exception("falha opcional ignorada")
         return self._create_memory_table_from_dataframe(df, descriptor)
 
-    def _load_integration_source_layer(self, source_path: str, descriptor: Dict) -> Optional[QgsVectorLayer]:
-        base_name = (descriptor.get("display_name") or os.path.basename(source_path) or "Camada externa").strip()
+    def _load_integration_source_layer(
+        self,
+        source_path: str,
+        descriptor: Dict,
+    ) -> Optional[QgsVectorLayer]:
+        base_name = (
+            descriptor.get("display_name")
+            or os.path.basename(source_path)
+            or "Camada externa"
+        ).strip()
         if not base_name:
             base_name = "Camada externa"
 
@@ -1290,7 +1381,11 @@ class SummarizerDialog(QDialog):
             return None
         return self._add_layer_to_project(layer)
 
-    def _materialize_integration_text_layer(self, df: pd.DataFrame, descriptor: Dict) -> Optional[QgsVectorLayer]:
+    def _materialize_integration_text_layer(
+        self,
+        df: pd.DataFrame,
+        descriptor: Dict,
+    ) -> Optional[QgsVectorLayer]:
         base_name = (descriptor.get("display_name") or "Tabela externa").strip()
         if not base_name:
             base_name = "Tabela externa"
@@ -1359,97 +1454,31 @@ class SummarizerDialog(QDialog):
     def _build_dataframe_summary(self, df: pd.DataFrame, descriptor: Dict) -> Dict:
         return _summary_build_dataframe_summary(df, descriptor)
 
-    def _create_memory_table_from_dataframe(self, df: pd.DataFrame, descriptor: Dict) -> Optional[QgsVectorLayer]:
-        try:
-            base_name = (descriptor.get("display_name") or "Tabela externa").strip()
-            if not base_name:
-                base_name = "Tabela externa"
-            layer_name = self._unique_layer_name(base_name)
-            layer, error_message = self._create_layer_from_dataframe(
-                df,
-                layer_name,
-                with_geometry=False,
-                geometry_layer=None,
-            )
-            if layer is None:
-                if error_message:
-                    QgsMessageLog.logMessage(
-                        f"Falha ao criar tabela de integração: {error_message}",
-                        "Summarizer",
-                        Qgis.Warning,
-                    )
-                return None
-            return self._add_layer_to_project(layer)
-        except Exception:
-            return None
+    def _create_memory_table_from_dataframe(
+        self,
+        df: pd.DataFrame,
+        descriptor: Dict,
+    ) -> Optional[QgsVectorLayer]:
+        return _summary_create_memory_table_from_dataframe(
+            df,
+            descriptor,
+            unique_layer_name_fn=self._unique_layer_name,
+            create_layer_from_dataframe_fn=self._create_layer_from_dataframe,
+            add_layer_to_project_fn=self._add_layer_to_project,
+        )
 
     def _map_series_to_variant(self, series: pd.Series) -> QVariant.Type:
-        if ptypes.is_integer_dtype(series):
-            return QVariant.LongLong
-        if ptypes.is_float_dtype(series):
-            return QVariant.Double
-        if ptypes.is_bool_dtype(series):
-            return QVariant.Bool
-        if ptypes.is_datetime64_any_dtype(series):
-            return QVariant.DateTime
-        return QVariant.String
+        return _summary_map_series_to_variant(series)
 
     def load_layers(self):
         """QgsMapLayerComboBox já lida automaticamente com as camadas."""
         pass
 
     def _build_geometry_lookup(self, layer: QgsVectorLayer, id_series: pd.Series):
-        if layer is None or not layer.isValid():
-            return {}
-        if id_series is None or id_series.empty:
-            return {}
-        try:
-            unique_ids = id_series.dropna().unique().tolist()
-        except Exception:
-            return {}
-        candidate_ids = []
-        for raw in unique_ids:
-            if pd.isna(raw):
-                continue
-            try:
-                candidate_ids.append(int(float(raw)))
-            except Exception:
-                try:
-                    candidate_ids.append(int(str(raw)))
-                except Exception:
-                    continue
-        if not candidate_ids:
-            return {}
-        lookup = {}
-        request = QgsFeatureRequest()
-        request.setFilterFids(candidate_ids)
-        try:
-            for feature in layer.getFeatures(request):
-                try:
-                    lookup[int(feature.id())] = feature.geometry().clone()
-                except Exception:
-                    log_exception("falha opcional ignorada")
-        except Exception:
-            return {}
-        return lookup
+        return _summary_build_geometry_lookup(layer, id_series, log_exception)
 
     def _geometry_from_lookup(self, fid_value, geometry_lookup):
-        if fid_value is None or pd.isna(fid_value):
-            return None
-        try:
-            fid = int(float(fid_value))
-        except Exception:
-            try:
-                fid = int(str(fid_value))
-            except Exception:
-                return None
-        geometry = geometry_lookup.get(fid)
-        if geometry is None:
-            return None
-        try:
-            return geometry.clone()
-        except Exception:
-            return QgsGeometry(geometry)
+        return _summary_geometry_from_lookup(fid_value, geometry_lookup)
 
     def _create_layer_from_dataframe(
         self,
@@ -1458,207 +1487,38 @@ class SummarizerDialog(QDialog):
         with_geometry: bool,
         geometry_layer: Optional[QgsVectorLayer] = None,
     ):
-        if df is None or df.empty:
-            return None, "Nenhum dado disponível para materializar."
-
-        display_columns = [c for c in df.columns if c not in PROTECTED_COLUMNS_DEFAULT]
-        if not display_columns:
-            return None, "Nenhuma coluna disponível após proteger os campos internos."
-
-        qfields = QgsFields()
-        field_mapping = {}
-        existing_names = []
-        for column in display_columns:
-            try:
-                variant = self._variant_type_for_series(df[column])
-            except Exception:
-                variant = QVariant.String
-            safe_name = self._make_unique_field_name(existing_names, column)
-            qfields.append(QgsField(safe_name, variant))
-            field_mapping[column] = safe_name
-            existing_names.append(safe_name)
-
-        geometry_lookup = {}
-        geometry_column_available = False
-        geom_type = None
-        crs_authid = ""
-
-        if with_geometry:
-            if "__geometry_wkb" in df.columns:
-                try:
-                    geometry_column_available = df["__geometry_wkb"].notna().any()
-                except Exception:
-                    geometry_column_available = False
-
-            if geometry_layer is not None and geometry_layer.isValid():
-                geom_type = QgsWkbTypes.displayString(geometry_layer.wkbType())
-                try:
-                    crs_authid = geometry_layer.crs().authid()
-                except Exception:
-                    crs_authid = ""
-
-            if "__target_feature_id" in df.columns and geometry_layer is not None and geometry_layer.isValid():
-                geometry_lookup = self._build_geometry_lookup(geometry_layer, df["__target_feature_id"])
-                if geometry_lookup:
-                    geometry_column_available = True
-                    if geom_type is None:
-                        geom_type = QgsWkbTypes.displayString(geometry_layer.wkbType())
-                        try:
-                            crs_authid = geometry_layer.crs().authid()
-                        except Exception:
-                            crs_authid = ""
-
-            if geom_type is None and geometry_column_available:
-                sample_hex = None
-                try:
-                    for raw in df["__geometry_wkb"]:
-                        if isinstance(raw, str) and raw:
-                            sample_hex = raw
-                            break
-                except Exception:
-                    sample_hex = None
-                if sample_hex:
-                    try:
-                        sample_geom = QgsGeometry.fromWkb(bytes.fromhex(sample_hex))
-                        geom_type = QgsWkbTypes.displayString(sample_geom.wkbType())
-                    except Exception:
-                        geom_type = None
-
-            if not geometry_column_available:
-                return None, "Os dados atuais não possuem geometria disponível."
-            if geom_type is None:
-                return None, "Não foi possível determinar o tipo de geometria."
-
-        uri = "None"
-        if with_geometry:
-            uri = geom_type if not crs_authid else f"{geom_type}?crs={crs_authid}"
-
-        temp_layer = QgsVectorLayer(uri, layer_name, "memory")
-        if not temp_layer or not temp_layer.isValid():
-            return None, "Não foi possível criar a camada em memória."
-
-        provider = temp_layer.dataProvider()
-        if not provider.addAttributes(qfields):
-            return None, "Falha ao definir os campos da camada."
-        temp_layer.updateFields()
-
-        features = []
-        for _, row in df.iterrows():
-            feature = QgsFeature(temp_layer.fields())
-            if with_geometry:
-                geometry = None
-                geom_hex = row.get("__geometry_wkb") if "__geometry_wkb" in df.columns else None
-                if isinstance(geom_hex, str) and geom_hex:
-                    try:
-                        geometry = QgsGeometry.fromWkb(bytes.fromhex(geom_hex))
-                    except Exception:
-                        geometry = None
-                if geometry is None and geometry_lookup:
-                    geometry = self._geometry_from_lookup(row.get("__target_feature_id"), geometry_lookup)
-                if geometry is None:
-                    continue
-                try:
-                    feature.setGeometry(geometry)
-                except Exception:
-                    continue
-            attrs = []
-            for column in display_columns:
-                attrs.append(self._python_value(row[column]))
-            feature.setAttributes(attrs)
-            features.append(feature)
-
-        if not features:
-            return None, "Nenhuma feição gerada a partir dos dados filtrados."
-
-        if not provider.addFeatures(features):
-            return None, "Falha ao adicionar as feições na camada."
-
-        temp_layer.updateExtents()
-        return temp_layer, None
+        return _summary_create_layer_from_dataframe(
+            df,
+            layer_name,
+            with_geometry,
+            geometry_layer=geometry_layer,
+            protected_columns=PROTECTED_COLUMNS_DEFAULT,
+            log_exception=log_exception,
+        )
 
     def _export_layer_to_gpkg(self, layer: QgsVectorLayer, path: str, layer_name: str):
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = "GPKG"
-        options.layerName = layer_name
-        options.fileEncoding = "UTF-8"
-        options.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
-        context = QgsProject.instance().transformContext()
-        result = QgsVectorFileWriter.writeAsVectorFormatV2(layer, path, context, options)
-        error = result[0] if isinstance(result, (list, tuple)) else result
-        message = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else ""
-        if error != QgsVectorFileWriter.NoError:
-            return False, message
-        return True, ""
+        return _summary_export_layer_to_gpkg(layer, path, layer_name)
 
     def _variant_type_for_series(self, series: pd.Series) -> QVariant.Type:
-        try:
-            if ptypes.is_bool_dtype(series):
-                return QVariant.Bool
-            if ptypes.is_integer_dtype(series):
-                return QVariant.LongLong
-            if ptypes.is_float_dtype(series):
-                return QVariant.Double
-            if ptypes.is_datetime64_any_dtype(series):
-                return QVariant.DateTime
-        except Exception:
-            log_exception("falha opcional ignorada")
-        return QVariant.String
+        return _summary_variant_type_for_series(series)
 
     def _python_value(self, value):
-        if pd.isna(value):
-            return None
-        if isinstance(value, (np.integer,)):
-            return int(value)
-        if isinstance(value, (np.floating,)):
-            return float(value)
-        if isinstance(value, pd.Timestamp):
-            return value.to_pydatetime()
-        if isinstance(value, np.bool_):
-            return bool(value)
-        return value
+        return _summary_python_value(value)
 
     def _format_comparison_values(self, values):
-        formatted = []
-        for value in values:
-            if not self._is_meaningful_value(value):
-                formatted.append("(vazio)")
-            else:
-                formatted.append(str(value))
-        return ", ".join(formatted)
+        return _summary_format_comparison_values(values, self._is_meaningful_value)
 
     def _sanitize_field_name(self, raw_name: str) -> str:
-        if not raw_name:
-            raw_name = "resultado"
-        sanitized = re.sub(r"\W+", "_", raw_name).strip("_")
-        if not sanitized:
-            sanitized = "resultado"
-        if sanitized[0].isdigit():
-            sanitized = f"f_{sanitized}"
-        return sanitized[:30]
+        return _summary_sanitize_field_name(raw_name)
 
     def _make_unique_field_name(self, existing_names, base_name: str) -> str:
-        sanitized = self._sanitize_field_name(base_name)
-        candidate = sanitized
-        counter = 1
-        existing = set(existing_names)
-        while candidate in existing:
-            counter += 1
-            candidate = f"{sanitized}_{counter}"
-        return candidate
+        return _summary_make_unique_field_name(existing_names, base_name)
 
     def _unique_layer_name(self, base_name: str) -> str:
-        base = base_name.strip() if base_name else "Camada_Resultado"
-        if not base:
-            base = "Camada_Resultado"
         existing_names = {
             layer.name() for layer in QgsProject.instance().mapLayers().values()
         }
-        candidate = base
-        counter = 1
-        while candidate in existing_names:
-            counter += 1
-            candidate = f"{base} ({counter})"
-        return candidate
+        return _summary_unique_layer_name(base_name, existing_names)
 
     def _is_meaningful_value(self, value) -> bool:
         return _summary_is_meaningful_value(value)
@@ -1777,13 +1637,6 @@ class SummarizerDialog(QDialog):
                 continue
 
             values.append(numeric_value)
-            summary["basic_stats"]["total"] += numeric_value
-            summary["basic_stats"]["min"] = min(
-                summary["basic_stats"]["min"], numeric_value
-            )
-            summary["basic_stats"]["max"] = max(
-                summary["basic_stats"]["max"], numeric_value
-            )
 
             if group_index != -1:
                 group_value = feature[group_index]
@@ -1805,261 +1658,51 @@ class SummarizerDialog(QDialog):
 
     def display_advanced_summary(self, summary_data):
         pivot = getattr(self, "pivot_widget", None)
+        fallback_html = _summary_build_unavailable_html(
+            _rt_runtime("Não foi possível exibir a tabela dinâmica para estes dados.")
+        )
         if pivot is not None:
             try:
-                pivot.set_summary_data(summary_data)
-                self._set_results_view("pivot")
-                return
+                if _summary_display_advanced_summary(
+                    pivot,
+                    summary_data,
+                    set_results_view=self._set_results_view,
+                ):
+                    return
             except Exception as exc:
                 QMessageBox.warning(
                     self,
                     "Tabela dinamica",
                     f"Não foi possível atualizar a tabela dinâmica: {exc}",
                 )
-                self._set_results_view("message")
-                self.show_results_message(
-                    "<p style='margin:8px 0;'>Não foi possível exibir a tabela dinâmica para estes dados.</p>"
+                _summary_show_results_message(
+                    getattr(self, "summary_message_widget", None),
+                    fallback_html,
+                    set_results_view=self._set_results_view,
                 )
                 return
 
-        self._set_results_view("message")
-        self.show_results_message(
-            "<p style='margin:8px 0;'>Não foi possível exibir a tabela dinâmica para estes dados.</p>"
+        _summary_show_results_message(
+            getattr(self, "summary_message_widget", None),
+            fallback_html,
+            set_results_view=self._set_results_view,
         )
         return
 
     def _escape_html(self, text: str) -> str:
-        if text is None:
-            return ""
-        return (
-            str(text)
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&#39;")
-        )
+        return _summary_escape_html(text)
 
     def update_charts_preview(self, summary_data):
         if not hasattr(self.ui, "chart_preview_text"):
             return
-        pivot_widget = getattr(self, "pivot_widget", None)
-        if pivot_widget is not None and hasattr(pivot_widget, "get_current_pivot_result"):
-            try:
-                pivot_result = pivot_widget.get_current_pivot_result()
-            except Exception:
-                pivot_result = None
-            if pivot_result is not None:
-                metadata = dict(getattr(pivot_result, "metadata", {}) or {})
-                grouped_data = {}
-                totals_source = pivot_result.row_totals or pivot_result.column_totals or {}
-                grand_total = float(pivot_result.grand_total or 0.0)
-                for key, value in totals_source.items():
-                    if value is None:
-                        continue
-                    label = " / ".join(str(item) for item in (key or ()) if item not in (None, ""))
-                    label = label or "Total"
-                    numeric_value = float(value)
-                    grouped_data[label] = {
-                        "sum": numeric_value,
-                        "percentage": (numeric_value / grand_total * 100) if grand_total else 0.0,
-                    }
-                summary_data = dict(summary_data or {})
-                summary_data["grouped_data"] = grouped_data
-                basic_stats = dict(summary_data.get("basic_stats") or {})
-                basic_stats["total"] = grand_total
-                summary_data["basic_stats"] = basic_stats
-                merged_metadata = dict(summary_data.get("metadata") or {})
-                merged_metadata.update(
-                    {
-                        "layer_name": metadata.get("layer_name", merged_metadata.get("layer_name", "-")),
-                        "field_name": metadata.get("value_field", merged_metadata.get("field_name", "-")),
-                    }
-                )
-                summary_data["metadata"] = merged_metadata
-        grouped = summary_data.get("grouped_data") or {}
-        layer_name = summary_data.get("metadata", {}).get("layer_name", "-")
-        field_name = summary_data.get("metadata", {}).get("field_name", "-")
-        stats = summary_data.get("basic_stats", {})
-
-        timestamp_str = summary_data.get("metadata", {}).get("timestamp")
-        try:
-            human_ts = datetime.fromisoformat(timestamp_str).strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            human_ts = datetime.now().strftime("%d/%m/%Y %H:%M")
-
-        total_label = f"{stats.get('total', 0):,.2f}"
-
-        if not grouped:
-            empty_html = f"""
-            <div class="preview-card empty">
-                <div class="preview-header">
-                    <h2>Distribuição percentual dos grupos – "{self._escape_html(field_name)}" em {self._escape_html(layer_name)}</h2>
-                    <div class="meta-grid">
-                        <div class="meta-item">
-                            <span class="meta-label">Camada</span>
-                            <span class="meta-value">{self._escape_html(layer_name)}</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Campo numérico</span>
-                            <span class="meta-value">{self._escape_html(field_name)}</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Total geral</span>
-                            <span class="meta-value">{total_label}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="empty-body">
-                    Nenhum agrupamento disponível para exibir.
-                </div>
-                <div class="preview-footer">Gerado em: {human_ts}</div>
-            </div>
-            """
-            self.ui.chart_preview_text.setHtml(
-                apply_result_style(empty_html) + self._chart_preview_style_block()
-            )
-            return
-
-        sorted_groups = sorted(
-            grouped.items(), key=lambda item: item[1].get("percentage", 0), reverse=True
-        )
-
-        labels = [
-            "Sem valor" if key in (None, "") else str(key) for key, _ in sorted_groups
-        ]
-        values = [max(data.get("percentage", 0.0), 0.0) for _, data in sorted_groups]
-
-        chart_html = ""
-        if values and max(values) > 0:
-            height_px = max(320, int(len(values) * 38 + 120))
-            width_px = 780
-            image = QImage(width_px, height_px, QImage.Format_ARGB32)
-            theme = VisualTheme()
-            image.fill(theme.bg)
-            painter = QPainter(image)
-            painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
-            definition = VisualDefinition(
-                tipo="barra",
-                categorias=labels,
-                valores=values,
-                titulo="% do total",
-            )
-            BarChartRenderer().render(painter, QRectF(0, 0, width_px, height_px), definition, theme)
-            painter.end()
-            buffer = QBuffer()
-            buffer.open(QBuffer.ReadWrite)
-            image.save(buffer, "PNG")
-            encoded = base64.b64encode(bytes(buffer.data())).decode("utf-8")
-            chart_html = (
-                f'<img class="preview-chart" src="data:image/png;base64,{encoded}" '
-                'alt="Distribuicao percentual dos grupos">'
-            )
-
-        html = f"""
-        <div class="preview-card">
-            <div class="preview-header">
-                <h2>Distribuicao percentual dos grupos - "{self._escape_html(field_name)}" em {self._escape_html(layer_name)}</h2>
-                <div class="meta-grid">
-                    <div class="meta-item">
-                        <span class="meta-label">Camada</span>
-                        <span class="meta-value">{self._escape_html(layer_name)}</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Campo numerico</span>
-                        <span class="meta-value">{self._escape_html(field_name)}</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Total geral</span>
-                        <span class="meta-value">{total_label}</span>
-                    </div>
-                </div>
-            </div>
-            <div class="groups-wrapper">
-                {chart_html or '<div class="empty-body">Nenhum agrupamento disponível para exibir.</div>'}
-            </div>
-            <div class="preview-footer">Gerado em: {human_ts}</div>
-        </div>
-        """
-
-        self.ui.chart_preview_text.setHtml(
-            apply_result_style(html) + self._chart_preview_style_block()
+        _summary_update_charts_preview(
+            self.ui.chart_preview_text,
+            summary_data,
+            pivot_widget=getattr(self, "pivot_widget", None),
         )
 
     def _chart_preview_style_block(self) -> str:
-        return """
-        <style>
-            .preview-card {
-                background: #f5f6fb;
-                border: 1px solid #e3e7f1;
-                border-radius: 0px;
-                padding: 18px 22px;
-                display: flex;
-                flex-direction: column;
-                gap: 18px;
-            }
-            .preview-card.empty {
-                gap: 24px;
-            }
-            .preview-header h2 {
-                margin: 0 0 12px 0;
-                font-size: 18px;
-                color: #1d2a4b;
-            }
-            .meta-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 10px;
-            }
-            .meta-item {
-                background: #ffffff;
-                border-radius: 0px;
-                border: 1px solid #e6eaf4;
-                padding: 10px 12px;
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-            }
-            .meta-label {
-                font-size: 10pt;
-                color: #64748b;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            .meta-value {
-                font-size: 12pt;
-                font-weight: 600;
-                color: #1d2a4b;
-            }
-            .groups-wrapper {
-                display: flex;
-                justify-content: center;
-                padding: 4px;
-            }
-            .preview-chart {
-                max-width: 100%;
-                background: rgba(255, 255, 255, 0.7);
-                border-radius: 0px;
-                padding: 6px;
-                border: 1px solid #e6eaf4;
-            }
-            .preview-footer {
-                margin-top: 8px;
-                font-size: 10pt;
-                color: #7b8794;
-                text-align: right;
-            }
-            .empty-body {
-                background: #ffffff;
-                border-radius: 0px;
-                border: 1px dashed #d2d8e6;
-                padding: 18px;
-                text-align: center;
-                color: #7b8794;
-                font-size: 11pt;
-            }
-        </style>
-        """
+        return _summary_chart_preview_style_block()
 
     def open_export_tab(self):
         try:
@@ -2074,68 +1717,28 @@ class SummarizerDialog(QDialog):
             )
 
     def _current_export_format(self):
-        text = self.ui.export_format_combo.currentText()
-        return self.export_formats.get(text, next(iter(self.export_formats.values())))
+        return SummaryExportController(self).current_export_format()
 
     def _strip_existing_timestamp(self, base_path: str) -> str:
-        if self._timestamp_pattern.search(base_path):
-            return self._timestamp_pattern.sub("", base_path)
-        return base_path
+        return SummaryExportController(self).strip_existing_timestamp(base_path)
 
     def _normalize_filename_component(self, value: str) -> str:
-        if not value:
-            return ""
-        normalized = "".join(
-            ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value.strip()
-        )
-        return normalized.strip("_")
+        return SummaryExportController(self).normalize_filename_component(value)
 
     def _build_default_export_basename(self, summary_data):
-        metadata = summary_data.get("metadata", {})
-        layer_part = self._normalize_filename_component(metadata.get("layer_name", ""))
-        field_part = self._normalize_filename_component(metadata.get("field_name", ""))
-        parts = [part for part in (layer_part, field_part) if part]
-        return "_".join(parts) if parts else "resumo_summarizer"
+        return SummaryExportController(self).build_default_export_basename(summary_data)
 
     def _set_export_path(self, path: str):
-        base, ext = os.path.splitext(path)
-        base = self._strip_existing_timestamp(base)
-        sanitized = base + ext
-        self._export_base_path = base
-        self._updating_export_path = True
-        self.ui.export_path_edit.setText(sanitized)
-        self._updating_export_path = False
+        SummaryExportController(self).set_export_path(path)
 
     def prepare_export_tab_defaults(self, summary_data):
-        if not summary_data:
-            return
-        format_info = self._current_export_format()
-        base_name = self._build_default_export_basename(summary_data)
-        suggested_dir = self.export_manager.export_dir
-        suggested_path = os.path.join(
-            suggested_dir, base_name + format_info["extension"]
-        )
-        self._set_export_path(suggested_path)
+        SummaryExportController(self).prepare_export_tab_defaults(summary_data)
 
     def on_export_format_changed(self):
-        format_info = self._current_export_format()
-        if self._export_base_path:
-            self._set_export_path(self._export_base_path + format_info["extension"])
-        elif self.current_summary_data:
-            self.prepare_export_tab_defaults(self.current_summary_data)
+        SummaryExportController(self).on_export_format_changed()
 
     def on_export_path_edited(self):
-        if self._updating_export_path:
-            return
-        path = self.ui.export_path_edit.text().strip()
-        if not path:
-            self._export_base_path = ""
-            return
-
-        base, _ = os.path.splitext(path)
-        base = self._strip_existing_timestamp(base)
-        format_info = self._current_export_format()
-        self._set_export_path(base + format_info["extension"])
+        SummaryExportController(self).on_export_path_edited()
 
     def _ask_layer_selection(self, layers):
         names = [layer.name() or "Camada sem nome" for layer in layers]
@@ -2216,7 +1819,6 @@ class SummarizerDialog(QDialog):
                 options,
             )
 
-            result = write_output
             error_message = ""
             status = write_output
             if isinstance(write_output, tuple):
@@ -2327,7 +1929,10 @@ class SummarizerDialog(QDialog):
                     log_exception("falha opcional ignorada")
 
         summary_lines = [
-            f"{exported_count} de {len(selected_layers)} camada(s) exportada(s) para GeoPackage em:",
+            (
+                f"{exported_count} de {len(selected_layers)} camada(s) "
+                "exportada(s) para GeoPackage em:"
+            ),
             target_dir,
         ]
 
@@ -2381,61 +1986,10 @@ class SummarizerDialog(QDialog):
         return directory
 
     def choose_export_path(self):
-        format_info = self._current_export_format()
-        initial_path = self.ui.export_path_edit.text().strip()
-        if not initial_path:
-            initial_path = os.path.join(self.export_manager.export_dir, "")
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Selecionar arquivo",
-            initial_path,
-            format_info["filter"],
-        )
-
-        if file_path:
-            base, _ = os.path.splitext(file_path)
-            base = self._strip_existing_timestamp(base)
-            self._set_export_path(base + format_info["extension"])
-            return True
-        return False
+        return SummaryExportController(self).choose_export_path()
 
     def export_results(self):
-        if not self.current_summary_data:
-            QMessageBox.warning(self, "Aviso", "Gere um resumo primeiro!")
-            self.open_export_tab()
-            return
-
-        format_info = self._current_export_format()
-        target_path = self.ui.export_path_edit.text().strip()
-
-        if not target_path:
-            if not self.choose_export_path():
-                QMessageBox.warning(
-                    self, "Aviso", "Selecione o arquivo de destino para exportar."
-                )
-                return
-            target_path = self.ui.export_path_edit.text().strip()
-
-        base, _ = os.path.splitext(target_path)
-        base = self._strip_existing_timestamp(base)
-
-        if self.ui.export_include_timestamp_check.isChecked():
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            export_path = f"{base}_{stamp}{format_info['extension']}"
-        else:
-            export_path = base + format_info["extension"]
-
-        try:
-            self.export_manager.export_data(
-                self.current_summary_data, export_path, format_info["filter"]
-            )
-            QMessageBox.information(
-                self, "Sucesso", f"Dados exportados para:\n{export_path}"
-            )
-            self._set_export_path(base + format_info["extension"])
-        except Exception as exc:
-            QMessageBox.critical(self, "Erro", f"Erro na exportação: {exc}")
+        SummaryExportController(self).export_results()
 
     def _materialize_dataframe_dialog(
         self,
@@ -2449,178 +2003,18 @@ class SummarizerDialog(QDialog):
         memory_prefix: str,
         export_prefix: str,
     ):
-        if df is None or df.empty:
-            QMessageBox.information(self, dialog_title, "Nenhum dado disponível para materializar.")
-            return
-
-        base_name = (base_name or "resultado").strip()
-        if not base_name:
-            base_name = "resultado"
-
-        options = ["Tabela (somente atributos)"]
-        gpkg_label = "Salvar como GPKG"
-        if can_use_geometry:
-            options.append("Camada temporaria (memoria)")
-            options.append(gpkg_label)
-        else:
-            gpkg_label = "Salvar como GPKG (tabela)"
-            options.append(gpkg_label)
-
-        choice, ok = slim_get_item(
+        _summary_materialize_dataframe_dialog(
             self,
+            df,
+            base_name,
+            can_use_geometry,
+            geometry_layer,
+            settings_key,
             dialog_title,
-            "Escolha como deseja materializar o resultado atual:",
-            options,
-            current=0,
+            table_prefix,
+            memory_prefix,
+            export_prefix,
         )
-        if not ok or not choice:
-            return
-
-        if choice.startswith("Tabela"):
-            table_name = self._unique_layer_name(f"{table_prefix} {base_name}".strip())
-            layer, error_message = self._create_layer_from_dataframe(
-                df,
-                table_name,
-                with_geometry=False,
-            )
-            if layer is None:
-                QMessageBox.warning(
-                    self,
-                    dialog_title,
-                    error_message or "Não foi possível gerar a tabela.",
-                )
-                return
-            QgsProject.instance().addMapLayer(layer)
-            QMessageBox.information(
-                self,
-                dialog_title,
-                f"Tabela '{layer.name()}' criada com {layer.featureCount()} registros.",
-            )
-            return
-
-        if choice.startswith("Camada temporaria"):
-            layer_name = self._unique_layer_name(f"{memory_prefix} {base_name}".strip())
-            layer, error_message = self._create_layer_from_dataframe(
-                df,
-                layer_name,
-                with_geometry=True,
-                geometry_layer=geometry_layer,
-            )
-            fallback_note = ""
-            if (
-                layer is None
-                and can_use_geometry
-                and error_message
-                and "Nenhuma feição" in error_message
-            ):
-                layer, error_message = self._create_layer_from_dataframe(
-                    df,
-                    layer_name,
-                    with_geometry=False,
-                    geometry_layer=None,
-                )
-                if layer is not None:
-                    fallback_note = (
-                        "\n\nAs transformacoes removeram as geometrias. "
-                        "Foi criada uma tabela temporaria sem geometria."
-                    )
-            if layer is None:
-                QMessageBox.warning(
-                    self,
-                    dialog_title,
-                    error_message or "Não foi possível criar a camada temporária.",
-                )
-                return
-            QgsProject.instance().addMapLayer(layer)
-            QMessageBox.information(
-                self,
-                dialog_title,
-                f"Camada '{layer.name()}' criada com {layer.featureCount()} feições.{fallback_note}",
-            )
-            return
-
-        if choice.startswith("Salvar como GPKG"):
-            suggested_name = re.sub(r"[^a-zA-Z0-9_\\-]+", "_", base_name).strip("_") or "resultado"
-            last_dir = ""
-            if settings_key:
-                try:
-                    last_dir = QSettings().value(settings_key, "", type=str)
-                except Exception:
-                    last_dir = ""
-            default_path = (
-                os.path.join(last_dir, f"{suggested_name}.gpkg") if last_dir else f"{suggested_name}.gpkg"
-            )
-            path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Salvar GeoPackage",
-                default_path,
-                "GeoPackage (*.gpkg)",
-            )
-            if not path:
-                return
-            directory = os.path.dirname(path)
-            if settings_key and directory:
-                QSettings().setValue(settings_key, directory)
-            if not path.lower().endswith(".gpkg"):
-                path += ".gpkg"
-
-            with_geometry = can_use_geometry and not choice.endswith("(tabela)")
-            export_layer_name = f"{export_prefix} {base_name}".strip() or base_name
-            layer, error_message = self._create_layer_from_dataframe(
-                df,
-                export_layer_name,
-                with_geometry=with_geometry,
-                geometry_layer=geometry_layer,
-            )
-            fallback_note = ""
-            if (
-                layer is None
-                and with_geometry
-                and error_message
-                and "Nenhuma feição" in error_message
-            ):
-                layer, error_message = self._create_layer_from_dataframe(
-                    df,
-                    export_layer_name,
-                    with_geometry=False,
-                    geometry_layer=None,
-                )
-                if layer is not None:
-                    fallback_note = (
-                        "\n\nAs transformacoes removeram as geometrias. "
-                        "O arquivo foi salvo apenas com atributos."
-                    )
-            if layer is None:
-                QMessageBox.warning(
-                    self,
-                    dialog_title,
-                    error_message or "Não foi possível preparar os dados para exportação.",
-                )
-                return
-
-            success, writer_message = self._export_layer_to_gpkg(layer, path, export_layer_name)
-            if not success:
-                QMessageBox.critical(
-                    self,
-                    dialog_title,
-                    writer_message or "Falha ao exportar o GeoPackage.",
-                )
-                return
-
-            try:
-                uri = f"{path}|layername={export_layer_name}"
-                exported_layer = QgsVectorLayer(uri, export_layer_name, "ogr")
-                if exported_layer and exported_layer.isValid():
-                    QgsProject.instance().addMapLayer(exported_layer)
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-            final_message = f"Arquivo GeoPackage salvo em:\n{path}{fallback_note}"
-            QMessageBox.information(
-                self,
-                dialog_title,
-                final_message,
-            )
 
     def show_dashboard(self):
         self._set_ribbon_visible(False)
@@ -2683,7 +2077,10 @@ class SummarizerDialog(QDialog):
         layout.addWidget(title)
 
         body = QLabel(
-            _rt_runtime("Resumo e exportação de camadas do QGIS com visual focado em análise e relatórios."),
+            _rt_runtime(
+                "Resumo e exportação de camadas do QGIS com visual focado em "
+                "análise e relatórios."
+            ),
             dialog,
         )
         body.setWordWrap(True)
@@ -2729,7 +2126,10 @@ class GetDataDialog(QDialog):
 
         info = QLabel(
             _rt_runtime("Escolha a fonte de dados disponível para importar.")
-            + _rt_runtime("As tabelas selecionadas serão adicionadas ao modelo sem abrir camadas no mapa.")
+            + _rt_runtime(
+                "As tabelas selecionadas serão adicionadas ao modelo sem abrir "
+                "camadas no mapa."
+            )
         )
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -2782,11 +2182,18 @@ class GetDataDialog(QDialog):
             return
         df, metadata, connection_meta, session_connection = dialog.result()
         if df is None or df.empty:
-            QMessageBox.information(self, _rt_runtime("Banco"), _rt_runtime("Nenhuma tabela carregada."))
+            QMessageBox.information(
+                self,
+                _rt_runtime("Banco"),
+                _rt_runtime("Nenhuma tabela carregada."),
+            )
             return
         self._datasets.append((df, metadata or {"connector": "PostgreSQL"}))
         self.db_status.setText(
-            _rt_runtime("Tabela carregada: {display_name}", display_name=metadata.get("display_name"))
+            _rt_runtime(
+                "Tabela carregada: {display_name}",
+                display_name=metadata.get("display_name"),
+            )
         )
         # Replica conexão no Navegador, se houver
         if connection_meta:
@@ -2803,7 +2210,3 @@ class GetDataDialog(QDialog):
     # ------------------------------------------------------------------ API
     def results(self) -> List:
         return list(self._datasets)
-
-
-
-

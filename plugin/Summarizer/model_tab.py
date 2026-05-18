@@ -2331,6 +2331,9 @@ class ModelTab(QWidget):
     def _normalized_canvas_style(self, style: Optional[Dict[str, object]] = None) -> Dict[str, object]:
         return normalize_canvas_style(style, base=default_canvas_style())
 
+    def _default_canvas_style(self) -> Dict[str, object]:
+        return default_canvas_style()
+
     def _project_canvas_style(self) -> Dict[str, object]:
         if self.current_project is None:
             return default_canvas_style()

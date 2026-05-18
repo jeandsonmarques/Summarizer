@@ -80,7 +80,7 @@ def _basic_stats_from_values(values: Optional[Sequence[Any] | Iterable[Any]]) ->
             "min": float(min(sorted_values)),
             "max": float(max(sorted_values)),
             "median": float(median),
-            "std_dev": float(variance ** 0.5),
+            "std_dev": float(variance**0.5),
         }
     )
     return stats
@@ -206,7 +206,9 @@ def calculate_advanced_summary(
             "layer_id": layer_id,
             "field_name": field_name,
             "timestamp": timestamp or datetime.now().isoformat(),
-            "total_features": total_features if total_features is not None else len(_as_list(raw_rows)),
+            "total_features": total_features
+            if total_features is not None
+            else len(_as_list(raw_rows)),
             "filter_expression": filter_expression,
         },
         "filter_description": filter_description,
