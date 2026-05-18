@@ -188,7 +188,7 @@ def build_model_header(
     header_layout.addLayout(top_row)
 
     project_hint_label = QLabel(
-        _rt("Monte painéis com os graficos da aba Resumo e da aba Relatorios. O painel salvo continua editavel.")
+        _rt("Monte painéis com os graficos da aba Resumo. O painel salvo continua editavel.")
     )
     project_hint_label.setObjectName("ModelHint")
     project_hint_label.setWordWrap(True)

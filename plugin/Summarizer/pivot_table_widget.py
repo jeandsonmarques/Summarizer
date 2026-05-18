@@ -1,4 +1,4 @@
-﻿from functools import partial
+from functools import partial
 import json
 import re
 import unicodedata
@@ -2708,10 +2708,10 @@ class PivotTableWidget(QWidget):
             return
         panel._handle_sql_database()
 
-    def show_welcome_prompt(self):
+    def show_welcome_message(self):
         self._entry_layer_selection_active = False
         self._clear_source_card_selection()
-        self.show_empty_prompt(
+        self.show_empty_message(
             _rt("Adicionar dados ao seu relatório"),
             _rt("Escolha uma fonte para começar. Os dados carregados serão exibidos no painel Resumo."),
         )
@@ -4876,17 +4876,17 @@ class PivotTableWidget(QWidget):
         if not text:
             return None
         text = text.replace(" ", "")
-        if re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+        if re.match(r"^-?\d+(?:\.\d+)?$", text):
             try:
                 return float(text)
             except Exception:
                 return None
-        if re.fullmatch(r"-?(?:\d{1,3}(?:,\d{3})+)(?:\.\d+)?", text):
+        if re.match(r"^-?(?:\d{1,3}(?:,\d{3})+)(?:\.\d+)?$", text):
             try:
                 return float(text.replace(",", ""))
             except Exception:
                 return None
-        if re.fullmatch(r"-?(?:\d{1,3}(?:\.\d{3})+)(?:,\d+)?", text):
+        if re.match(r"^-?(?:\d{1,3}(?:\.\d{3})+)(?:,\d+)?$", text):
             try:
                 return float(text.replace(".", "").replace(",", "."))
             except Exception:
@@ -5546,7 +5546,7 @@ class PivotTableWidget(QWidget):
         """Expose filter reset so external buttons can reuse it."""
         self._clear_filters()
 
-    def show_empty_prompt(self, title: str, text: str):
+    def show_empty_message(self, title: str, text: str):
         self.raw_df = pd.DataFrame()
         self.filtered_df = pd.DataFrame()
         self.pivot_df = pd.DataFrame()

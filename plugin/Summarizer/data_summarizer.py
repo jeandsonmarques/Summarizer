@@ -1,4 +1,4 @@
-﻿import base64
+import base64
 import os
 import re
 import tempfile
@@ -392,7 +392,6 @@ class SummarizerDialog(QDialog):
         self._model_backend_host = None
         self._model_scene = None
         self._model_view = None
-        self.reports_widget = None
         self.model_tab = None
         self.integration_panel = None
         self.integration_scroll = None
@@ -483,7 +482,7 @@ class SummarizerDialog(QDialog):
         self.on_export_format_changed()
 
         try:
-            self.show_summary_prompt()
+            self.show_summary_welcome()
         except Exception:
             log_exception("falha opcional ignorada")
         QTimer.singleShot(0, self._reset_initial_summary_layer_selection)
@@ -539,16 +538,13 @@ class SummarizerDialog(QDialog):
         except Exception:
             current_page = None
         builders = []
-        if current_page is self.ui.pageRelatorios:
-            builders.append(("reports", self._ensure_reports_page))
-        elif current_page is self.ui.pageModel:
+        if current_page is self.ui.pageModel:
             builders.append(("model", self._ensure_model_page))
         elif current_page is self.ui.pageIntegracao:
             builders.append(("integration", self._ensure_integration_page))
 
         for name, builder in (
             ("model", self._ensure_model_page),
-            ("reports", self._ensure_reports_page),
             ("integration", self._ensure_integration_page),
         ):
             if all(existing_name != name for existing_name, _ in builders):
@@ -809,7 +805,6 @@ class SummarizerDialog(QDialog):
         for attr, method_name in (
             ("pivot_widget", "_apply_styles"),
             ("dashboard_widget", "_apply_styles"),
-            ("reports_widget", "_apply_local_styles"),
             ("integration_panel", "_apply_panel_styles"),
             ("model_tab", "_apply_visual_side_panel_styles"),
             ("model_tab", "_apply_dark_theme_overlay"),
@@ -972,12 +967,12 @@ class SummarizerDialog(QDialog):
             message_widget.setHtml(html)
         self._set_results_view("message")
 
-    def show_summary_prompt(self):
+    def show_summary_welcome(self):
         self._set_ribbon_visible(False)
         pivot = getattr(self, "pivot_widget", None)
         if pivot is not None:
             try:
-                pivot.show_welcome_prompt()
+                pivot.show_welcome_message()
                 self._set_results_view("pivot")
                 return
             except Exception:
@@ -1021,22 +1016,6 @@ class SummarizerDialog(QDialog):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
-
-    def _ensure_reports_page(self):
-        if self.reports_widget is not None:
-            return self.reports_widget
-        try:
-            from .report_view import ReportsWidget
-
-            layout = self._page_layout(self.ui.pageRelatorios, spacing=0)
-            self._clear_layout_widgets(layout)
-            widget = ReportsWidget(plugin=self, parent=self.ui.pageRelatorios)
-            layout.addWidget(widget)
-            self.reports_widget = widget
-        except Exception:
-            self.reports_widget = None
-            log_exception("falha opcional ignorada")
-        return self.reports_widget
 
     def _ensure_model_backend(self):
         if self.model_manager is not None:
@@ -1138,19 +1117,6 @@ class SummarizerDialog(QDialog):
             except Exception:
                 log_exception("falha opcional ignorada")
 
-    def show_reports_page(self):
-        self._set_ribbon_visible(False)
-        try:
-            self.ui.stackedWidget.setCurrentWidget(self.ui.pageRelatorios)
-        except Exception:
-            log_exception("falha opcional ignorada")
-        if not self._defer_page_build:
-            self._ensure_reports_page()
-        try:
-            self._apply_runtime_translations()
-        except Exception:
-            log_exception("falha opcional ignorada")
-
     def show_model_page(self):
         self._set_ribbon_visible(False)
         try:
@@ -1170,7 +1136,7 @@ class SummarizerDialog(QDialog):
             return
         added = False
         try:
-            added = bool(model_tab.prompt_add_chart(dict(snapshot or {})))
+            added = bool(model_tab.request_add_chart(dict(snapshot or {})))
         except Exception as exc:
             QMessageBox.warning(self, "Model", f"Nao foi possivel adicionar o grafico ao Model: {exc}")
             return
@@ -1202,9 +1168,9 @@ class SummarizerDialog(QDialog):
                     _rt_runtime("Falha ao registrar dados: {exc}", exc=exc),
                 )
         try:
-            self.sidebar.show_reports_page()
+            self.sidebar.show_results_page()
         except Exception:
-            self.show_reports_page()
+            self.show_summary_welcome()
 
     def register_integration_dataframe(self, df: pd.DataFrame, metadata: Dict) -> Dict:
         if df is None or df.empty:
@@ -1227,12 +1193,6 @@ class SummarizerDialog(QDialog):
                     self.model_manager.refresh_model()
             except Exception:
                 log_exception("falha opcional ignorada")
-            try:
-                if self.reports_widget is not None:
-                    self.reports_widget.refresh_from_model()
-            except Exception:
-                log_exception("falha opcional ignorada")
-
         if import_target == "project":
             if not descriptor.get("layer_id"):
                 return {}
@@ -1774,7 +1734,7 @@ class SummarizerDialog(QDialog):
 
         if self._active_numeric_field is None:
             self.current_summary_data = None
-            self.show_summary_prompt()
+            self.show_summary_welcome()
             return
 
         if self.ui.auto_update_check.isChecked():
@@ -1810,7 +1770,7 @@ class SummarizerDialog(QDialog):
                 "Resumo",
                 "Nenhum campo numérico foi encontrado na camada selecionada.",
             )
-            self.show_summary_prompt()
+            self.show_summary_welcome()
             return
         self._active_numeric_field = field_name
         group_field = None
@@ -2296,7 +2256,7 @@ class SummarizerDialog(QDialog):
         format_info = self._current_export_format()
         self._set_export_path(base + format_info["extension"])
 
-    def _prompt_layer_selection(self, layers):
+    def _ask_layer_selection(self, layers):
         names = [layer.name() or "Camada sem nome" for layer in layers]
         dialog = SlimLayerSelectionDialog("Selecionar camadas", names, parent=self)
         dialog.set_focus_on_search()
@@ -2327,7 +2287,7 @@ class SummarizerDialog(QDialog):
             )
             return
 
-        selected_layers = self._prompt_layer_selection(vector_layers)
+        selected_layers = self._ask_layer_selection(vector_layers)
         if selected_layers is None:
             return
         if not selected_layers:
@@ -2338,7 +2298,7 @@ class SummarizerDialog(QDialog):
             )
             return
 
-        target_dir = self._prompt_layers_export_directory()
+        target_dir = self._ask_layers_export_directory()
         if not target_dir:
             return
 
@@ -2511,7 +2471,7 @@ class SummarizerDialog(QDialog):
                 "\n".join(summary_lines + [""] + detail_lines),
             )
 
-    def _prompt_layers_export_directory(self):
+    def _ask_layers_export_directory(self):
         settings = QSettings()
         last_dir = settings.value("Summarizer/export/gpkgDir", "")
         fallback_dir = self.export_manager.export_dir

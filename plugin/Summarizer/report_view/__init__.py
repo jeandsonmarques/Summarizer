@@ -1,6 +1,3 @@
-try:
-    from .reports_widget import ReportsWidget
-except Exception:  # pragma: no cover - allows pure-python smoke tests without QGIS
-    ReportsWidget = None
+"""Shared chart, pivot, and report-view helpers for the public plugin."""
 
-__all__ = ["ReportsWidget"]
+__all__ = []

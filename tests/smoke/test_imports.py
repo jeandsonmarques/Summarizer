@@ -8,8 +8,7 @@ PURE_MODULES = [
     "Summarizer.utils.logging_utils",
     "Summarizer.utils.security_utils",
     "Summarizer.report_view.result_models",
-    "Summarizer.report_view.conversation_state",
-    "Summarizer.report_view.text_utils",
+    "Summarizer.report_view.charts.chart_utils",
 ]
 
 QGIS_MODULES = [

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -248,7 +248,7 @@ QLabel#SlimPopoverSubtitle {
     color: #64748B;
     font-size: 11px;
 }
-QLabel#SlimDialogPrompt {
+QLabel#SlimDialogMessage {
     color: #334155;
     font-size: 12px;
     font-weight: 400;
@@ -343,7 +343,7 @@ QLabel#SlimMessageBody {
     color: #F8FAFC;
 }
 QLabel#SlimPopoverSubtitle,
-QLabel#SlimDialogPrompt,
+QLabel#SlimDialogMessage,
 QLabel#SlimDialogHint {
     color: #CBD5E1;
 }
@@ -577,9 +577,9 @@ class SlimTextInputDialog(SlimPopoverDialog):
         header.addLayout(title_column, 1)
         self.panel_layout.addLayout(header)
 
-        prompt = QLabel(label_text, self.panel)
-        prompt.setObjectName("SlimDialogPrompt")
-        self.panel_layout.addWidget(prompt)
+        helper_label = QLabel(label_text, self.panel)
+        helper_label.setObjectName("SlimDialogMessage")
+        self.panel_layout.addWidget(helper_label)
 
         self.field = QLineEdit(self.panel)
         self.field.setObjectName("SlimDialogLineEdit")
@@ -1077,10 +1077,10 @@ def slim_get_item(
 ) -> Tuple[str, bool]:
     dialog, layout, buttons = _build_form_dialog(parent, title, geometry_key)
 
-    prompt = QLabel(label_text)
-    prompt.setProperty("sublabel", True)
-    prompt.setAccessibleName("SlimDialogPrompt")
-    layout.insertWidget(0, prompt)
+    helper_label = QLabel(label_text)
+    helper_label.setProperty("sublabel", True)
+    helper_label.setAccessibleName("SlimDialogMessage")
+    layout.insertWidget(0, helper_label)
 
     combo = QComboBox(dialog)
     combo.setEditable(bool(editable))
@@ -1191,10 +1191,10 @@ def slim_get_int(
 ) -> Tuple[int, bool]:
     dialog, layout, buttons = _build_form_dialog(parent, title, geometry_key)
 
-    prompt = QLabel(label_text)
-    prompt.setProperty("sublabel", True)
-    prompt.setAccessibleName("SlimDialogPrompt")
-    layout.insertWidget(0, prompt)
+    helper_label = QLabel(label_text)
+    helper_label.setProperty("sublabel", True)
+    helper_label.setAccessibleName("SlimDialogMessage")
+    layout.insertWidget(0, helper_label)
 
     spin = QSpinBox(dialog)
     spin.setRange(minimum, maximum)

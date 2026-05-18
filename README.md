@@ -1,45 +1,29 @@
 # Summarizer
 
-Summarizer is a QGIS plugin for turning spatial layers and attribute tables into clear, report-ready analytical outputs.
+Summarizer is a QGIS plugin for summarizing layers and generating charts, dashboards, and reports from geospatial data.
 
-It is designed for teams that need summaries, dashboard-style views, and structured exports without leaving QGIS.
+It is designed for analysts who need to inspect QGIS project data, build visual summaries, organize dashboard views, and export structured results without leaving QGIS.
 
-## What it does
+## What It Does
 
-- Summarizes layers and table data
-- Produces report-oriented analytical outputs
-- Provides dashboard-style views inside QGIS
-- Supports local-first workflows for day-to-day use
-- Can connect to optional cloud or AI-assisted services when configured
+- Summarizes QGIS vector layers and attribute tables.
+- Builds charts and dashboard-ready visualizations.
+- Supports model, connection, visualization, and export workflows.
+- Generates report-oriented outputs from geospatial datasets.
+- Runs as a local QGIS plugin using the standard QGIS Python environment.
 
 ## Requirements
 
-- QGIS 3.34 or later
-- Standard QGIS Python environment
-
-Core plugin workflows run locally inside QGIS. Optional cloud workflows require a separately deployed backend service, network access, and the credentials or tokens configured by the deployment owner. Optional AI-assisted workflows may also depend on additional local or remote services.
+- QGIS 3.34 or later.
+- Standard QGIS Python environment.
 
 ## Installation
 
-### From ZIP
+1. Open **Plugins > Manage and Install Plugins...** in QGIS.
+2. Select **Install from ZIP**.
+3. Choose the release package archive.
 
-1. Open **Plugins > Manage and Install Plugins...** in QGIS
-2. Select **Install from ZIP**
-3. Choose the plugin package archive
-
-### From source
-
-The release package is assembled as a single `Summarizer/` folder.
-
-For QGIS publication, the final ZIP must contain only `Summarizer/` at the root.
-
-## Package contents
-
-- `Summarizer/metadata.txt` - QGIS plugin metadata
-- `Summarizer/README.md` - package-level release notes
-- `Summarizer/CHANGELOG.md` - release history
-- `Summarizer/LICENSE` - GPL license text
-- `Summarizer/resources/icon.svg` - main plugin icon
+For QGIS publication, the final ZIP must contain only the `Summarizer/` folder at the archive root.
 
 ## Support
 

@@ -1,4 +1,4 @@
-﻿import os
+import os
 from typing import Dict, Optional
 
 from qgis.PyQt.QtCore import QByteArray, QEasingCurve, QEvent, QObject, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, QSettings
@@ -55,13 +55,11 @@ class SidebarController(QObject):
     ICON_MAP = {
         "resumo": ("Resumo", "Table.svg"),
         "model": ("Model", "Model.svg"),
-        "relatorios": ("Relatorios", "icone_chat_exato_cropped.png"),
         "integracao": ("Conexão", "Linked-Entity.svg"),
     }
 
     PAGE_MAP = {
         "resumo": "pageResultados",
-        "relatorios": "pageRelatorios",
         "model": "pageModel",
         "integracao": "pageIntegracao",
     }
@@ -118,22 +116,12 @@ class SidebarController(QObject):
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setToolTip(tooltip)
-            if mode == "relatorios":
-                btn.setFixedSize(50, 51)
-            else:
-                btn.setFixedSize(50, 37)
-            btn.setIconSize(QSize(35, 35) if mode == "relatorios" else QSize(22, 22))
+            btn.setFixedSize(50, 37)
+            btn.setIconSize(QSize(22, 22))
             btn.setProperty("navIcon", "true")
             btn.setProperty("active", False)
-            if mode == "relatorios":
-                icon_path = os.path.join(os.path.dirname(__file__), "resources", "icons", "icone_chat_exato_cropped.png")
-                if os.path.exists(icon_path):
-                    btn.setIcon(QIcon(icon_path))
-                else:
-                    btn.setIcon(svg_icon(icon_name))
-            else:
-                btn.setIcon(svg_icon(icon_name))
-                self._button_icon_names[mode] = icon_name
+            btn.setIcon(svg_icon(icon_name))
+            self._button_icon_names[mode] = icon_name
             btn.clicked.connect(lambda checked, m=mode: self._handle_nav_click(m))
             layout.addWidget(btn, 0, Qt.AlignTop)
             btn.installEventFilter(self)
@@ -181,9 +169,7 @@ class SidebarController(QObject):
                 if getattr(host, "current_summary_data", None):
                     host.display_advanced_summary(host.current_summary_data)
                 elif hasattr(host, "pivot_widget"):
-                    host.show_summary_prompt()
-            elif mode == "relatorios":
-                host.show_reports_page()
+                    host.show_summary_welcome()
             elif mode == "model":
                 host.show_model_page()
             elif mode == "integracao":
@@ -204,9 +190,6 @@ class SidebarController(QObject):
 
     def show_results_page(self):
         self._set_mode("resumo")
-
-    def show_reports_page(self):
-        self._set_mode("relatorios")
 
     def show_model_page(self):
         self._set_mode("model")

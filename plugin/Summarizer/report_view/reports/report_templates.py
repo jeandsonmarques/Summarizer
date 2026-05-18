@@ -53,7 +53,7 @@ REPORTS_STYLE_TEMPLATE = Template(
     QWidget#conversationViewportHost,
     QWidget#conversationViewport,
     QWidget#footerSuggestions,
-    QFrame#promptDock {
+    QFrame#inputDock {
         background: transparent;
     }
     QWidget#reportsRoot,
@@ -284,12 +284,12 @@ REPORTS_STYLE_TEMPLATE = Template(
         border: none;
         border-radius: 0px;
     }
-    QFrame#promptShell {
+    QFrame#inputShell {
         background: ${surface};
         border: 1px solid ${border_subtle};
         border-radius: 22px;
     }
-    QTextEdit#promptInput {
+    QTextEdit#questionInput {
         background: transparent;
         border: none;
         padding: 8px 4px 8px 4px;
@@ -299,7 +299,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         color: ${text_primary};
         selection-background-color: ${selection_bg};
     }
-    QTextEdit#promptInput:focus {
+    QTextEdit#questionInput:focus {
         border: none;
     }
     QToolButton#plusButton,
