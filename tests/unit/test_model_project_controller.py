@@ -35,7 +35,10 @@ def test_single_page_project_snapshot_preserves_active_page_and_source_meta():
         },
     )
 
-    snapshot = project_snapshot_payload(project, page_title_provider=lambda index: f"Pagina {index}")
+    snapshot = project_snapshot_payload(
+        project,
+        page_title_provider=lambda index: f"Pagina {index}",
+    )
 
     assert snapshot is not None
     assert snapshot["active_page_id"] == "page-1"

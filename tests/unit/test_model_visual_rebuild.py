@@ -1,4 +1,9 @@
-from plugin.Summarizer.dashboard_models import DashboardChartBinding, FieldBindingItem, ROLE_VALUES, ROLE_X_AXIS
+from plugin.Summarizer.dashboard_models import (
+    ROLE_VALUES,
+    ROLE_X_AXIS,
+    DashboardChartBinding,
+    FieldBindingItem,
+)
 from plugin.Summarizer.model_view.model_visual_rebuild import (
     aggregate_feature_rows,
     build_model_chart_item_from_layer,
@@ -152,7 +157,13 @@ def test_build_model_chart_item_from_layer_creates_bar_payload():
 
 
 def test_build_model_chart_item_from_layer_handles_count_card_and_empty_layer():
-    populated = FakeLayer([FakeField("grupo")], [FakeFeature(1, {"grupo": "A"}), FakeFeature(2, {"grupo": None})])
+    populated = FakeLayer(
+        [FakeField("grupo")],
+        [
+            FakeFeature(1, {"grupo": "A"}),
+            FakeFeature(2, {"grupo": None}),
+        ],
+    )
     card = build_model_chart_item_from_layer(
         populated,
         dimension_field="grupo",
