@@ -66,6 +66,12 @@ from .browser_integration import (
 from .utils.fonts import attach_ui_font_enforcer, ensure_ui_fonts_registered, harmonize_widget_fonts
 from .utils.plugin_logging import log_error
 from .utils.window_theme import apply_windows_title_bar_theme
+from .summary_view.summary_calculations import (
+    build_dataframe_summary as _summary_build_dataframe_summary,
+    calculate_advanced_summary as _summary_calculate_advanced_summary,
+    filter_empty_matches as _summary_filter_empty_matches,
+    is_meaningful_value as _summary_is_meaningful_value,
+)
 
 from .utils.logging_utils import log_exception
 PROTECTED_COLUMNS_DEFAULT = {"__feature_id", "__geometry_wkb", "__target_feature_id"}
@@ -1351,60 +1357,7 @@ class SummarizerDialog(QDialog):
         return layer
 
     def _build_dataframe_summary(self, df: pd.DataFrame, descriptor: Dict) -> Dict:
-        numeric_columns = [col for col in df.columns if ptypes.is_numeric_dtype(df[col])]
-        stats = {
-            "total": 0.0,
-            "count": int(len(df)),
-            "average": 0.0,
-            "min": 0.0,
-            "max": 0.0,
-            "median": 0.0,
-            "std_dev": 0.0,
-        }
-        percentiles = {}
-
-        if numeric_columns:
-            series = pd.to_numeric(df[numeric_columns[0]], errors="coerce").dropna()
-            if not series.empty:
-                stats.update(
-                    {
-                        "total": float(series.sum()),
-                        "average": float(series.mean()),
-                        "min": float(series.min()),
-                        "max": float(series.max()),
-                        "median": float(series.median()),
-                        "std_dev": float(series.std()),
-                    }
-                )
-                percentiles = {
-                    "p25": float(series.quantile(0.25)),
-                    "p50": float(series.quantile(0.50)),
-                    "p75": float(series.quantile(0.75)),
-                    "p90": float(series.quantile(0.90)),
-                    "p95": float(series.quantile(0.95)),
-                }
-
-        metadata = {
-            "layer_name": descriptor.get("display_name", "Dados externos"),
-            "layer_id": descriptor.get("layer_id", ""),
-            "field_name": numeric_columns[0] if numeric_columns else "-",
-            "timestamp": descriptor.get("timestamp", datetime.now().isoformat()),
-            "total_features": len(df),
-            "source": descriptor.get("connector"),
-            "filter_expression": descriptor.get("filter_expression", ""),
-        }
-
-        return {
-            "basic_stats": stats,
-            "grouped_data": {},
-            "percentiles": percentiles,
-            "metadata": metadata,
-            "filter_description": "Nenhum",
-            "raw_data": {
-                "columns": list(df.columns),
-                "rows": df.to_dict(orient="records"),
-            },
-        }
+        return _summary_build_dataframe_summary(df, descriptor)
 
     def _create_memory_table_from_dataframe(self, df: pd.DataFrame, descriptor: Dict) -> Optional[QgsVectorLayer]:
         try:
@@ -1708,22 +1661,10 @@ class SummarizerDialog(QDialog):
         return candidate
 
     def _is_meaningful_value(self, value) -> bool:
-        if value is None:
-            return False
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return False
-            return stripped.lower() not in {"null", "none"}
-        return True
+        return _summary_is_meaningful_value(value)
 
     def _filter_empty_matches(self, matches):
-        filtered = {}
-        for key, values in matches.items():
-            meaningful_values = [value for value in values if self._is_meaningful_value(value)]
-            if meaningful_values:
-                filtered[key] = meaningful_values
-        return filtered
+        return _summary_filter_empty_matches(matches)
 
     def on_layer_changed(self):
         layer = self.ui.layer_combo.currentLayer()
@@ -1803,37 +1744,14 @@ class SummarizerDialog(QDialog):
     ):
         field_index = layer.fields().indexFromName(field_name)
         group_index = layer.fields().indexFromName(group_field) if group_field else -1
-        filter_index = layer.fields().indexFromName(filter_field) if filter_field else -1
 
         request = QgsFeatureRequest()
         filter_description = "Nenhum"
+        filter_expression = ""
         if filter_field and filter_value:
             filter_description = f'{filter_field} contém "{filter_value}"'
-            expression = f'"{filter_field}" ILIKE \'%{filter_value}%\''
-            request.setFilterExpression(expression)
-
-        summary = {
-            "basic_stats": {
-                "total": 0.0,
-                "count": 0,
-                "average": 0.0,
-                "min": float("inf"),
-                "max": float("-inf"),
-                "median": 0.0,
-                "std_dev": 0.0,
-            },
-            "grouped_data": {},
-            "percentiles": {},
-            "metadata": {
-                "layer_name": layer.name(),
-                "layer_id": layer.id(),
-                "field_name": field_name,
-                "timestamp": datetime.now().isoformat(),
-                "total_features": layer.featureCount(),
-                "filter_expression": expression if filter_field and filter_value else "",
-            },
-            "filter_description": filter_description,
-        }
+            filter_expression = f'"{filter_field}" ILIKE \'%{filter_value}%\''
+            request.setFilterExpression(filter_expression)
 
         if field_index < 0:
             raise ValueError(f"Campo numérico '{field_name}' não encontrado na camada.")
@@ -1871,56 +1789,19 @@ class SummarizerDialog(QDialog):
                 group_value = feature[group_index]
                 grouped_values.setdefault(group_value, []).append(numeric_value)
 
-        if values:
-            n = len(values)
-            sorted_vals = sorted(values)
-
-            summary["basic_stats"]["count"] = n
-            summary["basic_stats"]["average"] = summary["basic_stats"]["total"] / n
-
-            if n % 2 == 0:
-                summary["basic_stats"]["median"] = (
-                    sorted_vals[n // 2 - 1] + sorted_vals[n // 2]
-                ) / 2
-            else:
-                summary["basic_stats"]["median"] = sorted_vals[n // 2]
-
-            mean = summary["basic_stats"]["average"]
-            variance = sum((x - mean) ** 2 for x in values) / n
-            summary["basic_stats"]["std_dev"] = variance ** 0.5
-
-            summary["percentiles"] = {
-                "p25": np.percentile(sorted_vals, 25),
-                "p50": np.percentile(sorted_vals, 50),
-                "p75": np.percentile(sorted_vals, 75),
-                "p90": np.percentile(sorted_vals, 90),
-                "p95": np.percentile(sorted_vals, 95),
-            }
-        else:
-            summary["basic_stats"]["min"] = 0.0
-            summary["basic_stats"]["max"] = 0.0
-
-        for group, numbers in grouped_values.items():
-            if not numbers:
-                continue
-
-            group_sum = sum(numbers)
-            summary["grouped_data"][str(group)] = {
-                "count": len(numbers),
-                "sum": group_sum,
-                "average": group_sum / len(numbers),
-                "min": min(numbers),
-                "max": max(numbers),
-                "percentage": (
-                    (group_sum / summary["basic_stats"]["total"]) * 100
-                    if summary["basic_stats"]["total"]
-                    else 0.0
-                ),
-            }
-
-        summary["raw_data"] = {"columns": field_names, "rows": raw_rows}
-
-        return summary
+        return _summary_calculate_advanced_summary(
+            layer_name=layer.name(),
+            layer_id=layer.id(),
+            field_name=field_name,
+            field_names=field_names,
+            raw_rows=raw_rows,
+            values=values,
+            grouped_values=grouped_values,
+            filter_description=filter_description,
+            filter_expression=filter_expression,
+            timestamp=datetime.now().isoformat(),
+            total_features=layer.featureCount(),
+        )
 
     def display_advanced_summary(self, summary_data):
         pivot = getattr(self, "pivot_widget", None)
