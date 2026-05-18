@@ -14,7 +14,7 @@ except Exception:  # pragma: no cover - optional in pure-python tests
     QgsMapToolZoom = None
 
 from .presentation_window_manager import PresentationWindowManager
-from ..utils.logging_utils import log_exception, log_info
+from ..utils.logging_utils import log_exception
 
 
 class PresentationMapController(QObject):
@@ -33,10 +33,8 @@ class PresentationMapController(QObject):
         self._zoom_in_tool = None
         self._zoom_out_tool = None
         self._closing_internal = False
-        self._layout_generation = 0
 
     def open(self):
-        self._invalidate_layout_attempts()
         canvas = self._ensure_presentation_canvas()
         if canvas is None:
             self._set_state(False)
@@ -57,7 +55,6 @@ class PresentationMapController(QObject):
         return bool(active)
 
     def close(self):
-        self._invalidate_layout_attempts()
         canvas = self._presentation_canvas()
         had_canvas = canvas is not None
         had_layout = self.window_manager.is_active()
@@ -137,9 +134,6 @@ class PresentationMapController(QObject):
         except Exception:
             return False
 
-    def _open_canvas_after_plugin(self, generation: int):
-        return
-
     def _ensure_presentation_canvas(self):
         if self._tracked_canvas is not None:
             return self._tracked_canvas
@@ -201,13 +195,7 @@ class PresentationMapController(QObject):
             return
         self._handle_external_close()
 
-    def _on_dock_visibility_changed(self, visible: bool):
-        if self._closing_internal or visible:
-            return
-        self._handle_external_close()
-
     def _handle_external_close(self):
-        self._invalidate_layout_attempts()
         try:
             self.window_manager.exit_side_by_side_layout()
         except Exception:
@@ -473,9 +461,6 @@ class PresentationMapController(QObject):
 
     def _clear_tracking(self):
         self._tracked_canvas = None
-
-    def _invalidate_layout_attempts(self):
-        self._layout_generation += 1
 
     def _set_state(self, active: bool):
         try:

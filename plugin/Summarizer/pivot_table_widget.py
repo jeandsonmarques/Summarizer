@@ -4504,6 +4504,7 @@ class PivotTableWidget(QWidget):
         if source_row < 0 or source_row >= len(self._current_pivot_result.matrix):
             return
         self.pivot_selection_bridge.select_row(self._current_layer, self._current_pivot_result.matrix[source_row])
+        self._refresh_presentation_after_selection(self._current_layer)
         self._schedule_selection_feedback_refresh()
 
     def _handle_column_header_clicked(self, proxy_column: int):
@@ -4521,6 +4522,7 @@ class PivotTableWidget(QWidget):
             if matrix_column < len(row_cells):
                 column_cells.append(row_cells[matrix_column])
         self.pivot_selection_bridge.select_column(self._current_layer, column_cells)
+        self._refresh_presentation_after_selection(self._current_layer)
         self._schedule_selection_feedback_refresh()
 
     def _select_proxy_row_data_cells(self, proxy_row: int):
@@ -4643,6 +4645,38 @@ class PivotTableWidget(QWidget):
                 seen.add(fid)
                 feature_ids.append(fid)
         self.pivot_selection_bridge.select_feature_ids(self._current_layer, feature_ids)
+        self._refresh_presentation_after_selection(self._current_layer)
+
+    def _refresh_presentation_after_selection(self, layer: Optional[QgsVectorLayer]):
+        controller = self._presentation_controller()
+        if controller is None:
+            return
+        try:
+            controller.refresh_after_chart_selection(layer)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _presentation_controller(self):
+        current = self
+        visited = set()
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            for attr in ("presentation_controller", "presentation_map_controller"):
+                controller = getattr(current, attr, None)
+                if controller is not None:
+                    return controller
+            parent = None
+            try:
+                parent = current.parentWidget()
+            except Exception:
+                parent = None
+            if parent is None:
+                try:
+                    parent = current.parent()
+                except Exception:
+                    parent = None
+            current = parent
+        return None
 
     def _update_selection_summary(self):
         if not hasattr(self, "selection_summary_label"):
