@@ -304,6 +304,10 @@ class DashboardWidget(QWidget):
     def _sync_dashboard_lock_button(self, edit_mode: bool):
         locked = not bool(edit_mode)
         self._dashboard_locked = locked
+        try:
+            self.clear_filter_btn.setEnabled(True)
+        except Exception:
+            log_exception("falha opcional ignorada")
         if not hasattr(self, "lock_btn"):
             return
         try:
@@ -1412,10 +1416,104 @@ class DashboardWidget(QWidget):
                 self.dashboard_canvas.clear_selection(emit_signal=False)
         except Exception:
             log_exception("falha opcional ignorada")
+        self._clear_map_selection()
         self._apply_active_filters()
         self._sync_chart_selection()
         self._update_summary_line()
         self._update_filter_label()
+
+    def _clear_map_selection(self):
+        changed = False
+        for layer in self._dashboard_selection_layers():
+            try:
+                selected_count = getattr(layer, "selectedFeatureCount", None)
+                if callable(selected_count) and selected_count() <= 0:
+                    continue
+                layer.removeSelection()
+                changed = True
+            except Exception:
+                log_exception("falha opcional ignorada")
+        if changed:
+            self._refresh_map_views()
+
+    def _dashboard_selection_layers(self) -> List[QgsVectorLayer]:
+        layers: List[QgsVectorLayer] = []
+        seen = set()
+        for layer_id in self._dashboard_selection_layer_ids():
+            layer = QgsProject.instance().mapLayer(layer_id)
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            layer_uid = str(layer.id())
+            if layer_uid in seen:
+                continue
+            seen.add(layer_uid)
+            layers.append(layer)
+        return layers
+
+    def _dashboard_selection_layer_ids(self) -> List[str]:
+        layer_ids: List[str] = []
+        for source in (
+            self.current_metadata,
+            getattr(self.current_pivot_result, "metadata", None),
+        ):
+            if not isinstance(source, dict):
+                continue
+            layer_id = str(source.get("layer_id") or "").strip()
+            if layer_id:
+                layer_ids.append(layer_id)
+        return layer_ids
+
+    def _refresh_map_views(self):
+        iface = self._iface()
+        if iface is not None:
+            try:
+                canvas = iface.mapCanvas()
+                if canvas is not None and hasattr(canvas, "refresh"):
+                    canvas.refresh()
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+        controller = self._presentation_controller()
+        if controller is not None:
+            try:
+                controller.refresh()
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _iface(self):
+        current = self
+        visited = set()
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            iface = getattr(current, "iface", None)
+            if iface is not None:
+                return iface
+            current = self._parent_of(current)
+        return None
+
+    def _presentation_controller(self):
+        current = self
+        visited = set()
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            for attr in ("presentation_controller", "presentation_map_controller"):
+                controller = getattr(current, attr, None)
+                if controller is not None:
+                    return controller
+            current = self._parent_of(current)
+        return None
+
+    def _parent_of(self, widget):
+        try:
+            parent = widget.parentWidget()
+        except Exception:
+            parent = None
+        if parent is not None:
+            return parent
+        try:
+            return widget.parent()
+        except Exception:
+            return None
 
     def _apply_active_filters(self):
         if self.current_source_df is None or self.current_source_df.empty:
