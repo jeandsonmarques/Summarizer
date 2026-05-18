@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
@@ -1393,7 +1393,7 @@ class DashboardCanvas(QWidget):
         source_id = str(item_id or "").strip()
         if not source_id:
             return
-        target_id = self._prompt_target_chart(source_id)
+        target_id = self._ask_target_chart(source_id)
         if not target_id:
             return
         source_item = self._layout_by_id(source_id)
@@ -1414,7 +1414,7 @@ class DashboardCanvas(QWidget):
                     target_anchor=target_anchor,
                 )
 
-    def _prompt_target_chart(self, source_id: str) -> str:
+    def _ask_target_chart(self, source_id: str) -> str:
         source_item = self._layout_by_id(source_id)
         if source_item is None:
             return ""
@@ -1486,12 +1486,12 @@ class DashboardCanvas(QWidget):
         root.setContentsMargins(14, 12, 14, 12)
         root.setSpacing(10)
 
-        prompt = QLabel(
+        helper_label = QLabel(
             f"Com qual grafico deseja relacionar '{source_item.display_title()}'?",
             dialog,
         )
-        prompt.setWordWrap(True)
-        root.addWidget(prompt)
+        helper_label.setWordWrap(True)
+        root.addWidget(helper_label)
 
         combo = QComboBox(dialog)
         combo.setFont(ui_font(8))

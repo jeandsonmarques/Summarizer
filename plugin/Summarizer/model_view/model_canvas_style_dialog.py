@@ -89,11 +89,11 @@ def _normalize_color_text(value: object) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    if not text.startswith("#") and re.fullmatch(r"[0-9A-Fa-f]{6}", text):
+    if not text.startswith("#") and re.match(r"^[0-9A-Fa-f]{6}$", text):
         text = f"#{text}"
-    if re.fullmatch(r"#[0-9A-Fa-f]{3}", text):
+    if re.match(r"^#[0-9A-Fa-f]{3}$", text):
         text = "#" + "".join(ch * 2 for ch in text[1:])
-    if re.fullmatch(r"#[0-9A-Fa-f]{6}", text):
+    if re.match(r"^#[0-9A-Fa-f]{6}$", text):
         return text.upper()
     return ""
 

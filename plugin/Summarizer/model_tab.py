@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -2976,7 +2976,7 @@ class ModelTab(QWidget):
             return ""
         return str(self.current_project.name or "")
 
-    def prompt_add_chart(self, snapshot: Dict[str, object]) -> bool:
+    def request_add_chart(self, snapshot: Dict[str, object]) -> bool:
         chart_title = str(snapshot.get("title") or snapshot.get("payload", {}).get("title", _rt("Grafico")))
         dialog = DashboardAddDialog(
             chart_title,

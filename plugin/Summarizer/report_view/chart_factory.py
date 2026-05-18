@@ -2080,7 +2080,7 @@ class ReportChartWidget(QWidget):
         self.unsetCursor()
         super().leaveEvent(event)
 
-    def _prompt_for_text(
+    def _ask_for_text(
         self,
         dialog_title: str,
         field_label: str,
@@ -2117,7 +2117,7 @@ class ReportChartWidget(QWidget):
         current_text = str(target.get("current_text") or "")
 
         if target_type == "title":
-            new_text = self._prompt_for_text(_rt("Editar título do gráfico"), _rt("Título:"), current_text)
+            new_text = self._ask_for_text(_rt("Editar título do gráfico"), _rt("Título:"), current_text)
             if new_text is None:
                 return
             self.chart_state.title_override = new_text
@@ -2125,7 +2125,7 @@ class ReportChartWidget(QWidget):
             return
 
         if target_type == "legend_series":
-            new_text = self._prompt_for_text(_rt("Editar legenda"), _rt("Legenda:"), current_text)
+            new_text = self._ask_for_text(_rt("Editar legenda"), _rt("Legenda:"), current_text)
             if new_text is None:
                 return
             self.chart_state.legend_label_override = new_text
@@ -2136,7 +2136,7 @@ class ReportChartWidget(QWidget):
             category_key = str(target.get("key") or "")
             if not category_key:
                 return
-            new_text = self._prompt_for_text(
+            new_text = self._ask_for_text(
                 _rt("Editar item da legenda"),
                 _rt("Legenda:"),
                 current_text,

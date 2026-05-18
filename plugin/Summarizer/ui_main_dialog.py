@@ -255,13 +255,6 @@ class Ui_SummarizerDialog(object):
         self.export_card.setVisible(False)
         self.stackedWidget.addWidget(self.pageResultados)
 
-        self.pageRelatorios = QWidget()
-        relatorios_layout = QVBoxLayout(self.pageRelatorios)
-        relatorios_layout.setContentsMargins(0, 0, 0, 0)
-        relatorios_layout.setSpacing(0)
-
-        self.stackedWidget.addWidget(self.pageRelatorios)
-
         self.pageModel = QWidget()
         model_layout = QVBoxLayout(self.pageModel)
         model_layout.setContentsMargins(0, 0, 0, 0)

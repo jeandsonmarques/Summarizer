@@ -28,10 +28,9 @@ O objetivo não é evoluir funcionalidade, e sim tornar o código mais confiáve
 - `plugin/Summarizer/model_tab.py`
 - `plugin/Summarizer/integration_panel.py`
 - `plugin/Summarizer/browser_integration.py`
-- `plugin/Summarizer/report_view/reports_widget.py`
-- `plugin/Summarizer/report_view/report_executor.py`
-- `plugin/Summarizer/report_view/hybrid_query_interpreter.py`
 - `plugin/Summarizer/report_view/chart_factory.py`
+- `plugin/Summarizer/report_view/reports/`
+- `plugin/Summarizer/report_view/pivot/`
 - `plugin/Summarizer/utils/i18n_runtime.py`
 
 ## Ordem de execução
