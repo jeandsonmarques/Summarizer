@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0-beta.3] - 2026-05-18
+
+- Prepared the public QGIS release around the stable plugin core.
+- Removed experimental features from the public package.
+- Kept the focus on layer summaries, charts, dashboards, model, connections, visualizations, and exports.
+
 ## [0.5.0-beta.2] - 2026-05-04
 
 - Hardened credential handling to avoid saving passwords when `authcfg` is available.
@@ -12,5 +18,4 @@
 
 - Finalized the public release branding as `Summarizer`.
 - Standardized the distributable package so the ZIP root contains only `Summarizer/`.
-- Clarified optional AI-assisted dependencies in the public documentation.
 - Kept the plugin logic and QGIS runtime flow unchanged for release publication.

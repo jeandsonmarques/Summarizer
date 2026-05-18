@@ -1,4 +1,4 @@
-﻿import base64
+import base64
 import os
 import re
 import tempfile
@@ -47,13 +47,11 @@ from qgis.core import (
     Qgis,
 )
 
-from .dashboard_widget import DashboardWidget
-from .model_tab import ModelTab
 from .export_manager import ExportManager
+from .presentation import PresentationMapController, create_presentation_button
 from .result_style import apply_result_style
 from .ui_main_dialog import Ui_SummarizerDialog
 from .layout_nav import SidebarController
-from .integration_panel import IntegrationPanel, DatabaseImportDialog
 from .interactive_table import InteractiveTable
 from .pivot_table_widget import PivotTableWidget
 from .palette import palette_context
@@ -65,10 +63,9 @@ from .browser_integration import (
     unregister_browser_provider,
     connection_registry,
 )
-from .model_view import ModelCanvasScene, ModelCanvasView, ModelManager
-from .report_view import ReportsWidget
 from .utils.fonts import attach_ui_font_enforcer, ensure_ui_fonts_registered, harmonize_widget_fonts
 from .utils.plugin_logging import log_error
+from .utils.window_theme import apply_windows_title_bar_theme
 
 from .utils.logging_utils import log_exception
 PROTECTED_COLUMNS_DEFAULT = {"__feature_id", "__geometry_wkb", "__target_feature_id"}
@@ -266,6 +263,13 @@ class Summarizer:
             log_error(message)
 
     def unload(self):
+        try:
+            if self.dlg is not None:
+                self.dlg.close()
+                self.dlg.deleteLater()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self.dlg = None
         for action in self.actions:
             self.iface.removePluginMenu(self.menu, action)
             self.iface.removeToolBarIcon(action)
@@ -274,6 +278,11 @@ class Summarizer:
                 unregister_browser_provider(self._browser_provider)
             finally:
                 self._browser_provider = None
+        try:
+            if hasattr(self, "presentation_controller") and self.presentation_controller:
+                self.presentation_controller.cleanup()
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def run(self):
         try:
@@ -325,11 +334,13 @@ class Summarizer:
 class SummarizerDialog(QDialog):
     def __init__(self, iface, plugin_host=None, active_locale: str = "", has_translation: bool = False):
         super().__init__(iface.mainWindow())
+        self._enable_native_window_controls()
         self.iface = iface
         self._plugin_host = plugin_host
         self._active_locale = str(active_locale or "")
         self._has_translation = bool(has_translation)
         self._language_settings_key = "Summarizer/uiLocale"
+        self._theme_settings_key = "Summarizer/uiTheme"
         self.ui = Ui_SummarizerDialog()
         self.ui.setupUi(self)
         self._square_scopes = []
@@ -339,14 +350,28 @@ class SummarizerDialog(QDialog):
                 scope.setProperty("squareScope", True)
                 self._square_scopes.append(scope)
         self._square_theme_applied = False
+        self.presentation_controller = None
+        self.presentation_map_controller = None
+        self.presentation_map_btn = None
+        try:
+            self.presentation_controller = PresentationMapController(self.iface, self)
+            self.presentation_map_controller = self.presentation_controller
+        except Exception:
+            self.presentation_controller = None
+            self.presentation_map_controller = None
+            log_exception("falha opcional ignorada")
         try:
             minimize_btn = getattr(self.ui, "minimize_btn", None)
             if minimize_btn is not None:
                 minimize_btn.clicked.connect(self.showMinimized)
-            self.ui.maximize_btn.clicked.connect(self.toggle_window_state)
+            maximize_btn = getattr(self.ui, "maximize_btn", None)
+            if maximize_btn is not None:
+                maximize_btn.setVisible(False)
         except Exception:
             log_exception("falha opcional ignorada")
         self._init_language_button()
+        self._init_theme_button()
+        self._init_presentation_button()
 
         # External integration state (not used in main dialog anymore)
         self.external_df = None
@@ -362,12 +387,16 @@ class SummarizerDialog(QDialog):
         self._font_enforcer = attach_ui_font_enforcer(self)
 
         self.export_manager = ExportManager()
-        self.dashboard_widget = DashboardWidget()
-        try:
-            self.dashboard_widget.primary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
-            self.dashboard_widget.secondary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
-        except Exception:
-            log_exception("falha opcional ignorada")
+        self.dashboard_widget = None
+        self.model_manager = None
+        self._model_backend_host = None
+        self._model_scene = None
+        self._model_view = None
+        self.model_tab = None
+        self.integration_panel = None
+        self.integration_scroll = None
+        self._defer_page_build = True
+        self._deferred_page_build_queue = []
         # Inject QuickOSM-like sidebar navigation without altering the ui file
         try:
             self.sidebar = SidebarController(self)
@@ -449,102 +478,91 @@ class SummarizerDialog(QDialog):
         self.load_layers()
         self.apply_styles()
         harmonize_widget_fonts(self)
+        apply_windows_title_bar_theme(self, self._current_theme_mode() == "dark")
         self.on_export_format_changed()
 
         try:
-            self.show_summary_prompt()
+            self.show_summary_welcome()
         except Exception:
             log_exception("falha opcional ignorada")
         QTimer.singleShot(0, self._reset_initial_summary_layer_selection)
-
-        self.model_manager = None
-        self._model_backend_host = QWidget(self)
-        self._model_backend_host.hide()
-        self._model_scene = ModelCanvasScene(self._model_backend_host)
-        self._model_view = ModelCanvasView(self._model_scene, self._model_backend_host)
-        try:
-            self.model_manager = ModelManager(self._model_scene, self._model_view, self)
-            self.model_manager.refresh_model()
-        except Exception:
-            self.model_manager = None
 
         try:
             self._init_ribbon_actions()
         except Exception:
             log_exception("falha opcional ignorada")
 
-        self.reports_widget = None
-        try:
-            layout = self.ui.pageRelatorios.layout()
-            if layout is None:
-                layout = QVBoxLayout(self.ui.pageRelatorios)
-                layout.setContentsMargins(0, 0, 0, 0)
-                layout.setSpacing(0)
-
-            while layout.count():
-                item = layout.takeAt(0)
-                widget = item.widget()
-                if widget is not None:
-                    widget.deleteLater()
-
-            widget = ReportsWidget(plugin=self, parent=self.ui.pageRelatorios)
-            layout.addWidget(widget)
-            self.reports_widget = widget
-        except Exception:
-            self.reports_widget = None
-
-        self.model_tab = None
-        try:
-            layout = self.ui.pageModel.layout()
-            if layout is None:
-                layout = QVBoxLayout(self.ui.pageModel)
-                layout.setContentsMargins(0, 0, 0, 0)
-                layout.setSpacing(0)
-
-            while layout.count():
-                item = layout.takeAt(0)
-                widget = item.widget()
-                if widget is not None:
-                    widget.deleteLater()
-
-            widget = ModelTab(parent=self.ui.pageModel)
-            layout.addWidget(widget)
-            self.model_tab = widget
-        except Exception:
-            self.model_tab = None
-
-        self.integration_panel = None
-        self.integration_scroll = None
-        try:
-            layout = self.ui.pageIntegracao.layout()
-            if layout is None:
-                layout = QVBoxLayout(self.ui.pageIntegracao)
-                layout.setContentsMargins(0, 0, 0, 0)
-                layout.setSpacing(0)
-
-            placeholder = getattr(self.ui, "integration_placeholder", None)
-            if placeholder is not None:
-                layout.removeWidget(placeholder)
-                placeholder.deleteLater()
-                self.ui.integration_placeholder = None
-
-            scroll = QScrollArea(self.ui.pageIntegracao)
-            scroll.setObjectName("integrationScrollArea")
-            scroll.setWidgetResizable(True)
-            scroll.setFrameShape(QScrollArea.NoFrame)
-            layout.addWidget(scroll, 1)
-            self.integration_scroll = scroll
-
-            panel = IntegrationPanel(self, self.iface)
-            scroll.setWidget(panel)
-            self.integration_panel = panel
-
-        except Exception:
-            self.integration_panel = None
         try:
             self._apply_runtime_translations()
         except Exception:
             log_exception("falha opcional ignorada")
+        try:
+            self.apply_styles()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        QTimer.singleShot(250, self._finish_deferred_initial_page_build)
+
+    def _enable_native_window_controls(self):
+        try:
+            flags = self.windowFlags()
+            flags |= (
+                Qt.Window
+                | Qt.WindowTitleHint
+                | Qt.WindowSystemMenuHint
+                | Qt.WindowMinimizeButtonHint
+                | Qt.WindowMaximizeButtonHint
+                | Qt.WindowCloseButtonHint
+            )
+            self.setWindowFlags(flags)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def closeEvent(self, event):
+        try:
+            if hasattr(self, "presentation_controller") and self.presentation_controller:
+                self.presentation_controller.cleanup()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
+            host = getattr(self, "_plugin_host", None)
+            if host is not None and getattr(host, "dlg", None) is self:
+                host.dlg = None
+        except Exception:
+            log_exception("falha opcional ignorada")
+        super().closeEvent(event)
+
+    def _finish_deferred_initial_page_build(self):
+        self._defer_page_build = False
+        try:
+            current_page = self.ui.stackedWidget.currentWidget()
+        except Exception:
+            current_page = None
+        builders = []
+        if current_page is self.ui.pageModel:
+            builders.append(("model", self._ensure_model_page))
+        elif current_page is self.ui.pageIntegracao:
+            builders.append(("integration", self._ensure_integration_page))
+
+        for name, builder in (
+            ("model", self._ensure_model_page),
+            ("integration", self._ensure_integration_page),
+        ):
+            if all(existing_name != name for existing_name, _ in builders):
+                builders.append((name, builder))
+
+        self._deferred_page_build_queue = builders
+        self._prewarm_next_deferred_page()
+
+    def _prewarm_next_deferred_page(self):
+        if not self._deferred_page_build_queue:
+            return
+        _name, builder = self._deferred_page_build_queue.pop(0)
+        try:
+            builder()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        QTimer.singleShot(350, self._prewarm_next_deferred_page)
+
     def toggle_window_state(self):
         if self.isMaximized():
             self.showNormal()
@@ -668,6 +686,139 @@ class SummarizerDialog(QDialog):
             log_exception("falha opcional ignorada")
         self._refresh_language_button()
 
+    def _normalize_theme_mode(self, value: str) -> str:
+        mode = str(value or "").strip().lower()
+        return "dark" if mode == "dark" else "light"
+
+    def _current_theme_mode(self) -> str:
+        raw = str(QSettings().value(self._theme_settings_key, "light") or "light")
+        return self._normalize_theme_mode(raw)
+
+    def _theme_label(self, mode: str) -> str:
+        return _rt_runtime("Escuro") if self._normalize_theme_mode(mode) == "dark" else _rt_runtime("Claro")
+
+    def _refresh_theme_button(self):
+        btn = getattr(self.ui, "theme_btn", None)
+        if btn is None:
+            return
+        mode = self._current_theme_mode()
+        try:
+            btn.setIcon(svg_icon("Theme.svg"))
+            btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        btn.setText(_rt_runtime("Tema"))
+        btn.setToolTip(f"{_rt_runtime('Tema')}: {self._theme_label(mode)}")
+
+    def _set_theme_mode(self, mode: str):
+        normalized = self._normalize_theme_mode(mode)
+        current = self._current_theme_mode()
+        if normalized == current:
+            return
+        QSettings().setValue(self._theme_settings_key, normalized)
+        self.apply_styles()
+        self._refresh_theme_button()
+        apply_windows_title_bar_theme(self, normalized == "dark")
+
+    def _build_theme_menu(self) -> QMenu:
+        menu = QMenu(self)
+        current = self._current_theme_mode()
+        for mode, label in (("light", _rt_runtime("Claro")), ("dark", _rt_runtime("Escuro"))):
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(current == mode)
+            action.triggered.connect(lambda _checked=False, m=mode: self._set_theme_mode(m))
+        return menu
+
+    def _show_theme_menu(self):
+        btn = getattr(self.ui, "theme_btn", None)
+        if btn is None:
+            return
+        menu = self._build_theme_menu()
+        menu.exec_(btn.mapToGlobal(btn.rect().bottomLeft()))
+
+    def _init_theme_button(self):
+        btn = getattr(self.ui, "theme_btn", None)
+        if btn is None:
+            return
+        try:
+            btn.clicked.connect(self._show_theme_menu)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self._refresh_theme_button()
+
+    def _init_presentation_button(self):
+        if self.presentation_map_btn is not None:
+            return
+
+        controller = getattr(self, "presentation_controller", None)
+        if controller is None:
+            return
+
+        header_widget = getattr(self.ui, "header_widget", None)
+        if header_widget is None:
+            return
+
+        try:
+            btn = create_presentation_button(header_widget, controller)
+        except Exception:
+            log_exception("falha opcional ignorada")
+            return
+
+        try:
+            layout = header_widget.layout()
+            theme_btn = getattr(self.ui, "theme_btn", None)
+            if layout is not None and theme_btn is not None:
+                index = layout.indexOf(theme_btn)
+                if index >= 0:
+                    layout.insertWidget(index + 1, btn)
+                else:
+                    layout.addWidget(btn)
+            elif layout is not None:
+                layout.addWidget(btn)
+        except Exception:
+            log_exception("falha opcional ignorada")
+            try:
+                btn.setParent(None)
+            except Exception:
+                pass
+            return
+
+        self.presentation_map_btn = btn
+
+    def _mark_theme_mode(self, mode: str):
+        normalized = self._normalize_theme_mode(mode)
+        widgets = [self]
+        try:
+            widgets.extend(self.findChildren(QWidget))
+        except Exception:
+            log_exception("falha opcional ignorada")
+        for widget in widgets:
+            try:
+                widget.setProperty("themeMode", normalized)
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+            except Exception:
+                continue
+
+    def _refresh_theme_aware_children(self):
+        for attr, method_name in (
+            ("pivot_widget", "_apply_styles"),
+            ("dashboard_widget", "_apply_styles"),
+            ("integration_panel", "_apply_panel_styles"),
+            ("model_tab", "_apply_visual_side_panel_styles"),
+            ("model_tab", "_apply_dark_theme_overlay"),
+            ("model_tab", "_refresh_theme_icons"),
+        ):
+            widget = getattr(self, attr, None)
+            method = getattr(widget, method_name, None) if widget is not None else None
+            if method is None:
+                continue
+            try:
+                method()
+            except Exception:
+                log_exception("falha opcional ignorada")
+
     def _apply_runtime_translations(self):
         _apply_i18n_widgets(self)
 
@@ -696,7 +847,6 @@ class SummarizerDialog(QDialog):
         """Marca frames e layouts para o tema de cards."""
         cards = [
             getattr(self.ui, "results_header_frame", None),
-            getattr(self.ui, "results_body", None),
             getattr(self.ui, "export_card", None),
         ]
         for card in cards:
@@ -712,12 +862,14 @@ class SummarizerDialog(QDialog):
 
         layout = getattr(self.ui, "results_body_layout", None)
         if layout is not None:
-            layout.setContentsMargins(2, 2, 2, 2)
-            layout.setSpacing(4)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
 
     def apply_styles(self):
         """Aplica o style.qss oficial do plugin (arquivo principal de temas)."""
         style_path = os.path.join(os.path.dirname(__file__), "resources", "style.qss")
+        theme_mode = self._current_theme_mode()
+        self._mark_theme_mode(theme_mode)
         if not os.path.exists(style_path):
             self._apply_square_theme()
             return
@@ -725,7 +877,7 @@ class SummarizerDialog(QDialog):
         try:
             with open(style_path, "r", encoding="utf-8") as handler:
                 template = Template(handler.read())
-            context = palette_context()
+            context = palette_context(theme_mode)
             self.setStyleSheet(template.safe_substitute(context))
         except Exception:
             try:
@@ -734,12 +886,24 @@ class SummarizerDialog(QDialog):
             except Exception:
                 log_exception("falha opcional ignorada")
         harmonize_widget_fonts(self)
+        self._refresh_theme_aware_children()
+        self._mark_theme_mode(theme_mode)
         if getattr(self, "sidebar", None) is not None:
             try:
                 self.sidebar.refresh_styles()
             except Exception:
                 log_exception("falha opcional ignorada")
+        self._square_theme_applied = False
         self._apply_square_theme()
+        self._refresh_theme_button()
+        apply_windows_title_bar_theme(self, theme_mode == "dark")
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        try:
+            apply_windows_title_bar_theme(self, self._current_theme_mode() == "dark")
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def _apply_square_theme(self):
         if getattr(self, "_square_theme_applied", False):
@@ -803,12 +967,12 @@ class SummarizerDialog(QDialog):
             message_widget.setHtml(html)
         self._set_results_view("message")
 
-    def show_summary_prompt(self):
+    def show_summary_welcome(self):
         self._set_ribbon_visible(False)
         pivot = getattr(self, "pivot_widget", None)
         if pivot is not None:
             try:
-                pivot.show_welcome_prompt()
+                pivot.show_welcome_message()
                 self._set_results_view("pivot")
                 return
             except Exception:
@@ -838,12 +1002,105 @@ class SummarizerDialog(QDialog):
                 log_exception("falha opcional ignorada")
         self._active_numeric_field = None
 
+    def _page_layout(self, page, spacing: int = 0):
+        layout = page.layout()
+        if layout is None:
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(spacing)
+        return layout
+
+    def _clear_layout_widgets(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _ensure_model_backend(self):
+        if self.model_manager is not None:
+            return self.model_manager
+        try:
+            from .model_view import ModelCanvasScene, ModelCanvasView, ModelManager
+
+            if self._model_backend_host is None:
+                self._model_backend_host = QWidget(self)
+                self._model_backend_host.hide()
+            self._model_scene = ModelCanvasScene(self._model_backend_host)
+            self._model_view = ModelCanvasView(self._model_scene, self._model_backend_host)
+            self.model_manager = ModelManager(self._model_scene, self._model_view, self)
+            self.model_manager.refresh_model()
+        except Exception:
+            self.model_manager = None
+            log_exception("falha opcional ignorada")
+        return self.model_manager
+
+    def _ensure_model_page(self):
+        if self.model_tab is not None:
+            return self.model_tab
+        try:
+            from .model_tab import ModelTab
+
+            self._ensure_model_backend()
+            layout = self._page_layout(self.ui.pageModel, spacing=0)
+            self._clear_layout_widgets(layout)
+            widget = ModelTab(parent=self.ui.pageModel)
+            layout.addWidget(widget)
+            self.model_tab = widget
+        except Exception:
+            self.model_tab = None
+            log_exception("falha opcional ignorada")
+        return self.model_tab
+
+    def _ensure_integration_page(self):
+        if self.integration_panel is not None:
+            return self.integration_panel
+        try:
+            from .integration_panel import IntegrationPanel
+
+            layout = self._page_layout(self.ui.pageIntegracao, spacing=0)
+            self._clear_layout_widgets(layout)
+            self.ui.integration_placeholder = None
+
+            scroll = QScrollArea(self.ui.pageIntegracao)
+            scroll.setObjectName("integrationScrollArea")
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.NoFrame)
+            layout.addWidget(scroll, 1)
+            self.integration_scroll = scroll
+
+            panel = IntegrationPanel(self, self.iface)
+            scroll.setWidget(panel)
+            self.integration_panel = panel
+        except Exception:
+            self.integration_panel = None
+            log_exception("falha opcional ignorada")
+        return self.integration_panel
+
+    def _ensure_dashboard_widget(self):
+        if self.dashboard_widget is not None:
+            return self.dashboard_widget
+        try:
+            from .dashboard_widget import DashboardWidget
+
+            self.dashboard_widget = DashboardWidget()
+            try:
+                self.dashboard_widget.primary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
+                self.dashboard_widget.secondary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        except Exception:
+            self.dashboard_widget = None
+            log_exception("falha opcional ignorada")
+        return self.dashboard_widget
+
     def show_integration_page(self):
         self._set_ribbon_visible(False)
         try:
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageIntegracao)
         except Exception:
             log_exception("falha opcional ignorada")
+        panel = None if self._defer_page_build else self._ensure_integration_page()
         try:
             self._apply_runtime_translations()
         except Exception:
@@ -854,23 +1111,11 @@ class SummarizerDialog(QDialog):
                 scroll.verticalScrollBar().setValue(0)
             except Exception:
                 log_exception("falha opcional ignorada")
-        panel = getattr(self, "integration_panel", None)
         if panel is not None:
             try:
                 panel.refresh_recents()
             except Exception:
                 log_exception("falha opcional ignorada")
-
-    def show_reports_page(self):
-        self._set_ribbon_visible(False)
-        try:
-            self.ui.stackedWidget.setCurrentWidget(self.ui.pageRelatorios)
-        except Exception:
-            log_exception("falha opcional ignorada")
-        try:
-            self._apply_runtime_translations()
-        except Exception:
-            log_exception("falha opcional ignorada")
 
     def show_model_page(self):
         self._set_ribbon_visible(False)
@@ -878,18 +1123,20 @@ class SummarizerDialog(QDialog):
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageModel)
         except Exception:
             log_exception("falha opcional ignorada")
+        if not self._defer_page_build:
+            self._ensure_model_page()
         try:
             self._apply_runtime_translations()
         except Exception:
             log_exception("falha opcional ignorada")
 
     def handle_add_chart_to_model_request(self, snapshot):
-        model_tab = getattr(self, "model_tab", None)
+        model_tab = self._ensure_model_page()
         if model_tab is None or not snapshot:
             return
         added = False
         try:
-            added = bool(model_tab.prompt_add_chart(dict(snapshot or {})))
+            added = bool(model_tab.request_add_chart(dict(snapshot or {})))
         except Exception as exc:
             QMessageBox.warning(self, "Model", f"Nao foi possivel adicionar o grafico ao Model: {exc}")
             return
@@ -921,9 +1168,9 @@ class SummarizerDialog(QDialog):
                     _rt_runtime("Falha ao registrar dados: {exc}", exc=exc),
                 )
         try:
-            self.sidebar.show_reports_page()
+            self.sidebar.show_results_page()
         except Exception:
-            self.show_reports_page()
+            self.show_summary_welcome()
 
     def register_integration_dataframe(self, df: pd.DataFrame, metadata: Dict) -> Dict:
         if df is None or df.empty:
@@ -946,12 +1193,6 @@ class SummarizerDialog(QDialog):
                     self.model_manager.refresh_model()
             except Exception:
                 log_exception("falha opcional ignorada")
-            try:
-                if self.reports_widget is not None:
-                    self.reports_widget.refresh_from_model()
-            except Exception:
-                log_exception("falha opcional ignorada")
-
         if import_target == "project":
             if not descriptor.get("layer_id"):
                 return {}
@@ -1493,7 +1734,7 @@ class SummarizerDialog(QDialog):
 
         if self._active_numeric_field is None:
             self.current_summary_data = None
-            self.show_summary_prompt()
+            self.show_summary_welcome()
             return
 
         if self.ui.auto_update_check.isChecked():
@@ -1529,7 +1770,7 @@ class SummarizerDialog(QDialog):
                 "Resumo",
                 "Nenhum campo numérico foi encontrado na camada selecionada.",
             )
-            self.show_summary_prompt()
+            self.show_summary_welcome()
             return
         self._active_numeric_field = field_name
         group_field = None
@@ -2015,7 +2256,7 @@ class SummarizerDialog(QDialog):
         format_info = self._current_export_format()
         self._set_export_path(base + format_info["extension"])
 
-    def _prompt_layer_selection(self, layers):
+    def _ask_layer_selection(self, layers):
         names = [layer.name() or "Camada sem nome" for layer in layers]
         dialog = SlimLayerSelectionDialog("Selecionar camadas", names, parent=self)
         dialog.set_focus_on_search()
@@ -2046,7 +2287,7 @@ class SummarizerDialog(QDialog):
             )
             return
 
-        selected_layers = self._prompt_layer_selection(vector_layers)
+        selected_layers = self._ask_layer_selection(vector_layers)
         if selected_layers is None:
             return
         if not selected_layers:
@@ -2057,7 +2298,7 @@ class SummarizerDialog(QDialog):
             )
             return
 
-        target_dir = self._prompt_layers_export_directory()
+        target_dir = self._ask_layers_export_directory()
         if not target_dir:
             return
 
@@ -2230,7 +2471,7 @@ class SummarizerDialog(QDialog):
                 "\n".join(summary_lines + [""] + detail_lines),
             )
 
-    def _prompt_layers_export_directory(self):
+    def _ask_layers_export_directory(self):
         settings = QSettings()
         last_dir = settings.value("Summarizer/export/gpkgDir", "")
         fallback_dir = self.export_manager.export_dir
@@ -2531,14 +2772,23 @@ class SummarizerDialog(QDialog):
             )
             return
 
-        if pivot_result is not None and hasattr(self.dashboard_widget, "set_pivot_result"):
-            self.dashboard_widget.set_pivot_result(pivot_result)
+        dashboard_widget = self._ensure_dashboard_widget()
+        if dashboard_widget is None:
+            QMessageBox.warning(
+                self,
+                "Dashboard",
+                "Não foi possível carregar o dashboard agora.",
+            )
+            return
+
+        if pivot_result is not None and hasattr(dashboard_widget, "set_pivot_result"):
+            dashboard_widget.set_pivot_result(pivot_result)
         elif raw_df is not None and not getattr(raw_df, "empty", True):
-            self.dashboard_widget.set_pivot_data(raw_df, metadata, config)
+            dashboard_widget.set_pivot_data(raw_df, metadata, config)
         else:
-            self.dashboard_widget.set_pivot_data(pivot_df, metadata, config)
-        self.dashboard_widget.show()
-        self.dashboard_widget.raise_()
+            dashboard_widget.set_pivot_data(pivot_df, metadata, config)
+        dashboard_widget.show()
+        dashboard_widget.raise_()
 
     def show_about_dialog(self):
         dialog = SlimDialogBase(self, geometry_key="Summarizer/dialogs/about")
@@ -2640,6 +2890,8 @@ class GetDataDialog(QDialog):
         self.stack.setCurrentIndex(index)
 
     def _open_db_dialog(self):
+        from .integration_panel import DatabaseImportDialog
+
         try:
             saved = connection_registry.saved_connections()
         except Exception:

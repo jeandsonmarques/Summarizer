@@ -16,9 +16,9 @@ The package is client-side only. It includes the plugin code, metadata, and reso
 
 - plugin entry point
 - plugin metadata
-- UI and reporting components
+- summary, chart, dashboard, model, connection, visualization, and export components
 - local resources and icons
-- optional integrations used by the QGIS client
+- report-oriented helpers used by the QGIS client
 
 ## Release checklist
 

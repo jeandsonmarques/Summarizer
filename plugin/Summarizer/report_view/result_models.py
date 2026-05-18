@@ -298,6 +298,9 @@ class ChartPayload:
     category_field: str = ""
     raw_categories: List[Any] = field(default_factory=list)
     category_feature_ids: List[List[int]] = field(default_factory=list)
+    x_values: List[float] = field(default_factory=list)
+    size_values: List[float] = field(default_factory=list)
+    series_labels: List[str] = field(default_factory=list)
 
     @classmethod
     def build(
@@ -314,6 +317,9 @@ class ChartPayload:
         category_field: str = "",
         raw_categories: Optional[List[Any]] = None,
         category_feature_ids: Optional[List[List[int]]] = None,
+        x_values: Optional[List[Any]] = None,
+        size_values: Optional[List[Any]] = None,
+        series_labels: Optional[List[Any]] = None,
     ) -> "ChartPayload":
         normalized_categories = [str(item) for item in (categories or [])]
         normalized_values: List[float] = []
@@ -331,6 +337,19 @@ class ChartPayload:
         normalized_feature_groups = [list(group or []) for group in (category_feature_ids or [])]
         while len(normalized_feature_groups) < len(normalized_categories):
             normalized_feature_groups.append([])
+        normalized_x_values: List[float] = []
+        for value in x_values or []:
+            try:
+                normalized_x_values.append(float(value))
+            except Exception:
+                normalized_x_values.append(0.0)
+        normalized_size_values: List[float] = []
+        for value in size_values or []:
+            try:
+                normalized_size_values.append(float(value))
+            except Exception:
+                normalized_size_values.append(0.0)
+        normalized_series_labels = [str(item) for item in list(series_labels or [])]
 
         return cls(
             chart_type=str(chart_type or "bar"),
@@ -344,6 +363,9 @@ class ChartPayload:
             category_field=str(category_field or ""),
             raw_categories=normalized_raw_categories,
             category_feature_ids=normalized_feature_groups,
+            x_values=normalized_x_values,
+            size_values=normalized_size_values,
+            series_labels=normalized_series_labels,
         )
 
 
