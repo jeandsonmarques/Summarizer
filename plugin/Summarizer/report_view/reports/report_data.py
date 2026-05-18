@@ -48,7 +48,6 @@ PLUGIN_HELP_SUBJECT_TERMS = (
     "summary",
     "tabela dinamica",
     "pivot",
-    "chat",
     "camada",
     "camadas",
     "layer",

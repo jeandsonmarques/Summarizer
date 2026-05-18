@@ -6,7 +6,7 @@ This folder stores language packs for the plugin.
 Current setup:
 - Runtime translation pack (PT/EN/ES) in `utils/i18n_runtime.py`.
 - Global language selection persisted in `QSettings` key `Summarizer/uiLocale`.
-- Reports page texts are translated immediately when language is changed.
+- Visible plugin texts are translated immediately when language is changed.
 
 Optional Qt Linguist workflow:
 1. Generate or update `.ts` files with `pylupdate5`.

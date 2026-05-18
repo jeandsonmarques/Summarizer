@@ -7,11 +7,18 @@ from .report_data import REPORTS_FONT_SCALE
 from .report_models import ReportStyleContext
 
 try:
-    from ...palette import COLORS, TYPOGRAPHY
+    from qgis.PyQt.QtCore import QSettings
+
+    from ...palette import COLORS, DARK_COLORS, TYPOGRAPHY
 except Exception:  # pragma: no cover - fallback for pure-python tests without QGIS
+    QSettings = None
     COLORS = {
         "color_surface": "#FFFFFF",
         "color_secondary": "#2B7DE9",
+    }
+    DARK_COLORS = {
+        "color_surface": "#1F2937",
+        "color_secondary": "#60A5FA",
     }
     TYPOGRAPHY = {
         "font_ui_stack": '"Inter", sans-serif',
@@ -27,17 +34,26 @@ except Exception:  # pragma: no cover - fallback for pure-python tests without Q
         "font_weight_semibold": 600,
     }
 
+
+def _is_dark_theme() -> bool:
+    if QSettings is None:
+        return False
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
+
 REPORTS_STYLE_TEMPLATE = Template(
     """
     QWidget#reportsRoot,
     QWidget#reportsWorkspace {
         background: transparent;
     }
-    QWidget#chatColumn,
-    QWidget#conversationViewportHost,
-    QWidget#conversationViewport,
+    QWidget#reportColumn,
+    QWidget#resultsViewportHost,
+    QWidget#resultsViewport,
     QWidget#footerSuggestions,
-    QFrame#promptDock {
+    QFrame#inputDock {
         background: transparent;
     }
     QWidget#reportsRoot,
@@ -76,7 +92,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_secondary_px}px;
         font-weight: ${font_weight_regular};
     }
-    QFrame#chatShell {
+    QFrame#reportShell {
         background: transparent;
         border: none;
     }
@@ -94,7 +110,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_caption_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QLabel#assistantBadge {
+    QLabel#reportBadge {
         color: ${text_muted};
         font-size: ${font_caption_px}px;
         font-weight: ${font_weight_regular};
@@ -104,40 +120,40 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_section_title_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QLabel#assistantSummary {
+    QLabel#reportSummary {
         color: ${text_primary};
         font-size: ${font_section_title_px}px;
         font-weight: ${font_weight_regular};
     }
     QLabel#visualPanelSummary,
-    QLabel#assistantText,
-    QLabel#assistantStatus,
+    QLabel#reportText,
+    QLabel#reportStatus,
     QLabel#userBubbleText {
         color: ${text_primary};
         font-size: ${font_body_px}px;
         font-weight: ${font_weight_regular};
     }
     QLabel#visualPanelText,
-    QLabel#assistantHelper,
+    QLabel#reportHelper,
     QLabel#reportsSubtitle {
         color: ${text_secondary};
         font-size: ${font_secondary_px}px;
         font-weight: ${font_weight_regular};
     }
     QLabel#visualPanelMeta,
-    QLabel#chatToolbarLabel {
+    QLabel#toolbarLabel {
         color: ${text_muted};
         font-size: ${font_caption_px}px;
         font-weight: ${font_weight_medium};
     }
     QFrame#visualPanelChartShell,
-    QFrame#assistantChartShell {
+    QFrame#reportChartShell {
         background: ${surface};
         border: 1px solid ${border_soft};
         border-radius: 18px;
     }
     QTableWidget#visualPanelTable,
-    QTableWidget#assistantTable {
+    QTableWidget#reportTable {
         background: transparent;
         border: none;
         color: ${text_primary};
@@ -146,8 +162,12 @@ REPORTS_STYLE_TEMPLATE = Template(
         selection-background-color: transparent;
         alternate-background-color: transparent;
     }
+    QTableWidget#visualPanelTable::viewport,
+    QTableWidget#reportTable::viewport {
+        background: transparent;
+    }
     QTableWidget#visualPanelTable::item,
-    QTableWidget#assistantTable::item {
+    QTableWidget#reportTable::item {
         padding: 7px 8px;
         border-bottom: 1px solid ${border_soft};
     }
@@ -160,7 +180,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_secondary_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QFrame#chatToolbar {
+    QFrame#toolbarBar {
         background: transparent;
         border: none;
     }
@@ -175,7 +195,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_button_px}px;
         font-weight: ${font_weight_regular};
     }
-    QPushButton#clearChatButton {
+    QPushButton#resetButton {
         background: ${surface};
         border: 1px solid ${border_soft};
         color: ${text_primary};
@@ -186,8 +206,8 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-weight: ${font_weight_semibold};
     }
     QPushButton[actionButton="true"] {
-        background: rgba(255, 255, 255, 0.92);
-        border: 1px solid rgba(15, 23, 42, 0.07);
+        background: ${action_bg};
+        border: 1px solid ${action_border};
         color: ${text_secondary};
         min-height: 29px;
         padding: 0 11px;
@@ -196,7 +216,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-weight: ${font_weight_regular};
     }
     QPushButton#visualPanelButton:hover,
-    QPushButton#clearChatButton:hover,
+    QPushButton#resetButton:hover,
     QPushButton[optionButton="true"]:hover {
         background: ${surface_hover};
         border-color: ${border_hover};
@@ -206,15 +226,15 @@ REPORTS_STYLE_TEMPLATE = Template(
         border-color: ${border_hover};
         color: ${text_primary};
     }
-    QPushButton#clearChatButton:disabled {
+    QPushButton#resetButton:disabled {
         color: ${text_disabled};
         border-color: ${border_soft};
     }
-    QScrollArea#conversationScroll {
+    QScrollArea#resultsScroll {
         background: transparent;
         border: none;
     }
-    QFrame#emptyConversation {
+    QFrame#emptyResults {
         background: transparent;
         border: none;
     }
@@ -259,31 +279,31 @@ REPORTS_STYLE_TEMPLATE = Template(
     QLabel#userBubbleText {
         color: ${text_primary};
     }
-    QFrame#assistantCard {
+    QFrame#reportCard {
         background: transparent;
         border: none;
         border-radius: 0px;
     }
-    QFrame#promptShell {
+    QFrame#inputPanel {
         background: ${surface};
         border: 1px solid ${border_subtle};
         border-radius: 22px;
     }
-    QTextEdit#promptInput {
+    QTextEdit#queryInput {
         background: transparent;
         border: none;
         padding: 8px 4px 8px 4px;
         min-height: 36px;
         font-size: ${font_input_px}px;
         font-weight: ${font_weight_regular};
-        color: #1E293B;
+        color: ${text_primary};
         selection-background-color: ${selection_bg};
     }
-    QTextEdit#promptInput:focus {
+    QTextEdit#queryInput:focus {
         border: none;
     }
     QToolButton#plusButton,
-    QToolButton#engineButton {
+    QToolButton#modeButton {
         background: ${surface};
         border: 1px solid ${border_soft};
         color: ${text_primary};
@@ -301,13 +321,13 @@ REPORTS_STYLE_TEMPLATE = Template(
         border-radius: 16px;
     }
     QToolButton#plusButton:hover,
-    QToolButton#engineButton:hover {
+    QToolButton#modeButton:hover {
         background: ${surface_hover};
         border-color: ${border_hover};
     }
-    QPushButton#sendButton {
+    QPushButton#runButton {
         background: ${send_bg};
-        color: #FFFFFF;
+        color: ${send_fg};
         border: none;
         border-radius: 18px;
         min-width: 92px;
@@ -316,10 +336,10 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_button_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QPushButton#sendButton:hover {
+    QPushButton#runButton:hover {
         background: ${send_bg_hover};
     }
-    QPushButton#sendButton[stopMode="true"] {
+    QPushButton#runButton[stopMode="true"] {
         background: ${send_bg};
         border-radius: 20px;
         min-width: 40px;
@@ -330,7 +350,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: 13px;
         font-weight: ${font_weight_semibold};
     }
-    QPushButton#sendButton[stopMode="true"]:hover {
+    QPushButton#runButton[stopMode="true"]:hover {
         background: ${send_bg_hover};
     }
     QMenu {
@@ -370,25 +390,30 @@ def _scaled_font(value: int) -> str:
 
 
 def build_reports_style_context() -> ReportStyleContext:
+    dark_mode = _is_dark_theme()
+    colors = DARK_COLORS if dark_mode else COLORS
     values: Dict[str, str] = {
-        "page_bg": "#F7F7F8",
-        "surface": COLORS.get("color_surface", "#FFFFFF"),
-        "surface_hover": "#F8FAFC",
-        "border_soft": "rgba(15, 23, 42, 0.08)",
-        "border_subtle": "rgba(15, 23, 42, 0.10)",
-        "border_hover": "#D7DEE8",
-        "hover_tint": "rgba(17, 24, 39, 0.06)",
-        "user_bubble": "#ECECF1",
-        "text_primary": "#0F172A",
-        "text_secondary": "#475569",
-        "text_muted": "#64748B",
-        "text_disabled": "#94A3B8",
-        "accent": COLORS.get("color_secondary", "#2B7DE9"),
-        "accent_hover": "#3B82F6",
-        "send_bg": "#10182B",
-        "send_bg_hover": "#1A2740",
-        "selection_bg": "#DBEAFE",
-        "scrollbar_handle": "rgba(100, 116, 139, 0.28)",
+        "page_bg": "#0B1020" if dark_mode else "#F7F7F8",
+        "surface": colors.get("color_surface", "#1F2937" if dark_mode else "#FFFFFF"),
+        "surface_hover": "#273449" if dark_mode else "#F8FAFC",
+        "border_soft": "rgba(148, 163, 184, 0.16)" if dark_mode else "rgba(15, 23, 42, 0.08)",
+        "border_subtle": "rgba(148, 163, 184, 0.22)" if dark_mode else "rgba(15, 23, 42, 0.10)",
+        "border_hover": "#475569" if dark_mode else "#D7DEE8",
+        "hover_tint": "rgba(148, 163, 184, 0.14)" if dark_mode else "rgba(17, 24, 39, 0.06)",
+        "user_bubble": "#1E293B" if dark_mode else "#ECECF1",
+        "text_primary": "#F8FAFC" if dark_mode else "#0F172A",
+        "text_secondary": "#CBD5E1" if dark_mode else "#475569",
+        "text_muted": "#94A3B8" if dark_mode else "#64748B",
+        "text_disabled": "#64748B" if dark_mode else "#94A3B8",
+        "accent": colors.get("color_secondary", "#60A5FA" if dark_mode else "#2B7DE9"),
+        "accent_hover": "#93C5FD" if dark_mode else "#3B82F6",
+        "send_bg": "#F8FAFC" if dark_mode else "#10182B",
+        "send_fg": "#0B1020" if dark_mode else "#FFFFFF",
+        "send_bg_hover": "#E2E8F0" if dark_mode else "#1A2740",
+        "action_bg": "#172033" if dark_mode else "rgba(255, 255, 255, 0.92)",
+        "action_border": "rgba(148, 163, 184, 0.22)" if dark_mode else "rgba(15, 23, 42, 0.07)",
+        "selection_bg": "#1E293B" if dark_mode else "#DBEAFE",
+        "scrollbar_handle": "rgba(148, 163, 184, 0.36)" if dark_mode else "rgba(100, 116, 139, 0.28)",
         "font_ui_stack": TYPOGRAPHY.get("font_ui_stack", '"Inter", sans-serif'),
         "font_page_title_px": _scaled_font(TYPOGRAPHY.get("font_page_title_px", 24)),
         "font_section_title_px": _scaled_font(TYPOGRAPHY.get("font_section_title_px", 16)),

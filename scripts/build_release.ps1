@@ -136,6 +136,80 @@ function Test-ZipStructure {
     }
 }
 
+function Test-ZipPublicClean {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ZipPath
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+        $forbiddenPathPatterns = @(
+            '(?i)openai',
+            '(?i)langchain',
+            '(?i)ollama',
+            '(?i)chatgpt',
+            '(?i)ai_engine',
+            '(?i)hybrid_query',
+            '(?i)conversation_memory',
+            '(?i)operational_memory',
+            '(?i)(^|/)reports_widget\.py$',
+            '(?i)(^|/)report_ai_engine\.py$',
+            '(?i)(^|/)query_interpreter\.py$',
+            '(?i)(^|/)query_preprocessor\.py$'
+        )
+
+        foreach ($pattern in $forbiddenPathPatterns) {
+            $match = $entryNames | Where-Object { $_ -match $pattern } | Select-Object -First 1
+            if ($match) {
+                throw "ZIP contains forbidden public-release path '$match' matching '$pattern'."
+            }
+        }
+
+        $forbiddenTextPatterns = @(
+            '(?i)openai',
+            '(?i)langchain',
+            '(?i)ollama',
+            '(?i)chatgpt',
+            '(?i)ai_engine',
+            '(?i)hybrid_query',
+            '(?i)conversation_memory',
+            '(?i)operational_memory',
+            '(?i)\bllm\b',
+            '(?i)\bprompt\b',
+            '(?i)\bagent\b'
+        )
+        $textExtensions = @(".py", ".txt", ".md", ".json", ".qss", ".svg", ".csv", ".ini")
+
+        foreach ($entry in $archive.Entries) {
+            if ([string]::IsNullOrWhiteSpace($entry.Name)) {
+                continue
+            }
+            $extension = [System.IO.Path]::GetExtension($entry.Name)
+            if ($textExtensions -notcontains $extension.ToLowerInvariant()) {
+                continue
+            }
+            $reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8, $true)
+            try {
+                $content = $reader.ReadToEnd()
+            }
+            finally {
+                $reader.Dispose()
+            }
+            foreach ($pattern in $forbiddenTextPatterns) {
+                if ($content -match $pattern) {
+                    throw "ZIP text audit failed in '$($entry.FullName)' for pattern '$pattern'."
+                }
+            }
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sourcePlugin = Join-Path $repoRoot "plugin\Summarizer"
 $pluginFolderName = Split-Path $sourcePlugin -Leaf
@@ -191,6 +265,7 @@ try {
 
     Compress-Archive -LiteralPath $stagePluginRoot -DestinationPath $zipPath -CompressionLevel Optimal -Force
     Test-ZipStructure -ZipPath $zipPath -PluginFolderName $pluginFolderName
+    Test-ZipPublicClean -ZipPath $zipPath
 
     Write-Host "ZIP generated at $zipPath"
     Write-Host "Expected structure: $pluginFolderName/..."

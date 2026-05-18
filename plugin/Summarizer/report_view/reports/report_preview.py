@@ -30,7 +30,7 @@ def build_result_helper_text(result: QueryResult) -> str:
         parts.append(f"Filtros detectados: {plan.detected_filters_text}")
     if plan is not None:
         trace = dict(plan.planning_trace or {})
-        for item in list(trace.get("conversation_debug") or [])[:2]:
+        for item in list(trace.get("result_debug") or [])[:2]:
             text = str(item or "").strip()
             if text:
                 parts.append(text)

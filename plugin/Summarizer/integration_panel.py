@@ -47,6 +47,7 @@ from qgis.core import QgsVectorLayer
 
 from .slim_dialogs import SlimDialogBase, SlimMessageDialog
 from .browser_integration import connection_registry
+from .palette import COLORS, DARK_COLORS
 from .utils.fonts import harmonize_widget_fonts, ui_font, ui_font_stack
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.resources import svg_icon
@@ -54,6 +55,13 @@ from .utils.security_utils import secure_connection_payload
 
 from .utils.logging_utils import log_exception
 _ICON_DIR = os.path.join(os.path.dirname(__file__), "resources", "icons")
+
+
+def _is_dark_theme() -> bool:
+    try:
+        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+    except Exception:
+        return False
 
 try:  # pragma: no cover - handles platforms without QtSql
     from qgis.PyQt.QtSql import QSqlDatabase, QSqlQuery
@@ -137,6 +145,7 @@ class ConnectorCard(QFrame):
         layout.addWidget(self.caption_label)
 
     def _apply_styles(self):
+        colors = DARK_COLORS if _is_dark_theme() else COLORS
         self.setStyleSheet(
             f"""
             ConnectorCard {{
@@ -145,12 +154,12 @@ class ConnectorCard(QFrame):
             }}
             QLabel {{
                 font-family: %s;
-                color: #1E1E1E;
+                color: {colors["color_text_primary"]};
             }}
             QLabel[class="cardCaption"] {{
                 font-size: 8.6pt;
                 font-weight: 400;
-                color: #475569;
+                color: {colors["color_text_secondary"]};
             }}
             """
             % ui_font_stack()
@@ -344,7 +353,15 @@ class IntegrationPanel(QWidget):
 
         root.addWidget(wrapper, 1)
 
-        self.setStyleSheet(
+        colors = DARK_COLORS if _is_dark_theme() else COLORS
+        item_bg = "#172033" if _is_dark_theme() else "#F5F7FA"
+        item_hover = "#1F2A3D" if _is_dark_theme() else "#EEF2F6"
+        item_selected = "#24324A" if _is_dark_theme() else "#ECEFF3"
+        clear_bg = "#F8FAFC" if _is_dark_theme() else "#111827"
+        clear_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
+        clear_pressed = "#CBD5E1" if _is_dark_theme() else "#0B1220"
+        clear_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
+        style = (
             """
             QListWidget {
                 border: none;
@@ -359,20 +376,20 @@ class IntegrationPanel(QWidget):
                 margin: 0px;
                 border: none;
                 border-radius: 10px;
-                background: #F5F7FA;
-                color: #111827;
+                background: __ITEM_BG__;
+                color: __ITEM_FG__;
             }
             QListWidget::item:selected {
-                background: #ECEFF3;
+                background: __ITEM_SELECTED__;
                 border: none;
-                color: #111827;
+                color: __ITEM_FG__;
             }
             QListWidget::item:hover {
-                background: #EEF2F6;
+                background: __ITEM_HOVER__;
             }
             QPushButton[role="recentClear"] {
-                background: #111827;
-                color: #FFFFFF;
+                background: __CLEAR_BG__;
+                color: __CLEAR_FG__;
                 border: none;
                 border-radius: 8px;
                 min-width: 0px;
@@ -382,10 +399,10 @@ class IntegrationPanel(QWidget):
                 font-weight: 600;
             }
             QPushButton[role="recentClear"]:hover {
-                background: #1F2937;
+                background: __CLEAR_HOVER__;
             }
             QPushButton[role="recentClear"]:pressed {
-                background: #0B1220;
+                background: __CLEAR_PRESSED__;
             }
             QPushButton[role="recentClear"]:disabled {
                 background: #D1D5DB;
@@ -394,7 +411,124 @@ class IntegrationPanel(QWidget):
             """
             % (ui_font_stack(), ui_font_stack())
         )
+        style = (
+            style.replace("__ITEM_BG__", item_bg)
+            .replace("__ITEM_FG__", colors["color_text_primary"])
+            .replace("__ITEM_SELECTED__", item_selected)
+            .replace("__ITEM_HOVER__", item_hover)
+            .replace("__CLEAR_BG__", clear_bg)
+            .replace("__CLEAR_FG__", clear_fg)
+            .replace("__CLEAR_HOVER__", clear_hover)
+            .replace("__CLEAR_PRESSED__", clear_pressed)
+        )
+        self.setStyleSheet(style)
+        self._apply_panel_styles()
         self._apply_runtime_i18n()
+
+    def _apply_panel_styles(self):
+        colors = DARK_COLORS if _is_dark_theme() else COLORS
+        item_bg = "#172033" if _is_dark_theme() else "#F5F7FA"
+        item_hover = "#1F2A3D" if _is_dark_theme() else "#EEF2F6"
+        item_selected = "#24324A" if _is_dark_theme() else "#ECEFF3"
+        clear_bg = "#F8FAFC" if _is_dark_theme() else "#111827"
+        clear_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
+        clear_pressed = "#CBD5E1" if _is_dark_theme() else "#0B1220"
+        clear_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
+        style = (
+            """
+            QFrame#integrationWrapper {
+                background: __PANEL_BG__;
+                border: 1px solid __PANEL_BORDER__;
+                border-radius: 12px;
+            }
+            QFrame#recentsFrame {
+                background: __PANEL_BG__;
+                border: 1px solid __PANEL_BORDER__;
+                border-radius: 10px;
+            }
+            QLabel[cardTitle="true"] {
+                background: transparent;
+                border: none;
+                color: __ITEM_FG__;
+            }
+            QLabel[role="helper"] {
+                background: transparent;
+                border: none;
+                color: __HELPER_FG__;
+            }
+            QListWidget {
+                border: none;
+                background: transparent;
+                outline: none;
+                padding: 0px;
+                font-family: %s;
+                font-size: 9pt;
+            }
+            QListWidget::item {
+                padding: 8px 10px;
+                margin: 0px;
+                border: none;
+                border-radius: 10px;
+                background: __ITEM_BG__;
+                color: __ITEM_FG__;
+            }
+            QListWidget::item:selected {
+                background: __ITEM_SELECTED__;
+                border: none;
+                color: __ITEM_FG__;
+            }
+            QListWidget::item:hover {
+                background: __ITEM_HOVER__;
+            }
+            QPushButton[role="recentClear"] {
+                background: __CLEAR_BG__;
+                color: __CLEAR_FG__;
+                border: none;
+                border-radius: 8px;
+                min-width: 0px;
+                padding: 4px 10px;
+                font-family: %s;
+                font-size: 9pt;
+                font-weight: 600;
+            }
+            QPushButton[role="recentClear"]:hover {
+                background: __CLEAR_HOVER__;
+            }
+            QPushButton[role="recentClear"]:pressed {
+                background: __CLEAR_PRESSED__;
+            }
+            QPushButton[role="recentClear"]:disabled {
+                background: __CLEAR_DISABLED_BG__;
+                color: __CLEAR_DISABLED_FG__;
+            }
+            """
+            % (ui_font_stack(), ui_font_stack())
+        )
+        panel_bg = "#1F2937" if _is_dark_theme() else colors["color_surface"]
+        panel_border = "rgba(148, 163, 184, 0.22)" if _is_dark_theme() else colors["color_border"]
+        clear_disabled_bg = "#334155" if _is_dark_theme() else "#D1D5DB"
+        clear_disabled_fg = "#94A3B8" if _is_dark_theme() else "#FFFFFF"
+        style = (
+            style.replace("__ITEM_BG__", item_bg)
+            .replace("__ITEM_FG__", colors["color_text_primary"])
+            .replace("__HELPER_FG__", colors["color_text_secondary"])
+            .replace("__ITEM_SELECTED__", item_selected)
+            .replace("__ITEM_HOVER__", item_hover)
+            .replace("__CLEAR_BG__", clear_bg)
+            .replace("__CLEAR_FG__", clear_fg)
+            .replace("__CLEAR_HOVER__", clear_hover)
+            .replace("__CLEAR_PRESSED__", clear_pressed)
+            .replace("__PANEL_BG__", panel_bg)
+            .replace("__PANEL_BORDER__", panel_border)
+            .replace("__CLEAR_DISABLED_BG__", clear_disabled_bg)
+            .replace("__CLEAR_DISABLED_FG__", clear_disabled_fg)
+        )
+        self.setStyleSheet(style)
+        for card in getattr(self, "_cards", {}).values():
+            try:
+                card._apply_styles()
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def _refresh_connector_layout(self):
         if hasattr(self, "grid_widget") and self.grid_widget is not None:

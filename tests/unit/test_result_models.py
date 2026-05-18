@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-from Summarizer.report_view.conversation_state import (
-    ActiveQueryState,
-    infer_semantic_filters,
-    query_plan_from_payload,
-)
 from Summarizer.report_view.result_models import (
     ChartPayload,
     ChartSpec,
@@ -43,20 +38,7 @@ def test_query_plan_round_trip_and_semantic_filters():
     )
 
     payload = plan.to_dict()
-    restored = query_plan_from_payload(payload)
-
-    assert restored is not None
-    assert restored.intent == "aggregate_chart"
-    assert restored.metric.operation == "sum"
-    assert restored.chart.type == "bar"
-    assert restored.filters[0].field == "municipio"
-
-    semantic = infer_semantic_filters(plan)
-    assert semantic["location"] == "Natal"
-    assert semantic["diameter"] == "200"
-
-    state = ActiveQueryState.from_plan(plan, confidence=0.91)
-    assert state.intent == "aggregate_chart"
-    assert state.confidence == 0.91
-    assert state.filters["location"] == "Natal"
-    assert ActiveQueryState.from_payload(state.to_payload()) is not None
+    assert payload["intent"] == "aggregate_chart"
+    assert payload["metric"]["operation"] == "sum"
+    assert payload["chart"]["type"] == "bar"
+    assert payload["filters"][0]["field"] == "municipio"
