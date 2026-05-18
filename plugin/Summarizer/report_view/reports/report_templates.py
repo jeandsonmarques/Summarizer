@@ -49,9 +49,9 @@ REPORTS_STYLE_TEMPLATE = Template(
     QWidget#reportsWorkspace {
         background: transparent;
     }
-    QWidget#chatColumn,
-    QWidget#conversationViewportHost,
-    QWidget#conversationViewport,
+    QWidget#reportColumn,
+    QWidget#resultsViewportHost,
+    QWidget#resultsViewport,
     QWidget#footerSuggestions,
     QFrame#inputDock {
         background: transparent;
@@ -92,7 +92,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_secondary_px}px;
         font-weight: ${font_weight_regular};
     }
-    QFrame#chatShell {
+    QFrame#reportShell {
         background: transparent;
         border: none;
     }
@@ -110,7 +110,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_caption_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QLabel#assistantBadge {
+    QLabel#reportBadge {
         color: ${text_muted};
         font-size: ${font_caption_px}px;
         font-weight: ${font_weight_regular};
@@ -120,40 +120,40 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_section_title_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QLabel#assistantSummary {
+    QLabel#reportSummary {
         color: ${text_primary};
         font-size: ${font_section_title_px}px;
         font-weight: ${font_weight_regular};
     }
     QLabel#visualPanelSummary,
-    QLabel#assistantText,
-    QLabel#assistantStatus,
+    QLabel#reportText,
+    QLabel#reportStatus,
     QLabel#userBubbleText {
         color: ${text_primary};
         font-size: ${font_body_px}px;
         font-weight: ${font_weight_regular};
     }
     QLabel#visualPanelText,
-    QLabel#assistantHelper,
+    QLabel#reportHelper,
     QLabel#reportsSubtitle {
         color: ${text_secondary};
         font-size: ${font_secondary_px}px;
         font-weight: ${font_weight_regular};
     }
     QLabel#visualPanelMeta,
-    QLabel#chatToolbarLabel {
+    QLabel#toolbarLabel {
         color: ${text_muted};
         font-size: ${font_caption_px}px;
         font-weight: ${font_weight_medium};
     }
     QFrame#visualPanelChartShell,
-    QFrame#assistantChartShell {
+    QFrame#reportChartShell {
         background: ${surface};
         border: 1px solid ${border_soft};
         border-radius: 18px;
     }
     QTableWidget#visualPanelTable,
-    QTableWidget#assistantTable {
+    QTableWidget#reportTable {
         background: transparent;
         border: none;
         color: ${text_primary};
@@ -163,11 +163,11 @@ REPORTS_STYLE_TEMPLATE = Template(
         alternate-background-color: transparent;
     }
     QTableWidget#visualPanelTable::viewport,
-    QTableWidget#assistantTable::viewport {
+    QTableWidget#reportTable::viewport {
         background: transparent;
     }
     QTableWidget#visualPanelTable::item,
-    QTableWidget#assistantTable::item {
+    QTableWidget#reportTable::item {
         padding: 7px 8px;
         border-bottom: 1px solid ${border_soft};
     }
@@ -180,7 +180,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_secondary_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QFrame#chatToolbar {
+    QFrame#toolbarBar {
         background: transparent;
         border: none;
     }
@@ -195,7 +195,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_button_px}px;
         font-weight: ${font_weight_regular};
     }
-    QPushButton#clearChatButton {
+    QPushButton#resetButton {
         background: ${surface};
         border: 1px solid ${border_soft};
         color: ${text_primary};
@@ -216,7 +216,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-weight: ${font_weight_regular};
     }
     QPushButton#visualPanelButton:hover,
-    QPushButton#clearChatButton:hover,
+    QPushButton#resetButton:hover,
     QPushButton[optionButton="true"]:hover {
         background: ${surface_hover};
         border-color: ${border_hover};
@@ -226,15 +226,15 @@ REPORTS_STYLE_TEMPLATE = Template(
         border-color: ${border_hover};
         color: ${text_primary};
     }
-    QPushButton#clearChatButton:disabled {
+    QPushButton#resetButton:disabled {
         color: ${text_disabled};
         border-color: ${border_soft};
     }
-    QScrollArea#conversationScroll {
+    QScrollArea#resultsScroll {
         background: transparent;
         border: none;
     }
-    QFrame#emptyConversation {
+    QFrame#emptyResults {
         background: transparent;
         border: none;
     }
@@ -279,17 +279,17 @@ REPORTS_STYLE_TEMPLATE = Template(
     QLabel#userBubbleText {
         color: ${text_primary};
     }
-    QFrame#assistantCard {
+    QFrame#reportCard {
         background: transparent;
         border: none;
         border-radius: 0px;
     }
-    QFrame#inputShell {
+    QFrame#inputPanel {
         background: ${surface};
         border: 1px solid ${border_subtle};
         border-radius: 22px;
     }
-    QTextEdit#questionInput {
+    QTextEdit#queryInput {
         background: transparent;
         border: none;
         padding: 8px 4px 8px 4px;
@@ -299,11 +299,11 @@ REPORTS_STYLE_TEMPLATE = Template(
         color: ${text_primary};
         selection-background-color: ${selection_bg};
     }
-    QTextEdit#questionInput:focus {
+    QTextEdit#queryInput:focus {
         border: none;
     }
     QToolButton#plusButton,
-    QToolButton#engineButton {
+    QToolButton#modeButton {
         background: ${surface};
         border: 1px solid ${border_soft};
         color: ${text_primary};
@@ -321,11 +321,11 @@ REPORTS_STYLE_TEMPLATE = Template(
         border-radius: 16px;
     }
     QToolButton#plusButton:hover,
-    QToolButton#engineButton:hover {
+    QToolButton#modeButton:hover {
         background: ${surface_hover};
         border-color: ${border_hover};
     }
-    QPushButton#sendButton {
+    QPushButton#runButton {
         background: ${send_bg};
         color: ${send_fg};
         border: none;
@@ -336,10 +336,10 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: ${font_button_px}px;
         font-weight: ${font_weight_semibold};
     }
-    QPushButton#sendButton:hover {
+    QPushButton#runButton:hover {
         background: ${send_bg_hover};
     }
-    QPushButton#sendButton[stopMode="true"] {
+    QPushButton#runButton[stopMode="true"] {
         background: ${send_bg};
         border-radius: 20px;
         min-width: 40px;
@@ -350,7 +350,7 @@ REPORTS_STYLE_TEMPLATE = Template(
         font-size: 13px;
         font-weight: ${font_weight_semibold};
     }
-    QPushButton#sendButton[stopMode="true"]:hover {
+    QPushButton#runButton[stopMode="true"]:hover {
         background: ${send_bg_hover};
     }
     QMenu {

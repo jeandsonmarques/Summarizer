@@ -57,7 +57,7 @@ def _is_dark_theme() -> bool:
 
 
 class DashboardWidget(QWidget):
-    """Dashboard that reuses the same chart system used by the Reports tab."""
+    """Dashboard that reuses the same chart system used by the main results view."""
 
     def __init__(self):
         super().__init__()
