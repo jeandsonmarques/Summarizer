@@ -30,5 +30,6 @@ The package is client-side only. It includes the plugin code, metadata, and reso
 ## License and Branding
 
 - Code: `GPL-3.0-or-later`.
-- Brand, logo, name, and visual identity: see the repository root `TRADEMARKS.md`.
+- Brand, logo, name, and visual identity: see `TRADEMARKS.md`.
+- Modified versions must use a different name if there is chance of confusion.
 - Modified versions must preserve copyright notices and clearly mark changes.
