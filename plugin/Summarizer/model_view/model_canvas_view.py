@@ -1,4 +1,7 @@
-﻿import math
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import math
 from typing import Optional
 
 from qgis.PyQt.QtCore import QPoint, QPointF, QRectF, Qt, pyqtSignal
@@ -278,3 +281,4 @@ class ModelCanvasView(QGraphicsView):
     @property
     def zoom_level(self) -> float:
         return float(self._zoom)
+

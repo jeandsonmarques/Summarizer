@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import sys
@@ -32,3 +35,4 @@ def apply_windows_title_bar_theme(widget: QWidget, dark: bool) -> bool:
     except Exception:
         return False
     return False
+

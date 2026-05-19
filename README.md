@@ -30,6 +30,8 @@ For QGIS publication, the final ZIP must contain only the `Summarizer/` folder a
 - Repository: https://github.com/jeandsonmarques/Summarizer
 - Issues: https://github.com/jeandsonmarques/Summarizer/issues
 
-## License
+## License and Branding
 
-This project is distributed under `GPL-3.0-or-later`.
+- Code: `GPL-3.0-or-later`. See [LICENSE](LICENSE).
+- Brand, logo, name, and visual identity: see [TRADEMARKS.md](TRADEMARKS.md).
+- Modified versions must preserve copyright notices and clearly mark changes.

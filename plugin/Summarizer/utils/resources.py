@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 import os
 from qgis.PyQt.QtGui import QIcon
 
@@ -35,3 +38,4 @@ def svg_icon(filename: str) -> QIcon:
 
 
 __all__ = ["svg_icon", "svg_path"]
+

@@ -1,4 +1,7 @@
-﻿from typing import Dict, List, Optional
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from typing import Dict, List, Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt
 from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
@@ -264,4 +267,5 @@ class TableCardItem(QGraphicsRectItem):
             self.pos() + QPointF(self.padding, self.header_height + self.padding),
             self.rect().size(),
         )
+
 

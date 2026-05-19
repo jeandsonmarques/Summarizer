@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from typing import Sequence
 
 
@@ -28,3 +31,4 @@ def toolbar_visuals_visible_count(
 __all__ = [
     "toolbar_visuals_visible_count",
 ]
+

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import os
@@ -212,3 +215,4 @@ __all__ = [
     "_model_tinted_svg_icon",
     "fill_model_theme_tokens",
 ]
+

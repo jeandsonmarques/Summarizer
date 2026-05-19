@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import json
@@ -733,3 +736,4 @@ def handle_filter_panel_drop_event(widget, event) -> bool:
         return True
     event.ignore()
     return True
+

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Callable, Optional
@@ -19,7 +22,7 @@ def escape_html(text: Any) -> str:
         return ""
     return (
         str(text)
-        .replace("&", "&amp;")
+        .replace("&", "&")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
@@ -120,3 +123,4 @@ def display_advanced_summary(
         fallback_html,
         set_results_view=set_results_view,
     )
+

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from .summary_calculations import (
@@ -13,3 +16,4 @@ __all__ = [
     "filter_empty_matches",
     "is_meaningful_value",
 ]
+

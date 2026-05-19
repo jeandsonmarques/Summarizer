@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -73,3 +76,4 @@ class ChartDataProfile:
     has_negative: bool = False
     truncated: bool = False
     sequential_hint: bool = False
+

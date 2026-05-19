@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -217,3 +220,4 @@ def calculate_advanced_summary(
             "rows": [dict(row) for row in raw_rows],
         },
     }
+

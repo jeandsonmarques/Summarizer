@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Optional
@@ -411,3 +414,4 @@ class PresentationWindowManager(QObject):
 
     def _clear_state(self):
         self._saved_plugin_state = None
+

@@ -1,4 +1,7 @@
-﻿import os
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import os
 from typing import List, Optional
 
 from qgis.PyQt.QtCore import QEvent, QObject, QTimer
@@ -102,3 +105,4 @@ def attach_ui_font_enforcer(root: Optional[QWidget]) -> Optional[QObject]:
     setattr(root, "_ui_font_enforcer", enforcer)
     QTimer.singleShot(0, lambda: harmonize_widget_fonts(root))
     return enforcer
+

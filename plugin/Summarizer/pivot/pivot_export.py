@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import pandas as pd
@@ -20,3 +23,4 @@ def export_dataframes_to_excel(
 
 
 __all__ = ["export_dataframe_to_csv", "export_dataframes_to_excel"]
+

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -236,3 +239,4 @@ def build_model_header(
 
 
 __all__ = ["ModelHeaderParts", "build_model_header"]
+

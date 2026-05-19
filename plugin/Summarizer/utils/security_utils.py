@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -90,3 +93,4 @@ __all__ = [
     "mask_sensitive_value",
     "secure_connection_payload",
 ]
+

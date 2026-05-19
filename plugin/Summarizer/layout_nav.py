@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 import os
 from typing import Dict, Optional
 
@@ -277,3 +280,4 @@ class SidebarController(QObject):
         self._indicator_animation.setStartValue(start_rect)
         self._indicator_animation.setEndValue(target_rect)
         self._indicator_animation.start()
+

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from string import Template
@@ -432,3 +435,4 @@ def build_reports_style_context() -> ReportStyleContext:
 
 def build_reports_stylesheet() -> str:
     return REPORTS_STYLE_TEMPLATE.safe_substitute(build_reports_style_context().to_dict())
+

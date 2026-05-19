@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from .chart_models import ChartDataProfile, ChartVisualState
 from .chart_styles import (
     ANIMATION_DURATIONS_MS,
@@ -64,3 +67,4 @@ __all__ = [
     "primary_value",
     "stable_value",
 ]
+

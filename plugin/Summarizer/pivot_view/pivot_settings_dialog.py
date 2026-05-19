@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Callable, Dict, Optional
@@ -321,3 +324,4 @@ def open_table_settings_dialog(
 
     apply_btn.clicked.connect(_apply)
     dialog.exec_()
+

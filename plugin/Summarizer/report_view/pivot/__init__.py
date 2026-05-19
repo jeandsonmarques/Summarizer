@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from .pivot_engine import PivotEngine
 from .pivot_export_service import PivotExportService
 from .pivot_formatters import PivotFormatter
@@ -24,3 +27,4 @@ __all__ = [
     "PivotValidationError",
     "PivotValidator",
 ]
+

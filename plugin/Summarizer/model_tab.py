@@ -1,29 +1,23 @@
-from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
 
-import json
 import os
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from qgis.PyQt.QtCore import QRect, QSize, Qt, QTimer
 from qgis.PyQt.QtGui import QColor, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette
 from qgis.PyQt.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QDialog,
     QFileDialog,
-    QFrame,
-    QGridLayout,
     QHBoxLayout,
+    QFrame,
     QLabel,
-    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
     QShortcut,
     QSlider,
     QSplitter,
-    QSpinBox,
     QToolButton,
     QStackedWidget,
     QVBoxLayout,
@@ -39,9 +33,6 @@ from .dashboard_models import (
     DashboardPage,
     DashboardProject,
     FieldBindingItem,
-    ROLE_FILTERS,
-    ROLE_LEGEND,
-    ROLE_SIZE,
     ROLE_TOOLTIP,
     ROLE_VALUES,
     ROLE_X_AXIS,
@@ -65,7 +56,7 @@ from .model_view.model_builder_panel import (
     selected_builder_chart_type_from_buttons,
     visual_type_specs,
 )
-from .model_view.model_cards import _DialogDragHandle, _ModelCardAction, _ModelRecentCard
+from .model_view.model_cards import _ModelCardAction, _ModelRecentCard
 from .model_view.model_data_panel import (
     build_model_data_panel,
     desired_data_panel_width,
@@ -1852,7 +1843,6 @@ class ModelTab(QWidget):
             aggregation="count",
             top_n=max(1, int(self.builder_topn_spin.value() or 12)),
         ).normalized()
-        title = chart_type_label(chart_type)
         item = DashboardChartItem(
             item_id=item_id,
             origin="model_builder_v2",
@@ -3728,4 +3718,5 @@ class ModelTab(QWidget):
         self.filters_bar.setVisible(bool(self.edit_mode_btn.isChecked()) and self.filters_bar.isVisible())
         self._sync_mode_switch_state(bool(self.edit_mode_btn.isChecked()))
         self._update_undo_redo_buttons()
+
 

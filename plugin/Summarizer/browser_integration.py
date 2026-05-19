@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass
@@ -543,6 +546,7 @@ Notes:
   - This module registers the Summarizer Browser node and keeps saved/runtime connections synced.
   - The plugin host should call register_browser_provider() on initGui() and unregister_browser_provider() on unload().
 """
+
 
 
 

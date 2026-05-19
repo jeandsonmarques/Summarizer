@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any
@@ -153,3 +156,4 @@ def compute_layer_backed_pivot(
         self._current_pivot_result = None
         self.pivot_df = pd.DataFrame()
         self.status_label.setText(translate("Falha ao calcular a pivot: {exc}", exc=exc))
+

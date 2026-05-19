@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import copy
 import json
@@ -1923,3 +1926,4 @@ class DashboardItemWidget(QFrame):
         except Exception:
             log_exception("falha opcional ignorada")
         self._sync_drop_overlay()
+

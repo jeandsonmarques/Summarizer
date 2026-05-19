@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import json
 import os
@@ -2194,6 +2197,7 @@ class ExtendedConnectorsDialog(SlimDialogBase):
         close_btn.rejected.connect(self.reject)
         layout.addWidget(close_btn)
         _apply_i18n_widgets(self)
+
 
 
 

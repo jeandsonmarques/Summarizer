@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import re
@@ -375,3 +378,4 @@ def create_memory_table_from_dataframe(
         return add_layer_to_project_fn(layer)
     except Exception:
         return None
+

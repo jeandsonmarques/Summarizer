@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from qgis.PyQt.QtCore import QEasingCurve, QPoint, QRectF, Qt, QVariantAnimation, pyqtSignal
@@ -258,3 +261,4 @@ class _ModelModeToggle(QWidget):
         painter.setPen(QPen(QColor("#E5E7EB"), 0.8))
         painter.setBrush(QColor("#FFFFFF"))
         painter.drawEllipse(QRectF(thumb_x, thumb_y, thumb_diameter, thumb_diameter))
+

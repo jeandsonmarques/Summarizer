@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -28,3 +31,4 @@ class PivotExportSpec:
     row_fields: List[str] = field(default_factory=list)
     column_fields: List[str] = field(default_factory=list)
     filter_fields: List[str] = field(default_factory=list)
+

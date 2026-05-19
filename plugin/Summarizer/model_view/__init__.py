@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from importlib import import_module
@@ -30,3 +33,4 @@ def __dir__() -> list[str]:
 
 
 __all__ = list(_EXPORT_MAP.keys())
+

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import base64
@@ -282,3 +285,4 @@ def update_charts_preview(
         if pivot_result is not None:
             preview_data = summary_data_from_pivot_result(summary_data, pivot_result)
     chart_preview_text.setHtml(build_chart_preview_html(preview_data or {}))
+

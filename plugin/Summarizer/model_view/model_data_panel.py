@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import json
@@ -696,3 +699,4 @@ __all__ = [
     "text_width",
     "toggle_data_panel_state",
 ]
+

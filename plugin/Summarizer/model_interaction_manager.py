@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
@@ -475,3 +478,4 @@ class ModelInteractionManager(QObject):
                 "active": normalized.active,
             }
         return None
+

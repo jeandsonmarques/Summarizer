@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -284,3 +287,4 @@ def try_create_native_excel_pivot_with_controller(
         pivot_config,
         translate=translate,
     )
+

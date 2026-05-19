@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import json
@@ -79,3 +82,4 @@ def build_export_preset(
         "relationships": [dict(rel) for rel in available_relationships],
         "layout_state": dict(layout_state or {}),
     }
+

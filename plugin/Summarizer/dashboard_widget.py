@@ -1,4 +1,7 @@
-﻿import os
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import os
 import random
 from copy import deepcopy
 import uuid
@@ -1748,3 +1751,4 @@ class DashboardWidget(QWidget):
         if not base:
             base = "dashboard"
         return base
+

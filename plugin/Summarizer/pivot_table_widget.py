@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from functools import partial
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -2730,3 +2733,4 @@ class PivotTableWidget(QWidget):
 
     def _export_to_gpkg(self, path: str):
         _pivot_export_to_gpkg(self, path)
+

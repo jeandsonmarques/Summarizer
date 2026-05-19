@@ -1,4 +1,7 @@
-﻿import json
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import json
 import re
 import unicodedata
 from pathlib import Path
@@ -1038,7 +1041,7 @@ def current_locale() -> str:
 def _looks_like_mojibake(text: str) -> bool:
     # Intencional: estes marcadores detectam texto corrompido antes da tentativa de reparo.
     source = str(text or "")
-    return any(marker in source for marker in ("Ã", "Â", "�", "ï¿½"))
+    return any(marker in source for marker in ("Ã", "Â", "�", "�"))
 
 
 def _repair_mojibake(text: str) -> str:
@@ -1367,5 +1370,6 @@ def apply_widget_translations(root: QWidget, locale_code: str = ""):
                 continue
     except Exception:
         log_exception("falha opcional ignorada")
+
 
 

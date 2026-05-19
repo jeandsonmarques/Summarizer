@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import List
@@ -71,3 +74,4 @@ def build_result_preview_model(
         value_label=result.value_label,
         show_percent=bool(result.show_percent),
     )
+

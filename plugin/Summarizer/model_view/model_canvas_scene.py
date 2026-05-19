@@ -1,4 +1,7 @@
-﻿from typing import Optional
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from typing import Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt
 from qgis.PyQt.QtGui import QColor, QPainterPath, QPen
@@ -116,3 +119,4 @@ class ModelCanvasScene(QGraphicsScene):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+

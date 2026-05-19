@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
@@ -1871,3 +1874,4 @@ class DashboardCanvas(QWidget):
             if not compact or compact[-1] != point:
                 compact.append(point)
         return compact
+

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from qgis.PyQt.QtCore import QPoint
@@ -26,3 +29,4 @@ def event_point(event, *, prefer_global: bool = False) -> QPoint:
             return event.pos()
         except Exception:
             return QPoint()
+

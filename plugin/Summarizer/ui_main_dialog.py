@@ -1,4 +1,7 @@
-﻿from qgis.PyQt.QtCore import QSize, Qt
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from qgis.PyQt.QtCore import QSize, Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
@@ -280,6 +283,7 @@ class Ui_SummarizerDialog(object):
         self.verticalLayout.addWidget(self.central_frame, 1)
 
         self.stackedWidget.setCurrentWidget(self.pageResultados)
+
 
 
 

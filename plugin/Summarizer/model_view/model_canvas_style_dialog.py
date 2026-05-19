@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Dict, Optional
@@ -734,3 +737,4 @@ __all__ = [
     "open_canvas_style_dialog",
     "set_color_preview_chip",
 ]
+

@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import re
 from dataclasses import dataclass
@@ -499,3 +502,4 @@ class ModelRelationsPopup(QDialog):
             reasons.append("dimensao destino")
 
         return score, reasons
+

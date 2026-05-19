@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import os
@@ -159,3 +162,4 @@ class SummaryExportController:
             self.set_export_path(base + format_info["extension"])
         except Exception as exc:
             QMessageBox.critical(self.host, "Erro", f"Erro na exportação: {exc}")
+

@@ -1,4 +1,7 @@
-﻿from typing import Optional, TYPE_CHECKING
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from typing import Optional, TYPE_CHECKING
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt
 from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
@@ -174,3 +177,4 @@ class FieldItem(QGraphicsObject):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+

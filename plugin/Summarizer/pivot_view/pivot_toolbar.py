@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 # ruff: noqa: E501
 from __future__ import annotations
 
@@ -271,3 +274,4 @@ def update_undo_redo_buttons(widget) -> None:
         self.undo_btn.setEnabled(bool(has_data and self._history_undo))
     if hasattr(self, "redo_btn") and self.redo_btn is not None:
         self.redo_btn.setEnabled(bool(has_data and self._history_redo))
+

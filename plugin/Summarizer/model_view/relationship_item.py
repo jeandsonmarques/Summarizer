@@ -1,4 +1,7 @@
-﻿from typing import Dict, Optional
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from typing import Dict, Optional
 
 from qgis.PyQt.QtCore import QPointF, Qt, QRectF
 from qgis.PyQt.QtGui import QColor, QPainterPath, QPen, QFont, QPolygonF
@@ -192,3 +195,4 @@ class RelationshipItem(QGraphicsPathItem):
             painter.rotate(180)
             painter.drawPolygon(triangle)
         painter.restore()
+

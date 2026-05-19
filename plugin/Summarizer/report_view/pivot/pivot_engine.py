@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import statistics
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
@@ -358,3 +361,4 @@ class PivotEngine:
 
     def _sort_tuple_key(self, values: Tuple[Any, ...]):
         return tuple("" if value is None else str(value).lower() for value in values)
+

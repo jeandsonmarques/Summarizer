@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -1216,5 +1219,6 @@ def slim_get_int(
 
     accepted = dialog.exec_() == QDialog.Accepted and result["accepted"]
     return result["value"], accepted
+
 
 

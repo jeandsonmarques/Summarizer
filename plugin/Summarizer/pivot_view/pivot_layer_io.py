@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -580,3 +583,4 @@ __all__ = [
     "unique_layer_name",
     "variant_type_for_series",
 ]
+

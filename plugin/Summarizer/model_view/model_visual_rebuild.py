@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import uuid
@@ -678,3 +681,4 @@ __all__ = [
     "resolve_binding_items_for_layer",
     "safe_float",
 ]
+

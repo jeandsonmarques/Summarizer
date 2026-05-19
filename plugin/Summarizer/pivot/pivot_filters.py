@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import List, Sequence, Tuple
@@ -18,3 +21,4 @@ def filter_field_rows(field_names: Sequence[str], query: str) -> List[Tuple[str,
 
 
 __all__ = ["filter_field_rows", "token_matches_query"]
+

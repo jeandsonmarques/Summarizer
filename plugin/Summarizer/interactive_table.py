@@ -1,4 +1,7 @@
-﻿from qgis.PyQt.QtCore import Qt, QSortFilterProxyModel, QRegExp
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from qgis.PyQt.QtCore import Qt, QSortFilterProxyModel, QRegExp
 from qgis.PyQt.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -51,7 +54,7 @@ class InteractiveTable(QWidget):
         top = QHBoxLayout()
         top.addWidget(QLabel("Filtro:"))
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Digite para filtrar em todas as colunasâ€¦")
+        self.search.setPlaceholderText("Digite para filtrar em todas as colunas…")
         top.addWidget(self.search)
         self.status = QLabel("")
         top.addWidget(self.status)
@@ -124,4 +127,5 @@ class InteractiveTable(QWidget):
     def _refresh_status(self):
         vis = self.proxy.rowCount()
         self.status.setText(f"Mostrando {vis}/{self._rowcount}")
+
 

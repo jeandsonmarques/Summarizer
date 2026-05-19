@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Tuple
@@ -101,3 +104,4 @@ class PivotExportController:
 
 def export_pivot_table(widget):
     PivotExportController(widget).export_pivot_table()
+

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -467,3 +470,4 @@ class PresentationMapController(QObject):
             self.stateChanged.emit(bool(active))
         except Exception:
             log_exception("falha ao notificar estado do modo apresentacao")
+

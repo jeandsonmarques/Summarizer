@@ -1,4 +1,7 @@
-﻿from dataclasses import dataclass
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from dataclasses import dataclass
 from typing import List, Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt, QSize, QSettings, pyqtSignal
@@ -443,4 +446,5 @@ class SummarizerVisualWidget(QWidget):
             self.renderer.render(painter, rect, self.definition, self.theme)
         painter.end()
         return image
+
 

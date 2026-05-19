@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 import math
 from typing import Any, Dict, List, Optional
 
@@ -4787,5 +4790,6 @@ class ReportChartWidget(QWidget):
         else:
             text = f"{display_numeric:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return f"{getattr(self.chart_state, 'number_prefix', '') or ''}{text}{unit_suffix}{getattr(self.chart_state, 'number_suffix', '') or ''}"
+
 
 

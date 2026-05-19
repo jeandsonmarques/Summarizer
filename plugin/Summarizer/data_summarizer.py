@@ -1,4 +1,7 @@
-﻿import os
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import os
 import re
 import tempfile
 import uuid
@@ -2210,3 +2213,4 @@ class GetDataDialog(QDialog):
     # ------------------------------------------------------------------ API
     def results(self) -> List:
         return list(self._datasets)
+

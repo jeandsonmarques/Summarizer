@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 # ruff: noqa: I001
 from __future__ import annotations
 
@@ -531,3 +534,4 @@ def sync_fields_panel_width_to_content(
     )
     table_width = max(1, total_width - desired_width - builder_width)
     self.analytics_splitter.setSizes([desired_width, builder_width, table_width])
+

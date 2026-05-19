@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 ANIMATION_DURATIONS_MS = {
@@ -74,3 +77,4 @@ FONT_SCALE_PRESETS = [
 MAX_PIE_SLICES = 8
 MAX_RENDER_ITEMS = 160
 MAX_LABELS = 14
+

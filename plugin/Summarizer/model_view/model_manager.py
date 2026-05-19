@@ -1,4 +1,7 @@
-﻿import uuid
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import uuid
 from collections import deque
 from typing import Dict, List, Optional, Tuple
 
@@ -1831,5 +1834,6 @@ class ModelManager:
 
     def _on_zoom_changed(self, value: float):
         self._save_state()
+
 
 

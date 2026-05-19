@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from qgis.PyQt.QtCore import QEasingCurve, QPropertyAnimation, QRectF, Qt, pyqtProperty, pyqtSignal
@@ -175,3 +178,4 @@ class PivotSwitch(QWidget):
         painter.setBrush(QColor("#F8FAFC" if _is_dark_theme() else "#FFFFFF"))
         painter.drawEllipse(knob_rect)
         painter.end()
+

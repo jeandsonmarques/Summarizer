@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -56,3 +59,4 @@ class PivotBucket:
     values: List[Any] = field(default_factory=list)
     unique_values: set = field(default_factory=set)
     feature_ids: List[int] = field(default_factory=list)
+

@@ -1,4 +1,4 @@
-﻿/* Power BI Desktop inspired style for Summarizer */
+/* Power BI Desktop inspired style for Summarizer */
 
 * {
     font-family: ${font_ui_stack};

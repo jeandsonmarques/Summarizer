@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 from typing import Dict, List, Optional
 
@@ -224,3 +227,4 @@ class DashboardAddDialog(QDialog):
             _apply_i18n_widgets(self)
         except Exception:
             log_exception("falha opcional ignorada")
+

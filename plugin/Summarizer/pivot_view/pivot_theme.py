@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 # ruff: noqa: E501
 # QSS is copied literally from pivot_table_widget.py in this first extraction.
 
@@ -1466,3 +1469,4 @@ def enforce_filters_surface_backgrounds(widget) -> None:
             combo.setStyleSheet(combo_style)
         except Exception:
             log_exception("falha opcional ignorada")
+
