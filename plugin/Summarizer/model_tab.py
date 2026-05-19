@@ -5,7 +5,7 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
-from qgis.PyQt.QtCore import QRect, QSize, Qt
+from qgis.PyQt.QtCore import QRect, QSize, Qt, QTimer
 from qgis.PyQt.QtGui import QColor, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
@@ -89,6 +89,7 @@ from .model_view.model_project_controller import (
     snapshot_signature,
     snapshot_state,
 )
+from .model_view.model_toolbar import toolbar_visuals_visible_count
 from .model_view.model_theme import (
     _force_model_white_background,
     _is_dark_theme,
@@ -176,13 +177,14 @@ class ModelTab(QWidget):
         self._visual_side_width = _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
         self._data_panel_collapsed = False
         self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
+        self._toolbar_visuals_compact = False
         self._builder_selected_item_id: str = ""
         self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
         self._builder_visual_specs = visual_type_specs()
         self.builder_visual_buttons = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(4, 2, 4, 3)
+        root.setContentsMargins(0, 2, 4, 3)
         root.setSpacing(4)
 
         header_parts = build_model_header(
@@ -374,7 +376,7 @@ class ModelTab(QWidget):
         self.footer_bar.setFixedHeight(42)
         self.footer_bar.setVisible(False)
         footer_layout = QHBoxLayout(self.footer_bar)
-        footer_layout.setContentsMargins(4, 3, 4, 3)
+        footer_layout.setContentsMargins(0, 3, 0, 3)
         footer_layout.setSpacing(6)
 
         footer_layout.addStretch(1)
@@ -1783,6 +1785,7 @@ class ModelTab(QWidget):
         harmonize_widget_fonts(self)
         refresh_builder_data_fonts(self)
         self._refresh_theme_icons()
+        self._schedule_toolbar_visuals_strip_visibility()
 
     def _suggested_role_for_group(self, group: str) -> str:
         mapping = {
@@ -2320,13 +2323,95 @@ class ModelTab(QWidget):
     def _sync_toolbar_separator_visibility(self):
         visual_strip = getattr(self, "toolbar_visuals_strip", None)
         visual_types_visible = bool(visual_strip is not None and visual_strip.isVisible())
-        has_project = self.current_project is not None
         for separator, visible in (
             (getattr(self, "visual_types_leading_separator", None), visual_types_visible),
-            (getattr(self, "visual_types_trailing_separator", None), has_project),
+            (getattr(self, "visual_types_trailing_separator", None), visual_types_visible),
         ):
             if separator is not None:
                 separator.setVisible(bool(visible))
+
+    def _toolbar_visual_type_buttons(self) -> List[QToolButton]:
+        visual_strip = getattr(self, "toolbar_visuals_strip", None)
+        if visual_strip is None:
+            return []
+        layout = visual_strip.layout()
+        if layout is None:
+            return []
+        buttons: List[QToolButton] = []
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            if item is None:
+                continue
+            widget = item.widget()
+            if isinstance(widget, QToolButton):
+                buttons.append(widget)
+        return buttons
+
+    def _sync_toolbar_visuals_strip_visibility(self):
+        visual_strip = getattr(self, "toolbar_visuals_strip", None)
+        if visual_strip is None:
+            return
+        has_project = self.current_project is not None
+        edit_enabled = bool(self.edit_mode_btn.isChecked())
+        chart_mode_enabled = bool(self.create_chart_btn.isChecked())
+        base_visible = bool(has_project and edit_enabled and chart_mode_enabled)
+        buttons = self._toolbar_visual_type_buttons()
+        if not base_visible or not buttons:
+            for button in buttons:
+                button.setVisible(False)
+            visual_strip.setVisible(False)
+            self._sync_toolbar_separator_visibility()
+            for widget in (visual_strip, getattr(self, "toolbar_strip", None), self):
+                if widget is not None:
+                    try:
+                        widget.updateGeometry()
+                    except Exception:
+                        log_exception("falha opcional ignorada")
+            return
+
+        toolbar_strip = getattr(self, "toolbar_strip", None)
+        toolbar_layout = toolbar_strip.layout() if toolbar_strip is not None else None
+        total_width = int(toolbar_strip.width() or self.contentsRect().width() or self.width() or 0)
+        if total_width <= 0:
+            return
+        reserved_width = 0
+        reserved_spacing = 0
+        if toolbar_layout is not None:
+            for index in range(toolbar_layout.count()):
+                item = toolbar_layout.itemAt(index)
+                if item is None:
+                    continue
+                widget = item.widget()
+                if widget is None or widget is visual_strip:
+                    continue
+                if not widget.isVisible():
+                    continue
+                reserved_width += int(widget.sizeHint().width() or widget.width() or 0)
+            reserved_spacing = max(0, int(toolbar_layout.spacing() or 0)) * max(0, toolbar_layout.count() - 1)
+        available_width = max(0, total_width - reserved_width - reserved_spacing)
+        button_widths = [int(button.sizeHint().width() or button.width() or 0) for button in buttons]
+        visible_count = toolbar_visuals_visible_count(
+            available_width,
+            button_widths,
+            spacing=max(0, int(visual_strip.layout().spacing() if visual_strip.layout() is not None else 1)),
+            padding=max(0, int(visual_strip.layout().contentsMargins().left() if visual_strip.layout() is not None else 0)),
+        )
+        for index, button in enumerate(buttons):
+            button.setVisible(index < visible_count)
+        visual_strip.setVisible(visible_count > 0)
+        self._sync_toolbar_separator_visibility()
+        for widget in (visual_strip, toolbar_strip, self):
+            if widget is not None:
+                try:
+                    widget.updateGeometry()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+
+    def _schedule_toolbar_visuals_strip_visibility(self):
+        try:
+            QTimer.singleShot(0, self._sync_toolbar_visuals_strip_visibility)
+        except Exception:
+            self._sync_toolbar_visuals_strip_visibility()
 
     def _normalized_canvas_style(self, style: Optional[Dict[str, object]] = None) -> Dict[str, object]:
         return normalize_canvas_style(style, base=default_canvas_style())
@@ -3403,9 +3488,6 @@ class ModelTab(QWidget):
                 continue
         self.create_chart_btn.setVisible(enabled and self.current_project is not None)
         self.format_visual_btn.setVisible(enabled and self.current_project is not None)
-        if hasattr(self, "toolbar_visuals_strip"):
-            self.toolbar_visuals_strip.setVisible(enabled and self.current_project is not None)
-        self._sync_toolbar_separator_visibility()
         if enabled and self.current_project is not None:
             self._builder_panel_open = True
             self._visual_panel_open = False
@@ -3415,6 +3497,7 @@ class ModelTab(QWidget):
         self._set_builder_panel_open(self._builder_panel_open)
         self._set_visual_panel_open(self._visual_panel_open)
         self._set_data_panel_available(enabled and self.current_project is not None and self.body_stack.currentWidget() is self.canvas_page)
+        self._schedule_toolbar_visuals_strip_visibility()
         self._ensure_canvas_splitter_sizes()
         if self.edit_mode_btn.isChecked() != enabled:
             self.edit_mode_btn.blockSignals(True)
@@ -3493,9 +3576,7 @@ class ModelTab(QWidget):
         edit_enabled = bool(self.edit_mode_btn.isChecked())
         self.create_chart_btn.setVisible(show_project_actions and edit_enabled)
         self.format_visual_btn.setVisible(show_project_actions and edit_enabled)
-        if hasattr(self, "toolbar_visuals_strip"):
-            self.toolbar_visuals_strip.setVisible(show_project_actions and edit_enabled)
-        self._sync_toolbar_separator_visibility()
+        self._sync_toolbar_visuals_strip_visibility()
         self.mode_switch_wrap.setVisible(show_project_actions)
         if has_project:
             self._configure_toolbar_icon_button(self.new_btn, "Walker-New.svg", _rt("Novo"))
@@ -3511,6 +3592,10 @@ class ModelTab(QWidget):
         except Exception:
             log_exception("falha opcional ignorada")
         self._update_undo_redo_buttons()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_toolbar_visuals_strip_visibility()
 
     def _handle_canvas_changed(self, page_id: Optional[str] = None):
         if self._suspend_canvas_events:
