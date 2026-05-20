@@ -12,6 +12,7 @@ from qgis.PyQt.QtWidgets import QLineEdit
 
 from ..palette import TYPOGRAPHY
 from ..utils.logging_utils import log_exception
+from ..utils.resources import svg_icon
 
 INK_COLOR = "#252B33"
 
@@ -44,8 +45,8 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
     }
     search_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["search"], size=18, color_map=mono_icon_colors)
     clear_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["clear"], size=18, color_map=mono_icon_colors)
-    undo_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["undo"], size=18, color_map=mono_icon_colors)
-    redo_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["redo"], size=18, color_map=mono_icon_colors)
+    undo_icon = svg_icon("Walker-Undo.svg")
+    redo_icon = svg_icon("Walker-Redo.svg")
     dashboard_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["dashboard"], size=18, color_map=mono_icon_colors)
     edit_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_edit"], size=18, color_map=mono_icon_colors)
     sheet_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_sheet"], size=18, color_map=mono_icon_colors)
@@ -69,10 +70,10 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
                 border: none;
             }
             QPushButton#summaryToolbarButton {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 30px;
-                max-height: 30px;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
                 padding: 0px;
                 color: #E5E7EB;
                 background: transparent;
@@ -98,7 +99,7 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
                 color: #E5E7EB;
                 border-radius: 8px;
                 padding: 0 12px;
-                min-height: 30px;
+                min-height: 28px;
             }
             QPushButton[variant="secondary"]:hover {
                 background: #1F2A3D;
@@ -106,7 +107,7 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
                 color: #FFFFFF;
             }
             QLineEdit#summarySearch {
-                min-height: 30px;
+                min-height: 28px;
                 padding: 0 9px;
                 color: #F8FAFC;
                 background: #111827;
@@ -138,10 +139,10 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
                 border: none;
             }
             QPushButton#summaryToolbarButton {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 30px;
-                max-height: 30px;
+                min-width: 28px;
+                max-width: 28px;
+                min-height: 28px;
+                max-height: 28px;
                 padding: 0px;
                 color: #111827;
                 background: transparent;
@@ -166,14 +167,14 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
                 color: #111827;
                 border-radius: 8px;
                 padding: 0 12px;
-                min-height: 30px;
+                min-height: 28px;
             }
             QPushButton[variant="secondary"]:hover {
                 background: #F9FAFB;
                 border-color: #9CA3AF;
             }
             QLineEdit#summarySearch {
-                min-height: 30px;
+                min-height: 28px;
                 padding: 0 9px;
                 color: #4b5563;
                 background: #FFFFFF;
@@ -255,7 +256,7 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
         self._external_dashboard_button.setProperty("toolbarMode", "icon")
         self._external_dashboard_button.setProperty("iconOnly", True)
         self._external_dashboard_button.setProperty("toolbarPrimary", False)
-        self._external_dashboard_button.setFixedSize(30, 30)
+        self._external_dashboard_button.setFixedSize(28, 28)
         self._external_dashboard_button.setText("")
         self._external_dashboard_button.setToolTip(_rt("Dashboard interativo"))
         self._external_dashboard_button.setIcon(dashboard_icon)
@@ -583,7 +584,7 @@ def apply_styles(widget) -> None:
         }
         #summaryPivotRoot QLineEdit#summarySearch,
         #summaryPivotRoot QComboBox#summaryLayerCombo {
-            min-height: 30px;
+            min-height: 28px;
         }
         #summaryPivotRoot QLineEdit#summarySearch {
             padding-right: 8px;
@@ -634,10 +635,10 @@ def apply_styles(widget) -> None:
             text-align: left;
         }
         #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton {
-            min-width: 30px;
-            max-width: 30px;
-            min-height: 30px;
-            max-height: 30px;
+            min-width: 28px;
+            max-width: 28px;
+            min-height: 28px;
+            max-height: 28px;
             padding: 0px;
         }
         #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton:checked {
@@ -652,7 +653,7 @@ def apply_styles(widget) -> None:
             color: #111827;
         }
         #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch {
-            min-height: 30px;
+            min-height: 28px;
             padding: 0 9px;
             background: transparent;
             border: none;
@@ -1065,6 +1066,8 @@ def apply_styles(widget) -> None:
         }
         #summaryPivotRoot QTableView::item:alternate {
             background: #fcfcfd;
+            padding: 6px 9px;
+            border: none;
         }
         #summaryPivotRoot QTableView::item:selected {
             background: #E5E7EB;
@@ -1176,6 +1179,8 @@ def apply_styles(widget) -> None:
         }
         #summaryPivotRoot QTableView::item:alternate {
             background: #0F172A;
+            padding: 6px 9px;
+            border: none;
         }
         #summaryPivotRoot QTableView::item:selected,
         #summaryPivotRoot QTableView::item:alternate:selected,
@@ -1469,4 +1474,3 @@ def enforce_filters_surface_backgrounds(widget) -> None:
             combo.setStyleSheet(combo_style)
         except Exception:
             log_exception("falha opcional ignorada")
-

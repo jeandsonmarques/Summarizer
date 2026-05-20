@@ -637,6 +637,7 @@ class SummarizerDialog(QDialog):
         for name, builder in (
             ("model", self._ensure_model_page),
             ("integration", self._ensure_integration_page),
+            ("dashboard", self._ensure_dashboard_widget),
         ):
             if all(existing_name != name for existing_name, _ in builders):
                 builders.append((name, builder))
@@ -1165,11 +1166,6 @@ class SummarizerDialog(QDialog):
             from .dashboard_widget import DashboardWidget
 
             self.dashboard_widget = DashboardWidget()
-            try:
-                self.dashboard_widget.primary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
-                self.dashboard_widget.secondary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
-            except Exception:
-                log_exception("falha opcional ignorada")
         except Exception:
             self.dashboard_widget = None
             log_exception("falha opcional ignorada")
@@ -2035,10 +2031,6 @@ class SummarizerDialog(QDialog):
             return
 
         try:
-            pivot_result = None
-            if hasattr(pivot_widget, "get_current_pivot_result"):
-                pivot_result = pivot_widget.get_current_pivot_result()
-            pivot_df = pivot_widget.get_visible_pivot_dataframe()
             raw_df = getattr(pivot_widget, "raw_df", None)
             metadata = pivot_widget.get_summary_metadata()
             config = pivot_widget.get_current_configuration()
@@ -2059,14 +2051,32 @@ class SummarizerDialog(QDialog):
             )
             return
 
-        if pivot_result is not None and hasattr(dashboard_widget, "set_pivot_result"):
-            dashboard_widget.set_pivot_result(pivot_result)
-        elif raw_df is not None and not getattr(raw_df, "empty", True):
-            dashboard_widget.set_pivot_data(raw_df, metadata, config)
-        else:
-            dashboard_widget.set_pivot_data(pivot_df, metadata, config)
         dashboard_widget.show()
         dashboard_widget.raise_()
+
+        def _populate_dashboard():
+            try:
+                if hasattr(pivot_widget, "get_current_pivot_result"):
+                    pivot_result = pivot_widget.get_current_pivot_result()
+                else:
+                    pivot_result = None
+                if pivot_result is not None and hasattr(
+                    dashboard_widget, "set_pivot_result"
+                ):
+                    dashboard_widget.set_pivot_result(pivot_result)
+                elif raw_df is not None and not getattr(raw_df, "empty", True):
+                    dashboard_widget.set_pivot_data(raw_df, metadata, config)
+                else:
+                    pivot_df = pivot_widget.get_visible_pivot_dataframe()
+                    dashboard_widget.set_pivot_data(pivot_df, metadata, config)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    "Dashboard",
+                    f"NÃ£o foi possÃ­vel obter os dados filtrados da tabela dinÃ¢mica: {exc}",
+                )
+
+        QTimer.singleShot(0, _populate_dashboard)
 
     def show_about_dialog(self):
         dialog = SlimDialogBase(self, geometry_key="Summarizer/dialogs/about")
@@ -2213,4 +2223,3 @@ class GetDataDialog(QDialog):
     # ------------------------------------------------------------------ API
     def results(self) -> List:
         return list(self._datasets)
-

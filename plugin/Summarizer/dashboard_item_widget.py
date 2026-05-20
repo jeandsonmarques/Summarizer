@@ -1071,6 +1071,10 @@ class DashboardItemWidget(QFrame):
         self._sync_accessibility_tooltip()
         self.chart_widget.set_external_filters(self._external_filters)
         self.chart_widget.set_embedded_mode(True)
+        try:
+            self.chart_widget.refresh_animation_configuration()
+        except Exception:
+            log_exception("falha opcional ignorada")
         self.chart_widget.clear_selection(emit_signal=False)
         self.chart_widget.update()
         self.footer_label.setText(f"{self._item.origin} | {layout.width}x{layout.height}")
@@ -1926,4 +1930,3 @@ class DashboardItemWidget(QFrame):
         except Exception:
             log_exception("falha opcional ignorada")
         self._sync_drop_overlay()
-

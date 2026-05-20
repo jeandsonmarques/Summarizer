@@ -32,6 +32,9 @@ from qgis.PyQt.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableView,
     QToolButton,
     QVBoxLayout,
@@ -196,6 +199,46 @@ class _PivotFilterProxy(QSortFilterProxyModel):
                 text, Qt.CaseInsensitive, QRegExp.FixedString
             )
         self.invalidateFilter()
+
+
+class _PivotTableCellDelegate(QStyledItemDelegate):
+    """Draw pivot cells with stable text margins across zebra rows."""
+
+    HORIZONTAL_PADDING = 9
+
+    def paint(self, painter, option, index):
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        text = opt.text
+        opt.text = ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, widget)
+
+        alignment = index.data(Qt.TextAlignmentRole)
+        if alignment is None:
+            alignment = Qt.AlignLeft | Qt.AlignVCenter
+        text_rect = option.rect.adjusted(
+            self.HORIZONTAL_PADDING,
+            0,
+            -self.HORIZONTAL_PADDING,
+            0,
+        )
+        elided_text = opt.fontMetrics.elidedText(
+            text,
+            opt.textElideMode,
+            max(0, text_rect.width()),
+        )
+        color_role = (
+            QPalette.HighlightedText
+            if opt.state & QStyle.State_Selected
+            else QPalette.Text
+        )
+        painter.save()
+        painter.setFont(opt.font)
+        painter.setPen(opt.palette.color(color_role))
+        painter.drawText(text_rect, alignment, elided_text)
+        painter.restore()
 
 
 _SIDEBAR_COLLAPSED_KEY = "Summarizer/pivot/sidebarCollapsed"
@@ -431,7 +474,7 @@ class PivotTableWidget(QWidget):
         helper_text_font.setPixelSize(helper_text_px)
         helper_text_font.setWeight(QFont.Normal)
         root = QVBoxLayout(self)
-        root.setContentsMargins(4, 2, 4, 3)
+        root.setContentsMargins(0, 2, 4, 3)
         root.setSpacing(4)
         root.setSizeConstraint(QLayout.SetNoConstraint)
 
@@ -796,6 +839,7 @@ class PivotTableWidget(QWidget):
         self.table_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table_view.setFocusPolicy(Qt.NoFocus)
+        self.table_view.setItemDelegate(_PivotTableCellDelegate(self.table_view))
         self.table_view.horizontalHeader().setStretchLastSection(True)
         self.table_view.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.table_view.clicked.connect(self._handle_table_cell_clicked)
@@ -943,6 +987,7 @@ class PivotTableWidget(QWidget):
         self.include_nulls_label.setFont(body_text_font)
         self.include_nulls_check = PivotSwitch()
         self.include_nulls_check.setObjectName("summaryAdvancedCheck")
+        self.include_nulls_check.setChecked(True)
         self.include_nulls_check.toggled.connect(self._maybe_refresh)
 
         include_nulls_row = QHBoxLayout()
@@ -1517,6 +1562,7 @@ class PivotTableWidget(QWidget):
             self._update_meta_label(metadata, summary_data.get("filter_description"))
             self._populate_field_panel(df)
             _pivot_restore_saved_configuration_for_metadata(self, metadata)
+            self.include_nulls_check.setChecked(True)
         finally:
             self._block_updates = False
 
@@ -2529,7 +2575,7 @@ class PivotTableWidget(QWidget):
         button.setObjectName("summaryToolbarButton")
         button.setProperty("toolbarMode", "icon")
         button.setProperty("iconOnly", True)
-        button.setFixedSize(30, 30)
+        button.setFixedSize(28, 28)
         target_index = self.toolbar_strip_layout.indexOf(self.edit_mode_btn)
         insert_index = target_index if target_index != -1 else self.toolbar_strip_layout.count()
         self.toolbar_strip_layout.insertWidget(insert_index, button)
@@ -2733,4 +2779,3 @@ class PivotTableWidget(QWidget):
 
     def _export_to_gpkg(self, path: str):
         _pivot_export_to_gpkg(self, path)
-

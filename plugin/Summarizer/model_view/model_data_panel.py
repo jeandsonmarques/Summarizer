@@ -103,7 +103,7 @@ MODEL_FIELD_ROLE_OFFSET = 41
 
 def model_fields_panel_font():
     font = ui_font()
-    font.setPixelSize(12)
+    font.setPixelSize(11)
     return font
 
 
@@ -387,11 +387,11 @@ def build_model_data_panel(
         QComboBox#ModelBuilderCombo {
             min-height: 28px;
             border: 1px solid rgba(17, 24, 39, 0.09);
-            border-radius: 6px;
+            border-radius: 5px;
             background: #FFFFFF;
-            padding: 3px 8px;
+            padding: 2px 7px;
             color: #111827;
-            font-size: 12px;
+            font-size: 11px;
         }
         QListWidget#ModelBuilderFieldList {
             border: 1px solid rgba(17, 24, 39, 0.09);
@@ -399,14 +399,15 @@ def build_model_data_panel(
             background: #FFFFFF;
             padding: 2px;
             color: #111827;
-            font-size: 12px;
+            font-size: 11px;
             outline: 0px;
         }
         QWidget#ModelBuilderFieldListViewport {
             background: #FFFFFF;
         }
         QListWidget#ModelBuilderFieldList::item {
-            padding: 4px 6px;
+            min-height: 22px;
+            padding: 2px 5px;
             margin: 0px;
             border-radius: 2px;
         }
@@ -446,14 +447,14 @@ def build_model_data_panel(
         QLabel#ModelBuilderFieldLabel {
             color: #6B7280;
             font-size: 10px;
-            font-weight: 500;
+            font-weight: 400;
         }
         """
     )
 
     layout = QVBoxLayout(panel)
-    layout.setContentsMargins(8, 8, 8, 8)
-    layout.setSpacing(6)
+    layout.setContentsMargins(6, 6, 6, 6)
+    layout.setSpacing(5)
 
     data_panel_header = QWidget(panel)
     data_panel_header.setObjectName("ModelDataPanelHeader")
@@ -483,14 +484,14 @@ def build_model_data_panel(
     _force_model_white_background(data_panel_body)
     body_layout = QVBoxLayout(data_panel_body)
     body_layout.setContentsMargins(0, 0, 0, 0)
-    body_layout.setSpacing(6)
+    body_layout.setSpacing(5)
 
     layer_card = QFrame(panel)
     layer_card.setObjectName("ModelBuilderDataSection")
     _force_model_white_background(layer_card)
     layer_layout = QHBoxLayout(layer_card)
     layer_layout.setContentsMargins(0, 0, 0, 0)
-    layer_layout.setSpacing(8)
+    layer_layout.setSpacing(6)
     layer_title = QLabel(_rt("Camada"), layer_card)
     layer_title.setObjectName("ModelBuilderFieldLabel")
     layer_layout.addWidget(layer_title, 0, Qt.AlignVCenter)
@@ -526,7 +527,7 @@ def build_model_data_panel(
     _force_model_white_background(builder_fields_list.viewport())
     builder_fields_list.setMinimumHeight(220)
     builder_fields_list.setUniformItemSizes(True)
-    builder_fields_list.setSpacing(1)
+    builder_fields_list.setSpacing(0)
     builder_fields_list.setIconSize(QSize(14, 14))
     builder_fields_list.fieldActivated.connect(handle_field_list_activation)
     fields_body_layout.addWidget(builder_fields_list, 1)
@@ -699,4 +700,3 @@ __all__ = [
     "text_width",
     "toggle_data_panel_state",
 ]
-

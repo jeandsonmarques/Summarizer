@@ -584,35 +584,16 @@ class DashboardWidget(QWidget):
             previous_chart_type = str(getattr(items_by_role["chart"].visual_state, "chart_type", "") or "").strip().lower()
         chart_type = self._next_dashboard_chart_type(previous_chart_type)
 
-        total_item = self._dashboard_item_from_payload(
-            role="total",
-            payload=self._dashboard_total_payload(chart_df),
-            layout=DashboardItemLayout(x=24, y=24, width=300, height=240),
-            item_id="dashboard-total",
-            chart_type="card",
-            title="Total",
-            item=items_by_role.get("total"),
-        )
         chart_item = self._dashboard_item_from_payload(
             role="chart",
             payload=self._dashboard_chart_payload(chart_df, chart_type),
-            layout=DashboardItemLayout(x=344, y=24, width=560, height=360),
+            layout=DashboardItemLayout(x=32, y=24, width=880, height=500),
             item_id="dashboard-chart",
             chart_type=chart_type,
             title="Gráfico",
             item=items_by_role.get("chart"),
         )
-        table_item = self._dashboard_item_from_payload(
-            role="table",
-            payload=self._dashboard_table_payload(chart_df),
-            layout=DashboardItemLayout(x=24, y=288, width=880, height=360),
-            item_id="dashboard-table",
-            chart_type="matrix",
-            title="Tabela",
-            item=items_by_role.get("table"),
-        )
-
-        updated_items: List[DashboardChartItem] = [total_item, chart_item, table_item]
+        updated_items: List[DashboardChartItem] = [chart_item]
         updated_items.extend(extra_items)
         try:
             self.dashboard_canvas.update_items(updated_items)
@@ -1561,6 +1542,18 @@ class DashboardWidget(QWidget):
         self._update_table()
 
     def _update_table(self):
+        if (
+            not self.details_table.isVisible()
+            and not self.table_hint_label.isVisible()
+            and not self.table_filter_label.isVisible()
+        ):
+            self.details_table.clear()
+            self.details_table.setRowCount(0)
+            self.details_table.setColumnCount(0)
+            self.table_hint_label.setText("")
+            self.table_filter_label.setText("")
+            return
+
         df = self.current_view_df.copy()
         max_rows = min(len(df), 200)
         df = df.head(max_rows)
@@ -1751,4 +1744,3 @@ class DashboardWidget(QWidget):
         if not base:
             base = "dashboard"
         return base
-

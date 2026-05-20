@@ -1928,6 +1928,7 @@ class ReportChartWidget(QWidget):
             raw_value = item.get("category")
         if raw_value in (None, ""):
             raw_value = item.get("key")
+        selection_key = str(item.get("key") or self._category_key(raw_value)).strip()
         return {
             "chart_id": self._current_chart_id(),
             "source_id": self._current_source_id(),
@@ -1946,6 +1947,13 @@ class ReportChartWidget(QWidget):
             ).strip(),
             "values": self._flatten_values(raw_value),
             "feature_ids": [int(fid) for fid in values if fid is not None],
+            "key": selection_key,
+            "current_text": str(
+                item.get("current_text")
+                or item.get("display_label")
+                or item.get("category")
+                or ""
+            ),
             "display_label": str(item.get("display_label") or item.get("category") or ""),
             "raw_category": item.get("raw_category"),
             "category": str(item.get("category") or ""),
@@ -4790,6 +4798,5 @@ class ReportChartWidget(QWidget):
         else:
             text = f"{display_numeric:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return f"{getattr(self.chart_state, 'number_prefix', '') or ''}{text}{unit_suffix}{getattr(self.chart_state, 'number_suffix', '') or ''}"
-
 
 

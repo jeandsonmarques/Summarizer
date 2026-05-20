@@ -164,11 +164,12 @@ class ModelTab(QWidget):
         self._history_limit = 80
         self._builder_panel_open = False
         self._visual_panel_open = False
-        self._visual_side_collapsed = False
+        self._visual_side_collapsed = True
         self._visual_side_width = _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
-        self._data_panel_collapsed = False
+        self._data_panel_collapsed = True
         self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
         self._toolbar_visuals_compact = False
+        self._toolbar_visuals_sync_retries = 0
         self._builder_selected_item_id: str = ""
         self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
         self._builder_visual_specs = visual_type_specs()
@@ -407,6 +408,7 @@ class ModelTab(QWidget):
         self.redo_btn.clicked.connect(self._redo_last_action)
         self.create_chart_btn.toggled.connect(self._handle_create_chart_toggle)
         self.format_visual_btn.toggled.connect(self._handle_format_visual_toggle)
+        self.data_fields_btn.toggled.connect(self._handle_data_fields_toggle)
         self.settings_btn.clicked.connect(self._open_canvas_style_settings)
         self.clear_filters_btn.clicked.connect(self._clear_model_filters)
         self.zoom_out_btn.clicked.connect(self._zoom_canvas_out)
@@ -735,6 +737,22 @@ class ModelTab(QWidget):
                 background: #FFFFFF;
                 border: none;
             }
+            QFrame#ModelBuilderDataPanel QLabel#ModelBuilderTitle {
+                color: #4B5563;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QFrame#ModelBuilderDataPanel QLabel#ModelBuilderFieldLabel {
+                color: #6B7280;
+                font-size: 10px;
+                font-weight: 400;
+            }
+            QFrame#ModelBuilderDataPanel QComboBox#ModelBuilderCombo {
+                min-height: 28px;
+                border-radius: 5px;
+                padding: 2px 7px;
+                font-size: 11px;
+            }
             QFrame#ModelBuilderFieldsHeader {
                 background: #FFFFFF;
                 border: none;
@@ -789,6 +807,11 @@ class ModelTab(QWidget):
                 outline: 0;
                 font-size: 12px;
             }
+            QFrame#ModelBuilderDataPanel QListWidget#ModelBuilderFieldList {
+                border-radius: 2px;
+                padding: 2px;
+                font-size: 11px;
+            }
             QWidget#ModelBuilderFieldListViewport {
                 background: #FFFFFF;
             }
@@ -796,6 +819,10 @@ class ModelTab(QWidget):
                 padding: 2px 6px;
                 margin: 0;
                 border-radius: 2px;
+            }
+            QFrame#ModelBuilderDataPanel QListWidget#ModelBuilderFieldList::item {
+                min-height: 22px;
+                padding: 2px 5px;
             }
             QListWidget#ModelBuilderFieldList::item:hover {
                 background: rgba(17, 24, 39, 0.035);
@@ -1199,6 +1226,7 @@ class ModelTab(QWidget):
             getattr(self, "export_btn", None),
             getattr(self, "create_chart_btn", None),
             getattr(self, "format_visual_btn", None),
+            getattr(self, "data_fields_btn", None),
             getattr(self, "edit_mode_btn", None),
             getattr(self, "settings_btn", None),
             getattr(self, "close_project_btn", None),
@@ -1237,6 +1265,12 @@ class ModelTab(QWidget):
                 log_exception("falha opcional ignorada")
         if getattr(self, "data_panel_icon", None) is not None:
             self.data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
+        if getattr(self, "data_fields_btn", None) is not None:
+            try:
+                self.data_fields_btn.setIcon(_model_panel_fields_icon(18))
+                self.data_fields_btn.setIconSize(QSize(18, 18))
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def _build_visual_type_buttons(self, parent: QWidget, layout, *, button_size: int = 24, icon_size: int = 15):
         self.builder_visual_buttons = build_visual_type_buttons(
@@ -1440,6 +1474,16 @@ class ModelTab(QWidget):
                 font-size: 12px;
                 font-weight: 500;
             }
+            QFrame#ModelBuilderDataPanel QLabel#ModelBuilderTitle {
+                color: __TEXT__;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QFrame#ModelBuilderDataPanel QLabel#ModelBuilderFieldLabel {
+                color: __MUTED__;
+                font-size: 10px;
+                font-weight: 400;
+            }
             QListWidget#ModelBuilderFieldList {
                 background: __SURFACE_2__;
                 color: __TEXT__;
@@ -1447,6 +1491,9 @@ class ModelTab(QWidget):
                 border-radius: 2px;
                 padding: 2px;
                 outline: 0;
+            }
+            QFrame#ModelBuilderDataPanel QListWidget#ModelBuilderFieldList {
+                font-size: 11px;
             }
             QWidget#ModelBuilderFieldListViewport {
                 background: __SURFACE_2__;
@@ -1457,6 +1504,10 @@ class ModelTab(QWidget):
                 border: none;
                 padding: 4px 6px;
                 margin: 0px;
+            }
+            QFrame#ModelBuilderDataPanel QListWidget#ModelBuilderFieldList::item {
+                min-height: 22px;
+                padding: 2px 5px;
             }
             QListWidget#ModelBuilderFieldList::item:hover {
                 background: __HOVER__;
@@ -1476,6 +1527,12 @@ class ModelTab(QWidget):
                 border-radius: 2px;
                 selection-background-color: __CHECKED__;
                 selection-color: __TEXT__;
+            }
+            QFrame#ModelBuilderDataPanel QComboBox#ModelBuilderCombo {
+                min-height: 28px;
+                border-radius: 5px;
+                padding: 2px 7px;
+                font-size: 11px;
             }
             QComboBox#ModelBindingAggregationCombo {
                 min-width: 58px;
@@ -1859,6 +1916,7 @@ class ModelTab(QWidget):
         self._commit_history_if_changed()
         self._refresh_ui_state()
         self._set_builder_panel_open(True, focus=False)
+        self._expand_data_panel_for_new_chart()
         self._sync_builder_selection_state()
 
     def _select_visual_type_from_builder(self, chart_type: str):
@@ -1899,6 +1957,26 @@ class ModelTab(QWidget):
         self._sync_data_panel_chrome()
         self._ensure_canvas_splitter_sizes()
 
+    def _reset_model_side_panels_collapsed(self):
+        self._visual_side_collapsed = True
+        self._data_panel_collapsed = True
+        if hasattr(self, "visual_side_panel"):
+            self._sync_visual_side_panel_chrome()
+        if hasattr(self, "data_panel"):
+            self._sync_data_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
+    def _expand_data_panel_for_new_chart(self):
+        in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
+        if not (bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page):
+            return
+        self._data_panel_collapsed = False
+        if not getattr(self, "_data_panel_width", 0):
+            self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
+        self._set_data_panel_available(True)
+        self._sync_data_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
     def _toggle_data_panel(self):
         toggle_data_panel_state(
             self,
@@ -1910,12 +1988,43 @@ class ModelTab(QWidget):
         self._sync_data_panel_chrome()
         self._ensure_canvas_splitter_sizes()
 
+    def _set_data_panel_collapsed(self, collapsed: bool):
+        if not getattr(self, "_data_panel_collapsed", False):
+            sizes = self.canvas_splitter.sizes() if hasattr(self, "canvas_splitter") else []
+            if len(sizes) >= 3 and sizes[2] > _MODEL_DATA_PANEL_COLLAPSED_WIDTH:
+                self._data_panel_width = min(
+                    _MODEL_DATA_PANEL_MAX_WIDTH,
+                    max(_MODEL_DATA_PANEL_MIN_WIDTH, int(sizes[2])),
+                )
+        elif not getattr(self, "_data_panel_width", 0):
+            self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
+        self._data_panel_collapsed = bool(collapsed)
+        self._set_data_panel_available(True)
+        self._sync_data_panel_chrome()
+        self._ensure_canvas_splitter_sizes()
+
+    def _sync_data_fields_button_state(self):
+        button = getattr(self, "data_fields_btn", None)
+        if button is None:
+            return
+        checked = bool(
+            getattr(self, "data_panel", None) is not None
+            and self.data_panel.isVisible()
+            and not getattr(self, "_data_panel_collapsed", False)
+        )
+        button.blockSignals(True)
+        try:
+            button.setChecked(checked)
+        finally:
+            button.blockSignals(False)
+
     def _set_data_panel_available(self, available: bool):
         if not hasattr(self, "data_panel"):
             return
         self.data_panel.setVisible(bool(available))
         if available:
             self._sync_data_panel_chrome()
+        self._sync_data_fields_button_state()
 
     def _sync_data_panel_chrome(self):
         sync_data_panel_chrome(
@@ -1925,6 +2034,7 @@ class ModelTab(QWidget):
             max_width=_MODEL_DATA_PANEL_MAX_WIDTH,
         )
         self._apply_collapsed_panel_chrome()
+        self._sync_data_fields_button_state()
 
     def _active_selected_binding(self) -> Optional[DashboardChartBinding]:
         item = self._selected_canvas_item()
@@ -2363,7 +2473,15 @@ class ModelTab(QWidget):
         toolbar_layout = toolbar_strip.layout() if toolbar_strip is not None else None
         total_width = int(toolbar_strip.width() or self.contentsRect().width() or self.width() or 0)
         if total_width <= 0:
+            retries = int(getattr(self, "_toolbar_visuals_sync_retries", 0) or 0)
+            if retries < 3:
+                self._toolbar_visuals_sync_retries = retries + 1
+                try:
+                    QTimer.singleShot(50, self._sync_toolbar_visuals_strip_visibility)
+                except Exception:
+                    log_exception("falha opcional ignorada")
             return
+        self._toolbar_visuals_sync_retries = 0
         reserved_width = 0
         reserved_spacing = 0
         if toolbar_layout is not None:
@@ -3034,6 +3152,7 @@ class ModelTab(QWidget):
         self._dirty = True
         self._commit_history_if_changed()
         self._refresh_ui_state()
+        self._expand_data_panel_for_new_chart()
 
     def _open_canvas_context_menu(self, global_pos, page_id: Optional[str] = None):
         menu = QMenu(self)
@@ -3139,6 +3258,7 @@ class ModelTab(QWidget):
         self._refresh_ui_state()
 
     def _create_blank_project(self, name: str):
+        self._reset_model_side_panels_collapsed()
         page = DashboardPage(title=self._page_display_title(1)).normalized()
         self.current_project = DashboardProject(
             name=str(name or _rt("Novo painel")),
@@ -3175,6 +3295,7 @@ class ModelTab(QWidget):
             slim_message(self, _rt("Model"), _rt("Nao foi possivel abrir o painel: {error}", error=exc))
             return
         project = self._normalize_loaded_project(project)
+        self._reset_model_side_panels_collapsed()
         self.current_project = project
         self.current_path = self.store.normalize_path(path)
         self._dirty = False
@@ -3351,8 +3472,11 @@ class ModelTab(QWidget):
 
     def _set_builder_panel_open(self, enabled: bool, *, focus: bool = False):
         in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
-        active = bool(enabled) and bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page
-        self._builder_panel_open = bool(active)
+        requested = bool(enabled)
+        can_edit_project = bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None)
+        pending_open = requested and can_edit_project and not in_canvas_page
+        active = requested and can_edit_project and in_canvas_page
+        self._builder_panel_open = bool(active or pending_open)
         if active:
             self._visual_panel_open = False
             self._active_visual_side_tab = "build"
@@ -3363,8 +3487,8 @@ class ModelTab(QWidget):
         self._ensure_canvas_splitter_sizes()
         self.create_chart_btn.blockSignals(True)
         try:
-            if self.create_chart_btn.isChecked() != active:
-                self.create_chart_btn.setChecked(active)
+            if self.create_chart_btn.isChecked() != self._builder_panel_open:
+                self.create_chart_btn.setChecked(self._builder_panel_open)
         finally:
             self.create_chart_btn.blockSignals(False)
         self.format_visual_btn.blockSignals(True)
@@ -3378,9 +3502,20 @@ class ModelTab(QWidget):
                 self.builder_layer_combo.setFocus(Qt.TabFocusReason)
             except Exception:
                 log_exception("falha opcional ignorada")
+        self._schedule_toolbar_visuals_strip_visibility()
 
     def _handle_create_chart_toggle(self, checked: bool):
         self._set_builder_panel_open(bool(checked), focus=bool(checked))
+        if checked:
+            self._expand_data_panel_for_new_chart()
+
+    def _handle_data_fields_toggle(self, checked: bool):
+        in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
+        available = bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page
+        if not available:
+            self._sync_data_fields_button_state()
+            return
+        self._set_data_panel_collapsed(not bool(checked))
 
     def _ensure_canvas_splitter_sizes(self):
         splitter = getattr(self, "canvas_splitter", None)
@@ -3478,6 +3613,7 @@ class ModelTab(QWidget):
                 continue
         self.create_chart_btn.setVisible(enabled and self.current_project is not None)
         self.format_visual_btn.setVisible(enabled and self.current_project is not None)
+        self.data_fields_btn.setVisible(enabled and self.current_project is not None)
         if enabled and self.current_project is not None:
             self._builder_panel_open = True
             self._visual_panel_open = False
@@ -3559,6 +3695,7 @@ class ModelTab(QWidget):
             self.export_btn,
             self.edit_mode_btn,
             self.format_visual_btn,
+            self.data_fields_btn,
             self.settings_btn,
             self.close_project_btn,
         ):
@@ -3566,6 +3703,7 @@ class ModelTab(QWidget):
         edit_enabled = bool(self.edit_mode_btn.isChecked())
         self.create_chart_btn.setVisible(show_project_actions and edit_enabled)
         self.format_visual_btn.setVisible(show_project_actions and edit_enabled)
+        self.data_fields_btn.setVisible(show_project_actions and edit_enabled)
         self._sync_toolbar_visuals_strip_visibility()
         self.mode_switch_wrap.setVisible(show_project_actions)
         if has_project:
@@ -3643,7 +3781,7 @@ class ModelTab(QWidget):
             summary = active_canvas.interaction_manager.active_filters_summary()
         summary = summary or {"items": [], "count": 0}
         items = list(summary.get("items") or [])
-        if not self.edit_mode_btn.isChecked() or not items:
+        if not items:
             self.filters_label.clear()
             self.clear_filters_btn.setVisible(False)
             self.filters_bar.setVisible(False)
@@ -3718,5 +3856,3 @@ class ModelTab(QWidget):
         self.filters_bar.setVisible(bool(self.edit_mode_btn.isChecked()) and self.filters_bar.isVisible())
         self._sync_mode_switch_state(bool(self.edit_mode_btn.isChecked()))
         self._update_undo_redo_buttons()
-
-

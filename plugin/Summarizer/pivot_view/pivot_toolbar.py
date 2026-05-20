@@ -136,7 +136,7 @@ def build_toolbar(
         button.setObjectName("summaryToolbarButton")
         button.setProperty("toolbarMode", "icon")
         button.setProperty("iconOnly", True)
-        button.setFixedSize(30, 30)
+        button.setFixedSize(28, 28)
         button.setCursor(Qt.PointingHandCursor)
         button.setText("")
         button.setFlat(True)
@@ -176,6 +176,7 @@ def build_toolbar(
     self.toolbar_strip.setObjectName("summaryToolbarStrip")
     self.toolbar_strip.setAttribute(Qt.WA_StyledBackground, True)
     self.toolbar_strip.setFrameShape(QFrame.StyledPanel)
+    self.toolbar_strip.setMinimumHeight(44)
     self.toolbar_strip.setStyleSheet(
         """
         QFrame#summaryToolbarStrip {
@@ -191,10 +192,10 @@ def build_toolbar(
             border: none;
         }
         QPushButton#summaryToolbarButton {
-            min-width: 30px;
-            max-width: 30px;
-            min-height: 30px;
-            max-height: 30px;
+            min-width: 28px;
+            max-width: 28px;
+            min-height: 28px;
+            max-height: 28px;
             padding: 0px;
             color: #111827;
             background: transparent;
@@ -219,14 +220,14 @@ def build_toolbar(
             color: #111827;
             border-radius: 8px;
             padding: 0 12px;
-            min-height: 30px;
+            min-height: 28px;
         }
         QPushButton[variant="secondary"]:hover {
             background: #F9FAFB;
             border-color: #9CA3AF;
         }
         QLineEdit#summarySearch {
-            min-height: 30px;
+            min-height: 28px;
             padding: 0 9px;
             color: #4b5563;
             background: #FFFFFF;
@@ -257,7 +258,7 @@ def build_toolbar(
     self.search_input = QLineEdit()
     self.search_input.setObjectName("summarySearch")
     self.search_input.setPlaceholderText(_rt("Buscar"))
-    self.search_input.setFixedHeight(30)
+    self.search_input.setFixedHeight(28)
     self.search_input.setMinimumWidth(166)
     self.search_input.setMaximumWidth(220)
     self.search_input.setFont(body_text_font)
@@ -274,4 +275,3 @@ def update_undo_redo_buttons(widget) -> None:
         self.undo_btn.setEnabled(bool(has_data and self._history_undo))
     if hasattr(self, "redo_btn") and self.redo_btn is not None:
         self.redo_btn.setEnabled(bool(has_data and self._history_redo))
-
