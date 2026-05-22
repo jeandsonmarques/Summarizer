@@ -315,14 +315,8 @@ def desired_data_panel_width(
                 continue
             text = str(item.text() or item.data(Qt.UserRole + 2) or "")
             max_text = max(max_text, text_width(metrics, text))
-        layer_text = ""
-        try:
-            layer_text = layer_combo.currentText()
-        except Exception:
-            layer_text = ""
-        max_text = max(max_text, text_width(metrics, layer_text))
         icon_width = int(fields_list.iconSize().width() or 14)
-        chrome = icon_width + 54
+        chrome = icon_width + 48
         desired = max(minimum_width, max_text + chrome)
         return min(maximum_width, desired)
     except Exception:

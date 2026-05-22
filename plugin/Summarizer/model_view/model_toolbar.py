@@ -4,6 +4,21 @@
 from typing import Sequence
 
 
+def toolbar_visuals_should_be_visible(
+    *,
+    has_project: bool,
+    edit_enabled: bool,
+    create_chart_checked: bool,
+    builder_panel_open: bool,
+    visual_panel_open: bool,
+) -> bool:
+    return bool(
+        has_project
+        and edit_enabled
+        and (create_chart_checked or builder_panel_open or visual_panel_open)
+    )
+
+
 def toolbar_visuals_visible_count(
     available_width: int,
     button_widths: Sequence[int],
@@ -29,6 +44,6 @@ def toolbar_visuals_visible_count(
 
 
 __all__ = [
+    "toolbar_visuals_should_be_visible",
     "toolbar_visuals_visible_count",
 ]
-

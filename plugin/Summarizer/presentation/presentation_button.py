@@ -47,26 +47,28 @@ def create_presentation_button(parent: Optional[QWidget], controller) -> QToolBu
     button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     button.setText("Apresentar")
     button.setToolTip("Apresentar com mapa ao lado do dashboard")
-    button.setIconSize(QSize(16, 16))
+    button.setIconSize(QSize(15, 15))
     button.setStyleSheet(
         """
         QToolButton#PresentationMapButton {
-            padding: 4px 10px;
+            padding: 3px 7px;
             border: 1px solid transparent;
             border-radius: 6px;
             background: transparent;
+            font-size: 12px;
+            min-height: 22px;
         }
         QToolButton#PresentationMapButton:hover {
-            background: rgba(108, 76, 241, 0.08);
+            background: rgba(17, 24, 39, 0.05);
         }
         QToolButton#PresentationMapButton:checked {
-            background: rgba(108, 76, 241, 0.24);
-            border-color: rgba(108, 76, 241, 0.62);
-            color: #2b1f75;
+            background: rgba(17, 24, 39, 0.08);
+            border-color: rgba(17, 24, 39, 0.18);
+            color: #111827;
             font-weight: 400;
         }
         QToolButton#PresentationMapButton:checked:hover {
-            background: rgba(108, 76, 241, 0.30);
+            background: rgba(17, 24, 39, 0.12);
         }
         """
     )
@@ -99,4 +101,3 @@ def _sync_checked_state(button: QToolButton, checked: bool):
             button.blockSignals(False)
         except Exception:
             pass
-

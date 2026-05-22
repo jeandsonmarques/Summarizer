@@ -41,8 +41,8 @@ class Ui_SummarizerDialog(object):
         self.header_widget.setObjectName("headerBar")
         self.header_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         header_layout = QHBoxLayout(self.header_widget)
-        header_layout.setContentsMargins(12, 10, 12, 10)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(12, 8, 12, 8)
+        header_layout.setSpacing(8)
 
         self.logo_label = QLabel()
         self.logo_label.setObjectName("appLogoLabel")
@@ -67,7 +67,7 @@ class Ui_SummarizerDialog(object):
 
         self.theme_btn = QToolButton()
         self.theme_btn.setIcon(svg_icon("Theme.svg"))
-        self.theme_btn.setIconSize(QSize(16, 16))
+        self.theme_btn.setIconSize(QSize(15, 15))
         self.theme_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.theme_btn.setText(_rt("Tema"))
         self.theme_btn.setToolTip(_rt("Tema"))
@@ -77,7 +77,7 @@ class Ui_SummarizerDialog(object):
 
         self.language_btn = QToolButton()
         self.language_btn.setIcon(svg_icon("Globe.svg"))
-        self.language_btn.setIconSize(QSize(16, 16))
+        self.language_btn.setIconSize(QSize(15, 15))
         self.language_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.language_btn.setText("Auto")
         self.language_btn.setToolTip(_rt("Idioma"))
@@ -283,7 +283,5 @@ class Ui_SummarizerDialog(object):
         self.verticalLayout.addWidget(self.central_frame, 1)
 
         self.stackedWidget.setCurrentWidget(self.pageResultados)
-
-
 
 

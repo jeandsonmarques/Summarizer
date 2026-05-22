@@ -767,7 +767,7 @@ class DashboardCanvas(QWidget):
         self.itemsChanged.emit()
 
     def clear_filters(self):
-        self.interaction_manager.clear_filters()
+        self.interaction_manager.clear_filters(clear_map=True)
 
     def active_filters(self) -> Dict[str, Dict[str, object]]:
         return self.interaction_manager.active_filters()
@@ -1874,4 +1874,3 @@ class DashboardCanvas(QWidget):
             if not compact or compact[-1] != point:
                 compact.append(point)
         return compact
-

@@ -11,6 +11,15 @@ from .dashboard_models import DashboardChartBinding, DashboardChartRelation
 
 
 from .utils.logging_utils import log_exception
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
 class ModelInteractionManager(QObject):
     """Centraliza filtros ativos entre graficos do Model por campo comum."""
 
@@ -21,6 +30,7 @@ class ModelInteractionManager(QObject):
         self._widgets: Dict[str, Any] = {}
         self._bindings: Dict[str, DashboardChartBinding] = {}
         self._active_filters: Dict[str, Dict[str, Any]] = {}
+        self._active_highlights: Dict[str, Dict[str, Any]] = {}
         self._chart_relations: List[DashboardChartRelation] = []
 
     # ------------------------------------------------------------------ Registry
@@ -47,14 +57,16 @@ class ModelInteractionManager(QObject):
         self._widgets.pop(key, None)
         self._bindings.pop(key, None)
         removed_any = False
-        for filter_key, filter_data in list(self._active_filters.items()):
-            origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
-            if origin_chart_id == key:
-                self._active_filters.pop(filter_key, None)
-                removed_any = True
+        for active_store in (self._active_filters, self._active_highlights):
+            for filter_key, filter_data in list(active_store.items()):
+                origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
+                if origin_chart_id == key:
+                    active_store.pop(filter_key, None)
+                    removed_any = True
         filter_key = self._binding_filter_key(binding) if binding is not None else ""
         if filter_key and not any(self._binding_filter_key(other_binding) == filter_key for other_binding in self._bindings.values()):
             self._active_filters.pop(filter_key, None)
+            self._active_highlights.pop(filter_key, None)
             removed_any = True
         if removed_any:
             self._apply_all_filters()
@@ -65,6 +77,7 @@ class ModelInteractionManager(QObject):
         self._widgets.clear()
         self._bindings.clear()
         self._active_filters.clear()
+        self._active_highlights.clear()
         self._chart_relations = []
         self.filtersChanged.emit(self.active_filters_summary())
 
@@ -101,30 +114,35 @@ class ModelInteractionManager(QObject):
             return
 
         if payload.get("cleared") or not list(payload.get("values") or []):
-            if self._active_filters:
+            if self._active_filters or self._active_highlights:
                 self._active_filters.clear()
+                self._active_highlights.clear()
                 self._apply_all_filters()
             return
 
         normalized = self._normalize_selection_payload(payload, binding, chart_id, filter_key)
-        current = self._active_filters.get(filter_key) if len(self._active_filters) == 1 else None
+        action = str(normalized.get("interaction_action") or "highlight").strip().lower()
+        use_filter = action in {"filter", "isolate"}
+        active_store = self._active_filters if use_filter else self._active_highlights
+        inactive_store = self._active_highlights if use_filter else self._active_filters
+        current = active_store.get(filter_key) if len(active_store) == 1 else None
         if current and self._selection_equals(current, normalized):
             # Toggle behavior on repeated click of the same selection.
-            self._active_filters.clear()
+            active_store.clear()
             self._apply_all_filters()
             return
 
-        # Keep a single active filter in Model:
-        # selecting another chart/category replaces the previous one.
-        self._active_filters.clear()
-        self._active_filters[filter_key] = normalized
+        # Keep a single active interaction in Model. Simple clicks highlight;
+        # explicit filter/isolate actions still apply strong cross-filtering.
+        inactive_store.clear()
+        active_store.clear()
+        active_store[filter_key] = normalized
         self._apply_all_filters()
 
-    def clear_filters(self):
-        if not self._active_filters:
-            return
+    def clear_filters(self, *, clear_map: bool = True):
         self._active_filters.clear()
-        self._apply_all_filters()
+        self._active_highlights.clear()
+        self._apply_all_filters(force_clear_local=True, clear_map=clear_map)
 
     def set_active_filters(self, filters: Optional[Dict[str, Dict[str, Any]]] = None):
         normalized: Dict[str, Dict[str, Any]] = {}
@@ -134,6 +152,7 @@ class ModelInteractionManager(QObject):
                 continue
             normalized[filter_key] = dict(value or {})
         self._active_filters = normalized
+        self._active_highlights.clear()
         self._apply_all_filters()
 
     # ------------------------------------------------------------------ Queries
@@ -158,6 +177,28 @@ class ModelInteractionManager(QObject):
                     "values": values,
                     "chart_id": str(data.get("chart_id") or ""),
                     "label": str(label),
+                    "interaction_action": "filter",
+                    "series_label": str(data.get("series_label") or ""),
+                }
+            )
+        for filter_key, data in self._active_highlights.items():
+            values = self._flatten_text_values(data.get("values"))
+            if not values:
+                continue
+            label = data.get("semantic_field_key") or data.get("field") or data.get("source_name") or filter_key
+            items.append(
+                {
+                    "filter_key": filter_key,
+                    "source_id": str(data.get("source_id") or ""),
+                    "source_name": str(data.get("source_name") or ""),
+                    "field": str(data.get("field") or ""),
+                    "semantic_field_key": str(data.get("semantic_field_key") or ""),
+                    "semantic_field_aliases": list(data.get("semantic_field_aliases") or []),
+                    "values": values,
+                    "chart_id": str(data.get("chart_id") or ""),
+                    "label": str(label),
+                    "interaction_action": "highlight",
+                    "series_label": str(data.get("series_label") or ""),
                 }
             )
         return {"items": items, "count": len(items)}
@@ -185,7 +226,9 @@ class ModelInteractionManager(QObject):
         feature_ids = []
         for feature_id in list(normalized.get("feature_ids") or []):
             try:
-                feature_ids.append(int(feature_id))
+                safe_id = _safe_int(feature_id)
+                if safe_id is not None:
+                    feature_ids.append(safe_id)
             except Exception:
                 continue
         field = str(normalized.get("field") or binding.dimension_field or "").strip()
@@ -220,6 +263,17 @@ class ModelInteractionManager(QObject):
                 "source_name": str(normalized.get("source_name") or binding.source_name or ""),
                 "aggregation": str(normalized.get("aggregation") or binding.aggregation or ""),
                 "measure_field": str(normalized.get("measure_field") or binding.measure_field or ""),
+                "legend_field": str(normalized.get("legend_field") or binding.legend_field or ""),
+                "x_field": str(normalized.get("x_field") or binding.x_field or ""),
+                "y_field": str(normalized.get("y_field") or binding.y_field or ""),
+                "size_field": str(normalized.get("size_field") or binding.size_field or ""),
+                "row_fields": list(normalized.get("row_fields") or binding.row_fields or []),
+                "column_fields": list(normalized.get("column_fields") or binding.column_fields or []),
+                "value_fields": list(normalized.get("value_fields") or binding.value_fields or []),
+                "display_label": str(normalized.get("display_label") or normalized.get("current_text") or normalized.get("category") or ""),
+                "current_text": str(normalized.get("current_text") or normalized.get("display_label") or normalized.get("category") or ""),
+                "series_label": str(normalized.get("series_label") or ""),
+                "legend_label": str(normalized.get("legend_label") or ""),
             }
         )
         return normalized
@@ -228,44 +282,56 @@ class ModelInteractionManager(QObject):
         return (
             str(left.get("filter_key") or "") == str(right.get("filter_key") or "")
             and [str(value) for value in list(left.get("values") or [])] == [str(value) for value in list(right.get("values") or [])]
-            and sorted({int(value) for value in list(left.get("feature_ids") or [])}) == sorted(
-                {int(value) for value in list(right.get("feature_ids") or [])}
+            and sorted({safe_id for value in list(left.get("feature_ids") or []) if (safe_id := _safe_int(value)) is not None}) == sorted(
+                {safe_id for value in list(right.get("feature_ids") or []) if (safe_id := _safe_int(value)) is not None}
             )
             and str(left.get("semantic_field_key") or "") == str(right.get("semantic_field_key") or "")
+            and str(left.get("series_label") or "") == str(right.get("series_label") or "")
         )
 
-    def _apply_all_filters(self):
+    def _interactions_for_widget(self, active_interactions: Dict[str, Dict[str, Any]], chart_id: str) -> tuple[Dict[str, Dict[str, Any]], bool]:
+        widget_interactions: Dict[str, Dict[str, Any]] = {}
+        has_origin_interaction = False
+        for filter_key, filter_data in active_interactions.items():
+            origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
+            if origin_chart_id and origin_chart_id == chart_id:
+                has_origin_interaction = True
+            if not origin_chart_id or origin_chart_id == chart_id:
+                continue
+
+            transformed = self._relation_filter_for(origin_chart_id, chart_id, filter_data)
+            if transformed is not None:
+                transformed_key = str(transformed.get("filter_key") or f"relation:{origin_chart_id}:{chart_id}")
+                widget_interactions[transformed_key] = dict(transformed)
+                continue
+
+            if self._has_relation_between(origin_chart_id, chart_id):
+                continue
+
+            if self._should_apply_phase1(origin_chart_id, chart_id):
+                phase_filter = dict(filter_data or {})
+                phase_filter["filter_key"] = f"phase1:{origin_chart_id}:{chart_id}:{filter_key}"
+                widget_interactions[str(phase_filter["filter_key"])] = phase_filter
+        return widget_interactions, has_origin_interaction
+
+    def _apply_all_filters(self, *, force_clear_local: bool = False, clear_map: bool = False):
         active_filters = self.active_filters()
+        active_highlights = {str(key): dict(value or {}) for key, value in self._active_highlights.items()}
         for chart_id, widget in list(self._widgets.items()):
             try:
-                widget_filters = {}
-                has_origin_filter = False
-                for filter_key, filter_data in active_filters.items():
-                    origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
-                    if origin_chart_id and origin_chart_id == chart_id:
-                        has_origin_filter = True
-                    if not origin_chart_id or origin_chart_id == chart_id:
-                        continue
-
-                    transformed = self._relation_filter_for(origin_chart_id, chart_id, filter_data)
-                    if transformed is not None:
-                        transformed_key = str(transformed.get("filter_key") or f"relation:{origin_chart_id}:{chart_id}")
-                        widget_filters[transformed_key] = dict(transformed)
-                        continue
-
-                    if self._has_relation_between(origin_chart_id, chart_id):
-                        continue
-
-                    if self._should_apply_phase1(origin_chart_id, chart_id):
-                        phase_filter = dict(filter_data or {})
-                        phase_filter["filter_key"] = f"phase1:{origin_chart_id}:{chart_id}:{filter_key}"
-                        widget_filters[str(phase_filter["filter_key"])] = phase_filter
+                widget_filters, has_origin_filter = self._interactions_for_widget(active_filters, chart_id)
+                widget_highlights, has_origin_highlight = self._interactions_for_widget(active_highlights, chart_id)
                 widget.set_external_filters(widget_filters)
+                if hasattr(widget, "set_external_highlights"):
+                    widget.set_external_highlights(widget_highlights)
                 try:
                     # Preserve the local "single category" state on the chart where
                     # the selection originated; clear only sibling charts.
-                    if not has_origin_filter:
-                        widget.clear_local_selection()
+                    if force_clear_local or not (has_origin_filter or has_origin_highlight):
+                        try:
+                            widget.clear_local_selection(clear_map=bool(clear_map and force_clear_local))
+                        except TypeError:
+                            widget.clear_local_selection()
                 except Exception:
                     log_exception("falha opcional ignorada")
             except Exception:
@@ -278,23 +344,11 @@ class ModelInteractionManager(QObject):
         if widget is None or binding is None:
             return
         try:
-            widget_filters = {}
-            for filter_key, filter_data in self._active_filters.items():
-                origin_chart_id = str(filter_data.get("origin_chart_id") or filter_data.get("chart_id") or "").strip()
-                if not origin_chart_id or origin_chart_id == chart_id:
-                    continue
-                transformed = self._relation_filter_for(origin_chart_id, chart_id, filter_data)
-                if transformed is not None:
-                    transformed_key = str(transformed.get("filter_key") or f"relation:{origin_chart_id}:{chart_id}")
-                    widget_filters[transformed_key] = dict(transformed)
-                    continue
-                if self._has_relation_between(origin_chart_id, chart_id):
-                    continue
-                if self._should_apply_phase1(origin_chart_id, chart_id):
-                    phase_filter = dict(filter_data or {})
-                    phase_filter["filter_key"] = f"phase1:{origin_chart_id}:{chart_id}:{filter_key}"
-                    widget_filters[str(phase_filter["filter_key"])] = phase_filter
+            widget_filters, _ = self._interactions_for_widget(self._active_filters, chart_id)
+            widget_highlights, _ = self._interactions_for_widget(self._active_highlights, chart_id)
             widget.set_external_filters(widget_filters)
+            if hasattr(widget, "set_external_highlights"):
+                widget.set_external_highlights(widget_highlights)
         except Exception:
             log_exception("falha opcional ignorada")
 
@@ -342,7 +396,15 @@ class ModelInteractionManager(QObject):
                 flattened.append(text)
 
         _walk(values)
-        return flattened[:1]
+        unique: list[str] = []
+        seen = set()
+        for item in flattened:
+            text = str(item or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            unique.append(text)
+        return unique
 
     def _binding_filter_key(self, binding: Optional[DashboardChartBinding]) -> str:
         if binding is None:
@@ -364,6 +426,13 @@ class ModelInteractionManager(QObject):
                 filter_data.get("semantic_field_key"),
                 filter_data.get("field_key"),
                 filter_data.get("field"),
+                filter_data.get("legend_field"),
+                filter_data.get("x_field"),
+                filter_data.get("y_field"),
+                filter_data.get("size_field"),
+                filter_data.get("row_fields"),
+                filter_data.get("column_fields"),
+                filter_data.get("value_fields"),
                 filter_data.get("semantic_field_aliases"),
                 filter_data.get("source_id"),
             ]
@@ -478,4 +547,3 @@ class ModelInteractionManager(QObject):
                 "active": normalized.active,
             }
         return None
-

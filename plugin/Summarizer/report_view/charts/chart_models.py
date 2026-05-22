@@ -11,7 +11,7 @@ from typing import Dict, List
 class ChartVisualState:
     chart_type: str = "bar"
     palette: str = "purple"
-    font_scale: float = 0.82
+    font_scale: float = 1.0
     show_legend: bool = False
     show_values: bool = True
     show_percent: bool = False
@@ -76,4 +76,3 @@ class ChartDataProfile:
     has_negative: bool = False
     truncated: bool = False
     sequential_hint: bool = False
-

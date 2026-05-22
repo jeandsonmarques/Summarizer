@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from plugin.Summarizer.model_view.model_toolbar import toolbar_visuals_visible_count
+from plugin.Summarizer.model_view.model_toolbar import (
+    toolbar_visuals_should_be_visible,
+    toolbar_visuals_visible_count,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,6 +24,26 @@ def test_toolbar_visuals_visible_count_hides_one_button_at_a_time():
     assert (
         toolbar_visuals_visible_count(136, [32, 32, 32, 32, 32], spacing=2, padding=8)
         == 3
+    )
+
+
+def test_toolbar_visuals_stay_available_while_format_panel_is_open():
+    assert toolbar_visuals_should_be_visible(
+        has_project=True,
+        edit_enabled=True,
+        create_chart_checked=False,
+        builder_panel_open=False,
+        visual_panel_open=True,
+    )
+
+
+def test_toolbar_visuals_hide_when_no_visual_panel_context_is_open():
+    assert not toolbar_visuals_should_be_visible(
+        has_project=True,
+        edit_enabled=True,
+        create_chart_checked=False,
+        builder_panel_open=False,
+        visual_panel_open=False,
     )
 
 
@@ -84,6 +107,31 @@ def test_model_toolbar_keeps_edit_mode_height_in_preview_mode():
     assert "build_visual_type_buttons(toolbar_visuals_strip, toolbar_visuals_layout, button_size=32" in source
 
 
+def test_model_toolbar_uses_white_selected_and_black_hover_states():
+    source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(
+        encoding="utf-8"
+    )
+    header_source = (
+        ROOT / "plugin" / "Summarizer" / "model_view" / "model_header.py"
+    ).read_text(encoding="utf-8")
+    theme_source = (
+        ROOT / "plugin" / "Summarizer" / "model_view" / "model_theme.py"
+    ).read_text(encoding="utf-8")
+
+    assert "QPushButton#ModelToolbarButton:checked:hover" in source
+    assert "background: #111827;" in source
+    assert "color: #FFFFFF;" in source
+    assert "QPushButton#ModelToolbarButton:pressed" in source
+    assert "background: #F3F4F6;" in source
+    assert "min-width: 30px;" in source
+    assert "icon_size: int = 20" in source
+    assert "_toolbar_button_icon" in source
+    assert "button.toggled.connect" in source
+    assert "QToolButton#ModelVisualTypeButton:checked:hover" in source
+    assert "data_fields_btn.setProperty(\"modelIconSize\", 20)" in header_source
+    assert "QIcon.On" in theme_source
+
+
 def test_fields_toolbar_button_sits_next_to_format_visual_and_toggles_panel():
     header_source = (
         ROOT / "plugin" / "Summarizer" / "model_view" / "model_header.py"
@@ -102,6 +150,46 @@ def test_fields_toolbar_button_sits_next_to_format_visual_and_toggles_panel():
     assert "self._set_data_panel_collapsed(not bool(checked))" in model_source
 
 
+def test_clear_filters_button_floats_over_canvas_and_uses_squarer_corners():
+    header_source = (
+        ROOT / "plugin" / "Summarizer" / "model_view" / "model_header.py"
+    ).read_text(encoding="utf-8")
+    model_source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "toolbar_layout.addWidget(clear_filters_btn, 0)" not in header_source
+    assert "self.clear_filters_btn.setParent(self.canvas_page)" in model_source
+    assert "def _position_clear_filters_button(self):" in model_source
+    assert "def _schedule_clear_filters_button_position(self):" in model_source
+    assert "QPushButton#ModelActionButton {" in model_source
+    assert "border-radius: 4px;" in model_source
+    assert "self._schedule_clear_filters_button_position()" in model_source
+    assert "for delay in (0, 40, 120):" in model_source
+    assert "self._schedule_clear_filters_button_position()" in model_source
+
+
+def test_builder_visual_selection_uses_cached_icons_during_programmatic_sync():
+    model_source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(
+        encoding="utf-8"
+    )
+    builder_source = (
+        ROOT / "plugin" / "Summarizer" / "model_view" / "model_builder_panel.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def _sync_visual_type_button_states(self, buttons, active_chart_type: str = \"\"):" in model_source
+    assert "button._model_icon_normal = normal_icon" in builder_source
+    assert "button._model_icon_checked = checked_icon" in builder_source
+    assert "parent._model_visual_button_group = group" in builder_source
+    assert "self._sync_visual_type_button_states(buttons, active_chart_type)" in model_source
+    assert "QButtonGroup(parent)" in builder_source
+    assert "button_containers = [container for container in (buttons_container, toolbar_container) if container is not None]" in model_source
+    assert "container.setUpdatesEnabled(False)" in model_source
+    assert "group.setExclusive(False)" in model_source
+    assert "self._sync_visual_type_button_states(toolbar_buttons, \"\")" in model_source
+    assert "self._sync_visual_type_button_states(toolbar_buttons, active_chart_type)" in model_source
+
+
 def test_model_fields_panel_uses_summary_like_compact_scale():
     data_panel_source = (
         ROOT / "plugin" / "Summarizer" / "model_view" / "model_data_panel.py"
@@ -117,3 +205,15 @@ def test_model_fields_panel_uses_summary_like_compact_scale():
     assert "min-height: 28px;" in data_panel_source
     assert "min-height: 22px;" in data_panel_source
     assert "QFrame#ModelBuilderDataPanel QListWidget#ModelBuilderFieldList::item" in model_source
+
+
+def test_presentation_button_icon_is_neutral_not_purple():
+    icon_source = (
+        ROOT / "plugin" / "Summarizer" / "resources" / "SVG" / "PresentationMap.svg"
+    ).read_text(encoding="utf-8")
+
+    assert "#6C4CF1" not in icon_source
+    assert "#7C6CFF" not in icon_source
+    assert "#F5F1FF" not in icon_source
+    assert "#F3F4F6" in icon_source
+    assert "#374151" in icon_source

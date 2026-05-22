@@ -91,12 +91,12 @@ def _model_builder_trash_icon(size: int = 14) -> QIcon:
 def _model_panel_fields_icon(size: int = 14) -> QIcon:
     icon = QIcon()
     normal = "#CBD5E1" if _is_dark_theme() else "#475569"
-    active = "#F8FAFC" if _is_dark_theme() else "#334155"
+    active = "#CBD5E1" if _is_dark_theme() else "#111827"
+    checked = "#FFFFFF"
     disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
         (QIcon.Normal, normal),
         (QIcon.Active, active),
-        (QIcon.Selected, active),
         (QIcon.Disabled, disabled),
     ):
         svg_data = QByteArray(_MODEL_FIELDS_SVG.replace("__COLOR__", color).encode("utf-8"))
@@ -107,6 +107,15 @@ def _model_panel_fields_icon(size: int = 14) -> QIcon:
         renderer.render(painter)
         painter.end()
         icon.addPixmap(pixmap, mode)
+        if mode in (QIcon.Normal, QIcon.Active):
+            checked_svg = QByteArray(_MODEL_FIELDS_SVG.replace("__COLOR__", checked).encode("utf-8"))
+            checked_renderer = QSvgRenderer(checked_svg)
+            checked_pixmap = QPixmap(size, size)
+            checked_pixmap.fill(Qt.transparent)
+            checked_painter = QPainter(checked_pixmap)
+            checked_renderer.render(checked_painter)
+            checked_painter.end()
+            icon.addPixmap(checked_pixmap, mode, QIcon.On)
     return icon
 
 
@@ -121,12 +130,12 @@ def _model_panel_chevron_icon(direction: str = "right", size: int = 20) -> QIcon
     )
     icon = QIcon()
     normal = "#CBD5E1" if _is_dark_theme() else "#334155"
-    active = "#F8FAFC" if _is_dark_theme() else "#111827"
+    active = "#CBD5E1" if _is_dark_theme() else "#111827"
+    checked = "#FFFFFF"
     disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
         (QIcon.Normal, normal),
         (QIcon.Active, active),
-        (QIcon.Selected, active),
         (QIcon.Disabled, disabled),
     ):
         try:
@@ -138,6 +147,15 @@ def _model_panel_chevron_icon(direction: str = "right", size: int = 20) -> QIcon
             renderer.render(painter)
             painter.end()
             icon.addPixmap(pixmap, mode)
+            if mode in (QIcon.Normal, QIcon.Active):
+                checked_svg = QByteArray(template.replace("__COLOR__", checked).encode("utf-8"))
+                checked_renderer = QSvgRenderer(checked_svg)
+                checked_pixmap = QPixmap(size, size)
+                checked_pixmap.fill(Qt.transparent)
+                checked_painter = QPainter(checked_pixmap)
+                checked_renderer.render(checked_painter)
+                checked_painter.end()
+                icon.addPixmap(checked_pixmap, mode, QIcon.On)
         except Exception:
             log_exception("falha opcional ignorada")
     return icon
@@ -153,15 +171,16 @@ def _model_tinted_svg_icon(icon_name: str, size: int = 18, accent_color: str = "
     if accent.isValid():
         normal = accent.name()
         active = accent.lighter(112).name()
+        checked = "#FFFFFF"
         disabled = accent.lighter(165).name()
     else:
         normal = "#E5E7EB" if _is_dark_theme() else "#334155"
-        active = "#FFFFFF" if _is_dark_theme() else "#111827"
+        active = "#CBD5E1" if _is_dark_theme() else "#111827"
+        checked = "#FFFFFF"
         disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
         (QIcon.Normal, normal),
         (QIcon.Active, active),
-        (QIcon.Selected, active),
         (QIcon.Disabled, disabled),
     ):
         try:
@@ -182,6 +201,20 @@ def _model_tinted_svg_icon(icon_name: str, size: int = 18, accent_color: str = "
             painter.fillRect(pixmap.rect(), QColor(color))
             painter.end()
             icon.addPixmap(pixmap, mode)
+            if mode in (QIcon.Normal, QIcon.Active):
+                with open(path, "rb") as handle:
+                    checked_renderer = QSvgRenderer(QByteArray(handle.read()))
+                checked_pixmap = QPixmap(size, size)
+                checked_pixmap.fill(Qt.transparent)
+                checked_painter = QPainter(checked_pixmap)
+                if viewbox.isValid() and viewbox.width() > 0 and viewbox.height() > 0:
+                    checked_renderer.render(checked_painter, QRectF((size - target_w) / 2, (size - target_h) / 2, target_w, target_h))
+                else:
+                    checked_renderer.render(checked_painter)
+                checked_painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+                checked_painter.fillRect(checked_pixmap.rect(), QColor(checked))
+                checked_painter.end()
+                icon.addPixmap(checked_pixmap, mode, QIcon.On)
         except Exception:
             log_exception("falha opcional ignorada")
             return svg_icon(icon_name)
@@ -215,4 +248,3 @@ __all__ = [
     "_model_tinted_svg_icon",
     "fill_model_theme_tokens",
 ]
-

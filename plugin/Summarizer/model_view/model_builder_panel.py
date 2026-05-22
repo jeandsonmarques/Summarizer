@@ -17,6 +17,7 @@ try:
         QHBoxLayout,
         QLabel,
         QLineEdit,
+        QButtonGroup,
         QScrollArea,
         QSizePolicy,
         QSpinBox,
@@ -28,6 +29,7 @@ except Exception:
     QPoint = QSize = Qt = QMimeData = QDrag = None
     pyqtSignal = None
     QComboBox = QFormLayout = QFrame = QHBoxLayout = QLabel = QLineEdit = QScrollArea = QSizePolicy = QSpinBox = QToolButton = QVBoxLayout = QWidget = object
+    QButtonGroup = object
 
 from ..dashboard_models import (
     FieldBindingItem,
@@ -92,6 +94,11 @@ except Exception:
 
     def _model_tinted_svg_icon(_name: str, _size: int = 18, _color: str = ""):
         return None
+
+
+_BUILDER_GUIDANCE_CARD = "#F3F4F6"
+_BUILDER_GUIDANCE_CARD_HOVER = "#E5E7EB"
+_BUILDER_GUIDANCE_CARD_TEXT = "#334155"
 
 
 @dataclass
@@ -440,6 +447,15 @@ def build_visual_type_buttons(
     icon_size: int = 15,
 ) -> Dict[str, object]:
     buttons = {}
+    group = QButtonGroup(parent)
+    try:
+        group.setExclusive(True)
+    except Exception:
+        log_exception("falha opcional ignorada")
+    try:
+        parent._model_visual_button_group = group
+    except Exception:
+        log_exception("falha opcional ignorada")
     for label_text, chart_type, icon_name, tooltip_text in visual_specs:
         button = QToolButton(parent)
         button.setObjectName("ModelVisualTypeButton")
@@ -448,9 +464,12 @@ def build_visual_type_buttons(
         button.setProperty("visualType", chart_type)
         button.setCheckable(True)
         button.setText("")
-        icon = _model_tinted_svg_icon(icon_name, icon_size)
-        if icon is not None:
-            button.setIcon(icon)
+        normal_icon = _model_tinted_svg_icon(icon_name, icon_size)
+        checked_icon = _model_tinted_svg_icon(icon_name, icon_size, "#FFFFFF")
+        button._model_icon_normal = normal_icon
+        button._model_icon_checked = checked_icon
+        if normal_icon is not None:
+            button.setIcon(normal_icon)
         button.setToolTip(label_text)
         button.setStatusTip("")
         button.setWhatsThis("")
@@ -460,6 +479,17 @@ def build_visual_type_buttons(
         button.setAutoRaise(True)
         button.setFixedSize(button_size, button_size)
         button.setIconSize(QSize(icon_size, icon_size))
+        try:
+            group.addButton(button)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        button.toggled.connect(
+            lambda checked, b=button: b.setIcon(
+                getattr(b, "_model_icon_checked", None)
+                if checked
+                else getattr(b, "_model_icon_normal", None)
+            )
+        )
         button.clicked.connect(lambda checked=False, value=chart_type: on_visual_selected(value))
         buttons[chart_type] = button
         layout.addWidget(button, 0)
@@ -524,28 +554,78 @@ def build_model_builder_panel(
 
     builder_empty_label = QFrame(panel)
     builder_empty_label.setObjectName("ModelBuilderEmptyState")
-    _force_model_white_background(builder_empty_label)
     builder_empty_label.setFrameShape(QFrame.NoFrame)
     builder_empty_label.setStyleSheet(
         """
-        QFrame#ModelBuilderEmptyState,
-        QFrame#ModelBuilderEmptyState QWidget,
-        QFrame#ModelBuilderEmptyState QLabel {
-            background: #FFFFFF;
-            background-color: #FFFFFF;
+        QFrame#ModelBuilderEmptyState {
+            background: transparent;
+            background-color: transparent;
             border: none;
+        }
+        QFrame#ModelBuilderEmptyStateCard {
+            background: #F3F4F6;
+            background-color: #F3F4F6;
+            border: none;
+            border-radius: 0px;
+        }
+        QFrame#ModelBuilderEmptyStateCard QLabel {
+            background: transparent;
+            color: #334155;
+            border: none;
+        }
+        QLabel#ModelBuilderEmptyStateLabel {
+            color: #334155;
+            font-size: 12px;
+            font-weight: 400;
+        }
+        QToolButton#ModelBuilderEmptyStateClose {
+            background: transparent;
+            border: none;
+            color: #334155;
+            padding: 0px;
+            font-size: 18px;
+            font-weight: 300;
+        }
+        QToolButton#ModelBuilderEmptyStateClose:hover {
+            background: #E5E7EB;
+            border-radius: 0px;
         }
         """
     )
-    empty_layout = QVBoxLayout(builder_empty_label)
-    empty_layout.setContentsMargins(8, 6, 8, 6)
+    empty_layout = QHBoxLayout(builder_empty_label)
+    empty_layout.setContentsMargins(0, 0, 0, 0)
     empty_layout.setSpacing(0)
-    empty_text = QLabel(_rt("Selecione um visual para configurar os campos e as opções."), builder_empty_label)
+    empty_card = QFrame(builder_empty_label)
+    empty_card.setObjectName("ModelBuilderEmptyStateCard")
+    empty_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    empty_card.setStyleSheet(
+        f"QFrame#ModelBuilderEmptyStateCard {{ background: {_BUILDER_GUIDANCE_CARD}; background-color: {_BUILDER_GUIDANCE_CARD}; border: none; border-radius: 0px; }}"
+        f"QFrame#ModelBuilderEmptyStateCard QLabel {{ background: transparent; background-color: transparent; color: {_BUILDER_GUIDANCE_CARD_TEXT}; border: none; }}"
+        f"QFrame#ModelBuilderEmptyStateCard QToolButton {{ background: transparent; background-color: transparent; border: none; color: {_BUILDER_GUIDANCE_CARD_TEXT}; }}"
+    )
+    empty_card_layout = QHBoxLayout(empty_card)
+    empty_card_layout.setContentsMargins(8, 6, 4, 6)
+    empty_card_layout.setSpacing(0)
+    empty_layout.setAlignment(Qt.AlignTop)
+    empty_text = QLabel(_rt("Selecione um visual para adicionar dados aos campos."), empty_card)
     empty_text.setObjectName("ModelBuilderEmptyStateLabel")
-    empty_text.setFont(ui_font(8))
-    empty_text.setStyleSheet("QLabel#ModelBuilderEmptyStateLabel { color: #64748B; font-size: 8pt; font-weight: 400; background: #FFFFFF; }")
+    empty_text.setFont(ui_font(9))
+    empty_text.setToolTip(_rt("Selecione um visual para adicionar dados aos campos."))
     empty_text.setWordWrap(True)
-    empty_layout.addWidget(empty_text)
+    empty_text.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+    empty_card_layout.addWidget(empty_text, 1)
+    empty_close = QToolButton(empty_card)
+    empty_close.setObjectName("ModelBuilderEmptyStateClose")
+    empty_close.setText("×")
+    empty_close.setCursor(Qt.PointingHandCursor)
+    empty_close.setFixedSize(22, 22)
+    empty_close.clicked.connect(builder_empty_label.hide)
+    empty_close.setStyleSheet(
+        f"QToolButton#ModelBuilderEmptyStateClose {{ background: transparent; background-color: transparent; border: none; color: {_BUILDER_GUIDANCE_CARD_TEXT}; padding: 0px; font-size: 18px; font-weight: 300; }}"
+        f"QToolButton#ModelBuilderEmptyStateClose:hover {{ background: {_BUILDER_GUIDANCE_CARD_HOVER}; border-radius: 0px; }}"
+    )
+    empty_card_layout.addWidget(empty_close, 0, Qt.AlignTop)
+    empty_layout.addWidget(empty_card, 1)
     host_layout.addWidget(builder_empty_label, 0)
 
     builder_construct_card = QFrame(panel)
@@ -692,4 +772,3 @@ __all__ = [
     "visual_type_labels",
     "visual_type_specs",
 ]
-

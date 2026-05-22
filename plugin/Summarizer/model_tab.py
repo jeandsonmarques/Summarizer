@@ -80,7 +80,10 @@ from .model_view.model_project_controller import (
     snapshot_signature,
     snapshot_state,
 )
-from .model_view.model_toolbar import toolbar_visuals_visible_count
+from .model_view.model_toolbar import (
+    toolbar_visuals_should_be_visible,
+    toolbar_visuals_visible_count,
+)
 from .model_view.model_theme import (
     _force_model_white_background,
     _is_dark_theme,
@@ -358,6 +361,15 @@ class ModelTab(QWidget):
         self.canvas_splitter.setStretchFactor(1, 0)
         self.canvas_splitter.setStretchFactor(2, 0)
         self.canvas_splitter.setSizes([900, _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH, _MODEL_DATA_PANEL_DEFAULT_WIDTH])
+        try:
+            toolbar_layout = self.toolbar_strip.layout() if hasattr(self, "toolbar_strip") else None
+            if toolbar_layout is not None and hasattr(toolbar_layout, "removeWidget"):
+                toolbar_layout.removeWidget(self.clear_filters_btn)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self.clear_filters_btn.setParent(self.canvas_page)
+        self.clear_filters_btn.setVisible(False)
+        self.clear_filters_btn.raise_()
 
         self.body_stack.addWidget(self.empty_page)
         self.body_stack.addWidget(self.canvas_page)
@@ -581,7 +593,7 @@ class ModelTab(QWidget):
             QFrame#ModelVisualSidePanel {
                 background: #FFFFFF;
                 border: 1px solid #DCE3EC;
-                border-radius: 6px;
+                border-radius: 2px;
             }
             QFrame#ModelVisualSidePanel QWidget,
             QFrame#ModelVisualSidePanel QFrame,
@@ -614,7 +626,7 @@ class ModelTab(QWidget):
             QFrame#ModelVisualPanelTabBar {
                 background: #FFFFFF;
                 border: 1px solid #E2E8F0;
-                border-radius: 6px;
+                border-radius: 2px;
             }
             QFrame#ModelSidePanelCollapsedRail {
                 background: transparent;
@@ -652,7 +664,7 @@ class ModelTab(QWidget):
                 min-height: 28px;
                 max-height: 28px;
                 border: 1px solid transparent;
-                border-radius: 4px;
+                border-radius: 2px;
                 background: transparent;
                 color: #334155;
                 padding: 0 8px;
@@ -664,8 +676,8 @@ class ModelTab(QWidget):
                 border-color: #D7DEE8;
             }
             QPushButton#ModelVisualPanelTabButton:checked {
-                background: #EAF4FF;
-                border-color: #93C5FD;
+                background: #F3F4F6;
+                border-color: #D1D5DB;
             }
             QScrollArea#ModelBuilderScroll {
                 border: none;
@@ -713,12 +725,12 @@ class ModelTab(QWidget):
             QFrame#ModelBuilderFieldsPanel {
                 background: #FFFFFF;
                 border: 1px solid rgba(15, 23, 42, 0.06);
-                border-radius: 6px;
+                border-radius: 2px;
             }
             QFrame#ModelBuilderDataPanel {
                 background: #FFFFFF;
                 border: 1px solid rgba(15, 23, 42, 0.06);
-                border-radius: 6px;
+                border-radius: 2px;
             }
             QFrame#ModelBuilderDataPanel QWidget,
             QFrame#ModelBuilderDataPanel QFrame,
@@ -781,22 +793,49 @@ class ModelTab(QWidget):
                 border-color: rgba(17, 24, 39, 0.10);
             }
             QToolButton#ModelVisualTypeButton:checked {
-                background: #E8EEF6;
-                color: #0F172A;
-                border-color: rgba(17, 24, 39, 0.12);
+                background: #111827;
+                color: #FFFFFF;
+                border-color: #111827;
             }
             QToolButton#ModelVisualTypeButton:checked:hover {
-                background: #E8EEF6;
+                background: #111827;
+                color: #FFFFFF;
+                border-color: #111827;
             }
             QFrame#ModelBuilderEmptyState {
-                background: #FFFFFF;
-                border: 1px dashed rgba(17, 24, 39, 0.12);
-                border-radius: 6px;
+                background: transparent;
+                background-color: transparent;
+                border: none;
+            }
+            QFrame#ModelBuilderEmptyStateCard {
+                background: #F3F4F6;
+                background-color: #F3F4F6;
+                border: none;
+                border-radius: 2px;
+            }
+            QLabel#ModelBuilderEmptyStateTitle {
+                color: #334155;
+                font-size: 13px;
+                font-weight: 600;
+                background: transparent;
             }
             QLabel#ModelBuilderEmptyStateLabel {
-                color: #64748B;
-                font-size: 10px;
+                color: #334155;
+                font-size: 12px;
                 font-weight: 400;
+                background: transparent;
+            }
+            QToolButton#ModelBuilderEmptyStateClose {
+                background: transparent;
+                border: none;
+                color: #334155;
+                padding: 0px;
+                font-size: 18px;
+                font-weight: 300;
+            }
+            QToolButton#ModelBuilderEmptyStateClose:hover {
+                background: #E5E7EB;
+                border-radius: 2px;
             }
             QListWidget#ModelBuilderFieldList {
                 border: 1px solid rgba(17, 24, 39, 0.06);
@@ -1011,12 +1050,12 @@ class ModelTab(QWidget):
                 background: #4F46E5;
             }
             QPushButton#ModelActionButton {
-                min-height: 30px;
-                padding: 0 12px;
+                min-height: 28px;
+                padding: 0 10px;
                 color: #374151;
                 background: #FFFFFF;
                 border: 1px solid #D1D5DB;
-                border-radius: 8px;
+                border-radius: 4px;
                 font-weight: 400;
             }
             QPushButton#ModelActionButton:hover {
@@ -1039,22 +1078,29 @@ class ModelTab(QWidget):
             QPushButton#ModelToolbarButton:hover,
             QToolButton#ModelToolbarButton:hover {
                 background: #F3F4F6;
+                color: #111827;
             }
             QPushButton#ModelToolbarButton:checked,
             QToolButton#ModelToolbarButton:checked {
-                background: #E8EEF6;
-                color: #111827;
+                background: #111827;
+                color: #FFFFFF;
+            }
+            QPushButton#ModelToolbarButton:checked:hover,
+            QToolButton#ModelToolbarButton:checked:hover {
+                background: #111827;
+                color: #FFFFFF;
             }
             QPushButton#ModelToolbarButton:pressed,
             QToolButton#ModelToolbarButton:pressed {
-                background: #E5E7EB;
+                background: #F3F4F6;
+                color: #111827;
             }
             QPushButton#ModelToolbarButton[toolbarMode="icon"],
             QToolButton#ModelToolbarButton[toolbarMode="icon"] {
-                min-width: 28px;
-                max-width: 28px;
-                min-height: 28px;
-                max-height: 28px;
+                min-width: 30px;
+                max-width: 30px;
+                min-height: 30px;
+                max-height: 30px;
                 padding: 0;
             }
             QPushButton#ModelToolbarButton[toolbarMode="label"] {
@@ -1184,9 +1230,9 @@ class ModelTab(QWidget):
             QToolButton#ModelToolbarButton:hover,
             QPushButton#ModelActionButton:hover,
             QPushButton#ModelZoomButton:hover {
-                background: #1F2A3D;
-                color: #F8FAFC;
-                border-color: #475569;
+                background: #F3F4F6;
+                color: #111827;
+                border-color: #D1D5DB;
             }
             QPushButton#ModelToolbarButton,
             QToolButton#ModelToolbarButton,
@@ -1199,13 +1245,15 @@ class ModelTab(QWidget):
             }
             QPushButton#ModelToolbarButton:checked,
             QToolButton#ModelToolbarButton:checked,
+            QPushButton#ModelToolbarButton:checked:hover,
+            QToolButton#ModelToolbarButton:checked:hover,
             QPushButton#ModelToolbarButton:pressed,
             QToolButton#ModelToolbarButton:pressed,
             QPushButton#ModelActionButton:pressed,
             QPushButton#ModelZoomButton:pressed {
-                background: #312E81;
-                color: #F8FAFC;
-                border-color: #7C6CFF;
+                background: #F3F4F6;
+                color: #111827;
+                border-color: #D1D5DB;
             }
             QLabel#ModelActionCardIcon {
                 background: #312E81;
@@ -1243,6 +1291,8 @@ class ModelTab(QWidget):
             try:
                 icon_size = int(button.property("modelIconSize") or button.iconSize().width() or 18)
                 icon_color = str(button.property("modelIconColor") or "")
+                if button.isCheckable() and button.isChecked():
+                    icon_color = "#FFFFFF"
                 button.setIcon(_model_tinted_svg_icon(str(icon_name), icon_size, icon_color))
                 button.setIconSize(QSize(icon_size, icon_size))
                 button.style().unpolish(button)
@@ -1258,8 +1308,11 @@ class ModelTab(QWidget):
                 continue
             try:
                 icon_size = int(button.property("modelIconSize") or button.iconSize().width() or 15)
-                icon_color = str(button.property("modelIconColor") or "")
-                button.setIcon(_model_tinted_svg_icon(str(icon_name), icon_size, icon_color))
+                normal_icon = _model_tinted_svg_icon(str(icon_name), icon_size)
+                checked_icon = _model_tinted_svg_icon(str(icon_name), icon_size, "#FFFFFF")
+                button._model_icon_normal = normal_icon
+                button._model_icon_checked = checked_icon
+                button.setIcon(checked_icon if button.isCheckable() and button.isChecked() else normal_icon)
                 button.setIconSize(QSize(icon_size, icon_size))
             except Exception:
                 log_exception("falha opcional ignorada")
@@ -1267,8 +1320,8 @@ class ModelTab(QWidget):
             self.data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
         if getattr(self, "data_fields_btn", None) is not None:
             try:
-                self.data_fields_btn.setIcon(_model_panel_fields_icon(18))
-                self.data_fields_btn.setIconSize(QSize(18, 18))
+                self.data_fields_btn.setIcon(_model_panel_fields_icon(20))
+                self.data_fields_btn.setIconSize(QSize(20, 20))
             except Exception:
                 log_exception("falha opcional ignorada")
 
@@ -1287,18 +1340,18 @@ class ModelTab(QWidget):
             QFrame#ModelVisualSidePanel {
                 background: __SURFACE__;
                 border: 1px solid __BORDER__;
-                border-radius: 6px;
+                border-radius: 2px;
             }
             QFrame#ModelVisualPanelTabBar {
                 background: __SURFACE__;
                 border: 1px solid __BORDER__;
-                border-radius: 6px;
+                border-radius: 2px;
             }
             QPushButton#ModelVisualPanelTabButton {
                 min-height: 28px;
                 max-height: 28px;
                 border: 1px solid transparent;
-                border-radius: 4px;
+                border-radius: 2px;
                 background: transparent;
                 color: __MUTED__;
                 padding: 0 8px;
@@ -1310,8 +1363,9 @@ class ModelTab(QWidget):
                 border-color: __BORDER__;
             }
             QPushButton#ModelVisualPanelTabButton:checked {
-                background: __CHECKED__;
-                border-color: __CHECKED_BORDER__;
+                background: #F3F4F6;
+                border-color: #D1D5DB;
+                color: __TEXT__;
             }
             QFrame#ModelBuilderPanel {
                 background: __SURFACE__;
@@ -1357,9 +1411,14 @@ class ModelTab(QWidget):
                 border-color: __BORDER_SOFT__;
             }
             QToolButton#ModelVisualTypeButton:checked {
-                background: __CHECKED__;
-                color: __TEXT__;
-                border-color: __CHECKED_BORDER__;
+                background: #111827;
+                color: #FFFFFF;
+                border-color: #111827;
+            }
+            QToolButton#ModelVisualTypeButton:checked:hover {
+                background: #111827;
+                color: #FFFFFF;
+                border-color: #111827;
             }
             QFrame#ModelBindingSlot {
                 background: __SURFACE_2__;
@@ -1415,9 +1474,6 @@ class ModelTab(QWidget):
             QWidget#ModelBuilderBottomSpacer,
             QFrame#ModelBuilderPanel,
             QFrame#ModelBuilderVisualsSection,
-            QFrame#ModelBuilderEmptyState,
-            QFrame#ModelBuilderEmptyState QWidget,
-            QFrame#ModelBuilderEmptyState QLabel,
             QFrame#ModelBuilderSoftDividerSection,
             QFrame#ModelBuilderPlainSection,
             QFrame#ModelBuilderDataPanel,
@@ -1439,7 +1495,7 @@ class ModelTab(QWidget):
             QFrame#ModelBuilderSoftDividerSection,
             QFrame#ModelBuilderDataPanel {
                 border: 1px solid __BORDER__;
-                border-radius: 6px;
+                border-radius: 2px;
             }
             QFrame#ModelDataPanelCollapsedRail,
             QFrame#ModelSidePanelCollapsedRail {
@@ -1449,8 +1505,42 @@ class ModelTab(QWidget):
                 background-color: __SURFACE__;
             }
             QFrame#ModelBuilderEmptyState {
-                border: 1px dashed __BORDER__;
-                border-radius: 6px;
+                background: transparent;
+                background-color: transparent;
+                border: none;
+            }
+            QFrame#ModelBuilderEmptyStateCard {
+                background: #F3F4F6;
+                background-color: #F3F4F6;
+                border: none;
+                border-radius: 2px;
+            }
+            QFrame#ModelBuilderEmptyStateCard QLabel {
+                color: #334155;
+                background: transparent;
+                border: none;
+            }
+            QLabel#ModelBuilderEmptyStateTitle {
+                color: #334155;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLabel#ModelBuilderEmptyStateLabel {
+                color: #334155;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QToolButton#ModelBuilderEmptyStateClose {
+                background: transparent;
+                border: none;
+                color: #334155;
+                padding: 0px;
+                font-size: 18px;
+                font-weight: 300;
+            }
+            QToolButton#ModelBuilderEmptyStateClose:hover {
+                background: #E5E7EB;
+                border-radius: 2px;
             }
             QLabel#ModelBuilderTitle,
             QLabel#ModelBuilderSectionTitle {
@@ -1460,7 +1550,6 @@ class ModelTab(QWidget):
             }
             QLabel#ModelBuilderHint,
             QLabel#ModelBuilderFieldLabel,
-            QLabel#ModelBuilderEmptyStateLabel,
             QLabel#ModelDataPanelCollapsedTitle,
             QLabel#ModelBindingSlotLabel,
             QLabel#ModelBindingSlotValue {
@@ -1604,9 +1693,14 @@ class ModelTab(QWidget):
                 border-color: rgba(239, 68, 68, 0.20);
             }
             QToolButton#ModelVisualTypeButton:checked {
-                background: __CHECKED__;
-                border-color: __CHECKED_BORDER__;
-                color: __TEXT__;
+                background: #111827;
+                border-color: #111827;
+                color: #FFFFFF;
+            }
+            QToolButton#ModelVisualTypeButton:checked:hover {
+                background: #111827;
+                border-color: #111827;
+                color: #FFFFFF;
             }
             """
         )
@@ -1627,7 +1721,6 @@ class ModelTab(QWidget):
             "ModelBuilderHost",
             "ModelBuilderBottomSpacer",
             "ModelBuilderVisualsSection",
-            "ModelBuilderEmptyState",
             "ModelBuilderSoftDividerSection",
             "ModelBuilderDataPanel",
             "ModelDataPanelCollapsedRail",
@@ -1664,7 +1757,6 @@ class ModelTab(QWidget):
         )
         for name, style_text in (
             ("ModelBuilderSectionTitle", title_style),
-            ("ModelBuilderEmptyStateLabel", label_style),
             ("ModelBindingSlotValue", label_style),
             ("ModelDataPanelCollapsedTitle", title_style),
             ("ModelSidePanelCollapsedTitle", title_style),
@@ -1750,7 +1842,7 @@ class ModelTab(QWidget):
                 min-height: 28px;
                 max-height: 28px;
                 border: 1px solid transparent;
-                border-radius: 4px;
+                border-radius: 2px;
                 background-color: transparent;
                 color: __MUTED__;
                 padding: 0 8px;
@@ -1765,13 +1857,13 @@ class ModelTab(QWidget):
             }
             QPushButton#ModelVisualPanelTabButton:checked,
             QPushButton#ModelVisualPanelTabButton:checked:hover {
-                background-color: __CHECKED__;
-                border-color: __CHECKED_BORDER__;
+                background-color: #F3F4F6;
+                border-color: #D1D5DB;
                 color: __TEXT__;
             }
             QPushButton#ModelVisualPanelTabButton:pressed {
-                background-color: __CHECKED__;
-                border-color: __CHECKED_BORDER__;
+                background-color: #E5E7EB;
+                border-color: #D1D5DB;
                 color: __TEXT__;
             }
         """
@@ -1834,6 +1926,7 @@ class ModelTab(QWidget):
         refresh_builder_data_fonts(self)
         self._refresh_theme_icons()
         self._schedule_toolbar_visuals_strip_visibility()
+        self._position_clear_filters_button()
 
     def _suggested_role_for_group(self, group: str) -> str:
         mapping = {
@@ -2002,6 +2095,7 @@ class ModelTab(QWidget):
         self._set_data_panel_available(True)
         self._sync_data_panel_chrome()
         self._ensure_canvas_splitter_sizes()
+        self._schedule_clear_filters_button_position()
 
     def _sync_data_fields_button_state(self):
         button = getattr(self, "data_fields_btn", None)
@@ -2042,9 +2136,58 @@ class ModelTab(QWidget):
             return None
         return item.binding.normalized()
 
+    def _sync_visual_type_button_states(self, buttons, active_chart_type: str = ""):
+        normalized_active = normalize_chart_type(active_chart_type) if active_chart_type else ""
+        buttons = [button for button in list(buttons or []) if button is not None]
+        group = None
+        if buttons:
+            parent_widget = buttons[0].parentWidget()
+            group = getattr(parent_widget, "_model_visual_button_group", None)
+        previous_exclusive = None
+        if group is not None:
+            try:
+                previous_exclusive = bool(group.exclusive())
+                group.setExclusive(False)
+            except Exception:
+                group = None
+                previous_exclusive = None
+        try:
+            for button in buttons:
+                try:
+                    button_chart_type = normalize_chart_type(str(button.property("visualType") or ""))
+                    should_check = bool(normalized_active and button_chart_type == normalized_active)
+                    button.blockSignals(True)
+                    try:
+                        button.setChecked(should_check)
+                        button.setIcon(
+                            getattr(button, "_model_icon_checked", None)
+                            if should_check
+                            else getattr(button, "_model_icon_normal", None)
+                        )
+                    finally:
+                        button.blockSignals(False)
+                except Exception:
+                    log_exception("falha opcional ignorada")
+        finally:
+            if group is not None and previous_exclusive is not None:
+                try:
+                    group.setExclusive(previous_exclusive)
+                except Exception:
+                    log_exception("falha opcional ignorada")
+
     def _sync_builder_selection_state(self):
         item = self._selected_canvas_item()
         binding = item.binding.normalized() if item is not None else None
+        buttons = list(getattr(self, "builder_visual_buttons", {}).values())
+        buttons_container = buttons[0].parentWidget() if buttons else None
+        toolbar_buttons = self._toolbar_visual_type_buttons()
+        toolbar_container = toolbar_buttons[0].parentWidget() if toolbar_buttons else None
+        button_containers = [container for container in (buttons_container, toolbar_container) if container is not None]
+        for container in button_containers:
+            try:
+                container.setUpdatesEnabled(False)
+            except Exception:
+                log_exception("falha opcional ignorada")
         if not builder_has_selection(item, binding):
             self._builder_selected_item_id = ""
             if hasattr(self, "builder_empty_label"):
@@ -2054,10 +2197,8 @@ class ModelTab(QWidget):
             if hasattr(self, "builder_format_card"):
                 self.builder_format_card.setVisible(False)
             self.builder_selected_visual_label.setText(_rt("Selecione um visual para começar."))
-            for button in self.builder_visual_buttons.values():
-                button.blockSignals(True)
-                button.setChecked(False)
-                button.blockSignals(False)
+            self._sync_visual_type_button_states(buttons, "")
+            self._sync_visual_type_button_states(toolbar_buttons, "")
             for widget in list(getattr(self, "_builder_selection_widgets", []) or []):
                 widget.setVisible(False)
             for slot in self.builder_binding_slots.values():
@@ -2065,6 +2206,12 @@ class ModelTab(QWidget):
             self.builder_agg_combo.setEnabled(False)
             self.builder_topn_spin.setEnabled(False)
             self.builder_title_edit.setEnabled(False)
+            for container in button_containers:
+                try:
+                    container.setUpdatesEnabled(True)
+                    container.update()
+                except Exception:
+                    log_exception("falha opcional ignorada")
             return
         self._builder_selected_item_id = str(item.item_id or "")
         if hasattr(self, "builder_empty_label"):
@@ -2119,10 +2266,14 @@ class ModelTab(QWidget):
         self.builder_title_edit.blockSignals(True)
         self.builder_title_edit.setText(str(binding.title_override or item.title or ""))
         self.builder_title_edit.blockSignals(False)
-        for chart_type, button in self.builder_visual_buttons.items():
-            button.blockSignals(True)
-            button.setChecked(chart_type == active_chart_type)
-            button.blockSignals(False)
+        self._sync_visual_type_button_states(buttons, active_chart_type)
+        self._sync_visual_type_button_states(toolbar_buttons, active_chart_type)
+        for container in button_containers:
+            try:
+                container.setUpdatesEnabled(True)
+                container.update()
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def _selected_layer(self) -> Optional[QgsVectorLayer]:
         return self._current_builder_layer()
@@ -2380,7 +2531,16 @@ class ModelTab(QWidget):
             layer = self._selected_layer()
         return rebuild_chart_item_from_binding(item, updated_binding, layer)
 
-    def _configure_toolbar_icon_button(self, button, icon_name: str, tooltip: str, icon_size: int = 18, icon_color: str = ""):
+    def _toolbar_button_icon(self, button, icon_name: str, icon_size: int, icon_color: str = ""):
+        color = str(icon_color or "")
+        try:
+            if bool(button.isCheckable()) and bool(button.isChecked()):
+                color = "#FFFFFF"
+        except Exception:
+            pass
+        return _model_tinted_svg_icon(icon_name, icon_size, color)
+
+    def _configure_toolbar_icon_button(self, button, icon_name: str, tooltip: str, icon_size: int = 20, icon_color: str = ""):
         button.setProperty("toolbarMode", "icon")
         button.setProperty("modelIconName", icon_name)
         button.setProperty("modelIconSize", int(icon_size))
@@ -2397,15 +2557,23 @@ class ModelTab(QWidget):
             button.setText("")
         except Exception:
             log_exception("falha opcional ignorada")
-        icon = _model_tinted_svg_icon(icon_name, icon_size, icon_color)
+        icon = self._toolbar_button_icon(button, icon_name, icon_size, icon_color)
         if not icon.isNull():
             button.setIcon(icon)
         button.setIconSize(QSize(icon_size, icon_size))
+        try:
+            button.toggled.connect(
+                lambda checked, b=button, name=icon_name, size=icon_size, color=icon_color: b.setIcon(
+                    _model_tinted_svg_icon(name, size, "#FFFFFF" if checked else color)
+                )
+            )
+        except Exception:
+            log_exception("falha opcional ignorada")
         if isinstance(button, QToolButton):
             button.setToolButtonStyle(Qt.ToolButtonIconOnly)
             button.setAutoRaise(False)
 
-    def _configure_toolbar_text_icon_button(self, button, icon_name: str, text: str, tooltip: str, icon_size: int = 18, icon_color: str = ""):
+    def _configure_toolbar_text_icon_button(self, button, icon_name: str, text: str, tooltip: str, icon_size: int = 20, icon_color: str = ""):
         self._configure_toolbar_icon_button(button, icon_name, tooltip, icon_size=icon_size, icon_color=icon_color)
         button.setProperty("toolbarMode", "label")
         try:
@@ -2453,8 +2621,13 @@ class ModelTab(QWidget):
             return
         has_project = self.current_project is not None
         edit_enabled = bool(self.edit_mode_btn.isChecked())
-        chart_mode_enabled = bool(self.create_chart_btn.isChecked())
-        base_visible = bool(has_project and edit_enabled and chart_mode_enabled)
+        base_visible = toolbar_visuals_should_be_visible(
+            has_project=has_project,
+            edit_enabled=edit_enabled,
+            create_chart_checked=bool(self.create_chart_btn.isChecked()),
+            builder_panel_open=bool(getattr(self, "_builder_panel_open", False)),
+            visual_panel_open=bool(getattr(self, "_visual_panel_open", False)),
+        )
         buttons = self._toolbar_visual_type_buttons()
         if not base_visible or not buttons:
             for button in buttons:
@@ -3485,6 +3658,7 @@ class ModelTab(QWidget):
         self._set_visual_side_panel_available(active or self._visual_panel_open)
         self._set_data_panel_available(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
         self._ensure_canvas_splitter_sizes()
+        self._schedule_clear_filters_button_position()
         self.create_chart_btn.blockSignals(True)
         try:
             if self.create_chart_btn.isChecked() != self._builder_panel_open:
@@ -3556,6 +3730,7 @@ class ModelTab(QWidget):
                 target_data = int(getattr(self, "_data_panel_width", _MODEL_DATA_PANEL_DEFAULT_WIDTH) or _MODEL_DATA_PANEL_DEFAULT_WIDTH)
             target_canvas = max(360, total - target_visual - target_data)
             splitter.setSizes([target_canvas, target_visual, target_data])
+            self._schedule_clear_filters_button_position()
         except Exception:
             log_exception("falha opcional ignorada")
 
@@ -3570,6 +3745,7 @@ class ModelTab(QWidget):
         self._set_visual_side_panel_available(active or self._builder_panel_open)
         self._set_data_panel_available(bool(self.edit_mode_btn.isChecked()) and bool(self.current_project is not None) and in_canvas_page)
         self._ensure_canvas_splitter_sizes()
+        self._schedule_clear_filters_button_position()
         self.format_visual_btn.blockSignals(True)
         try:
             if self.format_visual_btn.isChecked() != active:
@@ -3724,6 +3900,7 @@ class ModelTab(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._sync_toolbar_visuals_strip_visibility()
+        self._position_clear_filters_button()
 
     def _handle_canvas_changed(self, page_id: Optional[str] = None):
         if self._suspend_canvas_events:
@@ -3789,6 +3966,7 @@ class ModelTab(QWidget):
         self.filters_label.clear()
         self.clear_filters_btn.setVisible(True)
         self.filters_bar.setVisible(False)
+        self._position_clear_filters_button()
 
     def _clear_model_filters(self):
         try:
@@ -3797,6 +3975,36 @@ class ModelTab(QWidget):
                 active_canvas.clear_filters()
         except Exception:
             log_exception("falha opcional ignorada")
+
+    def _position_clear_filters_button(self):
+        button = getattr(self, "clear_filters_btn", None)
+        splitter = getattr(self, "canvas_splitter", None)
+        page_stack = getattr(self, "page_stack", None)
+        canvas_page = getattr(self, "canvas_page", None)
+        if button is None or page_stack is None or canvas_page is None:
+            return
+        if not button.isVisible():
+            return
+        try:
+            button.adjustSize()
+            button.resize(button.sizeHint())
+            splitter_sizes = list(splitter.sizes()) if splitter is not None else []
+            canvas_width = int(splitter_sizes[0] if splitter_sizes else (page_stack.width() or 0) or 0)
+            btn_w = button.width() or button.sizeHint().width()
+            x = max(12, canvas_width - btn_w - 12)
+            y = max(8, page_stack.geometry().top() + 8)
+            button.move(x, y)
+            button.raise_()
+            button.show()
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _schedule_clear_filters_button_position(self):
+        try:
+            for delay in (0, 40, 120):
+                QTimer.singleShot(delay, self._position_clear_filters_button)
+        except Exception:
+            self._position_clear_filters_button()
 
     def _refresh_recents(self):
         while self.recents_layout.count():
