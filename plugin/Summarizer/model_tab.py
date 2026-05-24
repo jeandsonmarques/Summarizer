@@ -3,19 +3,24 @@
 
 import os
 import uuid
+from datetime import datetime
 from typing import Dict, List, Optional
 
-from qgis.PyQt.QtCore import QRect, QSize, Qt, QTimer
-from qgis.PyQt.QtGui import QColor, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette
+from qgis.PyQt.QtCore import QRect, QRectF, QSize, Qt, QTimer
+from qgis.PyQt.QtGui import QColor, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette, QPixmap
 from qgis.PyQt.QtWidgets import (
+    QDialog,
     QFileDialog,
+    QGridLayout,
     QHBoxLayout,
     QFrame,
     QLabel,
     QMenu,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QShortcut,
+    QSizePolicy,
     QSlider,
     QSplitter,
     QToolButton,
@@ -56,7 +61,7 @@ from .model_view.model_builder_panel import (
     selected_builder_chart_type_from_buttons,
     visual_type_specs,
 )
-from .model_view.model_cards import _ModelCardAction, _ModelRecentCard
+from .model_view.model_cards import _ModelCardAction, _ModelClockIcon, _ModelRecentCard
 from .model_view.model_data_panel import (
     build_model_data_panel,
     desired_data_panel_width,
@@ -111,6 +116,11 @@ _MODEL_DATA_PANEL_COLLAPSED_WIDTH = 40
 _MODEL_DATA_PANEL_MIN_WIDTH = 120
 _MODEL_DATA_PANEL_DEFAULT_WIDTH = 148
 _MODEL_DATA_PANEL_MAX_WIDTH = 320
+_MODEL_RECENT_CARD_WIDTH = 212
+_MODEL_RECENT_CARD_HEIGHT = 238
+_MODEL_RECENT_CARD_GAP = 16
+_MODEL_RECENT_ROW_GAP = 18
+_MODEL_RECENTS_SECTION_HEIGHT = 28 + 16 + _MODEL_RECENT_CARD_HEIGHT
 
 
 class _ModelVerticalPanelLabel(QLabel):
@@ -139,6 +149,20 @@ class _ModelVerticalPanelLabel(QLabel):
         painter.setPen(self.palette().color(QPalette.WindowText))
         painter.setFont(self.font())
         painter.drawText(rect, Qt.AlignCenter, self.text())
+
+
+class _CurrentPageStackedWidget(QStackedWidget):
+    def sizeHint(self):
+        current = self.currentWidget()
+        if current is not None:
+            return current.sizeHint()
+        return super().sizeHint()
+
+    def minimumSizeHint(self):
+        current = self.currentWidget()
+        if current is not None:
+            return current.minimumSizeHint()
+        return super().minimumSizeHint()
 
 
 class ModelTab(QWidget):
@@ -173,6 +197,8 @@ class ModelTab(QWidget):
         self._data_panel_width = _MODEL_DATA_PANEL_DEFAULT_WIDTH
         self._toolbar_visuals_compact = False
         self._toolbar_visuals_sync_retries = 0
+        self._recents_refresh_pending = False
+        self._recents_columns = 0
         self._builder_selected_item_id: str = ""
         self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
         self._builder_visual_specs = visual_type_specs()
@@ -194,59 +220,81 @@ class ModelTab(QWidget):
 
         self.page_strip = None
 
-        self.body_stack = QStackedWidget(self)
+        self.body_stack = _CurrentPageStackedWidget(self)
+        self.body_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.body_stack.setMinimumSize(0, 0)
         root.addWidget(self.body_stack, 1)
 
         self.empty_page = QWidget(self.body_stack)
+        self.empty_page.setObjectName("ModelStartPage")
         empty_layout = QVBoxLayout(self.empty_page)
-        empty_layout.setContentsMargins(0, 0, 0, 0)
-        empty_layout.setSpacing(14)
+        empty_layout.setContentsMargins(28, 24, 28, 24)
+        empty_layout.setSpacing(26)
 
-        welcome = QFrame(self.empty_page)
-        welcome.setObjectName("ModelWelcomeCard")
-        welcome.setAttribute(Qt.WA_StyledBackground, True)
-        welcome_layout = QVBoxLayout(welcome)
-        welcome_layout.setContentsMargins(18, 18, 18, 18)
-        welcome_layout.setSpacing(14)
+        self.model_home_actions = QWidget(self.empty_page)
+        self.model_home_actions.setObjectName("ModelHomeActions")
+        home_actions_layout = QGridLayout(self.model_home_actions)
+        home_actions_layout.setContentsMargins(0, 0, 0, 0)
+        home_actions_layout.setHorizontalSpacing(16)
+        home_actions_layout.setVerticalSpacing(0)
 
-        welcome_title = QLabel(_rt("Comece um painel no Model"))
-        welcome_title.setObjectName("ModelWelcomeTitle")
-        welcome_layout.addWidget(welcome_title)
-
-        welcome_text = QLabel(
-            _rt("Use os graficos do plugin como blocos editaveis. Adicione pelo menu contextual e reorganize no canvas branco.")
+        self.model_new_card = _ModelCardAction(_rt("New"), "", "Walker-New.svg", self.model_home_actions)
+        self.model_open_card = _ModelCardAction(_rt("Open"), "", "Walker-Open.svg", self.model_home_actions)
+        self.model_import_card = _ModelCardAction(
+            _rt("Remote Database"),
+            _rt("Connect to remote database sources"),
+            "Dataset.svg",
+            self.model_home_actions,
         )
-        welcome_text.setObjectName("ModelWelcomeText")
-        welcome_text.setWordWrap(True)
-        welcome_layout.addWidget(welcome_text)
-
-        welcome_layout.addStretch(1)
-
-        empty_layout.addWidget(welcome, 0)
+        for column, card in enumerate((self.model_new_card, self.model_open_card, self.model_import_card)):
+            home_actions_layout.addWidget(card, 0, column)
+            home_actions_layout.setColumnStretch(column, 1)
+        empty_layout.addWidget(self.model_home_actions, 0)
 
         self.recents_card = QFrame(self.empty_page)
         self.recents_card.setObjectName("ModelRecentsCard")
         self.recents_card.setAttribute(Qt.WA_StyledBackground, True)
+        self.recents_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         recents_layout = QVBoxLayout(self.recents_card)
-        recents_layout.setContentsMargins(18, 18, 18, 18)
-        recents_layout.setSpacing(10)
+        recents_layout.setContentsMargins(0, 0, 0, 0)
+        recents_layout.setSpacing(16)
 
-        recents_title = QLabel(_rt("Paineis recentes"))
+        recents_header = QHBoxLayout()
+        recents_header.setContentsMargins(0, 0, 0, 0)
+        recents_header.setSpacing(7)
+        self.recents_clock_icon = _ModelClockIcon(self.recents_card)
+        recents_header.addWidget(self.recents_clock_icon, 0, Qt.AlignVCenter)
+        recents_title = QLabel(_rt("Recent Panels"))
         recents_title.setObjectName("ModelRecentsTitle")
-        recents_layout.addWidget(recents_title)
+        recents_header.addWidget(recents_title, 0, Qt.AlignVCenter)
+        recents_header.addStretch(1)
+        recents_layout.addLayout(recents_header)
 
-        self.recents_placeholder = QLabel(_rt("Nenhum painel recente encontrado."))
+        self.recents_placeholder = QLabel(_rt("No recent panels found."))
         self.recents_placeholder.setObjectName("ModelRecentsPlaceholder")
         self.recents_placeholder.setWordWrap(True)
         recents_layout.addWidget(self.recents_placeholder)
 
-        self.recents_container = QWidget(self.recents_card)
-        self.recents_layout = QVBoxLayout(self.recents_container)
-        self.recents_layout.setContentsMargins(0, 0, 0, 0)
-        self.recents_layout.setSpacing(8)
-        recents_layout.addWidget(self.recents_container)
+        self.recents_scroll = QScrollArea(self.recents_card)
+        self.recents_scroll.setObjectName("ModelRecentsScroll")
+        self.recents_scroll.setWidgetResizable(True)
+        self.recents_scroll.setFrameShape(QFrame.NoFrame)
+        self.recents_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.recents_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.recents_scroll.setFixedHeight(_MODEL_RECENT_CARD_HEIGHT)
+        self.recents_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        empty_layout.addWidget(self.recents_card, 1)
+        self.recents_container = QWidget(self.recents_scroll)
+        self.recents_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.recents_layout = QGridLayout(self.recents_container)
+        self.recents_layout.setContentsMargins(0, 0, 0, 0)
+        self.recents_layout.setHorizontalSpacing(_MODEL_RECENT_CARD_GAP)
+        self.recents_layout.setVerticalSpacing(_MODEL_RECENT_ROW_GAP)
+        self.recents_scroll.setWidget(self.recents_container)
+        recents_layout.addWidget(self.recents_scroll)
+
+        empty_layout.addWidget(self.recents_card, 0, Qt.AlignTop)
+        empty_layout.addStretch(1)
 
         self.canvas_page = QWidget(self.body_stack)
         canvas_page_layout = QHBoxLayout(self.canvas_page)
@@ -413,6 +461,9 @@ class ModelTab(QWidget):
 
         self.new_btn.clicked.connect(self.new_project)
         self.open_btn.clicked.connect(self.open_project)
+        self.model_new_card.clicked.connect(self.new_project)
+        self.model_open_card.clicked.connect(self.open_project)
+        self.model_import_card.clicked.connect(self._open_model_database_menu)
         self.save_btn.clicked.connect(self.save_project)
         self.save_as_btn.clicked.connect(lambda: self.save_project(save_as=True))
         self.export_btn.clicked.connect(self.export_project)
@@ -440,6 +491,11 @@ class ModelTab(QWidget):
         self.setStyleSheet(
             """
             QWidget#ModelTabRoot {
+                background: #FFFFFF;
+            }
+            QWidget#ModelStartPage,
+            QWidget#ModelHomeActions,
+            QWidget#ModelRecentCardContent {
                 background: #FFFFFF;
             }
             QFrame#ModelHeader {
@@ -476,7 +532,6 @@ class ModelTab(QWidget):
                 background: transparent;
             }
             QLabel#ModelHint,
-            QLabel#ModelWelcomeText,
             QLabel#ModelRecentsPlaceholder {
                 color: #6B7280;
                 font-size: 12px;
@@ -490,11 +545,16 @@ class ModelTab(QWidget):
                 color: #374151;
                 font-size: 12px;
             }
-            QFrame#ModelWelcomeCard,
             QFrame#ModelRecentsCard {
                 background: #FFFFFF;
-                border: 1px solid #D6D9E0;
-                border-radius: 16px;
+                border: none;
+                border-radius: 0px;
+            }
+            QScrollArea#ModelRecentsScroll,
+            QScrollArea#ModelRecentsScroll > QWidget,
+            QScrollArea#ModelRecentsScroll > QWidget > QWidget {
+                background: transparent;
+                border: none;
             }
             QFrame#ModelFooterBar {
                 background: #FFFFFF;
@@ -1015,11 +1075,15 @@ class ModelTab(QWidget):
                 background: #FFFFFF;
                 border-color: rgba(17, 24, 39, 0.12);
             }
-            QLabel#ModelWelcomeTitle,
             QLabel#ModelRecentsTitle {
                 color: #111827;
-                font-size: 15px;
+                font-size: 18px;
                 font-weight: 600;
+            }
+            QLabel#ModelRecentsClockIcon {
+                color: #6B7280;
+                font-size: 22px;
+                font-weight: 400;
             }
             QLabel#ModelZoomLabel {
                 color: #6B7280;
@@ -1131,24 +1195,37 @@ class ModelTab(QWidget):
             QFrame#ModelActionCard,
             QFrame#ModelRecentCard {
                 background: #FFFFFF;
-                border: 1px solid #C9D2E3;
-                border-radius: 14px;
+                border: 1px solid #E1E5EA;
+                border-radius: 10px;
             }
             QFrame#ModelActionCard:hover,
             QFrame#ModelRecentCard:hover {
-                background: #F8FAFC;
-                border-color: #94A3B8;
+                background: #F7F7F7;
+                border-color: #D5DAE1;
+            }
+            QFrame#ModelRecentCardPreview {
+                background: #F5F5F5;
+                border: none;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+            }
+            QLabel#ModelRecentCardIcon {
+                background: transparent;
+                border: none;
             }
             QLabel#ModelActionCardIcon {
-                background: #EEF2FF;
-                border: 1px solid #C7D2FE;
-                border-radius: 10px;
+                background: transparent;
+                border: none;
             }
-            QLabel#ModelActionCardTitle,
+            QLabel#ModelActionCardTitle {
+                color: #111827;
+                font-size: 15px;
+                font-weight: 400;
+            }
             QLabel#ModelRecentCardTitle {
                 color: #111827;
                 font-size: 13px;
-                font-weight: 400;
+                font-weight: 600;
             }
             QLabel#ModelActionCardText,
             QLabel#ModelRecentCardText {
@@ -1188,8 +1265,13 @@ class ModelTab(QWidget):
                 background: #0B1020;
                 color: #F8FAFC;
             }
+            QWidget#ModelStartPage,
+            QWidget#ModelHomeActions,
+            QWidget#ModelRecentCardContent {
+                background: #0B1020;
+                color: #F8FAFC;
+            }
             QFrame#ModelToolbarStrip,
-            QFrame#ModelWelcomeCard,
             QFrame#ModelRecentsCard,
             QFrame#ModelFooterBar,
             QFrame#ModelActionCard,
@@ -1211,7 +1293,6 @@ class ModelTab(QWidget):
                 color: #F8FAFC;
             }
             QLabel#ModelHint,
-            QLabel#ModelWelcomeText,
             QLabel#ModelRecentsPlaceholder,
             QLabel#ModelActionCardText,
             QLabel#ModelRecentCardText,
@@ -1256,8 +1337,12 @@ class ModelTab(QWidget):
                 border-color: #D1D5DB;
             }
             QLabel#ModelActionCardIcon {
-                background: #312E81;
-                border-color: #7C6CFF;
+                background: transparent;
+                border-color: transparent;
+            }
+            QFrame#ModelRecentCardPreview {
+                background: #172033;
+                border-color: #334155;
             }
         """
         self.setStyleSheet(f"{self._base_model_stylesheet}\n{overlay}")
@@ -3399,6 +3484,117 @@ class ModelTab(QWidget):
     def new_project(self):
         self._create_blank_project(_rt("Novo painel"))
 
+    def _open_model_database_menu(self):
+        self._refresh_model_database_status()
+        connected_drivers = set()
+        try:
+            from .integration_panel import connected_database_drivers
+
+            connected_drivers = connected_database_drivers()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        menu = QMenu(self)
+        menu.setObjectName("ModelDatabaseMenu")
+        menu.setStyleSheet(
+            """
+            QMenu#ModelDatabaseMenu {
+                background: #FFFFFF;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+                padding: 6px;
+            }
+            QMenu#ModelDatabaseMenu::item {
+                min-width: 122px;
+                min-height: 28px;
+                padding: 4px 10px;
+                color: #111827;
+                background: transparent;
+                border-radius: 6px;
+            }
+            QMenu#ModelDatabaseMenu::item:selected {
+                background: #F3F4F6;
+            }
+            """
+        )
+        for driver in ("PostgreSQL", "PostGIS", "SQL Server", "Oracle", "MySQL"):
+            action = menu.addAction(driver)
+            action.setData(driver)
+            if driver in connected_drivers:
+                action.setIcon(self._database_connected_icon())
+        card = getattr(self, "model_import_card", self)
+        point = card.mapToGlobal(card.rect().bottomLeft())
+        point.setY(point.y() + 4)
+        chosen = menu.exec_(point)
+        if chosen is None:
+            return
+        self._open_model_import_dataset(str(chosen.data() or "PostgreSQL"))
+
+    def _refresh_model_database_status(self):
+        try:
+            from .integration_panel import connected_database_drivers
+
+            connected = bool(connected_database_drivers())
+        except Exception:
+            log_exception("falha opcional ignorada")
+            connected = False
+        card = getattr(self, "model_import_card", None)
+        if hasattr(card, "set_connected"):
+            card.set_connected(connected)
+
+    def _database_connected_icon(self) -> QIcon:
+        pixmap = QPixmap(14, 14)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#22C55E"))
+        painter.drawEllipse(QRectF(3.0, 3.0, 8.0, 8.0))
+        painter.end()
+        return QIcon(pixmap)
+
+    def _open_model_import_dataset(self, preferred_driver: str = "PostgreSQL"):
+        try:
+            from .browser_integration import connection_registry
+            from .integration_panel import DatabaseImportDialog
+
+            saved = connection_registry.saved_connections()
+            dialog = DatabaseImportDialog(self, saved, preferred_driver=preferred_driver)
+            result = dialog.exec_()
+            self._refresh_model_database_status()
+            if result != QDialog.Accepted:
+                return
+            df, metadata, connection_meta, session_connection = dialog.result()
+            host = self.window()
+            register = getattr(host, "register_integration_dataframe", None)
+            if callable(register) and df is not None and not df.empty:
+                register(df, metadata or {"connector": preferred_driver})
+            if session_connection:
+                connection_registry.register_runtime_connection(session_connection)
+            self._refresh_model_database_status()
+            return
+        except Exception:
+            log_exception("falha opcional ignorada")
+        host = self.window()
+        for method_name in ("open_get_data_dialog", "show_integration_page"):
+            method = getattr(host, method_name, None)
+            if callable(method):
+                try:
+                    method()
+                    return
+                except Exception:
+                    log_exception("falha opcional ignorada")
+        parent = self.parent()
+        while parent is not None:
+            for method_name in ("open_get_data_dialog", "show_integration_page"):
+                method = getattr(parent, method_name, None)
+                if callable(method):
+                    try:
+                        method()
+                        return
+                    except Exception:
+                        log_exception("falha opcional ignorada")
+            parent = parent.parent()
+
     def close_project(self):
         if self.current_project is not None and self._dirty:
             answer = slim_question(
@@ -3901,6 +4097,10 @@ class ModelTab(QWidget):
         super().resizeEvent(event)
         self._sync_toolbar_visuals_strip_visibility()
         self._position_clear_filters_button()
+        if getattr(self, "current_project", None) is None:
+            columns = self._recent_columns_for_width(self._available_recents_width())
+            if columns != getattr(self, "_recents_columns", 0):
+                self._schedule_recents_refresh()
 
     def _handle_canvas_changed(self, page_id: Optional[str] = None):
         if self._suspend_canvas_events:
@@ -4006,6 +4206,84 @@ class ModelTab(QWidget):
         except Exception:
             self._position_clear_filters_button()
 
+    def _schedule_recents_refresh(self):
+        if getattr(self, "_recents_refresh_pending", False):
+            return
+        self._recents_refresh_pending = True
+        for delay in (0, 80, 180):
+            QTimer.singleShot(delay, self._run_scheduled_recents_refresh)
+
+    def _run_scheduled_recents_refresh(self):
+        self._recents_refresh_pending = False
+        if getattr(self, "current_project", None) is None:
+            self._refresh_recents()
+
+    def _available_recents_width(self) -> int:
+        candidates = []
+        for widget in (
+            getattr(self, "recents_scroll", None),
+            getattr(self, "model_home_actions", None),
+            getattr(self, "empty_page", None),
+        ):
+            if widget is None:
+                continue
+            try:
+                width = int(widget.width())
+            except Exception:
+                width = 0
+            if width > 0:
+                candidates.append(width)
+        try:
+            viewport = self.recents_scroll.viewport()
+            if viewport is not None and int(viewport.width()) > 0:
+                candidates.append(int(viewport.width()))
+        except Exception:
+            pass
+        width = max(candidates or [0])
+        try:
+            if width == int(self.empty_page.width() or 0) and width > 56:
+                width -= 56
+        except Exception:
+            pass
+        return max(0, width)
+
+    def _recent_columns_for_width(self, width: int) -> int:
+        try:
+            available = int(width or 0)
+        except Exception:
+            available = 0
+        min_reliable_width = (_MODEL_RECENT_CARD_WIDTH * 2) + _MODEL_RECENT_CARD_GAP
+        if available < min_reliable_width:
+            return 4
+        return max(
+            1,
+            min(
+                4,
+                (available + _MODEL_RECENT_CARD_GAP)
+                // (_MODEL_RECENT_CARD_WIDTH + _MODEL_RECENT_CARD_GAP),
+            ),
+        )
+
+    def _recent_display_timestamp(self, recent: Dict[str, object], path: str) -> str:
+        raw_value = str(recent.get("updated_at") or "").strip()
+        parsed = None
+        if raw_value:
+            try:
+                parsed = datetime.fromisoformat(raw_value)
+            except Exception:
+                parsed = None
+        if parsed is None and path:
+            try:
+                parsed = datetime.fromtimestamp(os.path.getmtime(path))
+            except Exception:
+                parsed = None
+        if parsed is None:
+            return str(path or "")
+        try:
+            return parsed.strftime("%d/%m/%Y, %H:%M:%S")
+        except Exception:
+            return str(path or "")
+
     def _refresh_recents(self):
         while self.recents_layout.count():
             item = self.recents_layout.takeAt(0)
@@ -4016,24 +4294,47 @@ class ModelTab(QWidget):
         recents = self.store.load_recents()
         if not recents:
             self.recents_placeholder.setVisible(True)
-            self.recents_container.setVisible(False)
+            self.recents_scroll.setVisible(False)
+            self.recents_container.setFixedHeight(0)
+            self.recents_card.setFixedHeight(58)
+            self._recents_columns = 0
             return
 
         self.recents_placeholder.setVisible(False)
+        self.recents_scroll.setVisible(True)
         self.recents_container.setVisible(True)
-        for recent in recents:
+        self.recents_scroll.setFixedHeight(_MODEL_RECENT_CARD_HEIGHT)
+        self.recents_card.setFixedHeight(_MODEL_RECENTS_SECTION_HEIGHT)
+        columns = self._recent_columns_for_width(self._available_recents_width())
+        self._recents_columns = columns
+        rows = max(1, (len(recents) + columns - 1) // columns)
+        for index, recent in enumerate(recents):
             path = str(recent.get("path") or "")
             name = str(os.path.splitext(os.path.basename(path))[0] or recent.get("name") or "")
-            card = _ModelRecentCard(name, path, self.recents_container)
-            card.setMinimumHeight(68)
+            card = _ModelRecentCard(
+                name,
+                self._recent_display_timestamp(recent, path),
+                self.recents_container,
+            )
             card.clicked.connect(lambda selected_path=path: self.open_project(selected_path))
-            self.recents_layout.addWidget(card)
-        self.recents_layout.addStretch(1)
+            row = index // columns
+            column = index % columns
+            self.recents_layout.addWidget(card, row, column, Qt.AlignLeft | Qt.AlignTop)
+        for column in range(columns):
+            self.recents_layout.setColumnStretch(column, 0)
+        cards_height = rows * _MODEL_RECENT_CARD_HEIGHT + max(0, rows - 1) * _MODEL_RECENT_ROW_GAP
+        self.recents_container.setFixedHeight(cards_height)
+        try:
+            self.recents_scroll.verticalScrollBar().setValue(0)
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def _refresh_ui_state(self):
         has_project = self.current_project is not None
         self.body_stack.setCurrentWidget(self.canvas_page if has_project else self.empty_page)
         in_canvas_page = self.body_stack.currentWidget() is self.canvas_page
+        if hasattr(self, "header"):
+            self.header.setVisible(has_project)
         if getattr(self, "page_strip", None) is not None:
             self.page_strip.setVisible(has_project)
         if has_project:
@@ -4064,3 +4365,5 @@ class ModelTab(QWidget):
         self.filters_bar.setVisible(bool(self.edit_mode_btn.isChecked()) and self.filters_bar.isVisible())
         self._sync_mode_switch_state(bool(self.edit_mode_btn.isChecked()))
         self._update_undo_redo_buttons()
+        if not has_project:
+            self._schedule_recents_refresh()

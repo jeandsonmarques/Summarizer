@@ -36,3 +36,29 @@ def apply_windows_title_bar_theme(widget: QWidget, dark: bool) -> bool:
         return False
     return False
 
+
+def apply_windows_rounded_corners(widget: QWidget, *, small: bool = False) -> bool:
+    """Ask Windows 11+ to round this top-level window without Qt translucency."""
+    if widget is None or not sys.platform.startswith("win"):
+        return False
+    try:
+        hwnd = int(widget.winId())
+    except Exception:
+        return False
+    if not hwnd:
+        return False
+    try:
+        import ctypes
+
+        # DWMWA_WINDOW_CORNER_PREFERENCE = 33
+        # DWMWCP_ROUND = 2, DWMWCP_ROUNDSMALL = 3.
+        value = ctypes.c_int(3 if small else 2)
+        result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            ctypes.c_void_p(hwnd),
+            ctypes.c_int(33),
+            ctypes.byref(value),
+            ctypes.sizeof(value),
+        )
+        return result == 0
+    except Exception:
+        return False

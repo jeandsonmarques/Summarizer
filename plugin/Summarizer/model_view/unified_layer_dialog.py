@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Jeandson Marques
 
 import os
-from typing import List, Optional
+from typing import Optional
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
@@ -139,4 +139,3 @@ class UnifiedLayerDialog(QDialog):
             "path": self.path_edit.text().strip() if mode == "gpkg" else None,
             "layer_name": self.layer_name_edit.text().strip() or None,
         }
-

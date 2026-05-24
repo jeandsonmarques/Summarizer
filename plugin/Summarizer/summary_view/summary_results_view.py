@@ -22,7 +22,7 @@ def escape_html(text: Any) -> str:
         return ""
     return (
         str(text)
-        .replace("&", "&")
+        .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
@@ -123,4 +123,3 @@ def display_advanced_summary(
         fallback_html,
         set_results_view=set_results_view,
     )
-

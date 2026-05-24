@@ -1,17 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jeandson Marques
 
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt
-from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
+from qgis.PyQt.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from qgis.PyQt.QtWidgets import QGraphicsObject
 
 from ..utils.fonts import ui_font
 
 from ..utils.logging_utils import log_exception
-if TYPE_CHECKING:  # pragma: no cover
-    from .model_canvas_scene import ModelCanvasScene
 
 
 class FieldItem(QGraphicsObject):
@@ -177,4 +175,3 @@ class FieldItem(QGraphicsObject):
             event.accept()
             return
         super().mouseReleaseEvent(event)
-

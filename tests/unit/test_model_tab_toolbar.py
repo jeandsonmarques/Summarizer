@@ -217,3 +217,160 @@ def test_presentation_button_icon_is_neutral_not_purple():
     assert "#F5F1FF" not in icon_source
     assert "#F3F4F6" in icon_source
     assert "#374151" in icon_source
+
+
+def test_model_start_page_uses_walker_database_home_pattern():
+    model_source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(
+        encoding="utf-8"
+    )
+    card_source = (
+        ROOT / "plugin" / "Summarizer" / "model_view" / "model_cards.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'setObjectName("ModelHomeActions")' in model_source
+    assert '_ModelCardAction(_rt("New"), "", "Walker-New.svg"' in model_source
+    assert '_ModelCardAction(_rt("Open"), "", "Walker-Open.svg"' in model_source
+    assert '_ModelCardAction(\n            _rt("Remote Database")' in model_source
+    assert '_rt("Connect to remote database sources")' in model_source
+    assert '"Dataset.svg"' in model_source
+    assert '"card_sql.svg"' not in model_source
+    assert '_rt("Recent Panels")' in model_source
+    assert "class _CurrentPageStackedWidget(QStackedWidget):" in model_source
+    assert "self.body_stack = _CurrentPageStackedWidget(self)" in model_source
+    assert "current.minimumSizeHint()" in model_source
+    assert 'setObjectName("ModelRecentsScroll")' in model_source
+    assert "self.recents_scroll.setFixedHeight(_MODEL_RECENT_CARD_HEIGHT)" in model_source
+    assert "self.recents_card.setFixedHeight(_MODEL_RECENTS_SECTION_HEIGHT)" in model_source
+    resize_body = model_source[
+        model_source.index("def resizeEvent")
+        : model_source.index("def _handle_canvas_changed")
+    ]
+    assert "QTimer.singleShot(0, self._refresh_recents)" not in resize_body
+    assert "columns != getattr(self, \"_recents_columns\", 0)" in resize_body
+    assert 'QGridLayout(self.recents_container)' in model_source
+    assert "self.header.setVisible(has_project)" in model_source
+    assert "return 4" in model_source
+    assert "def _recent_display_timestamp" in model_source
+    assert 'parsed.strftime("%d/%m/%Y, %H:%M:%S")' in model_source
+    assert "preview_path=" not in model_source
+    assert ".preview.png" not in model_source
+    assert "Comece um painel no Model" not in model_source
+    assert "Use os graficos do plugin como blocos editaveis" not in model_source
+    assert "QFrame#ModelRecentCardPreview" in model_source
+    assert "setFixedSize(212, 238)" in card_source
+    assert "metrics.elidedText" in card_source
+    assert "class _ModelRecentFolderIcon(QWidget):" in card_source
+    assert "QPen(QColor(\"#4B5563\"), 2.0)" in card_source
+    assert "QPixmap" not in card_source
+    assert "def set_connected(self, connected: bool):" in card_source
+    assert "QColor(\"#22C55E\")" in card_source
+
+
+def test_model_import_dataset_opens_walker_database_dialog_directly():
+    model_source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(
+        encoding="utf-8"
+    )
+    integration_source = (
+        ROOT / "plugin" / "Summarizer" / "integration_panel.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def _open_model_database_menu(self):" in model_source
+    menu_method = model_source[
+        model_source.index("def _open_model_database_menu")
+        : model_source.index("def _open_model_import_dataset")
+    ]
+    assert "QMenu(self)" in menu_method
+    assert 'menu.setObjectName("ModelDatabaseMenu")' in menu_method
+    assert "connected_database_drivers" in menu_method
+    assert "action.setIcon(self._database_connected_icon())" in menu_method
+    for driver in ("PostgreSQL", "PostGIS", "SQL Server", "Oracle", "MySQL"):
+        assert f'"{driver}"' in menu_method
+    assert "self._open_model_import_dataset(str(chosen.data() or \"PostgreSQL\"))" in menu_method
+
+    import_method = model_source[
+        model_source.index("def _open_model_import_dataset")
+        : model_source.index("def close_project", model_source.index("def _open_model_import_dataset"))
+    ]
+    assert 'preferred_driver: str = "PostgreSQL"' in import_method
+    assert "DatabaseImportDialog" in import_method
+    assert "open_get_data_dialog" in import_method
+    assert import_method.index("DatabaseImportDialog") < import_method.index("open_get_data_dialog")
+    assert "preferred_driver=preferred_driver" in import_method
+    assert "self._refresh_model_database_status()" in import_method
+    assert "def _database_connected_icon(self) -> QIcon:" in model_source
+
+    assert 'setObjectName("WalkerDatabaseDialog")' in integration_source
+    assert "def _walker_database_dialog_flags" in integration_source
+    assert "sys.platform.startswith(\"win\")" in integration_source
+    assert "Qt.FramelessWindowHint" in integration_source
+    assert "Qt.WindowCloseButtonHint" in integration_source
+    assert "self.setWindowFlags(_walker_database_dialog_flags())" in integration_source
+    assert "WA_StyledBackground" in integration_source
+    assert "WA_TranslucentBackground" not in integration_source
+    assert "apply_windows_rounded_corners" in integration_source
+    assert "def _ensure_walker_dialog_visible" in integration_source
+    assert "QTimer.singleShot(0, self._ensure_walker_dialog_visible)" in integration_source
+    assert "self._walker_panel = panel" in integration_source
+    assert "QGraphicsDropShadowEffect(panel)" not in integration_source
+    assert "_show_walker_modal_overlay" in integration_source
+    assert "QFrame#WalkerDatabasePanel" in integration_source
+    assert "QDialog#WalkerDatabaseDialog" in integration_source
+    assert "setFixedSize(500, 430)" in integration_source
+    assert "class _WalkerDatabaseTitleIcon(QWidget):" in integration_source
+    assert "def setConnected(self, connected: bool):" in integration_source
+    assert 'painter.setBrush(QColor("#22C55E"))' in integration_source
+    assert "self.connection_status_icon = _WalkerDatabaseTitleIcon(self)" in integration_source
+    assert 'svg_icon("Dataset.svg")' not in integration_source
+    assert "def _set_connection_status(self, connected: bool):" in integration_source
+    assert "_CONNECTED_DATABASE_KEYS: set[str] = set()" in integration_source
+    assert "_CONNECTED_DATABASE_TABLES: Dict[str, List[str]] = {}" in integration_source
+    assert "_CONNECTED_DATABASE_PARAMS: Dict[str, Dict] = {}" in integration_source
+    assert "def connected_database_drivers() -> set[str]:" in integration_source
+    assert "def _connection_status_key(self, params: Optional[Dict] = None) -> str:" in integration_source
+    assert "def _remember_connected_connection(self, params: Dict, tables: Optional[List[str]] = None):" in integration_source
+    assert "def _refresh_connection_status_from_fields(self):" in integration_source
+    assert "def _restore_connected_tables(self, key: str):" in integration_source
+    assert "_CONNECTED_DATABASE_KEYS.add(key)" in integration_source
+    assert "_CONNECTED_DATABASE_PARAMS[key] = dict(params)" in integration_source
+    assert "_CONNECTED_DATABASE_TABLES[key] = list(tables)" in integration_source
+    assert "self._remember_connected_connection(params, self._current_table_names())" in integration_source
+    assert 'if not params["password"]:' in integration_source
+    assert "connected = _CONNECTED_DATABASE_PARAMS.get(self._connection_status_key(params))" in integration_source
+    assert "self._set_connection_status(False)" in integration_source
+    assert "class _WalkerSslModePicker(QFrame):" in integration_source
+    assert "changed = pyqtSignal(str)" in integration_source
+    assert 'self.setObjectName("WalkerSslPicker")' in integration_source
+    assert 'self._options = ["Disable", "Prefer", "Require"]' in integration_source
+    assert "def _chevron_icon(self) -> QIcon:" in integration_source
+    assert "QPainter(pixmap)" in integration_source
+    assert "self.button.setIcon(self._chevron_icon())" in integration_source
+    assert "self.button.setLayoutDirection(Qt.RightToLeft)" in integration_source
+    assert 'return f"{self._current}  v"' not in integration_source
+    assert 'popup.setObjectName("WalkerSslDropdown")' in integration_source
+    assert "popup.setFixedSize(self._POPUP_WIDTH, 92)" in integration_source
+    assert 'item.setObjectName("WalkerSslDropdownItem")' in integration_source
+    assert "self.ssl_combo = _WalkerSslModePicker(self)" in integration_source
+    assert "self.ssl_combo.changed.connect(lambda *_: self._set_connection_status(False))" in integration_source
+    assert "QListView" not in integration_source
+    assert "QStyleFactory" not in integration_source
+    assert "WalkerSslComboPopup" not in integration_source
+    assert "root_layout.setContentsMargins(0, 0, 0, 0)" in integration_source
+    assert "QFrame#WalkerDatabasePanel {" in integration_source
+    assert "background: #FFFFFF;" in integration_source
+    assert "border-radius: 14px;" in integration_source
+    assert "border: 2px solid #9CA3AF;" in integration_source
+    assert "QFrame#WalkerSslPicker" in integration_source
+    assert "QFrame#WalkerSslDropdown" in integration_source
+    assert "QToolButton#WalkerSslDropdownItem[current=\"true\"]" in integration_source
+    assert 'buttons.setObjectName("WalkerDatabaseButtons")' in integration_source
+    assert 'self.load_btn = buttons.addButton(_rt("Connect")' in integration_source
+    assert "if not preview and not self.tables_combo.isVisible():" in integration_source
+    assert "self.load_btn.setText(_rt(\"Carregar\"))" in integration_source
+    assert "preferred_driver: Optional[str] = None" in integration_source
+    assert 'self._preferred_driver = preferred_driver or "PostgreSQL"' in integration_source
+    assert "preferred_driver=preferred_driver or \"PostgreSQL\"" in integration_source
+    assert "def _apply_driver_ui(self):" in integration_source
+    assert "use_ssl_visible = driver == \"MySQL\"" in integration_source
+    assert "database_label = \"Service / SID\"" in integration_source
+    assert "db.setConnectOptions(f\"sslmode={ssl_mode}\")" in integration_source
+    assert 'db.setConnectOptions("CLIENT_SSL=1")' in integration_source

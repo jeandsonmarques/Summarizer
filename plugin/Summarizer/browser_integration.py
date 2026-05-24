@@ -20,13 +20,12 @@ from qgis.core import (
     QgsDataProvider,
     QgsDataSourceUri,
     QgsLayerItem,
-    QgsMessageLog,
     QgsProviderRegistry,
 )
 from qgis.gui import QgsGui
 
 from .quick_connect_dialogs import PostgresQuickConnectDialog
-from .utils.plugin_logging import log_info, log_warning
+from .utils.plugin_logging import log_info
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.resources import svg_icon
 from .utils.logging_utils import log_exception
@@ -546,7 +545,6 @@ Notes:
   - This module registers the Summarizer Browser node and keeps saved/runtime connections synced.
   - The plugin host should call register_browser_provider() on initGui() and unregister_browser_provider() on unload().
 """
-
 
 
 

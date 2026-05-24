@@ -2,7 +2,6 @@
 # Copyright (C) 2026 Jeandson Marques
 
 import os
-import random
 from copy import deepcopy
 import uuid
 from typing import Any, Dict, List, Optional
@@ -16,14 +15,12 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMessageBox,
     QMenu,
     QPushButton,
     QScrollArea,
     QSplitter,
-    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
@@ -608,14 +605,13 @@ class DashboardWidget(QWidget):
             return
 
         payload_map = {
-            "card": (self._dashboard_total_payload(chart_df), "Total"),
-            "matrix": (self._dashboard_table_payload(chart_df), "Tabela"),
+            "card": self._dashboard_total_payload(chart_df),
+            "matrix": self._dashboard_table_payload(chart_df),
         }
         if chart_type in payload_map:
-            payload, label = payload_map[chart_type]
+            payload = payload_map[chart_type]
         else:
             payload = self._dashboard_chart_payload(chart_df, chart_type)
-            label = self._dashboard_chart_type_label(chart_type)
         if payload is None:
             return
 

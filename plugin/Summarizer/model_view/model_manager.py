@@ -13,6 +13,7 @@ from qgis.PyQt.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QLineEdit,
+    QGridLayout,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -215,11 +216,6 @@ class ModelManager:
                 level=Qgis.Info,
             )
 
-        canvas_order = None
-        try:
-            canvas_order = list(self.tables_on_canvas())
-        except Exception:
-            canvas_order = None
         for table in tables:
             name = table.get("name")
             display = table.get("display_name") or name
@@ -1834,6 +1830,5 @@ class ModelManager:
 
     def _on_zoom_changed(self, value: float):
         self._save_state()
-
 
 

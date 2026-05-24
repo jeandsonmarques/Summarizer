@@ -142,7 +142,6 @@ class TableCardItem(QGraphicsRectItem):
         self._virtual_header_rect = None
         self._virtual_title_height = 0
         if self._virtual_fields:
-            preview_title = self._preview_section_title()
             metrics = QFontMetrics(self.preview_title_font)
             self._virtual_title_height = metrics.height()
             self._virtual_header_rect = QRectF(self.padding, y, content_width, self._virtual_title_height)
@@ -267,5 +266,4 @@ class TableCardItem(QGraphicsRectItem):
             self.pos() + QPointF(self.padding, self.header_height + self.padding),
             self.rect().size(),
         )
-
 

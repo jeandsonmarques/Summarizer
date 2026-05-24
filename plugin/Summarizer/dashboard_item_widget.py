@@ -39,7 +39,6 @@ from .dashboard_models import (
     DashboardChartItem,
     ROLE_X_AXIS,
     binding_slot_definitions,
-    empty_binding_message,
     suggest_binding_slot,
     deserialize_chart_visual_state,
     serialize_chart_visual_state,

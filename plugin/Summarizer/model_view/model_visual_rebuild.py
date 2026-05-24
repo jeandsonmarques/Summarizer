@@ -269,7 +269,6 @@ def rebuild_matrix_item_from_binding(item: DashboardChartItem, binding: Dashboar
     value_items = resolve_binding_items_for_layer(updated_binding, ROLE_VALUES, layer)
     rows = [item.field for item in row_items]
     columns = [item.field for item in column_items]
-    values = [item.field for item in value_items]
     value_item = value_items[0] if value_items else None
     value_field = value_item.field if value_item is not None else ""
     aggregation = normalize_aggregation(value_item.aggregation if value_item is not None else updated_binding.aggregation, value_item.type if value_item is not None else "", ROLE_VALUES)

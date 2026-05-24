@@ -414,16 +414,15 @@ class SummarizerVisualWidget(QWidget):
         if event.button() == Qt.LeftButton and event.modifiers() & Qt.ControlModifier:
             pos = QPointF(event.pos())
             hit_idx = None
-            hit_value = None
-            for geom, idx, value in self._bar_geometries:
+            for geom, idx, _value in self._bar_geometries:
                 if geom.contains(pos):
-                    hit_idx, hit_value = idx, value
+                    hit_idx = idx
                     break
             if hit_idx is None and self._point_positions:
                 tolerance = 8.0
-                for pt, idx, value in self._point_positions:
+                for pt, idx, _value in self._point_positions:
                     if (pt - pos).manhattanLength() <= tolerance:
-                        hit_idx, hit_value = idx, value
+                        hit_idx = idx
                         break
             if hit_idx is not None and self.category_field:
                 cat_value = self.definition.categorias[hit_idx] if hit_idx < len(self.definition.categorias) else None
@@ -446,5 +445,4 @@ class SummarizerVisualWidget(QWidget):
             self.renderer.render(painter, rect, self.definition, self.theme)
         painter.end()
         return image
-
 

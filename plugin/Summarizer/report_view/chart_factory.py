@@ -1069,7 +1069,6 @@ class ReportChartWidget(QWidget):
         level = self._item_interaction_level(item)
         fill = QColor(base_color)
         item_key = str(item.get("key") or "")
-        selected_keys = self._selected_category_keys()
         has_selection = self._has_interaction_context(item)
         is_selected = self._item_is_interaction_focus(item)
         is_hovered = bool(item_key and item_key == self._hovered_category_key)
@@ -5027,7 +5026,7 @@ class ReportChartWidget(QWidget):
                 painter.drawText(QRectF(rect.left(), y - 2, 140, bar_height + 4), Qt.AlignVCenter | Qt.AlignLeft, metrics.elidedText(row_label, Qt.ElideRight, 132))
                 available_width = chart_rect.width()
                 cursor = x
-                total_value = row_total if normalize else max(1.0, max_value := max([row_total, *values, 1.0]))
+                total_value = row_total if normalize else max([row_total, *values, 1.0])
                 for series_index, series_label in enumerate(series):
                     value = max(0.0, values[series_index])
                     width = available_width * (value / row_total if normalize else value / total_value)
@@ -5274,7 +5273,6 @@ class ReportChartWidget(QWidget):
         values = [max(0.0, float(item.get("value") or 0.0)) for item in items]
         total = sum(values) or 1.0
         frame = self._chart_surface(rect, 6, 4, 6, 6)
-        colors = self._palette_colors(len(items), "purple")
         font = harmonize_font_family(QFont(self.font()))
         font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
         metrics = QFontMetrics(font)
@@ -5476,7 +5474,6 @@ class ReportChartWidget(QWidget):
         step_h = max(28.0, inner.height() / max(1, len(items)))
         top_width = inner.width() * 0.94
         bottom_width = inner.width() * 0.30
-        colors = self._palette_colors(len(items), "purple")
         font = harmonize_font_family(QFont(self.font()))
         font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
         metrics = QFontMetrics(font)
