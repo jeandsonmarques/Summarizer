@@ -269,6 +269,17 @@ def walker_dialog_flags():
     return flags
 
 
+def _disable_window_shadow(widget: QWidget) -> None:
+    try:
+        widget.setWindowFlags(widget.windowFlags() | Qt.NoDropShadowWindowHint)
+    except Exception:
+        log_exception("falha opcional ignorada")
+    try:
+        widget.setGraphicsEffect(None)
+    except Exception:
+        log_exception("falha opcional ignorada")
+
+
 def _walker_overlay_parent(dialog: QDialog) -> Optional[QWidget]:
     parent = dialog.parentWidget()
     if parent is None:
@@ -365,6 +376,7 @@ class _WalkerModalChromeFilter(QObject):
 def install_walker_modal_chrome(dialog: QDialog) -> None:
     dialog.setProperty("walkerDialog", True)
     dialog.setWindowFlags(walker_dialog_flags())
+    _disable_window_shadow(dialog)
     dialog.setAttribute(Qt.WA_StyledBackground, True)
     apply_walker_dialog(dialog)
     if getattr(dialog, "_walker_modal_chrome_filter", None) is None:
@@ -396,6 +408,11 @@ def apply_walker_buttons(
 
 
 def apply_walker_menu(menu: QMenu) -> QMenu:
+    _disable_window_shadow(menu)
+    try:
+        menu.setAttribute(Qt.WA_StyledBackground, True)
+    except Exception:
+        log_exception("falha opcional ignorada")
     menu.setStyleSheet(WALKER_MENU_STYLE)
     menu.setFont(ui_font(10))
     return menu
@@ -408,6 +425,7 @@ class WalkerModalDialog(QDialog):
         self.setObjectName("WalkerDialog")
         self.setModal(True)
         self.setWindowFlags(walker_dialog_flags())
+        _disable_window_shadow(self)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setMinimumWidth(width)
         self.setFont(ui_font(10))

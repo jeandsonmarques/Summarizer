@@ -487,6 +487,10 @@ def _walker_database_dialog_flags():
         flags |= Qt.FramelessWindowHint
     else:
         flags |= Qt.WindowCloseButtonHint
+    try:
+        flags |= Qt.NoDropShadowWindowHint
+    except Exception:
+        pass
     return flags
 
 
@@ -1995,6 +1999,10 @@ class DatabaseImportDialog(SlimDialogBase):
         self.setWindowTitle(_rt("Connect to PostgreSQL"))
         self.setObjectName("WalkerDatabaseDialog")
         self.setWindowFlags(_walker_database_dialog_flags())
+        try:
+            self.setGraphicsEffect(None)
+        except Exception:
+            log_exception("falha opcional ignorada")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFixedSize(500, 430)
         self._build_ui()
