@@ -10,7 +10,6 @@ from qgis.PyQt.QtWidgets import (
     QAction,
     QActionGroup,
     QApplication,
-    QColorDialog,
     QFileDialog,
     QMenu,
     QScrollBar,
@@ -24,6 +23,7 @@ from ..utils.i18n_runtime import tr_text as _rt
 from ..utils.fonts import harmonize_font_family
 from ..utils.logging_utils import log_exception
 from ..walker_dialogs import apply_walker_menu
+from ..walker_color_dialog import walker_get_color
 from .charts import ChartDataProfile, ChartVisualState
 from .charts.chart_animation import chart_popup_icon
 from .charts.chart_utils import extract_chart_payload_rows, value_scale_bounds, value_scale_ratio
@@ -1895,7 +1895,7 @@ class ReportChartWidget(QWidget):
     def _pick_visual_color(self, attr: str, fallback: str):
         self._ensure_visual_state_compatibility()
         current = self._visual_color(attr, fallback)
-        chosen = QColorDialog.getColor(current, self, _rt("Escolher cor"))
+        chosen = walker_get_color(current, self, _rt("Escolher cor"))
         if not chosen.isValid():
             return
         setattr(self.chart_state, attr, chosen.name().upper())

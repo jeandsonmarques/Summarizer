@@ -6,10 +6,11 @@ from typing import List, Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt, QSize, QSettings, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QCursor
-from qgis.PyQt.QtWidgets import QWidget, QToolTip, QColorDialog, QMenu
+from qgis.PyQt.QtWidgets import QWidget, QToolTip, QMenu
 
 from ..utils.fonts import ui_font
 from ..walker_dialogs import apply_walker_menu
+from ..walker_color_dialog import walker_get_color
 
 
 from ..utils.logging_utils import log_exception
@@ -333,7 +334,11 @@ class SummarizerVisualWidget(QWidget):
             return
         color_value = chosen.data()
         if chosen == custom:
-            color = QColorDialog.getColor(QColor(self.definition.opcoes.get("color") if self.definition.opcoes else "#4472C4"), self, "Escolher cor da série")
+            color = walker_get_color(
+                QColor(self.definition.opcoes.get("color") if self.definition.opcoes else "#4472C4"),
+                self,
+                "Escolher cor da série",
+            )
             if color.isValid():
                 color_value = color.name()
         if color_value:

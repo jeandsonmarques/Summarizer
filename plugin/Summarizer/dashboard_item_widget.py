@@ -14,7 +14,6 @@ from qgis.PyQt.QtWidgets import (
     QAction,
     QActionGroup,
     QCheckBox,
-    QColorDialog,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -48,7 +47,8 @@ from .report_view.chart_factory import ReportChartWidget
 from .slim_dialogs import slim_get_text
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
-from .walker_dialogs import add_walker_close_button, apply_walker_dialog, apply_walker_menu, install_walker_modal_chrome
+from .walker_dialogs import add_walker_close_button, apply_walker_buttons, apply_walker_dialog, apply_walker_menu, install_walker_modal_chrome
+from .walker_color_dialog import walker_get_color
 
 
 from .utils.logging_utils import log_exception
@@ -429,7 +429,7 @@ class _ColorButton(QPushButton):
         )
 
     def _pick_color(self):
-        color = QColorDialog.getColor(QColor(self._color), self, _rt("Escolher cor"))
+        color = walker_get_color(QColor(self._color), self, _rt("Escolher cor"))
         if color.isValid():
             self.set_color(color.name())
 
@@ -676,6 +676,7 @@ class VisualPropertiesDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Cancel, self)
         buttons.button(QDialogButtonBox.Apply).setText(_rt("Aplicar"))
         buttons.button(QDialogButtonBox.Cancel).setText(_rt("Cancelar"))
+        apply_walker_buttons(primary=[buttons.button(QDialogButtonBox.Apply)], secondary=[buttons.button(QDialogButtonBox.Cancel)])
         buttons.button(QDialogButtonBox.Apply).clicked.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)

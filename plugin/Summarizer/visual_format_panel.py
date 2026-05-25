@@ -9,7 +9,6 @@ from typing import Optional
 from qgis.PyQt.QtCore import QEasingCurve, QPropertyAnimation, QRectF, QSettings, Qt, pyqtProperty, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter, QPalette, QPen
 from qgis.PyQt.QtWidgets import (
-    QColorDialog,
     QComboBox,
     QFrame,
     QFormLayout,
@@ -30,6 +29,7 @@ from qgis.PyQt.QtWidgets import (
 from .dashboard_item_widget import VisualPropertiesDialog
 from .report_view.charts import ChartVisualState
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .walker_color_dialog import walker_get_color
 
 
 def _rt(text: str) -> str:
@@ -134,7 +134,7 @@ class _ColorButton(QPushButton):
         )
 
     def _pick_color(self):
-        color = QColorDialog.getColor(QColor(self._color), self, _rt("Escolher cor"))
+        color = walker_get_color(QColor(self._color), self, _rt("Escolher cor"))
         if color.isValid():
             self.set_color(color.name())
 

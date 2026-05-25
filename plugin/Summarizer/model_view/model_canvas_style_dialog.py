@@ -29,11 +29,6 @@ except Exception:
     QCheckBox = QComboBox = QDialog = QFrame = QGridLayout = QHBoxLayout = QLabel = QLineEdit = QPushButton = QSpinBox = QToolButton = QVBoxLayout = QWidget = object
 
 try:
-    from .model_cards import _DialogDragHandle
-except Exception:
-    _DialogDragHandle = None
-
-try:
     from .model_theme import _is_dark_theme
 except Exception:
 
@@ -75,9 +70,11 @@ except Exception:
         return None
 
 try:
-    from ..walker_dialogs import WALKER_DIALOG_STYLE, install_walker_modal_chrome
+    from ..walker_dialogs import WALKER_DIALOG_STYLE, add_walker_close_button, apply_walker_buttons, install_walker_modal_chrome
 except Exception:
     WALKER_DIALOG_STYLE = ""
+    add_walker_close_button = None
+    apply_walker_buttons = None
     install_walker_modal_chrome = None
 
 
@@ -248,15 +245,15 @@ if QDialog is not object:
                 + """
                 QDialog#WalkerCanvasStyleDialog {
                     background: #FFFFFF;
-                    border: 1px solid #D1D5DB;
-                    border-radius: 10px;
+                    border: 1px solid #E5E7EB;
+                    border-radius: 14px;
                 }
                 QFrame#WalkerDialogCard {
                     background: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 8px;
                 }
-                QFrame#WalkerDialogDragHandle {
+                QFrame#WalkerDialogHeader {
                     background: transparent;
                     border: none;
                 }
@@ -348,21 +345,6 @@ if QDialog is not object:
                     color: #6B7280;
                     font-size: 10px;
                 }
-                QToolButton#ConfigDialogCloseButton {
-                    min-width: 22px;
-                    max-width: 22px;
-                    min-height: 22px;
-                    max-height: 22px;
-                    border: 1px solid transparent;
-                    border-radius: 6px;
-                    background: transparent;
-                    color: #6B7280;
-                    font-size: 14px;
-                }
-                QToolButton#ConfigDialogCloseButton:hover {
-                    color: #111827;
-                    background: #F3F4F6;
-                }
                 """
             )
             if hasattr(self, "setStyleSheet") and _is_dark_theme():
@@ -371,7 +353,7 @@ if QDialog is not object:
                     QDialog#WalkerCanvasStyleDialog {
                         background: #111827;
                         border: 1px solid #374151;
-                        border-radius: 10px;
+                        border-radius: 14px;
                         color: #F8FAFC;
                     }
                     QFrame#WalkerDialogCard {
@@ -379,7 +361,7 @@ if QDialog is not object:
                         border: 1px solid #374151;
                         border-radius: 8px;
                     }
-                    QFrame#WalkerDialogDragHandle,
+                    QFrame#WalkerDialogHeader,
                     QLabel {
                         background: transparent;
                     }
@@ -462,21 +444,6 @@ if QDialog is not object:
                         border: 1px solid #475569;
                         padding: 0;
                     }
-                    QToolButton#ConfigDialogCloseButton {
-                        min-width: 22px;
-                        max-width: 22px;
-                        min-height: 22px;
-                        max-height: 22px;
-                        border: 1px solid transparent;
-                        border-radius: 6px;
-                        background: transparent;
-                        color: #CBD5E1;
-                        font-size: 14px;
-                    }
-                    QToolButton#ConfigDialogCloseButton:hover {
-                        color: #F8FAFC;
-                        background: #273449;
-                    }
                     """
                 )
 
@@ -494,10 +461,10 @@ if QDialog is not object:
             helper_font = ui_font()
             helper_font.setPixelSize(11)
 
-            drag_handle = _DialogDragHandle(self, self) if _DialogDragHandle is not None else QFrame(self)
-            drag_handle.setObjectName("WalkerDialogDragHandle")
-            drag_handle.setFixedHeight(24)
-            top_bar = QHBoxLayout(drag_handle)
+            header = QFrame(self)
+            header.setObjectName("WalkerDialogHeader")
+            header.setFixedHeight(24)
+            top_bar = QHBoxLayout(header)
             top_bar.setContentsMargins(0, 0, 0, 0)
             top_bar.setSpacing(8)
             top_hint = QLabel(_rt("Configuração visual"), self)
@@ -505,12 +472,14 @@ if QDialog is not object:
             top_hint.setFont(helper_font)
             top_bar.addWidget(top_hint, 0)
             top_bar.addStretch(1)
-            close_btn = QToolButton(self)
-            close_btn.setObjectName("ConfigDialogCloseButton")
-            close_btn.setText("×")
-            close_btn.clicked.connect(self.reject)
-            top_bar.addWidget(close_btn, 0)
-            layout.addWidget(drag_handle, 0)
+            if add_walker_close_button is not None:
+                add_walker_close_button(top_bar, self)
+            else:
+                close_btn = QToolButton(self)
+                close_btn.setText(chr(215))
+                close_btn.clicked.connect(self.reject)
+                top_bar.addWidget(close_btn, 0)
+            layout.addWidget(header, 0)
 
             title = QLabel(_rt("Configurar canvas"), self)
             title.setObjectName("WalkerDialogTitle")
@@ -657,6 +626,8 @@ if QDialog is not object:
             actions.addWidget(self.cancel_btn, 0)
             actions.addWidget(self.apply_btn, 0)
             layout.addLayout(actions)
+            if apply_walker_buttons is not None:
+                apply_walker_buttons(primary=[self.apply_btn], secondary=[self.reset_btn, self.cancel_btn])
 
             self.bg_edit.textChanged.connect(lambda *_: self._refresh_color_previews())
             self.grid_edit.textChanged.connect(lambda *_: self._refresh_color_previews())
