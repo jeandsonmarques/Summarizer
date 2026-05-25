@@ -12,6 +12,7 @@ from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushBut
 
 from ..utils.logging_utils import log_exception
 from ..utils.resources import svg_icon
+from ..walker_tooltips import install_walker_tooltip
 
 INK_COLOR = "#252B33"
 
@@ -38,6 +39,7 @@ def configure_toolbar_icon_button(
     button.setProperty("iconOnly", True)
     button.setFocusPolicy(Qt.NoFocus)
     button.setToolTip(tooltip)
+    install_walker_tooltip(button)
     button.setStatusTip(tooltip)
     try:
         button.setAccessibleName(tooltip)

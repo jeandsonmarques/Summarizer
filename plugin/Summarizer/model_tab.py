@@ -108,6 +108,7 @@ from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_fon
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.logging_utils import log_exception
 from .visual_format_panel import VisualFormatPanel
+from .walker_tooltips import install_walker_tooltip
 
 _MODEL_SIDE_PANEL_COLLAPSED_WIDTH = 40
 _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH = 276
@@ -2635,6 +2636,7 @@ class ModelTab(QWidget):
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.NoFocus)
         button.setToolTip(tooltip)
+        install_walker_tooltip(button)
         button.setStatusTip(tooltip)
         try:
             button.setAccessibleName(tooltip)
