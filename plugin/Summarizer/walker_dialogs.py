@@ -9,10 +9,12 @@ from qgis.PyQt.QtCore import QEvent, QObject, Qt, QTimer
 from qgis.PyQt.QtGui import QColor, QIcon
 from qgis.PyQt.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListView,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -260,6 +262,31 @@ QMenu::separator {
 """
 
 
+WALKER_COMBO_POPUP_STYLE = """
+QListView#WalkerComboPopup {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 4px;
+    color: #111827;
+    font-size: 12px;
+    outline: none;
+}
+QListView#WalkerComboPopup::item {
+    min-height: 28px;
+    padding: 5px 28px 5px 12px;
+    border-radius: 6px;
+    color: #111827;
+    background: transparent;
+}
+QListView#WalkerComboPopup::item:selected,
+QListView#WalkerComboPopup::item:hover {
+    background: #F3F4F6;
+    color: #111827;
+}
+"""
+
+
 def walker_dialog_flags():
     flags = Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
     try:
@@ -332,6 +359,11 @@ def apply_walker_dialog(widget: QWidget) -> None:
     except Exception:
         pass
     harmonize_widget_fonts(widget)
+    try:
+        for combo in widget.findChildren(QComboBox):
+            apply_walker_combo(combo)
+    except Exception:
+        log_exception("falha opcional ignorada")
     if isinstance(widget, QDialog):
         apply_windows_rounded_corners(widget)
         QTimer.singleShot(0, lambda: apply_windows_rounded_corners(widget))
@@ -422,6 +454,30 @@ def apply_walker_menu(menu: QMenu) -> QMenu:
     menu.setStyleSheet(WALKER_MENU_STYLE)
     menu.setFont(ui_font(10))
     return menu
+
+
+def apply_walker_combo(combo: QComboBox) -> QComboBox:
+    combo.setFont(ui_font(10))
+    try:
+        view = combo.view()
+        if not isinstance(view, QListView):
+            view = QListView(combo)
+            combo.setView(view)
+        view.setObjectName("WalkerComboPopup")
+        view.setFont(ui_font(10))
+        view.setFrameShape(QFrame.NoFrame)
+        view.setAttribute(Qt.WA_StyledBackground, True)
+        view.setAttribute(Qt.WA_TranslucentBackground, True)
+        view.setAutoFillBackground(False)
+        view.viewport().setAutoFillBackground(False)
+        view.setStyleSheet(WALKER_COMBO_POPUP_STYLE)
+        try:
+            view.setWindowFlags(view.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        except Exception:
+            log_exception("falha opcional ignorada")
+    except Exception:
+        log_exception("falha opcional ignorada")
+    return combo
 
 
 class WalkerModalDialog(QDialog):

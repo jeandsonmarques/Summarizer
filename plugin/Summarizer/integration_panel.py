@@ -59,7 +59,7 @@ from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets
 from .utils.resources import svg_icon
 from .utils.security_utils import reveal_connection_payload, secure_connection_payload
 from .utils.window_theme import apply_windows_rounded_corners
-from .walker_dialogs import WalkerMessageBox as QMessageBox
+from .walker_dialogs import WalkerMessageBox as QMessageBox, apply_walker_combo
 
 from .utils.logging_utils import log_exception
 _ICON_DIR = os.path.join(os.path.dirname(__file__), "resources", "icons")
@@ -2399,6 +2399,8 @@ class DatabaseImportDialog(SlimDialogBase):
             }
             """
         )
+        for combo in self.findChildren(QComboBox):
+            apply_walker_combo(combo)
 
     def _apply_initial_saved_connection(self):
         current_driver = self.driver_combo.currentText() or self._preferred_driver

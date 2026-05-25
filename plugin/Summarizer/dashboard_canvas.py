@@ -33,7 +33,7 @@ from .model_relations_popup import ModelRelationsPopup
 
 from .utils.logging_utils import log_exception
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
-from .walker_dialogs import WalkerMessageBox as QMessageBox, WalkerModalDialog, apply_walker_buttons
+from .walker_dialogs import WalkerMessageBox as QMessageBox, WalkerModalDialog, apply_walker_buttons, apply_walker_combo
 
 
 def _is_dark_theme() -> bool:
@@ -1455,6 +1455,7 @@ class DashboardCanvas(QWidget):
         combo.setFont(ui_font(10))
         for label, item_id in options:
             combo.addItem(label, item_id)
+        apply_walker_combo(combo)
         try:
             combo.view().setFont(ui_font(10))
         except Exception:

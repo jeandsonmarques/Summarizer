@@ -30,6 +30,7 @@ from .dashboard_item_widget import VisualPropertiesDialog
 from .report_view.charts import ChartVisualState
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .walker_color_dialog import walker_get_color
+from .walker_dialogs import apply_walker_combo
 
 
 def _rt(text: str) -> str:
@@ -1176,7 +1177,7 @@ class VisualFormatPanel(QFrame):
         combo = QComboBox(parent)
         for label, value in list(items or []):
             combo.addItem(_rt(label), value)
-        return combo
+        return apply_walker_combo(combo)
 
     def _build_properties_section(self):
         group = self._create_section("properties", "Propriedades", view="general", expanded=True)
@@ -1389,6 +1390,7 @@ class VisualFormatPanel(QFrame):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(5)
         self.preset_combo = QComboBox(group)
+        apply_walker_combo(self.preset_combo)
         self._refresh_preset_combo()
         self.apply_preset_btn = QPushButton(_rt("Aplicar preset"), group)
         self.save_preset_btn = QPushButton(_rt("Salvar estilo como preset"), group)
@@ -1438,11 +1440,13 @@ class VisualFormatPanel(QFrame):
         value_align_combo.addItem(_rt("Esquerda"), "left")
         value_align_combo.addItem(_rt("Centro"), "center")
         value_align_combo.addItem(_rt("Direita"), "right")
+        apply_walker_combo(value_align_combo)
         self._controls["value_align"] = value_align_combo
         self._controls["card_density"] = QComboBox(self.card_group)
         self._controls["card_density"].addItem(_rt("Normal"), "normal")
         self._controls["card_density"].addItem(_rt("Compacto"), "compact")
         self._controls["card_density"].addItem(_rt("Expandido"), "expanded")
+        apply_walker_combo(self._controls["card_density"])
         form.addRow(_rt("Cor do valor"), self._controls["value_color"])
         form.addRow(_rt("Tam. valor"), self._controls["value_size"])
         form.addRow(_rt("Alinhamento"), value_align_combo)
