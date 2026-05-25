@@ -411,6 +411,12 @@ def apply_walker_menu(menu: QMenu) -> QMenu:
     _disable_window_shadow(menu)
     try:
         menu.setAttribute(Qt.WA_StyledBackground, True)
+        menu.setAttribute(Qt.WA_TranslucentBackground, True)
+        menu.setAutoFillBackground(False)
+    except Exception:
+        log_exception("falha opcional ignorada")
+    try:
+        menu.setWindowFlags(menu.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
     except Exception:
         log_exception("falha opcional ignorada")
     menu.setStyleSheet(WALKER_MENU_STYLE)
