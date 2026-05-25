@@ -269,6 +269,40 @@ QMenu::separator {
 
 
 WALKER_COMBO_POPUP_STYLE = """
+QComboBox[walkerCombo="true"] {
+    min-height: 34px;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 0 12px;
+    background: #FFFFFF;
+    color: #111827;
+    font-size: 12px;
+    selection-background-color: #111827;
+    selection-color: #FFFFFF;
+}
+QComboBox[walkerCombo="true"]:focus {
+    border: 2px solid #9CA3AF;
+    padding: 0 11px;
+}
+QComboBox[walkerCombo="true"]::drop-down {
+    width: 26px;
+    border: none;
+}
+QComboBox[walkerCombo="true"] QAbstractItemView {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 4px;
+    color: #111827;
+    font-size: 12px;
+    outline: none;
+    selection-background-color: #F3F4F6;
+    selection-color: #111827;
+}
+QFrame#WalkerComboPopupFrame {
+    background: transparent;
+    border: none;
+}
 QListView#WalkerComboPopup {
     background: #FFFFFF;
     border: 1px solid #E5E7EB;
@@ -462,8 +496,7 @@ def apply_walker_menu(menu: QMenu) -> QMenu:
     return menu
 
 
-def apply_walker_combo(combo: QComboBox) -> QComboBox:
-    combo.setFont(ui_font(10))
+def _style_walker_combo_popup(combo: QComboBox) -> None:
     try:
         view = combo.view()
         if not isinstance(view, QListView):
@@ -477,10 +510,52 @@ def apply_walker_combo(combo: QComboBox) -> QComboBox:
         view.setAutoFillBackground(False)
         view.viewport().setAutoFillBackground(False)
         view.setStyleSheet(WALKER_COMBO_POPUP_STYLE)
+
+        popup = view.window()
+        if popup is not None:
+            popup.setObjectName("WalkerComboPopupFrame")
+            popup.setAttribute(Qt.WA_StyledBackground, True)
+            popup.setAttribute(Qt.WA_TranslucentBackground, True)
+            popup.setAutoFillBackground(False)
+            popup.setStyleSheet(WALKER_COMBO_POPUP_STYLE)
+            _disable_window_shadow(popup)
+            try:
+                popup.setWindowFlags(popup.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+            except Exception:
+                log_exception("falha opcional ignorada")
         try:
             view.setWindowFlags(view.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         except Exception:
             log_exception("falha opcional ignorada")
+    except Exception:
+        log_exception("falha opcional ignorada")
+
+
+class _WalkerComboPopupFilter(QObject):
+    def __init__(self, combo: QComboBox):
+        super().__init__(combo)
+        self.combo = combo
+
+    def eventFilter(self, watched, event):  # noqa: N802 - Qt naming style
+        event_type = event.type()
+        if event_type in (QEvent.Show, QEvent.Polish, QEvent.ParentChange, QEvent.ChildAdded):
+            _style_walker_combo_popup(self.combo)
+            QTimer.singleShot(0, lambda: _style_walker_combo_popup(self.combo))
+        return False
+
+
+def apply_walker_combo(combo: QComboBox) -> QComboBox:
+    combo.setProperty("walkerCombo", True)
+    combo.setFont(ui_font(10))
+    combo.setStyleSheet(WALKER_COMBO_POPUP_STYLE)
+    try:
+        _style_walker_combo_popup(combo)
+        event_filter = getattr(combo, "_walker_combo_popup_filter", None)
+        if event_filter is None:
+            event_filter = _WalkerComboPopupFilter(combo)
+            combo._walker_combo_popup_filter = event_filter
+            combo.installEventFilter(event_filter)
+        combo.view().installEventFilter(event_filter)
     except Exception:
         log_exception("falha opcional ignorada")
     return combo
