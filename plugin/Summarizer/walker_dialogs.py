@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from qgis.PyQt.QtCore import QEvent, QObject, QRectF, Qt, QTimer
-from qgis.PyQt.QtGui import QColor, QIcon, QPainterPath, QRegion
+from qgis.PyQt.QtCore import QEvent, QObject, Qt, QTimer
+from qgis.PyQt.QtGui import QColor, QIcon
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QDialog,
@@ -280,27 +280,6 @@ def _disable_window_shadow(widget: QWidget) -> None:
         log_exception("falha opcional ignorada")
 
 
-def _apply_walker_rounded_mask(widget: QWidget, radius: int = WALKER_PANEL_RADIUS) -> None:
-    if not isinstance(widget, QDialog):
-        return
-    try:
-        rect = widget.rect()
-        if rect.width() <= 0 or rect.height() <= 0:
-            return
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(rect), float(radius), float(radius))
-        widget.setMask(QRegion(path.toFillPolygon().toPolygon()))
-    except Exception:
-        log_exception("falha opcional ignorada")
-
-
-def refresh_walker_window_shape(widget: QWidget) -> None:
-    if not isinstance(widget, QDialog):
-        return
-    apply_windows_rounded_corners(widget)
-    _apply_walker_rounded_mask(widget)
-
-
 def _walker_overlay_parent(dialog: QDialog) -> Optional[QWidget]:
     parent = dialog.parentWidget()
     if parent is None:
@@ -354,8 +333,8 @@ def apply_walker_dialog(widget: QWidget) -> None:
         pass
     harmonize_widget_fonts(widget)
     if isinstance(widget, QDialog):
-        refresh_walker_window_shape(widget)
-        QTimer.singleShot(0, lambda: refresh_walker_window_shape(widget))
+        apply_windows_rounded_corners(widget)
+        QTimer.singleShot(0, lambda: apply_windows_rounded_corners(widget))
 
 
 class _WalkerModalChromeFilter(QObject):
@@ -380,7 +359,6 @@ class _WalkerModalChromeFilter(QObject):
             parent = _walker_overlay_parent(self.dialog)
             if parent is not None:
                 self.overlay.setGeometry(parent.rect())
-            _apply_walker_rounded_mask(self.dialog)
         return False
 
     def _show_overlay(self) -> None:
@@ -482,10 +460,6 @@ class WalkerModalDialog(QDialog):
     def hideEvent(self, event):  # noqa: N802 - Qt naming style
         self._hide_walker_overlay()
         super().hideEvent(event)
-
-    def resizeEvent(self, event):  # noqa: N802 - Qt naming style
-        super().resizeEvent(event)
-        _apply_walker_rounded_mask(self)
 
     def _hide_walker_overlay(self) -> None:
         overlay = self._walker_overlay

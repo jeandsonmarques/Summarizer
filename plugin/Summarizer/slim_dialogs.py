@@ -33,7 +33,6 @@ from .walker_dialogs import (
     apply_walker_dialog,
     center_dialog_on_parent,
     add_walker_close_button,
-    refresh_walker_window_shape,
     show_walker_modal_overlay,
     walker_dialog_flags,
 )
@@ -458,7 +457,6 @@ class SlimDialogBase(QDialog):
         data = self._settings.value(self._geometry_key)
         if isinstance(data, QByteArray) and not data.isEmpty():
             self.restoreGeometry(data)
-        refresh_walker_window_shape(self)
 
     def closeEvent(self, event):
         self._hide_walker_overlay()
@@ -469,10 +467,6 @@ class SlimDialogBase(QDialog):
     def hideEvent(self, event):
         self._hide_walker_overlay()
         super().hideEvent(event)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        refresh_walker_window_shape(self)
 
     def _hide_walker_overlay(self):
         overlay = getattr(self, "_walker_overlay", None)
@@ -554,7 +548,6 @@ class SlimPopoverDialog(QDialog):
         if not restored:
             self.adjustSize()
             self._center_on_parent()
-        refresh_walker_window_shape(self)
 
     def closeEvent(self, event):
         self._hide_walker_overlay()
@@ -565,10 +558,6 @@ class SlimPopoverDialog(QDialog):
     def hideEvent(self, event):
         self._hide_walker_overlay()
         super().hideEvent(event)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        refresh_walker_window_shape(self)
 
     def _hide_walker_overlay(self):
         overlay = getattr(self, "_walker_overlay", None)
