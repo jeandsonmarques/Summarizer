@@ -74,6 +74,11 @@ except Exception:
     def log_exception(_message: str):
         return None
 
+try:
+    from ..walker_dialogs import WALKER_DIALOG_STYLE
+except Exception:
+    WALKER_DIALOG_STYLE = ""
+
 
 CANVAS_STYLE_KEYS = ("background", "grid_color", "show_grid", "grid_size", "grid_opacity")
 
@@ -236,7 +241,8 @@ if QDialog is not object:
             self.setFont(ui_font())
             self._font_enforcer = attach_ui_font_enforcer(self)
             self.setStyleSheet(
-                """
+                WALKER_DIALOG_STYLE
+                + """
                 QDialog#WalkerCanvasStyleDialog {
                     background: #FFFFFF;
                     border: 1px solid #D1D5DB;

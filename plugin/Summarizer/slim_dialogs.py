@@ -13,7 +13,6 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -29,9 +28,10 @@ from qgis.PyQt.QtWidgets import (
 
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.window_theme import apply_windows_title_bar_theme
+from .walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_dialog, center_dialog_on_parent, walker_dialog_flags
 
 from .utils.logging_utils import log_exception
-SLIM_DIALOG_STYLE = """
+SLIM_DIALOG_STYLE = WALKER_DIALOG_STYLE + """
 QDialog#SlimDialog {
     background-color: #FFFFFF;
 }
@@ -414,6 +414,7 @@ class SlimDialogBase(QDialog):
         self._geometry_key = geometry_key
         self._settings = QSettings()
         self.setObjectName("SlimDialog")
+        self.setProperty("walkerDialog", True)
         self.setModal(True)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
@@ -425,7 +426,9 @@ class SlimDialogBase(QDialog):
     def _refresh_dialog_style(self):
         dark = _is_dark_theme()
         self.setProperty("themeMode", "dark" if dark else "light")
-        self.setStyleSheet(SLIM_DIALOG_STYLE + (SLIM_DIALOG_DARK_OVERLAY if dark else ""))
+        apply_walker_dialog(self)
+        if dark:
+            self.setStyleSheet(self.styleSheet() + SLIM_DIALOG_DARK_OVERLAY)
         apply_windows_title_bar_theme(self, dark)
 
     def showEvent(self, event):
@@ -453,9 +456,10 @@ class SlimPopoverDialog(QDialog):
         self._settings = QSettings()
         self._did_restore_geometry = False
         self.setObjectName("SlimPopoverDialog")
+        self.setProperty("walkerDialog", True)
         self.setModal(True)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setWindowFlags(walker_dialog_flags())
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setFont(_build_dialog_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
@@ -467,14 +471,9 @@ class SlimPopoverDialog(QDialog):
 
         self.panel = QFrame(self)
         self.panel.setObjectName("SlimPopoverPanel")
+        self.panel.setProperty("walkerPanel", True)
         self.panel.setAttribute(Qt.WA_StyledBackground, True)
         root.addWidget(self.panel)
-
-        shadow = QGraphicsDropShadowEffect(self.panel)
-        shadow.setBlurRadius(32)
-        shadow.setOffset(0, 8)
-        shadow.setColor(QColor(15, 23, 42, 28))
-        self.panel.setGraphicsEffect(shadow)
 
         self.panel_layout = QVBoxLayout(self.panel)
         self.panel_layout.setContentsMargins(18, 18, 18, 18)
@@ -483,7 +482,7 @@ class SlimPopoverDialog(QDialog):
     def _refresh_dialog_style(self):
         dark = _is_dark_theme()
         self.setProperty("themeMode", "dark" if dark else "light")
-        self.setStyleSheet(SLIM_POPOVER_STYLE + (SLIM_POPOVER_DARK_OVERLAY if dark else ""))
+        self.setStyleSheet(WALKER_DIALOG_STYLE + SLIM_POPOVER_STYLE + (SLIM_POPOVER_DARK_OVERLAY if dark else ""))
         apply_windows_title_bar_theme(self, dark)
 
     def showEvent(self, event):
@@ -508,17 +507,7 @@ class SlimPopoverDialog(QDialog):
         super().closeEvent(event)
 
     def _center_on_parent(self):
-        parent = self.parentWidget()
-        if parent is None:
-            return
-        try:
-            parent_center = parent.mapToGlobal(parent.rect().center())
-            self.move(
-                int(parent_center.x() - (self.width() / 2)),
-                int(parent_center.y() - (self.height() / 2)),
-            )
-        except Exception:
-            log_exception("falha opcional ignorada")
+        center_dialog_on_parent(self)
 
 
 class SlimTextInputDialog(SlimPopoverDialog):

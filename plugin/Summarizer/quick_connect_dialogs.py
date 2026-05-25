@@ -21,6 +21,7 @@ from .slim_dialogs import SlimDialogBase
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.logging_utils import log_exception
 from .utils.security_utils import secure_connection_payload
+from .walker_dialogs import WalkerMessageBox as QMessageBox
 
 
 class PostgresQuickConnectDialog(SlimDialogBase):

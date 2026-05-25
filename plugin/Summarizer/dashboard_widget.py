@@ -38,6 +38,7 @@ from .report_view.pivot.pivot_formatters import PivotFormatter
 from .report_view.result_models import ChartPayload
 from .utils.fonts import ui_font
 from .utils.logging_utils import log_exception
+from .walker_dialogs import WalkerMessageBox as QMessageBox, apply_walker_menu
 from .visual_format_panel import VisualFormatPanel
 
 def _icon_from_resource(name: str) -> QIcon:
@@ -152,7 +153,7 @@ class DashboardWidget(QWidget):
         self.add_chart_btn.setPopupMode(QToolButton.InstantPopup)
         self.add_chart_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.add_chart_btn.setCursor(Qt.PointingHandCursor)
-        self.add_chart_menu = QMenu(self.add_chart_btn)
+        self.add_chart_menu = apply_walker_menu(QMenu(self.add_chart_btn))
         self._populate_add_chart_menu(self.add_chart_menu)
         self.add_chart_btn.setMenu(self.add_chart_menu)
         toolbar_layout.addWidget(self.add_chart_btn, 0)

@@ -112,16 +112,18 @@ def open_table_settings_dialog(
 
     from ..utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
     from ..utils.window_theme import apply_windows_title_bar_theme
+    from ..walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_buttons
 
     dialog = QDialog(widget)
     dialog.setObjectName(TABLE_SETTINGS_DIALOG_OBJECT_NAME)
+    dialog.setProperty("walkerDialog", True)
     dialog.setWindowTitle(translate(TABLE_SETTINGS_TITLE))
     dialog.setModal(True)
     dialog.resize(360, 250)
     dialog.setFont(ui_font())
     dialog._font_enforcer = attach_ui_font_enforcer(dialog)
     dialog.setStyleSheet(
-        """
+        WALKER_DIALOG_STYLE + """
         QDialog#SummaryTableSettingsDialog {
             background: #FFFFFF;
             border: 1px solid #D6D9E0;
@@ -305,6 +307,7 @@ def open_table_settings_dialog(
     apply_btn = QPushButton(translate("Aplicar"), dialog)
     apply_btn.setObjectName(TABLE_SETTINGS_PRIMARY)
     apply_btn.setFont(body_text_font)
+    apply_walker_buttons(primary=[apply_btn], secondary=[cancel_btn])
     actions.addWidget(cancel_btn, 0)
     actions.addWidget(apply_btn, 0)
     layout.addLayout(actions)

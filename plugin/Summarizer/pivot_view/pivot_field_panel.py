@@ -39,6 +39,7 @@ from ..palette import TYPOGRAPHY
 from ..report_view.pivot import PivotFieldSpec
 from ..utils.i18n_runtime import tr_text as _rt
 from ..utils.logging_utils import log_exception
+from ..walker_dialogs import apply_walker_menu
 
 PIVOT_FIELD_MIME = "application/x-summarizer-pivot-field"
 INK_COLOR = "#252B33"
@@ -159,7 +160,7 @@ class _PivotFieldSourceListWidget(QListWidget):
         spec = self._owner._field_spec_from_key(spec_key)
         if spec is None:
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         add_last = menu.addAction(
             f"{_rt('Adicionar em')} {self._owner._area_label(self._owner._last_active_area)}"
         )

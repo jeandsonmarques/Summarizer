@@ -9,6 +9,7 @@ from qgis.PyQt.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen,
 from qgis.PyQt.QtWidgets import QWidget, QToolTip, QColorDialog, QMenu
 
 from ..utils.fonts import ui_font
+from ..walker_dialogs import apply_walker_menu
 
 
 from ..utils.logging_utils import log_exception
@@ -320,7 +321,7 @@ class SummarizerVisualWidget(QWidget):
             "#7030A0",
             "#2B579A",
         ]
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         actions = []
         for color in preset_colors:
             action = menu.addAction(color)
@@ -342,7 +343,7 @@ class SummarizerVisualWidget(QWidget):
             self.update()
 
     def contextMenuEvent(self, event):
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         color_action = menu.addAction("Cor da série...")
         chosen = menu.exec_(event.globalPos())
         if chosen == color_action:

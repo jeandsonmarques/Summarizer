@@ -48,6 +48,7 @@ from .model_relations import deduplicate_relationships, default_selected_fields,
 from .relationship_item import RelationshipItem
 from .table_card_item import TableCardItem
 from ..utils.fonts import harmonize_font_family
+from ..walker_dialogs import WalkerMessageBox as QMessageBox
 from ..utils.plugin_logging import log_info
 from ..utils.logging_utils import log_exception
 class ModelManager:

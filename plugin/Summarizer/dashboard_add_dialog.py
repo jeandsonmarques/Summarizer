@@ -20,6 +20,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
+from .walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_buttons
 
 
 from .utils.logging_utils import log_exception
@@ -35,6 +36,7 @@ class DashboardAddDialog(QDialog):
     ):
         super().__init__(parent)
         self.setObjectName("ModelAddDialog")
+        self.setProperty("walkerDialog", True)
         self.setWindowTitle(_rt("Adicionar ao Model"))
         self.setModal(True)
         self.resize(460, 320)
@@ -101,12 +103,12 @@ class DashboardAddDialog(QDialog):
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
         self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
         if self.ok_button is not None:
-            self.ok_button.setObjectName("ModelDialogPrimaryButton")
+            self.ok_button.setObjectName("WalkerPrimaryButton")
         if self.cancel_button is not None:
-            self.cancel_button.setObjectName("ModelDialogSecondaryButton")
+            self.cancel_button.setObjectName("WalkerSecondaryButton")
         layout.addWidget(buttons)
 
-        self.choose_file_btn.setObjectName("ModelDialogSecondaryButton")
+        apply_walker_buttons(primary=[self.ok_button], secondary=[self.cancel_button, self.choose_file_btn])
         self.new_name_edit.setObjectName("ModelDialogLineEdit")
         options_card.setObjectName("ModelDialogOptionsCard")
 
@@ -123,7 +125,7 @@ class DashboardAddDialog(QDialog):
         self._sync_enabled_state()
 
         self.setStyleSheet(
-            """
+            WALKER_DIALOG_STYLE + """
             QDialog#ModelAddDialog {
                 background: #FFFFFF;
                 border: 1px solid #D1D5DB;

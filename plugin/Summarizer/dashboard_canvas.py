@@ -33,6 +33,7 @@ from .model_relations_popup import ModelRelationsPopup
 
 from .utils.logging_utils import log_exception
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .walker_dialogs import WalkerMessageBox as QMessageBox
 
 
 def _is_dark_theme() -> bool:

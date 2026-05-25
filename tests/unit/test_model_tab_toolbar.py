@@ -297,6 +297,7 @@ def test_model_import_dataset_opens_walker_database_dialog_directly():
     assert import_method.index("DatabaseImportDialog") < import_method.index("open_get_data_dialog")
     assert "preferred_driver=preferred_driver" in import_method
     assert "self._refresh_model_database_status()" in import_method
+    assert "connection_registry.replace_saved_connections(saved, persist=True)" in import_method
     assert "def _database_connected_icon(self) -> QIcon:" in model_source
 
     assert 'setObjectName("WalkerDatabaseDialog")' in integration_source
@@ -362,6 +363,16 @@ def test_model_import_dataset_opens_walker_database_dialog_directly():
     assert "QFrame#WalkerSslPicker" in integration_source
     assert "QFrame#WalkerSslDropdown" in integration_source
     assert "QToolButton#WalkerSslDropdownItem[current=\"true\"]" in integration_source
+    assert 'self.remember_box = QCheckBox(_rt("Salvar conexão"), self)' in integration_source
+    assert 'self.remember_box.setObjectName("WalkerSaveConnectionCheck")' in integration_source
+    assert "self.remember_box.setVisible(False)" not in integration_source
+    assert "QCheckBox#WalkerSaveConnectionCheck" in integration_source
+    assert 'self.delete_connection_btn = QPushButton(_rt("Excluir conexão"), self)' in integration_source
+    assert 'self.delete_connection_btn.setObjectName("WalkerDeleteConnectionButton")' in integration_source
+    assert "def _delete_saved_connection(self):" in integration_source
+    assert "connection_registry.remove_connection(fingerprint)" in integration_source
+    assert "def _forget_connected_database_params(params: Dict):" in integration_source
+    assert "QPushButton#WalkerDeleteConnectionButton" in integration_source
     assert 'buttons.setObjectName("WalkerDatabaseButtons")' in integration_source
     assert 'self.load_btn = buttons.addButton(_rt("Connect")' in integration_source
     assert "if not preview and not self.tables_combo.isVisible():" in integration_source

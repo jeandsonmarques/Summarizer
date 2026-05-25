@@ -10,6 +10,7 @@ from qgis.core import QgsMessageLog
 
 from .field_item import FieldItem
 from ..utils.fonts import ui_font
+from ..walker_dialogs import apply_walker_menu
 
 
 from ..utils.logging_utils import log_exception
@@ -245,7 +246,7 @@ class TableCardItem(QGraphicsRectItem):
             QgsMessageLog.logMessage(
                 f"Abrindo menu de exportacao para tabela {self.table_name}", "Summarizer Summarizer"
             )
-            menu = QMenu()
+            menu = apply_walker_menu(QMenu())
             export_action = menu.addAction("Exportar camada (preview herdado)")
             chosen = menu.exec_(event.screenPos())
             if chosen == export_action:

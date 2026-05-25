@@ -28,6 +28,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..report_view.pivot import PivotFieldSpec
+from ..walker_dialogs import apply_walker_menu
 
 PIVOT_FIELD_MIME = "application/x-summarizer-pivot-field"
 
@@ -203,7 +204,7 @@ class _PivotDropListWidget(QListWidget):
     def contextMenuEvent(self, event):
         if self._owner is not None:
             self._owner._set_last_active_area(self._area_name)
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         remove_action = menu.addAction("Remover")
         up_action = menu.addAction("Mover para cima")
         down_action = menu.addAction("Mover para baixo")

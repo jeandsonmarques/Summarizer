@@ -57,8 +57,9 @@ from .palette import COLORS, DARK_COLORS
 from .utils.fonts import harmonize_widget_fonts, ui_font, ui_font_stack
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.resources import svg_icon
-from .utils.security_utils import secure_connection_payload
+from .utils.security_utils import reveal_connection_payload, secure_connection_payload
 from .utils.window_theme import apply_windows_rounded_corners
+from .walker_dialogs import WalkerMessageBox as QMessageBox
 
 from .utils.logging_utils import log_exception
 _ICON_DIR = os.path.join(os.path.dirname(__file__), "resources", "icons")
@@ -92,6 +93,191 @@ def connected_database_drivers() -> set[str]:
         for key in _CONNECTED_DATABASE_KEYS
         if key
     }
+
+
+def _connection_status_key_from_params(values: Dict) -> str:
+    driver = str(values.get("source_driver") or values.get("driver") or "").strip()
+    host = str(values.get("host") or "").strip().lower()
+    port = str(values.get("port") or "").strip()
+    database = str(values.get("database") or "").strip().lower()
+    user = str(values.get("user") or "").strip().lower()
+    ssl_mode = str(values.get("ssl_mode") or "").strip().lower()
+    use_ssl = "1" if values.get("use_ssl") else "0"
+    if not driver or not host or not database or not user:
+        return ""
+    return "|".join((driver, host, port, database, user, ssl_mode, use_ssl))
+
+
+def _normalize_ssl_mode(value: object) -> str:
+    text = str(value or "").strip().lower()
+    mapping = {
+        "ssldisable": "disable",
+        "sslprefer": "prefer",
+        "sslrequire": "require",
+        "disable": "disable",
+        "prefer": "prefer",
+        "require": "require",
+    }
+    return mapping.get(text, text.replace("ssl", "", 1) if text.startswith("ssl") else text)
+
+
+def _database_params_from_connection(connection: Dict) -> Dict:
+    data = reveal_connection_payload(connection)
+    source_driver = str(data.get("source_driver") or data.get("driver") or "PostgreSQL")
+    normalized_driver = "PostgreSQL" if source_driver == "PostGIS" else source_driver
+    try:
+        port = int(data.get("port") or 5432)
+    except (TypeError, ValueError):
+        port = 5432
+    return {
+        "driver": normalized_driver,
+        "source_driver": source_driver,
+        "host": str(data.get("host") or "").strip(),
+        "port": port,
+        "database": str(data.get("database") or "").strip(),
+        "user": str(data.get("user") or "").strip(),
+        "password": str(data.get("password") or ""),
+        "ssl_mode": _normalize_ssl_mode(data.get("ssl_mode") or data.get("sslmode") or "disable"),
+        "use_ssl": bool(data.get("use_ssl")),
+    }
+
+
+def _mark_connected_database_params(params: Dict, tables: Optional[List[str]] = None):
+    key = _connection_status_key_from_params(params)
+    if not key:
+        return
+    _CONNECTED_DATABASE_KEYS.add(key)
+    _CONNECTED_DATABASE_PARAMS[key] = dict(params)
+    if tables is not None:
+        _CONNECTED_DATABASE_TABLES[key] = list(tables)
+
+
+def _forget_connected_database_params(params: Dict):
+    key = _connection_status_key_from_params(params)
+    if not key:
+        return
+    _CONNECTED_DATABASE_KEYS.discard(key)
+    _CONNECTED_DATABASE_PARAMS.pop(key, None)
+    _CONNECTED_DATABASE_TABLES.pop(key, None)
+
+
+def _open_database_connection(params: Dict, owner_token: object = "auto") -> Tuple[bool, object]:
+    if QSqlDatabase is None:
+        return False, _rt("QtSql nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+
+    conn_name = f"integ_{owner_token}_{QDateTime.currentMSecsSinceEpoch()}"
+    driver = params.get("driver")
+    available_drivers = set(QSqlDatabase.drivers())
+
+    if driver == "PostgreSQL":
+        if "QPSQL" not in available_drivers:
+            return False, _rt("Driver PostgreSQL (QPSQL) nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+        db = QSqlDatabase.addDatabase("QPSQL", conn_name)
+        db.setHostName(params.get("host"))
+        db.setPort(params.get("port") or 5432)
+        db.setDatabaseName(params.get("database"))
+        db.setUserName(params.get("user"))
+        db.setPassword(params.get("password"))
+        ssl_mode = str(params.get("ssl_mode") or "").strip()
+        if ssl_mode:
+            db.setConnectOptions(f"sslmode={ssl_mode}")
+    elif driver == "SQL Server":
+        if "QODBC" not in available_drivers:
+            return False, _rt("Driver SQL Server (QODBC) nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+        db = QSqlDatabase.addDatabase("QODBC", conn_name)
+        connection_string = (
+            "Driver={ODBC Driver 17 for SQL Server};"
+            f"Server={params.get('host')},{params.get('port') or 1433};"
+            f"Database={params.get('database')};"
+            f"Uid={params.get('user')};"
+            f"Pwd={params.get('password')};"
+        )
+        db.setDatabaseName(connection_string)
+    elif driver == "Oracle":
+        if "QOCI" not in available_drivers:
+            return False, _rt("Driver Oracle (QOCI) nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+        db = QSqlDatabase.addDatabase("QOCI", conn_name)
+        db.setHostName(params.get("host"))
+        db.setPort(params.get("port") or 1521)
+        db.setDatabaseName(params.get("database"))
+        db.setUserName(params.get("user"))
+        db.setPassword(params.get("password"))
+    elif driver == "MySQL":
+        if "QMYSQL" not in available_drivers:
+            return False, _rt("Driver MySQL (QMYSQL) nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+        db = QSqlDatabase.addDatabase("QMYSQL", conn_name)
+        db.setHostName(params.get("host"))
+        db.setPort(params.get("port") or 3306)
+        db.setDatabaseName(params.get("database"))
+        db.setUserName(params.get("user"))
+        db.setPassword(params.get("password"))
+        if params.get("use_ssl"):
+            db.setConnectOptions("CLIENT_SSL=1")
+    else:
+        return False, _rt("Conector de banco de dados nÃ£o suportado nesta instalaÃ§Ã£o.")
+
+    if not db.open():
+        error = db.lastError().text()
+        db = None
+        return False, error or _rt("Falha ao abrir a conexÃ£o.")
+    return True, db
+
+
+def _database_table_names(db, driver: str) -> List[str]:
+    tables: List[str] = []
+    if QSqlQuery is None:
+        return tables
+    query = QSqlQuery(db)
+    if driver == "PostgreSQL":
+        query.exec_(
+            "SELECT table_schema || '.' || table_name "
+            "FROM information_schema.tables "
+            "WHERE table_type = 'BASE TABLE' "
+            "ORDER BY 1"
+        )
+    elif driver == "SQL Server":
+        query.exec_(
+            "SELECT TABLE_SCHEMA + '.' + TABLE_NAME "
+            "FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_TYPE = 'BASE TABLE' "
+            "ORDER BY 1"
+        )
+    elif driver == "Oracle":
+        query.exec_(
+            "SELECT OWNER || '.' || TABLE_NAME "
+            "FROM ALL_TABLES "
+            "ORDER BY 1"
+        )
+    else:
+        query.exec_(
+            "SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) "
+            "FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_TYPE = 'BASE TABLE' "
+            "ORDER BY 1"
+        )
+    while query.next():
+        tables.append(str(query.value(0) or ""))
+    return tables
+
+
+def auto_connect_saved_databases(saved_connections: Optional[Sequence[Dict]] = None) -> set[str]:
+    connections = list(saved_connections if saved_connections is not None else connection_registry.saved_connections())
+    for connection in connections:
+        params = _database_params_from_connection(connection)
+        if not params.get("host") or not params.get("database") or not params.get("user"):
+            continue
+        if not params.get("password") and not connection.get("authcfg"):
+            continue
+        ok, db_or_error = _open_database_connection(params, owner_token="auto")
+        if not ok:
+            continue
+        db = db_or_error
+        try:
+            tables = _database_table_names(db, params["driver"])
+            _mark_connected_database_params(params, tables)
+        finally:
+            db.close()
+    return connected_database_drivers()
 
 
 def _apply_walker_dialog_buttons(*, primary=None, secondary=None):
@@ -1805,6 +1991,7 @@ class DatabaseImportDialog(SlimDialogBase):
         self._last_params: Dict[str, Dict] = self._load_last_params()
         self._suspend_defaults = False
         self._preferred_driver = preferred_driver or "PostgreSQL"
+        self._active_saved_fingerprint = ""
         self.setWindowTitle(_rt("Connect to PostgreSQL"))
         self.setObjectName("WalkerDatabaseDialog")
         self.setWindowFlags(_walker_database_dialog_flags())
@@ -1952,17 +2139,24 @@ class DatabaseImportDialog(SlimDialogBase):
 
         self.use_ssl_box = QCheckBox(_rt("Use SSL"), self)
         self.use_ssl_box.setObjectName("WalkerUseSslCheck")
-        form.addWidget(self.use_ssl_box, 7, 0, 1, 2)
+        form.addWidget(self.use_ssl_box, 7, 0)
+
+        self.remember_box = QCheckBox(_rt("Salvar conexão"), self)
+        self.remember_box.setObjectName("WalkerSaveConnectionCheck")
+        form.addWidget(self.remember_box, 7, 1, Qt.AlignVCenter)
+
+        self.delete_connection_btn = QPushButton(_rt("Excluir conexão"), self)
+        self.delete_connection_btn.setObjectName("WalkerDeleteConnectionButton")
+        self.delete_connection_btn.clicked.connect(self._delete_saved_connection)
+        self.delete_connection_btn.setVisible(False)
+        form.addWidget(self.delete_connection_btn, 7, 2, 1, 2, Qt.AlignRight | Qt.AlignVCenter)
+
         for field in (self.host_edit, self.port_edit, self.database_edit, self.user_edit, self.password_edit):
             field.textEdited.connect(lambda *_: self._set_connection_status(False))
         self.ssl_combo.changed.connect(lambda *_: self._set_connection_status(False))
         self.use_ssl_box.toggled.connect(lambda *_: self._set_connection_status(False))
 
         layout.addLayout(form)
-
-        self.remember_box = QCheckBox(_rt("Lembrar credenciais neste computador"), self)
-        self.remember_box.setVisible(False)
-        layout.addWidget(self.remember_box)
 
         saved_row = QHBoxLayout()
         self.saved_combo = QComboBox(self)
@@ -2016,6 +2210,7 @@ class DatabaseImportDialog(SlimDialogBase):
 
         self._apply_driver_defaults()
         self._apply_driver_ui()
+        self._apply_initial_saved_connection()
 
     def _apply_walker_dialog_style(self):
         self.setStyleSheet(
@@ -2094,20 +2289,23 @@ class DatabaseImportDialog(SlimDialogBase):
                 border-radius: 12px;
                 background: #FFFFFF;
             }
-            QCheckBox#WalkerUseSslCheck {
+            QCheckBox#WalkerUseSslCheck,
+            QCheckBox#WalkerSaveConnectionCheck {
                 color: #111827;
                 font-size: 12px;
                 font-weight: 400;
                 background: transparent;
             }
-            QCheckBox#WalkerUseSslCheck::indicator {
+            QCheckBox#WalkerUseSslCheck::indicator,
+            QCheckBox#WalkerSaveConnectionCheck::indicator {
                 width: 14px;
                 height: 14px;
                 border: 1px solid #9CA3AF;
                 border-radius: 3px;
                 background: #FFFFFF;
             }
-            QCheckBox#WalkerUseSslCheck::indicator:checked {
+            QCheckBox#WalkerUseSslCheck::indicator:checked,
+            QCheckBox#WalkerSaveConnectionCheck::indicator:checked {
                 background: #111111;
                 border-color: #111111;
             }
@@ -2161,6 +2359,21 @@ class DatabaseImportDialog(SlimDialogBase):
                 background: #F9FAFB;
                 border-color: #D1D5DB;
             }
+            QPushButton#WalkerDeleteConnectionButton {
+                min-width: 100px;
+                min-height: 26px;
+                border-radius: 7px;
+                padding: 0 10px;
+                background: #FFFFFF;
+                border: 1px solid #E5E7EB;
+                color: #991B1B;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QPushButton#WalkerDeleteConnectionButton:hover {
+                background: #FEF2F2;
+                border-color: #FCA5A5;
+            }
             QToolButton#WalkerDialogCloseButton {
                 min-width: 24px;
                 max-width: 24px;
@@ -2179,12 +2392,26 @@ class DatabaseImportDialog(SlimDialogBase):
             """
         )
 
+    def _apply_initial_saved_connection(self):
+        current_driver = self.driver_combo.currentText() or self._preferred_driver
+        for index in range(1, self.saved_combo.count()):
+            data = self.saved_combo.itemData(index)
+            if not isinstance(data, dict):
+                continue
+            saved_driver = str(data.get("source_driver") or data.get("driver") or "")
+            if saved_driver == current_driver or (saved_driver == "PostgreSQL" and current_driver == "PostGIS"):
+                self.saved_combo.setCurrentIndex(index)
+                self._apply_saved(index)
+                return
+
     def _apply_saved(self, index: int):
         if index <= 0:
             return
         data = self.saved_combo.itemData(index)
         if not isinstance(data, dict):
             return
+        data = reveal_connection_payload(data)
+        self._active_saved_fingerprint = str(data.get("fingerprint") or "")
         self._suspend_defaults = True
         try:
             self.driver_combo.setCurrentText(data.get("driver", "PostgreSQL"))
@@ -2196,7 +2423,48 @@ class DatabaseImportDialog(SlimDialogBase):
         finally:
             self._suspend_defaults = False
         self.remember_box.setChecked(True)
+        self.delete_connection_btn.setVisible(bool(self._active_saved_fingerprint))
         self._refresh_connection_status_from_fields()
+
+    def _delete_saved_connection(self):
+        fingerprint = str(self._active_saved_fingerprint or "").strip()
+        if not fingerprint:
+            return
+        confirm = QMessageBox.question(
+            self,
+            _rt("Excluir conexão"),
+            _rt("Excluir esta conexão salva?"),
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        _forget_connected_database_params(self._params())
+        connection_registry.remove_connection(fingerprint)
+        self.saved_connections = [
+            conn for conn in self.saved_connections if str(conn.get("fingerprint") or "") != fingerprint
+        ]
+        for index in range(self.saved_combo.count() - 1, 0, -1):
+            data = self.saved_combo.itemData(index)
+            if isinstance(data, dict) and str(data.get("fingerprint") or "") == fingerprint:
+                self.saved_combo.removeItem(index)
+        self._active_saved_fingerprint = ""
+        self.saved_combo.setCurrentIndex(0)
+        self.remember_box.setChecked(False)
+        self.delete_connection_btn.setVisible(False)
+        self.tables_combo.clear()
+        self.tables_combo.setVisible(False)
+        if hasattr(self, "load_btn"):
+            self.load_btn.setText(_rt("Connect"))
+        self._set_connection_status(False)
+        self._notify_parent_database_status()
+
+    def _notify_parent_database_status(self):
+        widget = self.parentWidget()
+        while widget is not None:
+            refresh = getattr(widget, "_refresh_model_database_status", None)
+            if callable(refresh):
+                refresh()
+                return
+            widget = widget.parentWidget()
 
     def _set_connection_status(self, connected: bool):
         icon = getattr(self, "connection_status_icon", None)
@@ -2204,25 +2472,11 @@ class DatabaseImportDialog(SlimDialogBase):
             icon.setConnected(connected)
 
     def _connection_status_key(self, params: Optional[Dict] = None) -> str:
-        values = params or self._params()
-        driver = str(values.get("source_driver") or values.get("driver") or "").strip()
-        host = str(values.get("host") or "").strip().lower()
-        port = str(values.get("port") or "").strip()
-        database = str(values.get("database") or "").strip().lower()
-        user = str(values.get("user") or "").strip().lower()
-        ssl_mode = str(values.get("ssl_mode") or "").strip().lower()
-        use_ssl = "1" if values.get("use_ssl") else "0"
-        if not driver or not host or not database or not user:
-            return ""
-        return "|".join((driver, host, port, database, user, ssl_mode, use_ssl))
+        return _connection_status_key_from_params(params or self._params())
 
     def _remember_connected_connection(self, params: Dict, tables: Optional[List[str]] = None):
         key = self._connection_status_key(params)
-        if key:
-            _CONNECTED_DATABASE_KEYS.add(key)
-            _CONNECTED_DATABASE_PARAMS[key] = dict(params)
-            if tables is not None:
-                _CONNECTED_DATABASE_TABLES[key] = list(tables)
+        _mark_connected_database_params(params, tables)
         self._set_connection_status(bool(key))
 
     def _refresh_connection_status_from_fields(self):
@@ -2391,6 +2645,10 @@ class DatabaseImportDialog(SlimDialogBase):
             "database": params.get("database"),
             "user": params.get("user"),
             "password": params.get("password"),
+            "authcfg": params.get("authcfg", ""),
+            "source_driver": params.get("source_driver") or params.get("driver"),
+            "ssl_mode": params.get("ssl_mode"),
+            "use_ssl": params.get("use_ssl"),
         }
         payload = secure_connection_payload(payload, name=str(params.get("display_name") or "Summarizer"))
         payload["name"] = f"{payload.get('database')} ({payload.get('driver')})"

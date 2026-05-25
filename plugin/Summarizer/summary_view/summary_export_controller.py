@@ -13,6 +13,12 @@ try:
 except Exception:  # pragma: no cover - unit tests run outside QGIS
     QFileDialog = None
     QMessageBox = None
+try:
+    from ..walker_dialogs import WalkerMessageBox
+    if QMessageBox is not None:
+        QMessageBox = WalkerMessageBox
+except Exception:  # pragma: no cover - unit tests run outside QGIS
+    pass
 
 TIMESTAMP_PATTERN = re.compile(r"_\d{8}_\d{6}$")
 

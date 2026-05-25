@@ -23,6 +23,7 @@ from ..slim_dialogs import slim_get_text
 from ..utils.i18n_runtime import tr_text as _rt
 from ..utils.fonts import harmonize_font_family
 from ..utils.logging_utils import log_exception
+from ..walker_dialogs import apply_walker_menu
 from .charts import ChartDataProfile, ChartVisualState
 from .charts.chart_animation import chart_popup_icon
 from .charts.chart_utils import extract_chart_payload_rows, value_scale_bounds, value_scale_ratio
@@ -1479,7 +1480,7 @@ class ReportChartWidget(QWidget):
         if self._payload is None or not self._payload.categories:
             return
 
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         type_menu = menu.addMenu(_rt("Mudar tipo de gráfico"))
         personalize_menu = menu.addMenu(_rt("Personalizar gráfico"))
         font_menu = personalize_menu.addMenu(_rt("Tamanho da fonte"))
@@ -3019,7 +3020,7 @@ class ReportChartWidget(QWidget):
         clipboard.setText(f"{category_text}: {value_text}".strip(": "))
 
     def _build_category_context_menu(self, global_pos, target: Dict[str, object]):
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         can_select = self._supports_map_selection(target)
 
         highlight_action = QAction(_rt("Destacar categoria"), menu)

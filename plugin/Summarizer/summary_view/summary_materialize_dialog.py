@@ -23,6 +23,12 @@ try:
     from ..slim_dialogs import slim_get_item
 except Exception:  # pragma: no cover - unit tests run outside QGIS
     slim_get_item = None
+try:
+    from ..walker_dialogs import WalkerMessageBox
+    if QMessageBox is not None:
+        QMessageBox = WalkerMessageBox
+except Exception:  # pragma: no cover - unit tests run outside QGIS
+    pass
 
 MATERIALIZE_BASE_NAME_DEFAULT = "resultado"
 MATERIALIZE_TABLE_LABEL = "Tabela (somente atributos)"

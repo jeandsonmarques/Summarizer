@@ -78,6 +78,7 @@ from .model_view.model_canvas_style_dialog import (
     normalize_canvas_style,
     open_canvas_style_dialog,
 )
+from .walker_dialogs import WalkerMessageBox as QMessageBox, apply_walker_menu
 from .model_view.model_project_controller import (
     normalize_loaded_project,
     normalize_project_source_meta,
@@ -487,6 +488,7 @@ class ModelTab(QWidget):
         self._shortcut_redo.activated.connect(self._redo_last_action)
         self._shortcut_redo_alt = QShortcut(QKeySequence("Ctrl+Y"), self)
         self._shortcut_redo_alt.activated.connect(self._redo_last_action)
+        QTimer.singleShot(0, self._auto_connect_saved_model_databases)
 
         self.setStyleSheet(
             """
@@ -3413,7 +3415,7 @@ class ModelTab(QWidget):
         self._expand_data_panel_for_new_chart()
 
     def _open_canvas_context_menu(self, global_pos, page_id: Optional[str] = None):
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         add_chart_action = menu.addAction(_rt("Adicionar grafico em branco"))
         open_panel_action = menu.addAction(_rt("Abrir painel de camada"))
         chosen = menu.exec_(global_pos)
@@ -3493,7 +3495,7 @@ class ModelTab(QWidget):
             connected_drivers = connected_database_drivers()
         except Exception:
             log_exception("falha opcional ignorada")
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         menu.setObjectName("ModelDatabaseMenu")
         menu.setStyleSheet(
             """
@@ -3541,6 +3543,18 @@ class ModelTab(QWidget):
         if hasattr(card, "set_connected"):
             card.set_connected(connected)
 
+    def _auto_connect_saved_model_databases(self):
+        try:
+            from .browser_integration import connection_registry
+            from .integration_panel import auto_connect_saved_databases
+
+            saved = connection_registry.saved_connections()
+            if saved:
+                auto_connect_saved_databases(saved)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self._refresh_model_database_status()
+
     def _database_connected_icon(self) -> QIcon:
         pixmap = QPixmap(14, 14)
         pixmap.fill(Qt.transparent)
@@ -3570,6 +3584,15 @@ class ModelTab(QWidget):
                 register(df, metadata or {"connector": preferred_driver})
             if session_connection:
                 connection_registry.register_runtime_connection(session_connection)
+            if connection_meta:
+                fingerprint = connection_meta.get("fingerprint")
+                saved = [
+                    conn
+                    for conn in connection_registry.saved_connections()
+                    if conn.get("fingerprint") != fingerprint
+                ]
+                saved.insert(0, connection_meta)
+                connection_registry.replace_saved_connections(saved, persist=True)
             self._refresh_model_database_status()
             return
         except Exception:

@@ -48,6 +48,7 @@ from .report_view.chart_factory import ReportChartWidget
 from .slim_dialogs import slim_get_text
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
+from .walker_dialogs import apply_walker_dialog, apply_walker_menu
 
 
 from .utils.logging_utils import log_exception
@@ -512,6 +513,7 @@ class VisualPropertiesDialog(QDialog):
 
     def _apply_dialog_theme(self):
         if not _is_dark_theme():
+            apply_walker_dialog(self)
             return
         self.setProperty("themeMode", "dark")
         self.setStyleSheet(
@@ -1469,7 +1471,7 @@ class DashboardItemWidget(QFrame):
     def _open_chart_model_menu(self):
         if not self._edit_mode:
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         type_group = QActionGroup(menu)
         type_group.setExclusive(True)
 
@@ -1504,7 +1506,7 @@ class DashboardItemWidget(QFrame):
     def _open_chart_personalize_menu(self):
         if not self._edit_mode:
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         font_menu = menu.addMenu(_rt("Tamanho da fonte"))
         palette_menu = menu.addMenu(_rt("Paleta"))
         sort_menu = menu.addMenu(_rt("Ordenacao"))

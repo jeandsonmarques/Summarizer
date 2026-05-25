@@ -18,6 +18,7 @@ except Exception:  # pragma: no cover - optional in pure-python tests
 
 from .presentation_window_manager import PresentationWindowManager
 from ..utils.logging_utils import log_exception
+from ..walker_dialogs import apply_walker_menu
 
 
 class PresentationMapController(QObject):
@@ -417,7 +418,7 @@ class PresentationMapController(QObject):
         canvas = self._presentation_canvas()
         if canvas is None:
             return
-        menu = QMenu(self.plugin_window)
+        menu = apply_walker_menu(QMenu(self.plugin_window))
         menu.addAction("Sincronizar com mapa principal", self.sync_with_main_canvas)
         menu.addAction("Atualizar", self.refresh)
         menu.addAction("Extensao total", self._zoom_full_extent)

@@ -29,7 +29,8 @@ from .utils.plugin_logging import log_info
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.resources import svg_icon
 from .utils.logging_utils import log_exception
-from .utils.security_utils import secure_connection_payload
+from .utils.security_utils import reveal_connection_payload, secure_connection_payload
+from .walker_dialogs import WalkerMessageBox as QMessageBox
 SAVED_CONNECTIONS_KEY = "Summarizer/integration/saved_connections"
 SUPPORTED_DRIVERS = {
     "postgres",
@@ -110,6 +111,7 @@ class IntegrationConnectionRegistry(QObject):
         sanitized.setdefault("schema", "")
         if not sanitized.get("fingerprint"):
             sanitized["fingerprint"] = _fingerprint(sanitized)
+        sanitized = reveal_connection_payload(sanitized)
         return sanitized
 
     # ------------------------------------------------------------------ Public API

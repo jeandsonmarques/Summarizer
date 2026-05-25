@@ -23,6 +23,7 @@ from qgis.PyQt.QtWidgets import (
 
 
 from ..utils.logging_utils import log_exception
+from ..walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_buttons
 class UnifiedLayerDialog(QDialog):
     """Dialogo para gerar camada unificada a partir de uma relacao."""
 
@@ -33,6 +34,7 @@ class UnifiedLayerDialog(QDialog):
         self.source_field = source_field
         self.target_field = target_field
         self.setWindowTitle("Gerar Camada Unificada")
+        self.setProperty("walkerDialog", True)
         self.setMinimumWidth(480)
 
         self._setup_ui()
@@ -90,7 +92,12 @@ class UnifiedLayerDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
+        apply_walker_buttons(
+            primary=[buttons.button(QDialogButtonBox.Ok)],
+            secondary=[buttons.button(QDialogButtonBox.Cancel), browse_btn],
+        )
         layout.addWidget(buttons)
+        self.setStyleSheet(WALKER_DIALOG_STYLE)
 
     def _load_fields(self):
         try:

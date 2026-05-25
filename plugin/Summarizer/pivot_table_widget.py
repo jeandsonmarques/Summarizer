@@ -59,6 +59,7 @@ from .pivot_view.pivot_theme import (
     enforce_filters_surface_backgrounds as _pivot_enforce_filters_surface_backgrounds,
     refresh_toolbar_chrome as _pivot_refresh_toolbar_chrome,
 )
+from .walker_dialogs import apply_walker_menu
 from .pivot_view.pivot_field_panel import (
     _PivotFieldListDelegate,
     _PivotFieldSourceListWidget,
@@ -1336,7 +1337,7 @@ class PivotTableWidget(QWidget):
         _pivot_restore_default_summary_layout(self)
 
     def _open_summary_settings_menu(self):
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         fields_text = _rt("Expandir campos") if self._fields_panel_collapsed else _rt("Recolher campos")
         filters_text = _rt("Expandir filtros") if self._filters_panel_collapsed else _rt("Recolher filtros")
         fields_action = menu.addAction(fields_text)
@@ -1495,7 +1496,7 @@ class PivotTableWidget(QWidget):
         if panel is None:
             slim_message(self, _rt("Resumo"), _rt("O painel de integração ainda não está disponível."))
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         excel_action = menu.addAction(_rt("Importar Excel (.xlsx / .xls)"))
         csv_action = menu.addAction(_rt("Importar CSV (.csv)"))
         anchor = getattr(self, "import_sheet_btn", None)
@@ -2053,7 +2054,7 @@ class PivotTableWidget(QWidget):
         }
 
     def _open_table_context_menu(self, pos):
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         copy_action = menu.addAction(_rt("Copiar seleção"))
         copy_headers_action = menu.addAction(_rt("Copiar seleção com cabeçalhos"))
         copy_stats_action = menu.addAction(_rt("Copiar estatísticas"))

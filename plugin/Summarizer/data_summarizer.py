@@ -89,6 +89,7 @@ from .summary_view.summary_layer_io import (
 from .summary_view.summary_layer_io import (
     create_memory_table_from_dataframe as _summary_create_memory_table_from_dataframe,
 )
+from .walker_dialogs import WALKER_DIALOG_STYLE, WalkerMessageBox as QMessageBox, apply_walker_buttons, apply_walker_menu
 from .summary_view.summary_layer_io import (
     export_layer_to_gpkg as _summary_export_layer_to_gpkg,
 )
@@ -746,7 +747,7 @@ class SummarizerDialog(QDialog):
             host.reload_dialog_for_language()
 
     def _build_language_menu(self) -> QMenu:
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         choice = self._current_locale_choice()
         options = [
             ("auto", _rt_runtime("Automático")),
@@ -815,7 +816,7 @@ class SummarizerDialog(QDialog):
         apply_windows_title_bar_theme(self, normalized == "dark")
 
     def _build_theme_menu(self) -> QMenu:
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         current = self._current_theme_mode()
         for mode, label in (("light", _rt_runtime("Claro")), ("dark", _rt_runtime("Escuro"))):
             action = menu.addAction(label)
@@ -2127,6 +2128,7 @@ class GetDataDialog(QDialog):
     def __init__(self, host, parent=None):
         super().__init__(parent)
         self.host = host
+        self.setProperty("walkerDialog", True)
         self.setWindowTitle(_rt_runtime("Obter Dados"))
         self.resize(680, 420)
         self._datasets: list = []
@@ -2174,7 +2176,12 @@ class GetDataDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        apply_walker_buttons(
+            primary=[buttons.button(QDialogButtonBox.Ok), self.db_import_btn],
+            secondary=[buttons.button(QDialogButtonBox.Cancel)],
+        )
         layout.addWidget(buttons)
+        self.setStyleSheet(WALKER_DIALOG_STYLE)
 
         self._on_source_changed(0)
         _apply_i18n_widgets(self)

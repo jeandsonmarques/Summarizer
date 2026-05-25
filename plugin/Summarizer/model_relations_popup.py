@@ -28,6 +28,7 @@ from .slim_dialogs import slim_message
 
 from .utils.logging_utils import log_exception
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_buttons
 def _normalize_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
@@ -102,6 +103,7 @@ class ModelRelationsPopup(QDialog):
     ):
         super().__init__(parent)
         self.setObjectName("ModelRelationsPopup")
+        self.setProperty("walkerDialog", True)
         self.setWindowTitle("Relacao entre graficos")
         self.setFont(ui_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
@@ -144,7 +146,7 @@ class ModelRelationsPopup(QDialog):
 
     def _build_ui(self):
         self.setStyleSheet(
-            """
+            WALKER_DIALOG_STYLE + """
             QDialog#ModelRelationsPopup {
                 background: #FFFFFF;
             }
@@ -190,13 +192,13 @@ class ModelRelationsPopup(QDialog):
                 border-color: #9CA3AF;
             }
             QDialog#ModelRelationsPopup QPushButton#PrimaryActionButton {
-                border-color: #D1D5DB;
-                background: #FFFFFF;
-                color: #111827;
+                border-color: #111111;
+                background: #111111;
+                color: #FFFFFF;
             }
             QDialog#ModelRelationsPopup QPushButton#PrimaryActionButton:hover {
-                background: #F9FAFB;
-                border-color: #9CA3AF;
+                background: #262626;
+                border-color: #262626;
             }
             QDialog#ModelRelationsPopup QPushButton#DangerActionButton {
                 border-color: #D1D5DB;
@@ -316,6 +318,7 @@ class ModelRelationsPopup(QDialog):
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 4, 0, 0)
         actions.setSpacing(8)
+        remove_btn = None
         if self._existing_relation is not None:
             remove_btn = QPushButton("Remover relacao", self)
             remove_btn.setObjectName("DangerActionButton")
@@ -332,6 +335,7 @@ class ModelRelationsPopup(QDialog):
         save_btn.setDefault(True)
         save_btn.clicked.connect(self._handle_accept)
         actions.addWidget(save_btn, 0)
+        apply_walker_buttons(primary=[save_btn], secondary=[cancel_btn, remove_btn])
 
         root.addLayout(actions)
         harmonize_widget_fonts(self)

@@ -10,6 +10,7 @@ from qgis.PyQt.QtWidgets import QGraphicsScene, QGraphicsView, QMenu
 
 
 from ..utils.logging_utils import log_exception
+from ..walker_dialogs import apply_walker_menu
 class ModelCanvasView(QGraphicsView):
     """QGraphicsView com pan/zoom suave e grade ao estilo Power BI."""
 
@@ -228,7 +229,7 @@ class ModelCanvasView(QGraphicsView):
         if isinstance(item, TableCardItem):
             super().contextMenuEvent(event)
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
 
         scene = self.scene()
         manager = getattr(scene, "manager", None) if scene is not None else None
