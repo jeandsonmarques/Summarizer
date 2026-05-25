@@ -108,7 +108,7 @@ from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_fon
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.logging_utils import log_exception
 from .visual_format_panel import VisualFormatPanel
-from .walker_tooltips import install_walker_tooltip
+from .walker_tooltips import set_walker_tooltip
 
 _MODEL_SIDE_PANEL_COLLAPSED_WIDTH = 40
 _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH = 276
@@ -2635,8 +2635,7 @@ class ModelTab(QWidget):
         button.setProperty("modelIconColor", str(icon_color or ""))
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.NoFocus)
-        button.setToolTip(tooltip)
-        install_walker_tooltip(button)
+        set_walker_tooltip(button, tooltip)
         button.setStatusTip(tooltip)
         try:
             button.setAccessibleName(tooltip)
@@ -3843,13 +3842,13 @@ class ModelTab(QWidget):
             self.visual_side_toggle_btn.setIcon(QIcon())
             self.visual_side_toggle_btn.setText("›")
             self.visual_side_toggle_btn.setFixedSize(22, 22)
-            self.visual_side_toggle_btn.setToolTip(_rt("Recolher visualizações"))
+            set_walker_tooltip(self.visual_side_toggle_btn, _rt("Recolher visualizações"))
         if hasattr(self, "visual_side_collapsed_btn"):
             self.visual_side_collapsed_btn.setArrowType(Qt.NoArrow)
             self.visual_side_collapsed_btn.setIcon(QIcon())
             self.visual_side_collapsed_btn.setText("‹")
             self.visual_side_collapsed_btn.setFixedSize(22, 22)
-            self.visual_side_collapsed_btn.setToolTip(_rt("Expandir visualizações"))
+            set_walker_tooltip(self.visual_side_collapsed_btn, _rt("Expandir visualizações"))
         self._apply_collapsed_panel_chrome()
         try:
             self.visual_side_panel.style().unpolish(self.visual_side_panel)

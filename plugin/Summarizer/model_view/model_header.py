@@ -18,7 +18,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..utils.i18n_runtime import tr_text as _rt
-from ..walker_tooltips import install_walker_tooltip
+from ..walker_tooltips import set_walker_tooltip
 from .model_cards import _ModelModeToggle
 
 
@@ -112,7 +112,7 @@ def build_model_header(
     data_fields_btn.setCursor(Qt.PointingHandCursor)
     data_fields_btn.setFocusPolicy(Qt.NoFocus)
     data_fields_btn.setToolTip(_rt("Campos"))
-    install_walker_tooltip(data_fields_btn)
+    set_walker_tooltip(data_fields_btn, _rt("Campos"))
     data_fields_btn.setStatusTip(_rt("Campos"))
     data_fields_btn.setAccessibleName(_rt("Campos"))
     data_fields_btn.setText("")
@@ -188,8 +188,7 @@ def build_model_header(
     mode_toggle = _ModelModeToggle(mode_switch_wrap)
     mode_toggle.setObjectName("ModelModeToggle")
     mode_toggle.setChecked(True, animated=False)
-    mode_toggle.setToolTip(_rt("Alternar entre modo de edição e pré-visualização"))
-    install_walker_tooltip(mode_toggle)
+    set_walker_tooltip(mode_toggle, _rt("Alternar entre modo de edição e pré-visualização"))
     mode_layout.addWidget(mode_state_label, 0)
     mode_layout.addWidget(mode_toggle, 0)
 

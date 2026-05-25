@@ -78,6 +78,16 @@ except Exception:
         return None
 
 try:
+    from ..walker_tooltips import set_walker_tooltip
+except Exception:
+
+    def set_walker_tooltip(widget, text: str):
+        try:
+            widget.setToolTip(text)
+        except Exception:
+            return None
+
+try:
     from .model_data_panel import MODEL_FIELD_MIME
 except Exception:
     MODEL_FIELD_MIME = "application/x-summarizer-model-field"
@@ -470,7 +480,7 @@ def build_visual_type_buttons(
         button._model_icon_checked = checked_icon
         if normal_icon is not None:
             button.setIcon(normal_icon)
-        button.setToolTip(label_text)
+        set_walker_tooltip(button, label_text)
         button.setStatusTip("")
         button.setWhatsThis("")
         button.setAccessibleName(label_text)

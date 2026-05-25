@@ -84,6 +84,17 @@ except Exception:
 
     def log_exception(_message: str):
         return None
+
+try:
+    from ..walker_tooltips import set_walker_tooltip
+except Exception:
+
+    def set_walker_tooltip(widget, text: str):
+        try:
+            widget.setToolTip(text)
+        except Exception:
+            return None
+
 try:
     from .model_theme import _force_model_white_background, _model_panel_fields_icon, _model_theme_color
 except Exception:
@@ -642,13 +653,13 @@ def sync_data_panel_chrome(data_panel_owner, *, collapsed_width: int, min_width:
         data_panel_owner.data_panel_toggle_btn.setIcon(QIcon())
         data_panel_owner.data_panel_toggle_btn.setText("‹")
         data_panel_owner.data_panel_toggle_btn.setFixedSize(22, 22)
-        data_panel_owner.data_panel_toggle_btn.setToolTip(_rt("Recolher campos"))
+        set_walker_tooltip(data_panel_owner.data_panel_toggle_btn, _rt("Recolher campos"))
     if hasattr(data_panel_owner, "data_panel_collapsed_btn"):
         data_panel_owner.data_panel_collapsed_btn.setArrowType(Qt.NoArrow)
         data_panel_owner.data_panel_collapsed_btn.setIcon(QIcon())
         data_panel_owner.data_panel_collapsed_btn.setText("›")
         data_panel_owner.data_panel_collapsed_btn.setFixedSize(22, 22)
-        data_panel_owner.data_panel_collapsed_btn.setToolTip(_rt("Expandir campos"))
+        set_walker_tooltip(data_panel_owner.data_panel_collapsed_btn, _rt("Expandir campos"))
     try:
         data_panel_owner.data_panel.style().unpolish(data_panel_owner.data_panel)
         data_panel_owner.data_panel.style().polish(data_panel_owner.data_panel)
