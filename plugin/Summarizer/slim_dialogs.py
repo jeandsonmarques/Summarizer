@@ -242,17 +242,19 @@ QScrollBar::handle:vertical:hover {
 
 SLIM_POPOVER_STYLE = """
 QDialog#SlimPopoverDialog {
-    background: transparent;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
 }
 QFrame#SlimPopoverPanel {
     background: #FFFFFF;
-    border: 1px solid rgba(15, 23, 42, 0.08);
-    border-radius: 18px;
+    border: none;
+    border-radius: 14px;
 }
 QLabel#SlimPopoverTitle {
     color: #0F172A;
-    font-size: 16px;
-    font-weight: 500;
+    font-size: 17px;
+    font-weight: 600;
 }
 QLabel#SlimPopoverSubtitle {
     color: #64748B;
@@ -269,7 +271,7 @@ QLabel#SlimDialogHint {
 }
 QLabel#SlimMessageBody {
     color: #0F172A;
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 400;
 }
 QFrame#SlimPopoverIconWrap {

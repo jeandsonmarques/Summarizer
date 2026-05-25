@@ -147,8 +147,8 @@ class DashboardAddDialog(QDialog):
             }
             QDialog#ModelAddDialog QLabel[cardTitle="true"] {
                 color: #111827;
-                font-size: 22px;
-                font-weight: 700;
+                font-size: 17px;
+                font-weight: 600;
             }
             QLineEdit#ModelDialogLineEdit {
                 min-height: 36px;

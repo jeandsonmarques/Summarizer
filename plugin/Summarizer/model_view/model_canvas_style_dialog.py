@@ -262,8 +262,8 @@ if QDialog is not object:
                 }
                 QLabel#WalkerDialogTitle {
                     color: #111827;
-                    font-size: 14px;
-                    font-weight: 500;
+                    font-size: 17px;
+                    font-weight: 600;
                 }
                 QLabel#WalkerDialogSubtitle {
                     color: #6B7280;
@@ -485,7 +485,7 @@ if QDialog is not object:
             layout.setSpacing(10)
 
             title_font = ui_font()
-            title_font.setPixelSize(14)
+            title_font.setPixelSize(17)
             title_font.setWeight(600)
 
             body_font = ui_font()

@@ -269,8 +269,21 @@ def walker_dialog_flags():
     return flags
 
 
-def center_dialog_on_parent(dialog: QDialog) -> None:
+def _walker_overlay_parent(dialog: QDialog) -> Optional[QWidget]:
     parent = dialog.parentWidget()
+    if parent is None:
+        return None
+    try:
+        window = parent.window()
+        if isinstance(window, QWidget):
+            return window
+    except Exception:
+        log_exception("falha opcional ignorada")
+    return parent
+
+
+def center_dialog_on_parent(dialog: QDialog) -> None:
+    parent = _walker_overlay_parent(dialog) or dialog.parentWidget()
     if parent is None:
         screen = QApplication.primaryScreen()
         if screen is None:
@@ -286,7 +299,7 @@ def center_dialog_on_parent(dialog: QDialog) -> None:
 
 
 def show_walker_modal_overlay(dialog: QDialog) -> Optional[QFrame]:
-    parent = dialog.parentWidget()
+    parent = _walker_overlay_parent(dialog)
     if parent is None:
         return None
     overlay = QFrame(parent)
@@ -332,7 +345,7 @@ class _WalkerModalChromeFilter(QObject):
         elif event_type in (QEvent.Hide, QEvent.Close):
             self._hide_overlay()
         elif event_type == QEvent.Resize and self.overlay is not None:
-            parent = self.dialog.parentWidget()
+            parent = _walker_overlay_parent(self.dialog)
             if parent is not None:
                 self.overlay.setGeometry(parent.rect())
         return False
@@ -363,7 +376,7 @@ def install_walker_modal_chrome(dialog: QDialog) -> None:
 def add_walker_close_button(layout: QHBoxLayout, dialog: QDialog) -> QToolButton:
     button = QToolButton(dialog)
     button.setObjectName("WalkerDialogCloseButton")
-    button.setText("x")
+    button.setText("×")
     button.clicked.connect(dialog.reject)
     layout.addWidget(button, 0, Qt.AlignTop)
     return button

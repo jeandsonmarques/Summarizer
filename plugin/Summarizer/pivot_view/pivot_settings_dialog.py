@@ -132,8 +132,8 @@ def open_table_settings_dialog(
         }
         QLabel#SummarySettingsTitle {
             color: #111827;
-            font-size: 15px;
-            font-weight: 500;
+            font-size: 17px;
+            font-weight: 600;
         }
         QLabel#SummarySettingsLabel,
         QCheckBox#SummarySettingsCheck {
@@ -186,8 +186,8 @@ def open_table_settings_dialog(
             }
             QLabel#SummarySettingsTitle {
                 color: #F8FAFC;
-                font-size: 15px;
-                font-weight: 500;
+                font-size: 17px;
+                font-weight: 600;
                 background: transparent;
             }
             QLabel#SummarySettingsLabel,
@@ -264,7 +264,7 @@ def open_table_settings_dialog(
     title = QLabel(translate(TABLE_SETTINGS_TITLE), dialog)
     title.setObjectName(TABLE_SETTINGS_TITLE_LABEL)
     title_font = ui_font()
-    title_font.setPixelSize(15)
+    title_font.setPixelSize(17)
     title_font.setWeight(600)
     title.setFont(title_font)
     header.addWidget(title, 1)

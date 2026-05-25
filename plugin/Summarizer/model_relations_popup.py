@@ -156,7 +156,7 @@ class ModelRelationsPopup(QDialog):
                 font-size: 12px;
             }
             QDialog#ModelRelationsPopup QLabel[role="title"] {
-                font-size: 14px;
+                font-size: 17px;
                 font-weight: 600;
             }
             QDialog#ModelRelationsPopup QLabel[role="subtle"] {
@@ -221,6 +221,7 @@ class ModelRelationsPopup(QDialog):
         header.setContentsMargins(0, 0, 0, 6)
         header.setSpacing(8)
         title = QLabel("Relacao entre graficos", self)
+        title.setObjectName("WalkerDialogTitle")
         title.setProperty("role", "title")
         header.addWidget(title, 1, Qt.AlignVCenter)
         add_walker_close_button(header, self)
