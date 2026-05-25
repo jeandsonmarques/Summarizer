@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtCore import QEvent, QObject, Qt, QTimer
 from qgis.PyQt.QtGui import QColor, QIcon
 from qgis.PyQt.QtWidgets import (
     QApplication,
@@ -313,6 +313,62 @@ def apply_walker_dialog(widget: QWidget) -> None:
         QTimer.singleShot(0, lambda: apply_windows_rounded_corners(widget))
 
 
+class _WalkerModalChromeFilter(QObject):
+    def __init__(self, dialog: QDialog):
+        super().__init__(dialog)
+        self.dialog = dialog
+        self.overlay: Optional[QFrame] = None
+
+    def eventFilter(self, watched, event):  # noqa: N802 - Qt naming style
+        if watched is not self.dialog:
+            return False
+        event_type = event.type()
+        if event_type == QEvent.Show:
+            self._show_overlay()
+            center_dialog_on_parent(self.dialog)
+            apply_walker_dialog(self.dialog)
+            self.dialog.raise_()
+            QTimer.singleShot(0, self.dialog.raise_)
+        elif event_type in (QEvent.Hide, QEvent.Close):
+            self._hide_overlay()
+        elif event_type == QEvent.Resize and self.overlay is not None:
+            parent = self.dialog.parentWidget()
+            if parent is not None:
+                self.overlay.setGeometry(parent.rect())
+        return False
+
+    def _show_overlay(self) -> None:
+        self._hide_overlay()
+        self.overlay = show_walker_modal_overlay(self.dialog)
+
+    def _hide_overlay(self) -> None:
+        if self.overlay is None:
+            return
+        self.overlay.hide()
+        self.overlay.deleteLater()
+        self.overlay = None
+
+
+def install_walker_modal_chrome(dialog: QDialog) -> None:
+    dialog.setProperty("walkerDialog", True)
+    dialog.setWindowFlags(walker_dialog_flags())
+    dialog.setAttribute(Qt.WA_StyledBackground, True)
+    apply_walker_dialog(dialog)
+    if getattr(dialog, "_walker_modal_chrome_filter", None) is None:
+        event_filter = _WalkerModalChromeFilter(dialog)
+        dialog._walker_modal_chrome_filter = event_filter
+        dialog.installEventFilter(event_filter)
+
+
+def add_walker_close_button(layout: QHBoxLayout, dialog: QDialog) -> QToolButton:
+    button = QToolButton(dialog)
+    button.setObjectName("WalkerDialogCloseButton")
+    button.setText("x")
+    button.clicked.connect(dialog.reject)
+    layout.addWidget(button, 0, Qt.AlignTop)
+    return button
+
+
 def apply_walker_buttons(
     *,
     primary: Iterable[Optional[QPushButton]] = (),
@@ -568,5 +624,9 @@ class WalkerMessageBox:
         *args,
         **kwargs,
     ) -> int:
-        del args, kwargs
+        del args
+        if "default_button" in kwargs:
+            defaultButton = kwargs.pop("default_button")
+        if "defaultButton" in kwargs:
+            defaultButton = kwargs.pop("defaultButton")
         return walker_confirm(parent, title, text, buttons=buttons, default_button=defaultButton)

@@ -12,6 +12,7 @@ from qgis.PyQt.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -23,7 +24,7 @@ from qgis.PyQt.QtWidgets import (
 
 
 from ..utils.logging_utils import log_exception
-from ..walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_buttons
+from ..walker_dialogs import WALKER_DIALOG_STYLE, add_walker_close_button, apply_walker_buttons, install_walker_modal_chrome
 class UnifiedLayerDialog(QDialog):
     """Dialogo para gerar camada unificada a partir de uma relacao."""
 
@@ -38,12 +39,22 @@ class UnifiedLayerDialog(QDialog):
         self.setMinimumWidth(480)
 
         self._setup_ui()
+        install_walker_modal_chrome(self)
         self._load_fields()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        title = QLabel("Gerar Camada Unificada", self)
+        title.setObjectName("WalkerDialogTitle")
+        header.addWidget(title, 1)
+        add_walker_close_button(header, self)
+        layout.addLayout(header)
 
         info = QLabel(
             "Crie uma camada de destino juntando atributos da tabela origem.\n"

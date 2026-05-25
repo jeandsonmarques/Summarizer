@@ -89,7 +89,14 @@ from .summary_view.summary_layer_io import (
 from .summary_view.summary_layer_io import (
     create_memory_table_from_dataframe as _summary_create_memory_table_from_dataframe,
 )
-from .walker_dialogs import WALKER_DIALOG_STYLE, WalkerMessageBox as QMessageBox, apply_walker_buttons, apply_walker_menu
+from .walker_dialogs import (
+    WALKER_DIALOG_STYLE,
+    WalkerMessageBox as QMessageBox,
+    add_walker_close_button,
+    apply_walker_buttons,
+    apply_walker_menu,
+    install_walker_modal_chrome,
+)
 from .summary_view.summary_layer_io import (
     export_layer_to_gpkg as _summary_export_layer_to_gpkg,
 )
@@ -2133,11 +2140,21 @@ class GetDataDialog(QDialog):
         self.resize(680, 420)
         self._datasets: list = []
         self._build_ui()
+        install_walker_modal_chrome(self)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        title = QLabel(_rt_runtime("Obter Dados"), self)
+        title.setObjectName("WalkerDialogTitle")
+        header.addWidget(title, 1)
+        add_walker_close_button(header, self)
+        layout.addLayout(header)
 
         info = QLabel(
             _rt_runtime("Escolha a fonte de dados disponível para importar.")

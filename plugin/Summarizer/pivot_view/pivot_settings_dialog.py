@@ -112,7 +112,7 @@ def open_table_settings_dialog(
 
     from ..utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
     from ..utils.window_theme import apply_windows_title_bar_theme
-    from ..walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_buttons
+    from ..walker_dialogs import WALKER_DIALOG_STYLE, add_walker_close_button, apply_walker_buttons, install_walker_modal_chrome
 
     dialog = QDialog(widget)
     dialog.setObjectName(TABLE_SETTINGS_DIALOG_OBJECT_NAME)
@@ -122,6 +122,7 @@ def open_table_settings_dialog(
     dialog.resize(360, 250)
     dialog.setFont(ui_font())
     dialog._font_enforcer = attach_ui_font_enforcer(dialog)
+    install_walker_modal_chrome(dialog)
     dialog.setStyleSheet(
         WALKER_DIALOG_STYLE + """
         QDialog#SummaryTableSettingsDialog {
@@ -257,13 +258,18 @@ def open_table_settings_dialog(
     body_text_font = ui_font()
     body_text_font.setPixelSize(12)
 
+    header = QHBoxLayout()
+    header.setContentsMargins(0, 0, 0, 0)
+    header.setSpacing(8)
     title = QLabel(translate(TABLE_SETTINGS_TITLE), dialog)
     title.setObjectName(TABLE_SETTINGS_TITLE_LABEL)
     title_font = ui_font()
     title_font.setPixelSize(15)
     title_font.setWeight(600)
     title.setFont(title_font)
-    layout.addWidget(title, 0)
+    header.addWidget(title, 1)
+    add_walker_close_button(header, dialog)
+    layout.addLayout(header)
 
     grid = QGridLayout()
     grid.setContentsMargins(0, 0, 0, 0)

@@ -28,7 +28,14 @@ from qgis.PyQt.QtWidgets import (
 
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.window_theme import apply_windows_title_bar_theme
-from .walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_dialog, center_dialog_on_parent, walker_dialog_flags
+from .walker_dialogs import (
+    WALKER_DIALOG_STYLE,
+    apply_walker_dialog,
+    center_dialog_on_parent,
+    add_walker_close_button,
+    show_walker_modal_overlay,
+    walker_dialog_flags,
+)
 
 from .utils.logging_utils import log_exception
 SLIM_DIALOG_STYLE = WALKER_DIALOG_STYLE + """
@@ -417,7 +424,10 @@ class SlimDialogBase(QDialog):
         self.setProperty("walkerDialog", True)
         self.setModal(True)
         self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setWindowFlags(walker_dialog_flags())
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self._walker_overlay = None
+        self._walker_header_added = False
 
         self.setFont(_build_dialog_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
@@ -433,6 +443,11 @@ class SlimDialogBase(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
+        if self.objectName() != "WalkerDatabaseDialog":
+            self._hide_walker_overlay()
+            self._walker_overlay = show_walker_modal_overlay(self)
+            self._ensure_walker_header()
+            center_dialog_on_parent(self)
         self._refresh_dialog_style()
         harmonize_widget_fonts(self)
         if not self._geometry_key:
@@ -442,9 +457,37 @@ class SlimDialogBase(QDialog):
             self.restoreGeometry(data)
 
     def closeEvent(self, event):
+        self._hide_walker_overlay()
         if self._geometry_key:
             self._settings.setValue(self._geometry_key, self.saveGeometry())
         super().closeEvent(event)
+
+    def hideEvent(self, event):
+        self._hide_walker_overlay()
+        super().hideEvent(event)
+
+    def _hide_walker_overlay(self):
+        overlay = getattr(self, "_walker_overlay", None)
+        if overlay is not None:
+            overlay.hide()
+            overlay.deleteLater()
+            self._walker_overlay = None
+
+    def _ensure_walker_header(self):
+        if self._walker_header_added:
+            return
+        layout = self.layout()
+        if not isinstance(layout, QVBoxLayout):
+            return
+        self._walker_header_added = True
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 6)
+        header.setSpacing(8)
+        title = QLabel(self.windowTitle() or "Summarizer", self)
+        title.setObjectName("WalkerDialogTitle")
+        header.addWidget(title, 1, Qt.AlignVCenter)
+        add_walker_close_button(header, self)
+        layout.insertLayout(0, header)
 
 
 class SlimPopoverDialog(QDialog):
@@ -455,6 +498,7 @@ class SlimPopoverDialog(QDialog):
         self._geometry_key = geometry_key
         self._settings = QSettings()
         self._did_restore_geometry = False
+        self._walker_overlay = None
         self.setObjectName("SlimPopoverDialog")
         self.setProperty("walkerDialog", True)
         self.setModal(True)
@@ -466,7 +510,7 @@ class SlimPopoverDialog(QDialog):
         self._refresh_dialog_style()
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 18, 18, 18)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
         self.panel = QFrame(self)
@@ -487,6 +531,8 @@ class SlimPopoverDialog(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._hide_walker_overlay()
+        self._walker_overlay = show_walker_modal_overlay(self)
         self._refresh_dialog_style()
         harmonize_widget_fonts(self)
         if self._did_restore_geometry:
@@ -502,9 +548,21 @@ class SlimPopoverDialog(QDialog):
             self._center_on_parent()
 
     def closeEvent(self, event):
+        self._hide_walker_overlay()
         if self._geometry_key:
             self._settings.setValue(self._geometry_key, self.saveGeometry())
         super().closeEvent(event)
+
+    def hideEvent(self, event):
+        self._hide_walker_overlay()
+        super().hideEvent(event)
+
+    def _hide_walker_overlay(self):
+        overlay = getattr(self, "_walker_overlay", None)
+        if overlay is not None:
+            overlay.hide()
+            overlay.deleteLater()
+            self._walker_overlay = None
 
     def _center_on_parent(self):
         center_dialog_on_parent(self)

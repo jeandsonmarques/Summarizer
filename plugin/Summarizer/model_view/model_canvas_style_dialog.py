@@ -75,9 +75,10 @@ except Exception:
         return None
 
 try:
-    from ..walker_dialogs import WALKER_DIALOG_STYLE
+    from ..walker_dialogs import WALKER_DIALOG_STYLE, install_walker_modal_chrome
 except Exception:
     WALKER_DIALOG_STYLE = ""
+    install_walker_modal_chrome = None
 
 
 CANVAS_STYLE_KEYS = ("background", "grid_color", "show_grid", "grid_size", "grid_opacity")
@@ -224,6 +225,8 @@ if QDialog is not object:
                 },
             }
             self._build_ui()
+            if install_walker_modal_chrome is not None:
+                install_walker_modal_chrome(self)
             self._apply_style_to_controls(self._initial_style)
 
         def selected_style(self) -> Dict[str, object]:

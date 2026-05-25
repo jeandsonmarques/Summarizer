@@ -20,7 +20,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
-from .walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_buttons
+from .walker_dialogs import WALKER_DIALOG_STYLE, add_walker_close_button, apply_walker_buttons, install_walker_modal_chrome
 
 
 from .utils.logging_utils import log_exception
@@ -49,8 +49,13 @@ class DashboardAddDialog(QDialog):
         layout.setSpacing(12)
 
         title = QLabel(_rt("Adicionar gráfico ao painel"))
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
         title.setProperty("cardTitle", True)
-        layout.addWidget(title)
+        header.addWidget(title, 1, Qt.AlignVCenter)
+        add_walker_close_button(header, self)
+        layout.addLayout(header)
 
         description = QLabel(_rt("Gráfico selecionado: {chart_title}", chart_title=chart_title or _rt("Gráfico sem título")))
         description.setWordWrap(True)
@@ -182,6 +187,7 @@ class DashboardAddDialog(QDialog):
             }
             """
         )
+        install_walker_modal_chrome(self)
 
     def _recent_hint_text(self) -> str:
         if not self._recent_projects:

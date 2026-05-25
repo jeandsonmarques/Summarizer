@@ -28,7 +28,7 @@ from .slim_dialogs import slim_message
 
 from .utils.logging_utils import log_exception
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
-from .walker_dialogs import WALKER_DIALOG_STYLE, apply_walker_buttons
+from .walker_dialogs import WALKER_DIALOG_STYLE, add_walker_close_button, apply_walker_buttons, install_walker_modal_chrome
 def _normalize_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
@@ -118,6 +118,7 @@ class ModelRelationsPopup(QDialog):
         self._suggestions = self._build_suggestions()
 
         self._build_ui()
+        install_walker_modal_chrome(self)
         self._apply_initial_selection()
 
     def remove_requested(self) -> bool:
@@ -216,9 +217,14 @@ class ModelRelationsPopup(QDialog):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 6)
+        header.setSpacing(8)
         title = QLabel("Relacao entre graficos", self)
         title.setProperty("role", "title")
-        root.addWidget(title)
+        header.addWidget(title, 1, Qt.AlignVCenter)
+        add_walker_close_button(header, self)
+        root.addLayout(header)
 
         info_frame = QFrame(self)
         info_frame.setObjectName("ModelRelationsInfoFrame")

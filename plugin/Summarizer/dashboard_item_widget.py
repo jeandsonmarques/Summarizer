@@ -48,7 +48,7 @@ from .report_view.chart_factory import ReportChartWidget
 from .slim_dialogs import slim_get_text
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
-from .walker_dialogs import apply_walker_dialog, apply_walker_menu
+from .walker_dialogs import add_walker_close_button, apply_walker_dialog, apply_walker_menu, install_walker_modal_chrome
 
 
 from .utils.logging_utils import log_exception
@@ -506,6 +506,7 @@ class VisualPropertiesDialog(QDialog):
         self._controls = {}
         self._palette_buttons = []
         self._build_ui()
+        install_walker_modal_chrome(self)
         self._apply_dialog_theme()
         self._load_state(self._state)
         harmonize_widget_fonts(self)
@@ -577,6 +578,15 @@ class VisualPropertiesDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(10)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        title = QLabel(_rt("Propriedades visuais"), self)
+        title.setObjectName("WalkerDialogTitle")
+        header.addWidget(title, 1)
+        add_walker_close_button(header, self)
+        root.addLayout(header)
 
         preset_row = QHBoxLayout()
         preset_row.addWidget(QLabel(_rt("Preset"), self), 0)
