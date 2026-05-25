@@ -103,7 +103,7 @@ from .model_view.model_visual_rebuild import (
     empty_chart_payload,
     rebuild_chart_item_from_binding,
 )
-from .slim_dialogs import slim_message, slim_question
+from .slim_dialogs import slim_message
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.logging_utils import log_exception
@@ -3620,12 +3620,12 @@ class ModelTab(QWidget):
 
     def close_project(self):
         if self.current_project is not None and self._dirty:
-            answer = slim_question(
+            answer = QMessageBox.question(
                 self,
                 _rt("Model"),
                 _rt("O painel atual tem alterações não salvas. Deseja salvar antes de fechar?"),
                 buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-                default_button=QMessageBox.Yes,
+                defaultButton=QMessageBox.Yes,
             )
             if answer == QMessageBox.Cancel:
                 return

@@ -71,6 +71,12 @@ QLabel[walkerMuted="true"] {
     font-weight: 400;
     background: transparent;
 }
+QLabel#WalkerMessageBody {
+    color: #111827;
+    font-size: 12px;
+    font-weight: 400;
+    background: transparent;
+}
 QLineEdit,
 QComboBox,
 QSpinBox,
@@ -533,6 +539,7 @@ class WalkerModalDialog(QDialog):
     def _ensure_visible(self) -> None:
         if not self.isVisible():
             return
+        apply_windows_rounded_corners(self)
         self.setWindowOpacity(1.0)
         self.panel.show()
         self.panel.raise_()
@@ -569,15 +576,15 @@ class WalkerMessageDialog(WalkerModalDialog):
         buttons: int = QMessageBox.Ok,
         default_button: int = QMessageBox.Ok,
     ):
-        super().__init__(parent, width=420)
+        super().__init__(parent, width=500)
         self.setWindowTitle(title)
         self._clicked = QMessageBox.NoButton
         self.add_header(title, icon)
 
         body = QLabel(text, self.panel)
+        body.setObjectName("WalkerMessageBody")
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        body.setProperty("walkerMuted", True)
         self.panel_layout.addWidget(body)
         self.panel_layout.addSpacing(8)
 
