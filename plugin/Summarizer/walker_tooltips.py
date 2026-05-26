@@ -30,9 +30,12 @@ class _WalkerTooltipPopup(QWidget):
         super().__init__(None, Qt.ToolTip | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self.setObjectName("WalkerTooltip")
         self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAutoFillBackground(False)
         self.setStyleSheet(WALKER_TOOLTIP_STYLE)
         self._arrow_on_top = False
+        self._anchor: Optional[QWidget] = None
+        self._text = ""
 
         self._label = QLabel(self)
         self._label.setObjectName("WalkerTooltipLabel")
@@ -55,6 +58,14 @@ class _WalkerTooltipPopup(QWidget):
             self.hide()
             return
 
+        target = self._target_position(anchor)
+        if self.isVisible() and self._anchor is anchor and self._text == clean_text:
+            if self.pos() != target:
+                self.move(target)
+            return
+
+        self._anchor = anchor
+        self._text = clean_text
         self._label.setText(clean_text)
         self.adjustSize()
 
@@ -149,7 +160,6 @@ class _WalkerTooltipFilter(QObject):
             self._show_timer.start(260)
             return False
         if event_type == QEvent.ToolTip:
-            self._show_timer.start(0)
             return True
         if event_type in (QEvent.Leave, QEvent.MouseButtonPress, QEvent.Hide, QEvent.Close, QEvent.FocusOut):
             self.hide()
