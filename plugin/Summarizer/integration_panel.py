@@ -552,7 +552,7 @@ class IntegrationPanel(QWidget):
         header_layout = QVBoxLayout()
         header_layout.setSpacing(6)
 
-        self.title_label = QLabel("Adicionar dados ao seu relatório", wrapper)
+        self.title_label = QLabel(_rt("Adicionar dados ao seu relatorio"), wrapper)
         self.title_label.setProperty("cardTitle", True)
         self.title_label.setFont(ui_font(18, QFont.DemiBold))
         header_layout.addWidget(self.title_label)
@@ -572,13 +572,13 @@ class IntegrationPanel(QWidget):
 
         recents_header = QHBoxLayout()
         recents_header.setSpacing(6)
-        recents_title = QLabel("Recentes", recents_frame)
+        recents_title = QLabel(_rt("Recentes"), recents_frame)
         recents_title.setProperty("cardTitle", True)
         recents_title.setFont(ui_font(12, QFont.DemiBold))
         recents_header.addWidget(recents_title)
         recents_header.addStretch(1)
 
-        self.clear_recent_btn = QPushButton("Limpar", recents_frame)
+        self.clear_recent_btn = QPushButton(_rt("Limpar"), recents_frame)
         self.clear_recent_btn.setProperty("role", "recentClear")
         self.clear_recent_btn.clicked.connect(self._clear_recents)
         recents_header.addWidget(self.clear_recent_btn)
@@ -591,7 +591,7 @@ class IntegrationPanel(QWidget):
         self.recents_list.itemActivated.connect(self._open_recent)
         recents_layout.addWidget(self.recents_list)
 
-        self.recents_placeholder = QLabel("Nenhuma conexão recente…", recents_frame)
+        self.recents_placeholder = QLabel(_rt("Nenhuma conexao recente..."), recents_frame)
         self.recents_placeholder.setAlignment(Qt.AlignCenter)
         self.recents_placeholder.setProperty("role", "helper")
         recents_layout.addWidget(self.recents_placeholder)
@@ -1010,7 +1010,7 @@ class IntegrationPanel(QWidget):
             path = data.get("source_path")
             sheet = data.get("sheet_name")
             if not path or not os.path.exists(path):
-                QMessageBox.warning(self, "Recentes", "Arquivo não está mais disponível.")
+                QMessageBox.warning(self, _rt("Recentes"), _rt("Arquivo n?o est? mais dispon?vel."))
                 return
             df = self._read_excel(path, sheet)
             self._finalize_import(
@@ -1025,7 +1025,7 @@ class IntegrationPanel(QWidget):
         elif connector in ("CSV", "Parquet"):
             path = data.get("source_path")
             if not path or not os.path.exists(path):
-                QMessageBox.warning(self, "Recentes", "Arquivo não está mais disponível.")
+                QMessageBox.warning(self, _rt("Recentes"), _rt("Arquivo n?o est? mais dispon?vel."))
                 return
             options = data.get("options") or {}
             df = self._read_delimited(path, options)
@@ -1041,14 +1041,14 @@ class IntegrationPanel(QWidget):
         elif connector == "GeoPackage":
             path = data.get("source_path")
             if not path or not os.path.exists(path):
-                QMessageBox.warning(self, "Recentes", "Arquivo não está mais disponível.")
+                QMessageBox.warning(self, _rt("Recentes"), _rt("Arquivo n?o est? mais dispon?vel."))
                 return
             self._import_geopackage_path(path)
         else:
             QMessageBox.information(
                 self,
-                "Recentes",
-                "Conexões deste tipo precisam ser configuradas novamente.",
+                _rt("Recentes"),
+                _rt("Conex?es deste tipo precisam ser configuradas novamente."),
             )
 
     # ------------------------------------------------------------------ Saved connections
@@ -1306,7 +1306,7 @@ class IntegrationPanel(QWidget):
     def _handle_geopackage(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Selecionar GeoPackage",
+            _rt("Selecionar GeoPackage"),
             self.settings.value("integ/last_gpkg_dir", ""),
             "GeoPackage (*.gpkg)",
         )
@@ -1318,7 +1318,7 @@ class IntegrationPanel(QWidget):
     def _import_geopackage_path(self, path: str):
         layer = QgsVectorLayer(path, os.path.basename(path), "ogr")
         if not layer or not layer.isValid():
-            QMessageBox.warning(self, "GeoPackage", "Não foi possível abrir o arquivo informado.")
+            QMessageBox.warning(self, _rt("GeoPackage"), _rt("Não foi possível abrir o arquivo informado."))
             return
 
         columns = [field.name() for field in layer.fields()]
@@ -1439,10 +1439,11 @@ class IntegrationPanel(QWidget):
 class ExcelImportDialog(SlimDialogBase):
     def __init__(self, parent: QWidget, last_dir: str):
         super().__init__(parent, geometry_key="Summarizer/integration/excelDialog")
+        self.setProperty("forceCenterOnParent", True)
         self._df: Optional[pd.DataFrame] = None
         self._metadata: Dict = {}
         self.last_dir = last_dir or ""
-        self.setWindowTitle("Importar dados do Excel")
+        self.setWindowTitle(_rt("Importar dados do Excel"))
         self.resize(640, 540)
         self._build_ui()
 
@@ -1453,7 +1454,7 @@ class ExcelImportDialog(SlimDialogBase):
 
         row = QHBoxLayout()
         self.path_edit = QLineEdit(self)
-        self.path_edit.setPlaceholderText("Selecione o arquivo Excel…")
+        self.path_edit.setPlaceholderText(_rt("Selecione o arquivo Excel…"))
         browse_btn = QPushButton(_rt("Procurar…"), self)
         browse_btn.clicked.connect(self._browse)
         row.addWidget(self.path_edit, 1)
@@ -1493,7 +1494,7 @@ class ExcelImportDialog(SlimDialogBase):
         try:
             excel = pd.ExcelFile(path)
         except Exception as exc:
-            QMessageBox.warning(self, "Excel", f"Não foi possível abrir o arquivo: {exc}")
+            QMessageBox.warning(self, _rt("Excel"), _rt("Não foi possível abrir o arquivo: {exc}", exc=exc))
             return
         self.sheet_combo.clear()
         self.sheet_combo.addItems(excel.sheet_names)
@@ -1502,13 +1503,13 @@ class ExcelImportDialog(SlimDialogBase):
     def _preview(self):
         path = self.path_edit.text().strip()
         if not path:
-            QMessageBox.information(self, "Excel", "Selecione um arquivo.")
+            QMessageBox.information(self, _rt("Excel"), _rt("Selecione um arquivo."))
             return
         sheet = self.sheet_combo.currentText() or None
         try:
             df = pd.read_excel(path, sheet_name=sheet, nrows=PREVIEW_ROW_LIMIT)
         except Exception as exc:
-            QMessageBox.warning(self, "Excel", f"Falha na pré-visualização: {exc}")
+            QMessageBox.warning(self, _rt("Excel"), _rt("Falha na pré-visualização: {exc}", exc=exc))
             return
         self._fill_preview(df)
 
@@ -1526,13 +1527,13 @@ class ExcelImportDialog(SlimDialogBase):
     def _load(self):
         path = self.path_edit.text().strip()
         if not path:
-            QMessageBox.warning(self, "Excel", "Selecione um arquivo.")
+            QMessageBox.warning(self, _rt("Excel"), _rt("Selecione um arquivo."))
             return
         sheet = self.sheet_combo.currentText() or None
         try:
             df = pd.read_excel(path, sheet_name=sheet)
         except Exception as exc:
-            QMessageBox.critical(self, "Excel", f"Erro ao carregar: {exc}")
+            QMessageBox.critical(self, _rt("Excel"), _rt("Erro ao carregar: {exc}", exc=exc))
             return
         self._df = df
         self._metadata = {
@@ -1550,6 +1551,7 @@ class ExcelImportDialog(SlimDialogBase):
 class DelimitedFileDialog(SlimDialogBase):
     def __init__(self, parent: QWidget, last_dir: str):
         super().__init__(parent, geometry_key="Summarizer/integration/delimitedDialog")
+        self.setProperty("forceCenterOnParent", True)
         self._df: Optional[pd.DataFrame] = None
         self._metadata: Dict = {}
         self.last_dir = last_dir or ""
@@ -2972,6 +2974,7 @@ class DatabaseImportDialog(SlimDialogBase):
 class GoogleSheetsDialog(SlimDialogBase):
     def __init__(self, parent: QWidget):
         super().__init__(parent, geometry_key="Summarizer/integration/googleSheetsDialog")
+        self.setProperty("forceCenterOnParent", True)
         self._df: Optional[pd.DataFrame] = None
         self._metadata: Dict = {}
         self.setWindowTitle(_rt("Importar dados do Google Sheets"))
@@ -3002,7 +3005,7 @@ class GoogleSheetsDialog(SlimDialogBase):
         layout.addWidget(info)
 
         self.url_edit = QLineEdit(self)
-        self.url_edit.setPlaceholderText("URL pública…")
+        self.url_edit.setPlaceholderText(_rt("URL pública…"))
         layout.addWidget(self.url_edit)
 
         buttons = QDialogButtonBox(self)
@@ -3058,14 +3061,14 @@ class GoogleSheetsDialog(SlimDialogBase):
 class ExtendedConnectorsDialog(SlimDialogBase):
     def __init__(self, connectors: Dict[str, ConnectorConfig], parent: QWidget):
         super().__init__(parent, geometry_key="Summarizer/integration/extendedConnectors")
-        self.setWindowTitle("Catálogo de fontes disponíveis")
+        self.setWindowTitle(_rt("Catálogo de fontes disponíveis"))
         self.resize(760, 420)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
 
         info = QLabel(
-            "Lista completa de fontes suportadas pelo plugin. Algumas exigem configuração adicional, mas todas refletem cenários úteis para o ecossistema QGIS.",
+            _rt("Lista completa de fontes suportadas pelo plugin. Algumas exigem configuração adicional, mas todas refletem cenários úteis para o ecossistema QGIS."),
             self,
         )
         info.setWordWrap(True)

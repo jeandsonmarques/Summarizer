@@ -9,6 +9,7 @@ from qgis.PyQt.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen,
 from qgis.PyQt.QtWidgets import QWidget, QToolTip, QMenu
 
 from ..utils.fonts import ui_font
+from ..utils.i18n_runtime import tr_text as _rt
 from ..walker_dialogs import apply_walker_menu
 from ..walker_color_dialog import walker_get_color
 
@@ -82,7 +83,7 @@ class _BaseChartRenderer(VisualRenderer):
     def _draw_empty(self, painter: QPainter, rect: QRectF):
         painter.save()
         painter.setPen(QPen(QColor("#9E9E9E")))
-        painter.drawText(rect, Qt.AlignCenter, "Sem dados para exibir")
+        painter.drawText(rect, Qt.AlignCenter, _rt("Sem dados para exibir"))
         painter.restore()
 
 
@@ -328,7 +329,7 @@ class SummarizerVisualWidget(QWidget):
             action = menu.addAction(color)
             action.setData(color)
             actions.append(action)
-        custom = menu.addAction("Personalizar...")
+        custom = menu.addAction(_rt("Personalizar..."))
         chosen = menu.exec_(QCursor.pos())
         if chosen is None:
             return
@@ -337,7 +338,7 @@ class SummarizerVisualWidget(QWidget):
             color = walker_get_color(
                 QColor(self.definition.opcoes.get("color") if self.definition.opcoes else "#4472C4"),
                 self,
-                "Escolher cor da série",
+                _rt("Escolher cor da série"),
             )
             if color.isValid():
                 color_value = color.name()
@@ -349,7 +350,7 @@ class SummarizerVisualWidget(QWidget):
 
     def contextMenuEvent(self, event):
         menu = apply_walker_menu(QMenu(self))
-        color_action = menu.addAction("Cor da série...")
+        color_action = menu.addAction(_rt("Cor da série..."))
         chosen = menu.exec_(event.globalPos())
         if chosen == color_action:
             self._pick_series_color()

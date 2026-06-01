@@ -475,7 +475,7 @@ def build_visual_type_buttons(
         button.setCheckable(True)
         button.setText("")
         normal_icon = _model_tinted_svg_icon(icon_name, icon_size)
-        checked_icon = _model_tinted_svg_icon(icon_name, icon_size, "#FFFFFF")
+        checked_icon = _model_tinted_svg_icon(icon_name, icon_size)
         button._model_icon_normal = normal_icon
         button._model_icon_checked = checked_icon
         if normal_icon is not None:

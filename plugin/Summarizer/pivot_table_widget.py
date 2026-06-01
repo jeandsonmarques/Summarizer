@@ -1893,7 +1893,7 @@ class PivotTableWidget(QWidget):
                 Qgis.Warning,
             )
             if hasattr(self, "selection_summary_label"):
-                self.selection_summary_label.setText("Nao foi possivel calcular a selecao atual.")
+                self.selection_summary_label.setText(_rt("Não foi possível calcular a seleção atual."))
 
     def _safe_sync_selection_to_map(self):
         try:

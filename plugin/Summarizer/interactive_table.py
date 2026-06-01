@@ -16,6 +16,9 @@ from qgis.core import QgsMessageLog, Qgis
 
 
 from .utils.logging_utils import log_exception
+from .utils.i18n_runtime import tr_text as _rt
+
+
 class _AllColumnsFilter(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -52,9 +55,9 @@ class InteractiveTable(QWidget):
         layout.setSpacing(6)
 
         top = QHBoxLayout()
-        top.addWidget(QLabel("Filtro:"))
+        top.addWidget(QLabel(_rt("Filtro:")))
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Digite para filtrar em todas as colunas…")
+        self.search.setPlaceholderText(_rt("Digite para filtrar em todas as colunas…"))
         top.addWidget(self.search)
         self.status = QLabel("")
         top.addWidget(self.status)

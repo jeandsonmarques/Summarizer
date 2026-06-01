@@ -119,8 +119,8 @@ def test_model_toolbar_uses_white_selected_and_black_hover_states():
     ).read_text(encoding="utf-8")
 
     assert "QPushButton#ModelToolbarButton:checked:hover" in source
-    assert "background: #111827;" in source
-    assert "color: #FFFFFF;" in source
+    assert "QPushButton#ModelToolbarButton:checked,\n            QToolButton#ModelToolbarButton:checked {\n                background: #F3F4F6;" in source
+    assert "QPushButton#ModelToolbarButton[toolbarMode=\"database\"]" in source
     assert "QPushButton#ModelToolbarButton:pressed" in source
     assert "background: #F3F4F6;" in source
     assert "min-width: 30px;" in source
@@ -128,7 +128,7 @@ def test_model_toolbar_uses_white_selected_and_black_hover_states():
     assert "_toolbar_button_icon" in source
     assert "button.toggled.connect" in source
     assert "QToolButton#ModelVisualTypeButton:checked:hover" in source
-    assert "data_fields_btn.setProperty(\"modelIconSize\", 20)" in header_source
+    assert "configure_toolbar_icon_button(data_fields_btn, \"Layers.svg\"" in header_source
     assert "QIcon.On" in theme_source
 
 
@@ -142,9 +142,13 @@ def test_fields_toolbar_button_sits_next_to_format_visual_and_toggles_panel():
 
     assert "data_fields_btn: QPushButton" in header_source
     assert "data_fields_btn = QPushButton(_rt(\"Campos\"))" in header_source
-    assert "data_fields_btn.setToolTip(_rt(\"Campos\"))" in header_source
+    assert "configure_toolbar_icon_button(data_fields_btn, \"Layers.svg\", _rt(\"Campos\")" in header_source
     assert "Mostrar ou recolher campos" not in header_source
-    assert "for button in (create_chart_btn, format_visual_btn, data_fields_btn, edit_mode_btn):" in header_source
+    assert "database_fields_btn: QPushButton" in header_source
+    assert "database_fields_btn = QPushButton(_rt(\"Banco\"))" in header_source
+    assert "database_fields_btn.setProperty(\"toolbarMode\", \"database\")" in header_source
+    assert "for button in (create_chart_btn, format_visual_btn, database_fields_btn, data_fields_btn, edit_mode_btn):" in header_source
+    assert "self.database_fields_btn.toggled.connect(self._handle_database_panel_toggle)" in model_source
     assert "self.data_fields_btn.toggled.connect(self._handle_data_fields_toggle)" in model_source
     assert "def _handle_data_fields_toggle(self, checked: bool):" in model_source
     assert "self._set_data_panel_collapsed(not bool(checked))" in model_source

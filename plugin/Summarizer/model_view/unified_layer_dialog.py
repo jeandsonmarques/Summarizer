@@ -24,6 +24,7 @@ from qgis.PyQt.QtWidgets import (
 
 
 from ..utils.logging_utils import log_exception
+from ..utils.i18n_runtime import tr_text as _rt
 from ..walker_dialogs import WALKER_DIALOG_STYLE, add_walker_close_button, apply_walker_buttons, install_walker_modal_chrome
 class UnifiedLayerDialog(QDialog):
     """Dialogo para gerar camada unificada a partir de uma relacao."""
@@ -34,7 +35,7 @@ class UnifiedLayerDialog(QDialog):
         self.target_layer = target_layer
         self.source_field = source_field
         self.target_field = target_field
-        self.setWindowTitle("Gerar Camada Unificada")
+        self.setWindowTitle(_rt("Gerar camada unificada"))
         self.setProperty("walkerDialog", True)
         self.setMinimumWidth(480)
 
@@ -50,28 +51,30 @@ class UnifiedLayerDialog(QDialog):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(8)
-        title = QLabel("Gerar Camada Unificada", self)
+        title = QLabel(_rt("Gerar camada unificada"), self)
         title.setObjectName("WalkerDialogTitle")
         header.addWidget(title, 1)
         add_walker_close_button(header, self)
         layout.addLayout(header)
 
         info = QLabel(
-            "Crie uma camada de destino juntando atributos da tabela origem.\n"
-            "Os campos de join estao fixados pela relacao selecionada."
+            _rt(
+                "Crie uma camada de destino juntando atributos da tabela origem.\n"
+                "Os campos de join estão fixados pela relação selecionada."
+            )
         )
         info.setWordWrap(True)
         layout.addWidget(info)
 
         form = QFormLayout()
-        form.addRow("Tabela origem:", QLabel(self.source_layer.name()))
-        form.addRow("Campo origem:", QLabel(self.source_field))
-        form.addRow("Tabela destino:", QLabel(self.target_layer.name()))
-        form.addRow("Campo destino:", QLabel(self.target_field))
+        form.addRow(_rt("Tabela origem:"), QLabel(self.source_layer.name()))
+        form.addRow(_rt("Campo origem:"), QLabel(self.source_field))
+        form.addRow(_rt("Tabela destino:"), QLabel(self.target_layer.name()))
+        form.addRow(_rt("Campo destino:"), QLabel(self.target_field))
         layout.addLayout(form)
 
         # Fields to copy
-        fields_group = QGroupBox("Campos da origem a copiar")
+        fields_group = QGroupBox(_rt("Campos da origem a copiar"))
         fields_layout = QVBoxLayout(fields_group)
         self.fields_list = QListWidget(fields_group)
         self.fields_list.setSelectionMode(QListWidget.NoSelection)
@@ -79,17 +82,17 @@ class UnifiedLayerDialog(QDialog):
         layout.addWidget(fields_group, 1)
 
         # Output options
-        output_group = QGroupBox("Tipo de saida")
+        output_group = QGroupBox(_rt("Tipo de saída"))
         output_layout = QGridLayout(output_group)
-        self.memory_radio = QRadioButton("Camada temporaria em memoria", output_group)
-        self.gpkg_radio = QRadioButton("Salvar em arquivo GPKG...", output_group)
+        self.memory_radio = QRadioButton(_rt("Camada temporária em memória"), output_group)
+        self.gpkg_radio = QRadioButton(_rt("Salvar em arquivo GPKG..."), output_group)
         self.memory_radio.setChecked(True)
         output_layout.addWidget(self.memory_radio, 0, 0, 1, 2)
         output_layout.addWidget(self.gpkg_radio, 1, 0, 1, 2)
 
         self.path_edit = QLineEdit(output_group)
-        self.path_edit.setPlaceholderText("Caminho do GPKG...")
-        browse_btn = QPushButton("Selecionar...", output_group)
+        self.path_edit.setPlaceholderText(_rt("Caminho do GPKG..."))
+        browse_btn = QPushButton(_rt("Selecionar..."), output_group)
         browse_btn.clicked.connect(self._browse_gpkg)
         output_layout.addWidget(self.path_edit, 2, 0)
         output_layout.addWidget(browse_btn, 2, 1)
@@ -97,7 +100,7 @@ class UnifiedLayerDialog(QDialog):
 
         self.layer_name_edit = QLineEdit(self)
         self.layer_name_edit.setText(f"{self.target_layer.name()}_join_{self.source_layer.name()}")
-        layout.addWidget(QLabel("Nome da camada de saida:"))
+        layout.addWidget(QLabel(_rt("Nome da camada de saída:")))
         layout.addWidget(self.layer_name_edit)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
@@ -124,7 +127,7 @@ class UnifiedLayerDialog(QDialog):
         start = self.path_edit.text().strip() or os.path.expanduser("~")
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Salvar GPKG",
+            _rt("Salvar GPKG"),
             start,
             "GeoPackage (*.gpkg)",
         )

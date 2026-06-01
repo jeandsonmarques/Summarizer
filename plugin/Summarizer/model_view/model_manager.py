@@ -51,6 +51,9 @@ from ..utils.fonts import harmonize_font_family
 from ..walker_dialogs import WalkerMessageBox as QMessageBox
 from ..utils.plugin_logging import log_info
 from ..utils.logging_utils import log_exception
+from ..utils.i18n_runtime import tr_text as _rt
+
+
 class ModelManager:
     """Converte dados do plugin em itens graficos e gerencia layout/persistencia."""
 
@@ -1342,13 +1345,13 @@ class ModelManager:
 
     def handle_connection(self, start_field, end_field):
         text = (
-            f"Criar relacionamento entre:\n"
+            f"{_rt('Criar relacionamento entre:')}\n"
             f"{start_field.table_name}.{start_field.field_name} -> "
             f"{end_field.table_name}.{end_field.field_name}?"
         )
         reply = QMessageBox.question(
             self.view,
-            "Criar relacionamento",
+            _rt("Criar relacionamento"),
             text,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
@@ -1375,7 +1378,7 @@ class ModelManager:
         data = rel_item.metadata or {}
         self._ensure_field_selections(data, persist=True)
         dialog = QDialog(self.view)
-        dialog.setWindowTitle("Relacionamento")
+        dialog.setWindowTitle(_rt("Relacionamento"))
         dialog.resize(900, 600)
         settings = QSettings()
         geom_key = f"{self._state_key}/relationship_dialog_geometry"
@@ -1399,9 +1402,9 @@ class ModelManager:
             combo.setToolTip(str(table_name or "-"))
             combo.setEnabled(False)
 
-        grid.addWidget(QLabel("Tabela origem:"), 0, 0)
+        grid.addWidget(QLabel(_rt("Tabela origem:")), 0, 0)
         grid.addWidget(source_combo, 0, 1, 1, 3)
-        grid.addWidget(QLabel("Tabela destino:"), 1, 0)
+        grid.addWidget(QLabel(_rt("Tabela destino:")), 1, 0)
         grid.addWidget(target_combo, 1, 1, 1, 3)
 
         card_combo = QComboBox(dialog)
@@ -1411,25 +1414,25 @@ class ModelManager:
         card_combo.setCurrentIndex(idx if idx >= 0 else 0)
 
         direction_combo = QComboBox(dialog)
-        direction_combo.addItem("Ambos os sentidos", "both")
-        direction_combo.addItem("Origem -> Destino", "forward")
-        direction_combo.addItem("Destino -> Origem", "backward")
+        direction_combo.addItem(_rt("Ambos os sentidos"), "both")
+        direction_combo.addItem(_rt("Origem -> Destino"), "forward")
+        direction_combo.addItem(_rt("Destino -> Origem"), "backward")
         current_dir = str(data.get("direction") or "both")
         dir_index = max(0, direction_combo.findData(current_dir))
         direction_combo.setCurrentIndex(dir_index)
 
-        grid.addWidget(QLabel("Cardinalidade:"), 2, 0)
+        grid.addWidget(QLabel(_rt("Cardinalidade:")), 2, 0)
         grid.addWidget(card_combo, 2, 1)
-        grid.addWidget(QLabel("Direcao do filtro:"), 2, 2)
+        grid.addWidget(QLabel(_rt("Direção do filtro:")), 2, 2)
         grid.addWidget(direction_combo, 2, 3)
 
         filter_edit = QLineEdit(dialog)
-        filter_edit.setPlaceholderText("Filtrar campos...")
+        filter_edit.setPlaceholderText(_rt("Filtrar campos..."))
         grid.addWidget(filter_edit, 3, 0, 1, 4)
 
         def configure_table(table_widget: QTableWidget):
             table_widget.setColumnCount(2)
-            table_widget.setHorizontalHeaderLabels(["Campo", "Incluir"])
+            table_widget.setHorizontalHeaderLabels([_rt("Campo"), _rt("Incluir")])
             table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
             table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
             table_widget.verticalHeader().setVisible(False)
@@ -1445,8 +1448,8 @@ class ModelManager:
         configure_table(forward_table)
         configure_table(backward_table)
 
-        forward_label = QLabel("Campos origem -> destino:", dialog)
-        backward_label = QLabel("Campos destino -> origem:", dialog)
+        forward_label = QLabel(_rt("Campos origem -> destino:"), dialog)
+        backward_label = QLabel(_rt("Campos destino -> origem:"), dialog)
         grid.addWidget(forward_label, 4, 0, 1, 2)
         grid.addWidget(backward_label, 4, 2, 1, 2)
         grid.addWidget(forward_table, 5, 0, 1, 2)
@@ -1454,10 +1457,10 @@ class ModelManager:
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
         grid.addWidget(buttons, 6, 2, 1, 2, alignment=Qt.AlignRight)
-        delete_btn = QPushButton("Excluir", dialog)
+        delete_btn = QPushButton(_rt("Excluir"), dialog)
         delete_btn.setStyleSheet("color: #B00020;")
         if data.get("origin") != "custom":
-            delete_btn.setToolTip("Remove apenas do canvas; nao altera camadas.")
+            delete_btn.setToolTip(_rt("Remove apenas do canvas; não altera camadas."))
         grid.addWidget(delete_btn, 6, 0, 1, 1, alignment=Qt.AlignLeft)
 
         def populate_table(table_widget: QTableWidget, table_name: str, exclude_field: Optional[str], selected_fields: List[str]):

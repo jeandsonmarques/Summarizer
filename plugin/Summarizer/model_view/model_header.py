@@ -34,6 +34,7 @@ class ModelHeaderParts:
     redo_btn: QPushButton
     create_chart_btn: QPushButton
     format_visual_btn: QPushButton
+    database_fields_btn: QPushButton
     data_fields_btn: QPushButton
     edit_mode_btn: QPushButton
     settings_btn: QPushButton
@@ -84,6 +85,7 @@ def build_model_header(
     redo_btn = QPushButton(_rt("Refazer"))
     create_chart_btn = QPushButton(_rt("Criar grafico"))
     format_visual_btn = QPushButton(_rt("Formatar visual"))
+    database_fields_btn = QPushButton(_rt("Banco"))
     data_fields_btn = QPushButton(_rt("Campos"))
     edit_mode_btn = QPushButton(_rt("Edicao"))
     settings_btn = QPushButton(_rt("Configuracoes"))
@@ -91,6 +93,8 @@ def build_model_header(
     create_chart_btn.setChecked(False)
     format_visual_btn.setCheckable(True)
     format_visual_btn.setChecked(False)
+    database_fields_btn.setCheckable(True)
+    database_fields_btn.setChecked(False)
     data_fields_btn.setCheckable(True)
     data_fields_btn.setChecked(False)
     edit_mode_btn.setCheckable(True)
@@ -107,15 +111,10 @@ def build_model_header(
     configure_toolbar_icon_button(export_btn, "Walker-Image.svg", _rt("Exportar imagem"), icon_size=20)
     configure_toolbar_icon_button(create_chart_btn, "ModelVisual-Pie.svg", _rt("Criar grafico"), icon_size=20)
     configure_toolbar_icon_button(format_visual_btn, "Walker-Format.svg", _rt("Formatar visual"), icon_size=20)
-    data_fields_btn.setProperty("toolbarMode", "icon")
-    data_fields_btn.setProperty("modelIconSize", 20)
-    data_fields_btn.setCursor(Qt.PointingHandCursor)
-    data_fields_btn.setFocusPolicy(Qt.NoFocus)
-    data_fields_btn.setToolTip(_rt("Campos"))
-    set_walker_tooltip(data_fields_btn, _rt("Campos"))
-    data_fields_btn.setStatusTip(_rt("Campos"))
-    data_fields_btn.setAccessibleName(_rt("Campos"))
-    data_fields_btn.setText("")
+    configure_toolbar_icon_button(database_fields_btn, "Dataset.svg", _rt("Banco de dados"), icon_size=20)
+    database_fields_btn.setProperty("toolbarMode", "database")
+    database_fields_btn.setText(_rt("PostgreSQL"))
+    configure_toolbar_icon_button(data_fields_btn, "Layers.svg", _rt("Campos"), icon_size=20)
     configure_toolbar_icon_button(edit_mode_btn, "Walker-Edit.svg", _rt("Edicao"), icon_size=20)
     configure_toolbar_icon_button(
         settings_btn,
@@ -140,6 +139,7 @@ def build_model_header(
         export_btn,
         create_chart_btn,
         format_visual_btn,
+        database_fields_btn,
         data_fields_btn,
         edit_mode_btn,
         settings_btn,
@@ -160,7 +160,7 @@ def build_model_header(
     for button in (new_btn, open_btn, save_btn, save_as_btn, export_btn):
         toolbar_layout.addWidget(button, 0)
     toolbar_layout.addWidget(_create_toolbar_separator(toolbar_strip), 0)
-    for button in (create_chart_btn, format_visual_btn, data_fields_btn, edit_mode_btn):
+    for button in (create_chart_btn, format_visual_btn, database_fields_btn, data_fields_btn, edit_mode_btn):
         toolbar_layout.addWidget(button, 0)
     visual_types_leading_separator = _create_toolbar_separator(toolbar_strip)
     toolbar_layout.addWidget(visual_types_leading_separator, 0)
@@ -236,6 +236,7 @@ def build_model_header(
         redo_btn=redo_btn,
         create_chart_btn=create_chart_btn,
         format_visual_btn=format_visual_btn,
+        database_fields_btn=database_fields_btn,
         data_fields_btn=data_fields_btn,
         edit_mode_btn=edit_mode_btn,
         settings_btn=settings_btn,

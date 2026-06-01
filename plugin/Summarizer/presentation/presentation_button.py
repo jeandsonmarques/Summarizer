@@ -9,6 +9,7 @@ from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QSize, Qt
 from qgis.PyQt.QtWidgets import QToolButton, QWidget
 
+from ..utils.i18n_runtime import tr_text as _rt
 from ..utils.resources import svg_icon
 
 
@@ -45,8 +46,8 @@ def create_presentation_button(parent: Optional[QWidget], controller) -> QToolBu
     button.setAutoRaise(False)
     button.setCursor(Qt.PointingHandCursor)
     button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-    button.setText("Apresentar")
-    button.setToolTip("Apresentar com mapa ao lado do dashboard")
+    button.setText(_rt("Apresentar"))
+    button.setToolTip(_rt("Apresentar com mapa ao lado do dashboard"))
     button.setIconSize(QSize(15, 15))
     button.setStyleSheet(
         """

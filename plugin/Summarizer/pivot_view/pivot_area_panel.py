@@ -28,6 +28,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..report_view.pivot import PivotFieldSpec
+from ..utils.i18n_runtime import tr_text as _rt
 from ..walker_dialogs import apply_walker_menu
 
 PIVOT_FIELD_MIME = "application/x-summarizer-pivot-field"
@@ -205,11 +206,11 @@ class _PivotDropListWidget(QListWidget):
         if self._owner is not None:
             self._owner._set_last_active_area(self._area_name)
         menu = apply_walker_menu(QMenu(self))
-        remove_action = menu.addAction("Remover")
-        up_action = menu.addAction("Mover para cima")
-        down_action = menu.addAction("Mover para baixo")
+        remove_action = menu.addAction(_rt("Remover"))
+        up_action = menu.addAction(_rt("Mover para cima"))
+        down_action = menu.addAction(_rt("Mover para baixo"))
         menu.addSeparator()
-        clear_action = menu.addAction("Limpar área")
+        clear_action = menu.addAction(_rt("Limpar área"))
         action = menu.exec_(event.globalPos())
         if action == remove_action and self._owner is not None:
             self._owner._remove_selected_area_field(self._area_name)

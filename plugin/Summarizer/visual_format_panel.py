@@ -29,13 +29,9 @@ from qgis.PyQt.QtWidgets import (
 from .dashboard_item_widget import VisualPropertiesDialog
 from .report_view.charts import ChartVisualState
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .utils.i18n_runtime import tr_text as _rt
 from .walker_color_dialog import walker_get_color
 from .walker_dialogs import apply_walker_combo
-
-
-def _rt(text: str) -> str:
-    return str(text or "")
-
 
 def _is_dark_theme() -> bool:
     try:
@@ -1537,7 +1533,7 @@ class VisualFormatPanel(QFrame):
         chart_type = str(getattr(state, "chart_type", "") or getattr(item_widget.item.payload, "chart_type", "bar"))
         title = ""
         try:
-            title = item_widget.item.display_title()
+            title = _rt(item_widget.item.display_title())
         except Exception:
             title = str(getattr(getattr(item_widget, "item", None), "title", "") or "")
         self.item_label.setText(f"{title or _rt('Visual')} - {chart_type}")

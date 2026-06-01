@@ -19,6 +19,12 @@ try:
         QMessageBox = WalkerMessageBox
 except Exception:  # pragma: no cover - unit tests run outside QGIS
     pass
+try:
+    from ..utils.i18n_runtime import tr_text as _rt
+except Exception:  # pragma: no cover
+
+    def _rt(text: str, **kwargs) -> str:
+        return str(text).format(**kwargs) if kwargs else str(text)
 
 TIMESTAMP_PATTERN = re.compile(r"_\d{8}_\d{6}$")
 
@@ -119,7 +125,7 @@ class SummaryExportController:
 
         file_path, _ = QFileDialog.getSaveFileName(
             self.host,
-            "Selecionar arquivo",
+            _rt("Selecionar arquivo"),
             initial_path,
             format_info["filter"],
         )
@@ -136,7 +142,7 @@ class SummaryExportController:
             return
 
         if not self.host.current_summary_data:
-            QMessageBox.warning(self.host, "Aviso", "Gere um resumo primeiro!")
+            QMessageBox.warning(self.host, _rt("Aviso"), _rt("Gere um resumo primeiro!"))
             self.host.open_export_tab()
             return
 
@@ -146,7 +152,7 @@ class SummaryExportController:
         if not target_path:
             if not self.host.choose_export_path():
                 QMessageBox.warning(
-                    self.host, "Aviso", "Selecione o arquivo de destino para exportar."
+                    self.host, _rt("Aviso"), _rt("Selecione o arquivo de destino para exportar.")
                 )
                 return
             target_path = self.host.ui.export_path_edit.text().strip()
@@ -164,8 +170,8 @@ class SummaryExportController:
             self.host.export_manager.export_data(
                 self.host.current_summary_data, export_path, format_info["filter"]
             )
-            QMessageBox.information(self.host, "Sucesso", f"Dados exportados para:\n{export_path}")
+            QMessageBox.information(self.host, _rt("Sucesso"), _rt("Dados exportados para:") + f"\n{export_path}")
             self.set_export_path(base + format_info["extension"])
         except Exception as exc:
-            QMessageBox.critical(self.host, "Erro", f"Erro na exportação: {exc}")
+            QMessageBox.critical(self.host, _rt("Erro"), _rt("Erro na exportação: {exc}", exc=exc))
 

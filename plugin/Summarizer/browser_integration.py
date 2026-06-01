@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
 from qgis.PyQt.QtCore import QObject, QSettings, pyqtSignal
@@ -12,18 +11,21 @@ from qgis.PyQt.QtWidgets import QAction, QMessageBox, QWidget, QDialog
 
 from qgis.core import (
     Qgis,
-    QgsAbstractDatabaseProviderConnection,
     QgsApplication,
     QgsDataCollectionItem,
     QgsDataItem,
     QgsDataItemProvider,
     QgsDataProvider,
-    QgsDataSourceUri,
     QgsLayerItem,
-    QgsProviderRegistry,
 )
 from qgis.gui import QgsGui
 
+from .database_explorer import (
+    DatabaseMetadataService,
+    DatabaseObject,
+    is_supported_driver,
+    provider_key_for_driver,
+)
 from .quick_connect_dialogs import PostgresQuickConnectDialog
 from .utils.plugin_logging import log_info
 from .utils.i18n_runtime import tr_text as _rt
@@ -32,15 +34,6 @@ from .utils.logging_utils import log_exception
 from .utils.security_utils import reveal_connection_payload, secure_connection_payload
 from .walker_dialogs import WalkerMessageBox as QMessageBox
 SAVED_CONNECTIONS_KEY = "Summarizer/integration/saved_connections"
-SUPPORTED_DRIVERS = {
-    "postgres",
-    "postgresql",
-    "postgis",
-    "sql server",
-    "mssql",
-}
-
-
 ROOT_ICON = svg_icon("PowerPages.svg")
 CONNECTION_ICON = ROOT_ICON
 TABLE_ICON = svg_icon("Table.svg")
@@ -61,16 +54,11 @@ def _fingerprint(conn: Dict) -> str:
 
 
 def _provider_key(driver: str) -> Optional[str]:
-    normalized = (driver or "").strip().lower()
-    if normalized in ("postgres", "postgresql", "postgis"):
-        return "postgres"
-    if normalized in ("sql server", "mssql"):
-        return "mssql"
-    return None
+    return provider_key_for_driver(driver)
 
 
 def _is_supported_driver(driver: str) -> bool:
-    return ((driver or "").strip().lower() in SUPPORTED_DRIVERS)
+    return is_supported_driver(driver)
 
 
 class IntegrationConnectionRegistry(QObject):
@@ -282,13 +270,7 @@ class SummarizerPlaceholderItem(QgsDataCollectionItem):
         return []
 
 
-@dataclass
-class TableEntry:
-    schema: str
-    name: str
-    geometry_column: str = ""
-    comment: str = ""
-    is_vector: bool = False
+TableEntry = DatabaseObject
 
 
 class SummarizerConnectionItem(QgsDataCollectionItem):
@@ -364,65 +346,15 @@ class SummarizerConnectionItem(QgsDataCollectionItem):
     # ------------------------------------------------------------------ Helpers
     def _load_tables(self) -> Dict[str, List[TableEntry]]:
         grouped: Dict[str, List[TableEntry]] = {}
-        metadata = QgsProviderRegistry.instance().providerMetadata(self._provider_key)
-        if metadata is None:
-            self._last_error = _rt("Provedor '{provider}' não encontrado.", provider=self._provider_key)
-            return grouped
-        uri = self._build_uri()
-        if not uri:
-            self._last_error = _rt("Parâmetros da conexão incompletos.")
-            return grouped
-        try:
-            connection = metadata.createConnection(uri.connectionInfo(), {})
-        except Exception as exc:  # pragma: no cover - provider level errors
-            self._last_error = str(exc)
+        snapshot = DatabaseMetadataService(self.meta).load_snapshot()
+        self._last_error = snapshot.error_message
+        if not snapshot.connected:
             self.setIcon(OFFLINE_ICON)
             return grouped
-        if not isinstance(connection, QgsAbstractDatabaseProviderConnection):
-            self._last_error = _rt("Provedor não suporta navegação no navegador.")
-            return grouped
-
-        try:
-            table_flags = (
-                int(QgsAbstractDatabaseProviderConnection.TableFlag.Vector)
-                | int(QgsAbstractDatabaseProviderConnection.TableFlag.Aspatial)
-            )
-            for table in connection.tables(flags=table_flags):
-                schema = table.schema() or ""
-                grouped.setdefault(schema, [])
-                entry = TableEntry(
-                    schema=schema,
-                    name=table.tableName(),
-                    geometry_column=table.geometryColumn(),
-                    comment=table.comment(),
-                    is_vector=bool(table.geometryColumn()),
-                )
-                grouped[schema].append(entry)
-            self._last_error = ""
-            self.setIcon(CONNECTION_ICON)
-        except Exception as exc:  # pragma: no cover - driver specific
-            self._last_error = str(exc)
-            self.setIcon(OFFLINE_ICON)
+        for group in snapshot.groups:
+            grouped[group.name] = list(group.objects)
+        self.setIcon(CONNECTION_ICON)
         return grouped
-
-    def _build_uri(self) -> Optional[QgsDataSourceUri]:
-        host = self.meta.get("host")
-        database = self.meta.get("database")
-        user = self.meta.get("user")
-        password = self.meta.get("password", "")
-        service = self.meta.get("service")
-        if not database or not user:
-            return None
-        uri = QgsDataSourceUri()
-        if service:
-            uri.setConnection(service, database, user, password)
-        else:
-            port = str(self.meta.get("port") or "")
-            uri.setConnection(host or "", port, database, user, password)
-        authcfg = self.meta.get("authcfg")
-        if authcfg:
-            uri.setAuthConfigId(authcfg)
-        return uri
 
 
 class SummarizerSchemaItem(QgsDataCollectionItem):
@@ -474,24 +406,7 @@ class SummarizerTableItem(QgsLayerItem):
 
     @staticmethod
     def _build_uri(meta: Dict, table: TableEntry) -> str:
-        uri = QgsDataSourceUri()
-        service = meta.get("service")
-        password = meta.get("password", "")
-        if service:
-            uri.setConnection(service, meta.get("database", ""), meta.get("user", ""), password)
-        else:
-            uri.setConnection(
-                meta.get("host", ""),
-                str(meta.get("port") or ""),
-                meta.get("database", ""),
-                meta.get("user", ""),
-                password,
-            )
-        authcfg = meta.get("authcfg")
-        if authcfg:
-            uri.setAuthConfigId(authcfg)
-        uri.setDataSource(table.schema or "", table.name, table.geometry_column or "")
-        return uri.uri()
+        return table.uri or DatabaseMetadataService.build_object_uri(meta, table)
 
 
 def _provider_registry():

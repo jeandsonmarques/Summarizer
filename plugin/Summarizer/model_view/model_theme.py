@@ -92,7 +92,7 @@ def _model_panel_fields_icon(size: int = 14) -> QIcon:
     icon = QIcon()
     normal = "#CBD5E1" if _is_dark_theme() else "#475569"
     active = "#CBD5E1" if _is_dark_theme() else "#111827"
-    checked = "#FFFFFF"
+    checked = active
     disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
         (QIcon.Normal, normal),
@@ -131,7 +131,7 @@ def _model_panel_chevron_icon(direction: str = "right", size: int = 20) -> QIcon
     icon = QIcon()
     normal = "#CBD5E1" if _is_dark_theme() else "#334155"
     active = "#CBD5E1" if _is_dark_theme() else "#111827"
-    checked = "#FFFFFF"
+    checked = active
     disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
         (QIcon.Normal, normal),
@@ -171,12 +171,12 @@ def _model_tinted_svg_icon(icon_name: str, size: int = 18, accent_color: str = "
     if accent.isValid():
         normal = accent.name()
         active = accent.lighter(112).name()
-        checked = "#FFFFFF"
+        checked = active
         disabled = accent.lighter(165).name()
     else:
         normal = "#E5E7EB" if _is_dark_theme() else "#334155"
         active = "#CBD5E1" if _is_dark_theme() else "#111827"
-        checked = "#FFFFFF"
+        checked = active
         disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
         (QIcon.Normal, normal),

@@ -32,6 +32,7 @@ from .model_relations_popup import ModelRelationsPopup
 
 
 from .utils.logging_utils import log_exception
+from .utils.i18n_runtime import tr_text as _rt
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .walker_dialogs import WalkerMessageBox as QMessageBox, WalkerModalDialog, apply_walker_buttons, apply_walker_combo
 
@@ -1426,25 +1427,25 @@ class DashboardCanvas(QWidget):
         options: List[Tuple[str, str]] = []
         title_counts: Dict[str, int] = {}
         for item in candidates:
-            base_title = str(item.display_title() or "Grafico").strip() or "Grafico"
+            base_title = _rt(str(item.display_title() or "Grafico").strip() or "Grafico")
             title_counts[base_title] = title_counts.get(base_title, 0) + 1
         title_indexes: Dict[str, int] = {}
         for item in candidates:
-            base_title = str(item.display_title() or "Grafico").strip() or "Grafico"
+            base_title = _rt(str(item.display_title() or "Grafico").strip() or "Grafico")
             title_indexes[base_title] = title_indexes.get(base_title, 0) + 1
             suffix = f" ({title_indexes[base_title]})" if title_counts.get(base_title, 0) > 1 else ""
             options.append((f"{base_title}{suffix}", item.item_id))
         if not options:
-            QMessageBox.information(self, "Relacao", "Nao ha outro grafico disponivel para relacionar.")
+            QMessageBox.information(self, _rt("Relacao"), _rt("Nao ha outro grafico disponivel para relacionar."))
             return ""
         dialog = WalkerModalDialog(self, width=430)
         dialog.setObjectName("ModelRelationTargetDialog")
-        dialog.setWindowTitle("Nova relacao")
-        dialog.add_header("Nova relacao")
+        dialog.setWindowTitle(_rt("Nova relacao"))
+        dialog.add_header(_rt("Nova relacao"))
         root = dialog.panel_layout
 
         helper_label = QLabel(
-            f"Com qual grafico deseja relacionar '{source_item.display_title()}'?",
+            _rt("Com qual grafico deseja relacionar '{title}'?", title=_rt(source_item.display_title())),
             dialog.panel,
         )
         helper_label.setWordWrap(True)
@@ -1467,11 +1468,11 @@ class DashboardCanvas(QWidget):
         actions.setSpacing(8)
         actions.addStretch(1)
 
-        cancel_btn = QPushButton("Cancelar", dialog.panel)
+        cancel_btn = QPushButton(_rt("Cancelar"), dialog.panel)
         cancel_btn.clicked.connect(dialog.reject)
         actions.addWidget(cancel_btn, 0)
 
-        ok_btn = QPushButton("OK", dialog.panel)
+        ok_btn = QPushButton(_rt("OK"), dialog.panel)
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(dialog.accept)
         actions.addWidget(ok_btn, 0)

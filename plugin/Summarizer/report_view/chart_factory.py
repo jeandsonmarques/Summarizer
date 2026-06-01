@@ -1969,10 +1969,12 @@ class ReportChartWidget(QWidget):
         self.update()
 
     def _display_title(self, title: str) -> str:
-        return (self.chart_state.title_override or "").strip() or str(title or "")
+        title_override = (self.chart_state.title_override or "").strip()
+        return _rt(title_override) if title_override else _rt(str(title or ""))
 
     def _display_series_legend_label(self, value_label: str) -> str:
-        return (self.chart_state.legend_label_override or "").strip() or str(value_label or "")
+        legend_override = (self.chart_state.legend_label_override or "").strip()
+        return _rt(legend_override) if legend_override else _rt(str(value_label or ""))
 
     def _display_legend_item_label(self, category: str) -> str:
         key = self._clean_label_text(category)

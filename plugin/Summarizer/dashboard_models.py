@@ -392,12 +392,10 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
     payload = dict(data or {})
     try:
         raw_font_scale = payload.get("font_scale")
-        font_scale = float(raw_font_scale if raw_font_scale not in {None, ""} else 1.0)
-        if abs(font_scale - 0.82) < 0.01:
-            font_scale = 1.0
+        font_scale = float(raw_font_scale if raw_font_scale not in {None, ""} else 0.88)
     except Exception:
-        log_warning("[Dashboard] valor invalido de font_scale ao restaurar estado; usando 1.0")
-        font_scale = 1.0
+        log_warning("[Dashboard] valor invalido de font_scale ao restaurar estado; usando 0.88")
+        font_scale = 0.88
     try:
         border_radius = int(payload.get("border_radius", 8) or 8)
     except Exception:

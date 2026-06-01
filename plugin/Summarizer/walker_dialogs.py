@@ -652,11 +652,13 @@ class WalkerMessageDialog(WalkerModalDialog):
         default_button: int = QMessageBox.Ok,
     ):
         super().__init__(parent, width=500)
-        self.setWindowTitle(title)
+        translated_title = _rt(title)
+        translated_text = _rt(text)
+        self.setWindowTitle(translated_title)
         self._clicked = QMessageBox.NoButton
-        self.add_header(title, icon)
+        self.add_header(translated_title, icon)
 
-        body = QLabel(text, self.panel)
+        body = QLabel(translated_text, self.panel)
         body.setObjectName("WalkerMessageBody")
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextSelectableByMouse)

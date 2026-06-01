@@ -280,6 +280,13 @@ class Ui_SummarizerDialog(object):
 
         self.stackedWidget.addWidget(self.pageIntegracao)
 
+        self.pageDatabaseExplorer = QWidget()
+        database_layout = QVBoxLayout(self.pageDatabaseExplorer)
+        database_layout.setContentsMargins(0, 0, 0, 0)
+        database_layout.setSpacing(0)
+
+        self.stackedWidget.addWidget(self.pageDatabaseExplorer)
+
         self.verticalLayout.addWidget(self.central_frame, 1)
 
         self.stackedWidget.setCurrentWidget(self.pageResultados)

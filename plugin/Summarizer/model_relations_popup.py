@@ -28,6 +28,7 @@ from .slim_dialogs import slim_message
 
 from .utils.logging_utils import log_exception
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .utils.i18n_runtime import tr_text as _rt
 from .walker_dialogs import WALKER_DIALOG_STYLE, add_walker_close_button, apply_walker_buttons, install_walker_modal_chrome
 def _normalize_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
@@ -104,7 +105,7 @@ class ModelRelationsPopup(QDialog):
         super().__init__(parent)
         self.setObjectName("ModelRelationsPopup")
         self.setProperty("walkerDialog", True)
-        self.setWindowTitle("Relacao entre graficos")
+        self.setWindowTitle(_rt("Relação entre gráficos"))
         self.setFont(ui_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
         self.setMinimumWidth(560)
@@ -220,7 +221,7 @@ class ModelRelationsPopup(QDialog):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 6)
         header.setSpacing(8)
-        title = QLabel("Relacao entre graficos", self)
+        title = QLabel(_rt("Relação entre gráficos"), self)
         title.setObjectName("WalkerDialogTitle")
         title.setProperty("role", "title")
         header.addWidget(title, 1, Qt.AlignVCenter)
@@ -235,10 +236,10 @@ class ModelRelationsPopup(QDialog):
 
         source_title = self._source_item.display_title()
         target_title = self._target_item.display_title()
-        info_layout.addRow("Grafico origem:", QLabel(source_title, info_frame))
-        info_layout.addRow("Source id origem:", QLabel(str(self._source_item.binding.source_id or "-"), info_frame))
-        info_layout.addRow("Grafico destino:", QLabel(target_title, info_frame))
-        info_layout.addRow("Source id destino:", QLabel(str(self._target_item.binding.source_id or "-"), info_frame))
+        info_layout.addRow(_rt("Gráfico origem:"), QLabel(source_title, info_frame))
+        info_layout.addRow(_rt("ID da origem:"), QLabel(str(self._source_item.binding.source_id or "-"), info_frame))
+        info_layout.addRow(_rt("Gráfico destino:"), QLabel(target_title, info_frame))
+        info_layout.addRow(_rt("ID do destino:"), QLabel(str(self._target_item.binding.source_id or "-"), info_frame))
         root.addWidget(info_frame)
 
         fields_row = QHBoxLayout()
@@ -248,7 +249,7 @@ class ModelRelationsPopup(QDialog):
         source_col = QVBoxLayout()
         source_col.setContentsMargins(0, 0, 0, 0)
         source_col.setSpacing(4)
-        source_col.addWidget(QLabel("Campo origem", self))
+        source_col.addWidget(QLabel(_rt("Campo origem"), self))
         self.source_field_combo = QComboBox(self)
         self.source_field_combo.setFont(ui_font(8))
         for field in self._source_fields:
@@ -263,7 +264,7 @@ class ModelRelationsPopup(QDialog):
         target_col = QVBoxLayout()
         target_col.setContentsMargins(0, 0, 0, 0)
         target_col.setSpacing(4)
-        target_col.addWidget(QLabel("Campo destino", self))
+        target_col.addWidget(QLabel(_rt("Campo destino"), self))
         self.target_field_combo = QComboBox(self)
         self.target_field_combo.setFont(ui_font(8))
         for field in self._target_fields:
@@ -283,11 +284,11 @@ class ModelRelationsPopup(QDialog):
         mode_col = QVBoxLayout()
         mode_col.setContentsMargins(0, 0, 0, 0)
         mode_col.setSpacing(4)
-        mode_col.addWidget(QLabel("Modo da interacao", self))
+        mode_col.addWidget(QLabel(_rt("Modo da interação"), self))
         self.mode_combo = QComboBox(self)
         self.mode_combo.setFont(ui_font(8))
-        self.mode_combo.addItem("Filtrar", "filter")
-        self.mode_combo.addItem("Nenhum", "none")
+        self.mode_combo.addItem(_rt("Filtrar"), "filter")
+        self.mode_combo.addItem(_rt("Nenhum"), "none")
         try:
             self.mode_combo.view().setFont(ui_font(8))
         except Exception:
@@ -298,12 +299,12 @@ class ModelRelationsPopup(QDialog):
         direction_col = QVBoxLayout()
         direction_col.setContentsMargins(0, 0, 0, 0)
         direction_col.setSpacing(4)
-        direction_col.addWidget(QLabel("Direcao", self))
+        direction_col.addWidget(QLabel(_rt("Direção"), self))
         self.direction_combo = QComboBox(self)
         self.direction_combo.setFont(ui_font(8))
-        self.direction_combo.addItem("Ambos", "both")
-        self.direction_combo.addItem("Origem -> Destino", "origem_para_destino")
-        self.direction_combo.addItem("Destino -> Origem", "destino_para_origem")
+        self.direction_combo.addItem(_rt("Ambos"), "both")
+        self.direction_combo.addItem(_rt("Origem -> Destino"), "origem_para_destino")
+        self.direction_combo.addItem(_rt("Destino -> Origem"), "destino_para_origem")
         try:
             self.direction_combo.view().setFont(ui_font(8))
         except Exception:
@@ -314,8 +315,8 @@ class ModelRelationsPopup(QDialog):
         active_col = QVBoxLayout()
         active_col.setContentsMargins(0, 0, 0, 0)
         active_col.setSpacing(4)
-        active_col.addWidget(QLabel("Ativo", self))
-        self.active_check = QCheckBox("Relacao ativa", self)
+        active_col.addWidget(QLabel(_rt("Ativo"), self))
+        self.active_check = QCheckBox(_rt("Relação ativa"), self)
         self.active_check.setChecked(True)
         active_col.addWidget(self.active_check)
         config_row.addLayout(active_col, 1)
@@ -327,17 +328,17 @@ class ModelRelationsPopup(QDialog):
         actions.setSpacing(8)
         remove_btn = None
         if self._existing_relation is not None:
-            remove_btn = QPushButton("Remover relacao", self)
+            remove_btn = QPushButton(_rt("Remover relação"), self)
             remove_btn.setObjectName("DangerActionButton")
             remove_btn.clicked.connect(self._handle_remove)
             actions.addWidget(remove_btn, 0)
         actions.addStretch(1)
 
-        cancel_btn = QPushButton("Cancelar", self)
+        cancel_btn = QPushButton(_rt("Cancelar"), self)
         cancel_btn.clicked.connect(self.reject)
         actions.addWidget(cancel_btn, 0)
 
-        save_btn = QPushButton("Salvar", self)
+        save_btn = QPushButton(_rt("Salvar"), self)
         save_btn.setObjectName("PrimaryActionButton")
         save_btn.setDefault(True)
         save_btn.clicked.connect(self._handle_accept)
@@ -352,9 +353,9 @@ class ModelRelationsPopup(QDialog):
         if relation is None:
             slim_message(
                 self,
-                "Relacao",
-                "Selecione campo origem e campo destino.",
-                accept_label="OK",
+                _rt("Relação"),
+                _rt("Selecione campo origem e campo destino."),
+                accept_label=_rt("OK"),
             )
             return
         self._remove_requested = False

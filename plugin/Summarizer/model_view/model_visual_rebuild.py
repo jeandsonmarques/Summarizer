@@ -618,7 +618,11 @@ def build_model_chart_item_from_layer(
     )
 
     item_id = uuid.uuid4().hex
-    visual_state = ChartVisualState(chart_type=chart_type, show_legend=chart_type in {"pie", "donut", "funnel"})
+    visual_state = ChartVisualState(
+        chart_type=chart_type,
+        show_legend=chart_type in {"pie", "donut", "funnel"},
+        font_scale=0.88,
+    )
     value_binding_field = dimension_field if value_field == "__count__" else value_field
     value_binding_label = _rt("Contagem") if value_field == "__count__" else value_field
     binding = DashboardChartBinding(

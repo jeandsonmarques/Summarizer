@@ -1277,7 +1277,7 @@ class DashboardItemWidget(QFrame):
             log_exception("falha opcional ignorada")
 
     def _sync_header_texts(self):
-        title_text = str(self._item.display_title() or "")
+        title_text = _rt(str(self._item.display_title() or ""))
         subtitle_text = str(self._item.subtitle or "")
         try:
             metrics = QFontMetrics(self.title_label.font())

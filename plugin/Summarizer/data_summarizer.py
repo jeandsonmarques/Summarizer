@@ -17,6 +17,7 @@ from qgis.core import (
     QgsMapLayerStyle,
     QgsMessageLog,
     QgsProject,
+    QgsProviderRegistry,
     QgsVectorFileWriter,
     QgsVectorLayer,
 )
@@ -48,6 +49,11 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+try:  # pragma: no cover - QtSql availability depends on the QGIS install
+    from qgis.PyQt.QtSql import QSqlDatabase, QSqlQuery
+except Exception:  # pragma: no cover
+    QSqlDatabase = None
+    QSqlQuery = None
 
 from .browser_integration import (
     connection_registry,
@@ -198,6 +204,7 @@ class Summarizer:
         self.menu = self.tr("Summarizer")
         self.dlg = None
         self._browser_provider = None
+        self._database_explorer_activation_error = ""
 
     def tr(self, message):
         return QCoreApplication.translate("Summarizer", message)
@@ -490,6 +497,9 @@ class SummarizerDialog(QDialog):
         self.model_tab = None
         self.integration_panel = None
         self.integration_scroll = None
+        self.database_explorer_panel = None
+        self._database_explorer_connection_meta = {}
+        self._database_explorer_layer_objects = {}
         self._defer_page_build = True
         self._deferred_page_build_queue = []
         # Inject QuickOSM-like sidebar navigation without altering the ui file
@@ -497,6 +507,14 @@ class SummarizerDialog(QDialog):
             self.sidebar = SidebarController(self)
         except Exception:
             self.sidebar = None
+        try:
+            connection_registry.connectionsChanged.connect(self._refresh_database_sidebar_state)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
+            QgsProject.instance().layersRemoved.connect(self._handle_database_layers_removed)
+        except Exception:
+            log_exception("falha opcional ignorada")
         try:
             self._set_ribbon_visible(False)
         except Exception:
@@ -599,6 +617,7 @@ class SummarizerDialog(QDialog):
             self.apply_styles()
         except Exception:
             log_exception("falha opcional ignorada")
+        QTimer.singleShot(0, self._refresh_database_sidebar_state)
         QTimer.singleShot(250, self._finish_deferred_initial_page_build)
 
     def _enable_native_window_controls(self):
@@ -806,10 +825,10 @@ class SummarizerDialog(QDialog):
         mode = self._current_theme_mode()
         try:
             btn.setIcon(svg_icon("Theme.svg"))
-            btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         except Exception:
             log_exception("falha opcional ignorada")
-        btn.setText(_rt_runtime("Tema"))
+        btn.setText("")
         btn.setToolTip(f"{_rt_runtime('Tema')}: {self._theme_label(mode)}")
 
     def _set_theme_mode(self, mode: str):
@@ -1167,6 +1186,241 @@ class SummarizerDialog(QDialog):
             log_exception("falha opcional ignorada")
         return self.integration_panel
 
+    def _current_database_connection_meta(self) -> Dict:
+        try:
+            from .database_explorer import provider_key_for_driver
+
+            connections = connection_registry.all_connections()
+            for connection in connections:
+                if provider_key_for_driver(str(connection.get("driver") or "")):
+                    return dict(connection)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return {}
+
+    def _ensure_database_explorer_page(self):
+        if self.database_explorer_panel is not None:
+            return self.database_explorer_panel
+        try:
+            from .database_explorer.database_explorer_panel import DatabaseExplorerPanel
+
+            layout = self._page_layout(self.ui.pageDatabaseExplorer, spacing=0)
+            self._clear_layout_widgets(layout)
+            panel = DatabaseExplorerPanel(parent=self.ui.pageDatabaseExplorer)
+            panel.tableActivated.connect(self._handle_database_object_activated)
+            panel.connectionEditRequested.connect(self._open_database_connection_dialog)
+            panel.statusChanged.connect(self._update_database_sidebar_status)
+            layout.addWidget(panel)
+            self.database_explorer_panel = panel
+        except Exception:
+            self.database_explorer_panel = None
+            log_exception("falha opcional ignorada")
+        return self.database_explorer_panel
+
+    def _update_database_sidebar_status(self, status: str):
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is None:
+            return
+        try:
+            set_status = getattr(sidebar, "set_database_status", None)
+            if callable(set_status):
+                set_status(status)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _open_database_connection_dialog(self, connection_meta: Optional[Dict] = None):
+        try:
+            from .integration_panel import DatabaseImportDialog
+
+            active_connection = self._database_dialog_connection_meta(connection_meta or {})
+            saved = connection_registry.saved_connections()
+            if active_connection:
+                fingerprint = str(active_connection.get("fingerprint") or "")
+                saved = [
+                    conn
+                    for conn in saved
+                    if str(conn.get("fingerprint") or "") != fingerprint
+                ]
+                saved.insert(0, active_connection)
+            preferred_driver = str(
+                active_connection.get("source_driver")
+                or active_connection.get("driver")
+                or "PostgreSQL"
+            )
+            dialog = DatabaseImportDialog(self.dlg, saved, preferred_driver=preferred_driver)
+            result = dialog.exec_()
+            if result != QDialog.Accepted:
+                self._refresh_database_sidebar_state()
+                return
+            df, metadata, updated_connection, session_connection = dialog.result()
+            if df is not None and not df.empty:
+                self.register_integration_dataframe(df, metadata or {"connector": preferred_driver})
+            if session_connection:
+                connection_registry.register_runtime_connection(session_connection)
+            if updated_connection:
+                fingerprint = updated_connection.get("fingerprint")
+                saved = [
+                    conn
+                    for conn in connection_registry.saved_connections()
+                    if conn.get("fingerprint") != fingerprint
+                ]
+                saved.insert(0, updated_connection)
+                connection_registry.replace_saved_connections(saved, persist=True)
+            self._refresh_database_sidebar_state()
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _database_dialog_connection_meta(self, connection_meta: Dict) -> Dict:
+        meta = dict(connection_meta or {})
+        if not meta:
+            return {}
+        driver = str(meta.get("source_driver") or meta.get("driver") or "").strip()
+        normalized_driver = driver.lower()
+        if normalized_driver in {"postgres", "postgresql", "postgis"}:
+            dialog_driver = "PostGIS" if normalized_driver == "postgis" else "PostgreSQL"
+            meta["driver"] = dialog_driver
+            meta["source_driver"] = dialog_driver
+            meta.setdefault("port", 5432)
+        if not meta.get("fingerprint"):
+            meta["fingerprint"] = "::".join(
+                [
+                    str(meta.get("driver") or "").lower(),
+                    str(meta.get("host") or meta.get("service") or ""),
+                    str(meta.get("port") or ""),
+                    str(meta.get("database") or ""),
+                    str(meta.get("user") or meta.get("username") or ""),
+                ]
+            )
+        return meta
+
+    def _handle_database_object_activated(self, database_object):
+        connection_meta = dict(getattr(self, "_database_explorer_connection_meta", {}) or {})
+        if not connection_meta:
+            self._finish_database_object_activation(database_object, loaded=False)
+            return
+        name = str(getattr(database_object, "name", "") or "").strip()
+        schema = str(getattr(database_object, "schema", "") or "").strip()
+        geometry_column = str(getattr(database_object, "geometry_column", "") or "").strip()
+        provider_key = str(getattr(database_object, "provider_key", "") or "").strip()
+        loaded_successfully = False
+        self._database_explorer_activation_error = ""
+        try:
+            if geometry_column and provider_key == "postgres":
+                descriptor = {
+                    "connector": connection_meta.get("driver") or "PostgreSQL",
+                    "display_name": name,
+                    "db_connection": connection_meta,
+                    "schema": schema,
+                    "table_name": name,
+                    "geometry_column": geometry_column,
+                    "import_target": "project",
+                }
+                try:
+                    layer = self._load_integration_database_layer(descriptor)
+                except Exception:
+                    layer = None
+                    log_exception("falha opcional ignorada")
+                if layer is not None and layer.isValid():
+                    loaded_successfully = True
+                    self._database_explorer_activation_error = ""
+                    try:
+                        self._database_explorer_layer_objects[layer.id()] = database_object
+                    except Exception:
+                        log_exception("falha opcional ignorada")
+                    try:
+                        if self.model_manager is not None:
+                            self.model_manager.refresh_model()
+                    except Exception:
+                        log_exception("falha opcional ignorada")
+                    return
+                if layer is not None:
+                    self._database_explorer_activation_error = self._layer_error_text(layer)
+            try:
+                detail = str(getattr(self, "_database_explorer_activation_error", "") or "").strip()
+                if detail:
+                    message = _rt_runtime(
+                        "Nao foi possivel abrir esta camada diretamente.\n\nDetalhe: {detail}",
+                        detail=detail,
+                    )
+                else:
+                    message = _rt_runtime("Abra o importador de banco para carregar esta tabela.")
+                QMessageBox.information(
+                    self,
+                    _rt_runtime("Banco"),
+                    message,
+                )
+            except Exception:
+                log_exception("falha opcional ignorada")
+        finally:
+            self._finish_database_object_activation(database_object, loaded=loaded_successfully)
+
+    def _finish_database_object_activation(self, database_object, loaded: bool = False):
+        panel = getattr(self, "database_explorer_panel", None)
+        marker = getattr(panel, "mark_object_loaded", None)
+        if callable(marker):
+            try:
+                marker(database_object, loaded=loaded)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _handle_database_layers_removed(self, layer_ids):
+        removed_ids = list(layer_ids or [])
+        if not removed_ids:
+            return
+        panel = getattr(self, "database_explorer_panel", None)
+        marker = getattr(panel, "mark_object_unloaded", None)
+        for layer_id in removed_ids:
+            database_object = self._database_explorer_layer_objects.pop(layer_id, None)
+            if database_object is None or not callable(marker):
+                continue
+            try:
+                marker(database_object)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _refresh_database_sidebar_state(self):
+        connection_meta = self._current_database_connection_meta()
+        self._database_explorer_connection_meta = dict(connection_meta)
+        visible = bool(connection_meta)
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is not None:
+            try:
+                sidebar.set_database_tab_visible(visible)
+                sidebar.set_database_connected(visible)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        panel = getattr(self, "database_explorer_panel", None)
+        if panel is not None:
+            if connection_meta:
+                try:
+                    panel.set_connection(connection_meta)
+                except Exception:
+                    log_exception("falha opcional ignorada")
+            else:
+                try:
+                    panel.clear()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+
+    def show_database_explorer_page(self):
+        self._set_ribbon_visible(False)
+        connection_meta = self._current_database_connection_meta()
+        self._database_explorer_connection_meta = dict(connection_meta)
+        try:
+            self.ui.stackedWidget.setCurrentWidget(self.ui.pageDatabaseExplorer)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        panel = self._ensure_database_explorer_page()
+        if panel is not None:
+            try:
+                if connection_meta:
+                    panel.set_connection(connection_meta)
+                else:
+                    panel.clear()
+            except Exception:
+                log_exception("falha opcional ignorada")
+        self._refresh_database_sidebar_state()
+
     def _ensure_dashboard_widget(self):
         if self.dashboard_widget is not None:
             return self.dashboard_widget
@@ -1378,15 +1632,538 @@ class SummarizerDialog(QDialog):
                 str(connection.get("user") or ""),
                 str(connection.get("password") or ""),
             )
-        uri.setDataSource(schema, table_name, geometry_column)
+        table_meta = self._postgres_layer_open_metadata(
+            connection,
+            schema,
+            table_name,
+            geometry_column,
+        )
+        key_column = str(table_meta.get("key_column") or "")
+        try:
+            uri.setDataSource(schema, table_name, geometry_column, "", key_column)
+        except TypeError:
+            uri.setDataSource(schema, table_name, geometry_column)
+            if key_column:
+                try:
+                    uri.setKeyColumn(key_column)
+                except Exception:
+                    uri.setParam("key", key_column)
+
+        srid = str(table_meta.get("srid") or "")
+        geometry_type = str(table_meta.get("geometry_type") or "")
+        if srid:
+            try:
+                uri.setSrid(srid)
+            except Exception:
+                uri.setParam("srid", srid)
+        if geometry_type:
+            uri.setParam("type", geometry_type)
 
         base_name = (descriptor.get("display_name") or table_name or "Camada externa").strip()
         if not base_name:
             base_name = table_name or "Camada externa"
-        layer = QgsVectorLayer(uri.uri(), self._unique_layer_name(base_name), "postgres")
+
+        layer_name = self._unique_layer_name(base_name)
+        source_uri = uri.uri()
+        layer = self._add_database_layer_via_iface(source_uri, layer_name)
+        if layer is not None and layer.isValid():
+            style_uris = [
+                layer.source(),
+                source_uri,
+                self._postgres_table_uri(uri, schema, table_name),
+            ]
+            self._apply_database_native_style(
+                layer,
+                style_uris,
+                connection,
+                schema,
+                table_name,
+                geometry_column,
+            )
+            return layer
+
+        layer_options = QgsVectorLayer.LayerOptions()
+        try:
+            layer_options.loadDefaultStyle = True
+            layer_options.loadAllStoredStyles = True
+        except Exception:
+            log_exception("falha opcional ignorada")
+        layer = QgsVectorLayer(source_uri, layer_name, "postgres", layer_options)
         if not layer or not layer.isValid():
             return None
+        style_uris = [
+            layer.source(),
+            source_uri,
+            self._postgres_table_uri(uri, schema, table_name),
+        ]
+        self._apply_database_native_style(
+            layer,
+            style_uris,
+            connection,
+            schema,
+            table_name,
+            geometry_column,
+        )
         return self._add_layer_to_project(layer)
+
+    def _add_database_layer_via_iface(self, source_uri: str, layer_name: str) -> Optional[QgsVectorLayer]:
+        add_vector_layer = getattr(self.iface, "addVectorLayer", None)
+        if not callable(add_vector_layer):
+            return None
+        try:
+            layer = add_vector_layer(source_uri, layer_name, "postgres")
+        except Exception as exc:
+            QgsMessageLog.logMessage(
+                f"Falha ao adicionar camada PostGIS via iface.addVectorLayer: {exc}",
+                "Summarizer",
+                Qgis.Warning,
+            )
+            return None
+        if layer is None or not layer.isValid():
+            return None
+        return layer
+
+    def _postgres_layer_open_metadata(
+        self,
+        connection_meta: Dict,
+        schema: str,
+        table_name: str,
+        geometry_column: str,
+    ) -> Dict[str, str]:
+        result = {"key_column": "", "srid": "", "geometry_type": ""}
+        if QSqlDatabase is None or QSqlQuery is None:
+            return result
+        if str(connection_meta.get("authcfg") or "").strip():
+            return result
+
+        conn_name = f"summarizer_layer_meta_{uuid.uuid4().hex}"
+        db = None
+        try:
+            db = QSqlDatabase.addDatabase("QPSQL", conn_name)
+            db.setHostName(str(connection_meta.get("host") or ""))
+            try:
+                db.setPort(int(connection_meta.get("port") or 5432))
+            except Exception:
+                db.setPort(5432)
+            db.setDatabaseName(str(connection_meta.get("database") or ""))
+            db.setUserName(str(connection_meta.get("user") or ""))
+            db.setPassword(str(connection_meta.get("password") or ""))
+            if not db.open():
+                return result
+
+            pk_query = QSqlQuery(db)
+            if pk_query.prepare(
+                "SELECT a.attname "
+                "FROM pg_index i "
+                "JOIN pg_class c ON c.oid = i.indrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey) "
+                "WHERE i.indisprimary "
+                "  AND n.nspname = :schema "
+                "  AND c.relname = :table_name "
+                "ORDER BY array_position(i.indkey, a.attnum) "
+                "LIMIT 1"
+            ):
+                pk_query.bindValue(":schema", schema)
+                pk_query.bindValue(":table_name", table_name)
+                if pk_query.exec_() and pk_query.next():
+                    result["key_column"] = str(pk_query.value(0) or "")
+
+            geom_query = QSqlQuery(db)
+            if geom_query.prepare(
+                "SELECT "
+                "  NULLIF(Find_SRID(:schema, :table_name, :geometry_column), 0), "
+                "  UPPER(GeometryType(("
+                "    SELECT {geom} "
+                "    FROM {schema_table} "
+                "    WHERE {geom} IS NOT NULL "
+                "    LIMIT 1"
+                "  )))"
+                .format(
+                    geom=self._pg_quote_identifier(geometry_column),
+                    schema_table=(
+                        f"{self._pg_quote_identifier(schema)}."
+                        f"{self._pg_quote_identifier(table_name)}"
+                    ),
+                )
+            ):
+                geom_query.bindValue(":schema", schema)
+                geom_query.bindValue(":table_name", table_name)
+                geom_query.bindValue(":geometry_column", geometry_column)
+                if geom_query.exec_() and geom_query.next():
+                    srid = str(geom_query.value(0) or "")
+                    geometry_type = self._qgis_uri_geometry_type(str(geom_query.value(1) or ""))
+                    if srid:
+                        result["srid"] = srid
+                    if geometry_type:
+                        result["geometry_type"] = geometry_type
+        except Exception:
+            log_exception("falha opcional ignorada")
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+            try:
+                QSqlDatabase.removeDatabase(conn_name)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        return result
+
+    def _pg_quote_identifier(self, identifier: str) -> str:
+        return '"' + str(identifier or "").replace('"', '""') + '"'
+
+    def _qgis_uri_geometry_type(self, geometry_type: str) -> str:
+        normalized = str(geometry_type or "").upper().replace("ST_", "")
+        if "MULTIPOINT" in normalized:
+            return "MultiPoint"
+        if "MULTILINESTRING" in normalized:
+            return "MultiLineString"
+        if "MULTIPOLYGON" in normalized:
+            return "MultiPolygon"
+        if "POINT" in normalized:
+            return "Point"
+        if "LINESTRING" in normalized:
+            return "LineString"
+        if "POLYGON" in normalized:
+            return "Polygon"
+        return ""
+
+    def _postgres_table_uri(self, uri: QgsDataSourceUri, schema: str, table_name: str) -> str:
+        if not schema or not table_name:
+            return ""
+        try:
+            metadata = QgsProviderRegistry.instance().providerMetadata("postgres")
+        except Exception:
+            metadata = None
+        if metadata is None:
+            return ""
+        try:
+            connection = metadata.createConnection(uri.connectionInfo(), {})
+        except Exception:
+            connection = None
+        if connection is None:
+            return ""
+        table_uri_getter = getattr(connection, "tableUri", None)
+        if not callable(table_uri_getter):
+            return ""
+        try:
+            return str(table_uri_getter(schema, table_name) or "")
+        except Exception:
+            return ""
+
+    def _apply_database_native_style(
+        self,
+        layer: Optional[QgsVectorLayer],
+        uris,
+        connection_meta: Optional[Dict] = None,
+        schema: str = "",
+        table_name: str = "",
+        geometry_column: str = "",
+    ):
+        if layer is None:
+            return
+        style_uris: List[str] = []
+        if isinstance(uris, str):
+            candidates = [uris]
+        else:
+            candidates = list(uris or [])
+        for candidate in candidates:
+            candidate_uri = str(candidate or "").strip()
+            if candidate_uri and candidate_uri not in style_uris:
+                style_uris.append(candidate_uri)
+
+        if self._try_apply_postgres_layer_style_table(
+            layer,
+            connection_meta or {},
+            schema,
+            table_name,
+            geometry_column,
+        ):
+            return
+        for candidate_uri in style_uris:
+            if self._try_load_provider_style(layer, candidate_uri):
+                return
+        for candidate_uri in style_uris:
+            if self._try_load_layer_named_style(layer, candidate_uri):
+                return
+        if self._try_load_layer_default_style(layer):
+            return
+
+    def _try_load_layer_default_style(self, layer: QgsVectorLayer) -> bool:
+        try:
+            load_default_style = getattr(layer, "loadDefaultStyle", None)
+            if not callable(load_default_style):
+                return False
+            return self._style_result_is_success(load_default_style())
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return False
+
+    def _try_load_layer_named_style(self, layer: QgsVectorLayer, uri: str) -> bool:
+        if not uri:
+            return False
+        try:
+            load_named_style = getattr(layer, "loadNamedStyle", None)
+            if not callable(load_named_style):
+                return False
+            return self._style_result_is_success(load_named_style(uri, False))
+        except TypeError:
+            try:
+                return self._style_result_is_success(load_named_style(uri))
+            except Exception:
+                log_exception("falha opcional ignorada")
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return False
+
+    def _try_load_provider_style(self, layer: QgsVectorLayer, uri: str) -> bool:
+        if not uri:
+            return False
+        try:
+            provider_registry = QgsProviderRegistry.instance()
+        except Exception:
+            return False
+        provider_key = "postgres"
+
+        for style_xml in self._provider_style_xml_candidates(provider_registry, provider_key, uri):
+            if self._apply_style_xml(layer, style_xml):
+                return True
+        return False
+
+    def _try_apply_postgres_layer_style_table(
+        self,
+        layer: QgsVectorLayer,
+        connection_meta: Dict,
+        schema: str,
+        table_name: str,
+        geometry_column: str,
+    ) -> bool:
+        style_xml = self._postgres_layer_style_qml(
+            connection_meta,
+            schema,
+            table_name,
+            geometry_column,
+        )
+        if not style_xml:
+            return False
+        return self._apply_style_xml(layer, style_xml)
+
+    def _postgres_layer_style_qml(
+        self,
+        connection_meta: Dict,
+        schema: str,
+        table_name: str,
+        geometry_column: str,
+    ) -> str:
+        if QSqlDatabase is None or QSqlQuery is None:
+            return ""
+        schema = str(schema or "").strip()
+        table_name = str(table_name or "").strip()
+        geometry_column = str(geometry_column or "").strip()
+        if not schema or not table_name:
+            return ""
+        if str(connection_meta.get("authcfg") or "").strip():
+            return ""
+
+        conn_name = f"summarizer_style_{uuid.uuid4().hex}"
+        db = None
+        try:
+            db = QSqlDatabase.addDatabase("QPSQL", conn_name)
+            db.setHostName(str(connection_meta.get("host") or ""))
+            try:
+                db.setPort(int(connection_meta.get("port") or 5432))
+            except Exception:
+                db.setPort(5432)
+            db.setDatabaseName(str(connection_meta.get("database") or ""))
+            db.setUserName(str(connection_meta.get("user") or ""))
+            db.setPassword(str(connection_meta.get("password") or ""))
+            if not db.open():
+                return ""
+
+            for styles_schema in self._postgres_layer_style_schemas(db):
+                style_xml = self._postgres_layer_style_qml_from_schema(
+                    db,
+                    styles_schema,
+                    schema,
+                    table_name,
+                    geometry_column,
+                )
+                if style_xml:
+                    return style_xml
+            return ""
+        except Exception:
+            log_exception("falha opcional ignorada")
+            return ""
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+            try:
+                QSqlDatabase.removeDatabase(conn_name)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _postgres_layer_style_schemas(self, db) -> List[str]:
+        schemas: List[str] = []
+        query = QSqlQuery(db)
+        if query.exec_(
+            "SELECT n.nspname "
+            "FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE c.relname = 'layer_styles' "
+            "  AND c.relkind IN ('r', 'p', 'v', 'm', 'f') "
+            "ORDER BY CASE WHEN n.nspname = 'public' THEN 0 ELSE 1 END, n.nspname"
+        ):
+            while query.next():
+                schema = str(query.value(0) or "").strip()
+                if schema and schema not in schemas:
+                    schemas.append(schema)
+        return schemas or ["public"]
+
+    def _postgres_layer_style_qml_from_schema(
+        self,
+        db,
+        styles_schema: str,
+        table_schema: str,
+        table_name: str,
+        geometry_column: str,
+    ) -> str:
+        query = QSqlQuery(db)
+        table_ref = f"{self._pg_quote_identifier(styles_schema)}.layer_styles"
+        if not query.prepare(
+            "SELECT styleqml "
+            f"FROM {table_ref} "
+            "WHERE f_table_schema = :schema "
+            "  AND f_table_name = :table_name "
+            "  AND COALESCE(styleqml, '') <> '' "
+            "  AND ("
+            "    COALESCE(f_geometry_column, '') = :geometry_column "
+            "    OR COALESCE(f_geometry_column, '') = ''"
+            "  ) "
+            "ORDER BY "
+            "  CASE WHEN useasdefault THEN 0 ELSE 1 END, "
+            "  CASE WHEN COALESCE(f_geometry_column, '') = :geometry_column THEN 0 ELSE 1 END, "
+            "  update_time DESC NULLS LAST, "
+            "  id DESC "
+            "LIMIT 1"
+        ):
+            return ""
+        query.bindValue(":schema", table_schema)
+        query.bindValue(":table_name", table_name)
+        query.bindValue(":geometry_column", geometry_column)
+        if not query.exec_() or not query.next():
+            return ""
+        return str(query.value(0) or "").strip()
+
+    def _provider_style_xml_candidates(self, provider_registry, provider_key: str, uri: str) -> List[str]:
+        styles: List[str] = []
+        for loader_name in ("loadStoredStyle", "loadStyle"):
+            loader = getattr(provider_registry, loader_name, None)
+            if not callable(loader):
+                continue
+            try:
+                if loader_name == "loadStoredStyle":
+                    style_result = loader(provider_key, uri, "", "")
+                else:
+                    style_result = loader(provider_key, uri, "")
+            except Exception:
+                style_result = ""
+            self._append_style_xml(styles, style_result)
+
+        list_styles = getattr(provider_registry, "listStyles", None)
+        get_style_by_id = getattr(provider_registry, "getStyleById", None)
+        if callable(list_styles) and callable(get_style_by_id):
+            ids: List[str] = []
+            names: List[str] = []
+            descriptions: List[str] = []
+            try:
+                result = list_styles(provider_key, uri, ids, names, descriptions, "")
+            except Exception:
+                result = -1
+            style_ids = ids
+            if isinstance(result, tuple):
+                for value in result:
+                    if isinstance(value, (list, tuple)) and value:
+                        style_ids = [str(item) for item in value]
+                        break
+            if style_ids:
+                for style_id in style_ids:
+                    try:
+                        style_result = get_style_by_id(provider_key, uri, str(style_id), "")
+                    except Exception:
+                        style_result = ""
+                    self._append_style_xml(styles, style_result)
+        return styles
+
+    def _append_style_xml(self, styles: List[str], style_result):
+        if isinstance(style_result, tuple):
+            values = style_result
+        else:
+            values = (style_result,)
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            style_xml = value.strip()
+            if "<qgis" in style_xml[:500].lower() and style_xml not in styles:
+                styles.append(style_xml)
+
+    def _apply_style_xml(self, layer: QgsVectorLayer, style_xml: str) -> bool:
+        if not style_xml:
+            return False
+        try:
+            layer_style = QgsMapLayerStyle(style_xml)
+            if not layer_style.isValid() or not layer_style.writeToLayer(layer):
+                return False
+            try:
+                layer.triggerRepaint()
+            except Exception:
+                pass
+            return True
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return False
+
+    def _style_result_is_success(self, result) -> bool:
+        if isinstance(result, tuple) and len(result) >= 2:
+            ok = bool(result[1])
+            if ok:
+                return True
+        elif isinstance(result, bool):
+            return bool(result)
+        if isinstance(result, tuple) and result:
+            for value in result:
+                if isinstance(value, bool):
+                    return value
+        return False
+
+    def _layer_error_text(self, layer: Optional[QgsVectorLayer]) -> str:
+        if layer is None:
+            return ""
+        for attr_name in ("error", "lastError"):
+            getter = getattr(layer, attr_name, None)
+            if not callable(getter):
+                continue
+            try:
+                error_obj = getter()
+            except Exception:
+                continue
+            if error_obj is None:
+                continue
+            for text_attr in ("summary", "message", "text"):
+                text_getter = getattr(error_obj, text_attr, None)
+                if not callable(text_getter):
+                    continue
+                try:
+                    text = str(text_getter() or "").strip()
+                except Exception:
+                    text = ""
+                if text:
+                    return text
+        return ""
 
     def _materialize_integration_text_layer(
         self,
@@ -1972,7 +2749,7 @@ class SummarizerDialog(QDialog):
 
         directory = QFileDialog.getExistingDirectory(
             self,
-            "Selecionar pasta de destino",
+            _rt_runtime("Selecionar pasta de destino"),
             initial_dir,
         )
 
