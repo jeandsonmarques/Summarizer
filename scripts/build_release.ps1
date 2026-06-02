@@ -45,7 +45,7 @@ function Remove-GeneratedArtifacts {
     }
 
     Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory |
-        Where-Object { $_.Name -in @("__pycache__", ".pytest_cache", ".ruff_cache") } |
+        Where-Object { $_.Name -in @("__pycache__", ".pytest_cache", ".ruff_cache", "__MACOSX") } |
         Remove-Item -Recurse -Force
 
     Get-ChildItem -LiteralPath $Root -Recurse -Force -File |
@@ -82,7 +82,13 @@ function Test-ZipStructure {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
-        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+        $rawEntryNames = @($archive.Entries | ForEach-Object { $_.FullName })
+        $backslashEntry = $rawEntryNames | Where-Object { $_ -match '\\' } | Select-Object -First 1
+        if ($backslashEntry) {
+            throw "ZIP entry uses a backslash separator: '$backslashEntry'."
+        }
+
+        $entryNames = @($rawEntryNames | ForEach-Object { $_.Replace('\', '/') })
         $topLevel = @(
             $entryNames |
                 Where-Object { $_ -and $_ -notlike "*/" } |
@@ -103,7 +109,9 @@ function Test-ZipStructure {
             '\.pytest_cache(/|$)',
             '\.ruff_cache(/|$)',
             '\.pyc$',
-            '\.pyo$'
+            '\.pyo$',
+            '__MACOSX(/|$)',
+            '\.(exe|dll|so|pyd|dylib)$'
         )
 
         foreach ($pattern in $forbiddenPatterns) {
@@ -119,6 +127,8 @@ function Test-ZipStructure {
             "$PluginFolderName/TRADEMARKS.md",
             "$PluginFolderName/README.md",
             "$PluginFolderName/CHANGELOG.md",
+            "$PluginFolderName/icon.png",
+            "$PluginFolderName/resources/icon.png",
             "$PluginFolderName/resources/",
             "$PluginFolderName/i18n/",
             "$PluginFolderName/model_view/",
@@ -147,20 +157,33 @@ function Test-ZipPublicClean {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
-        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+        $rawEntryNames = @($archive.Entries | ForEach-Object { $_.FullName })
+        $backslashEntry = $rawEntryNames | Where-Object { $_ -match '\\' } | Select-Object -First 1
+        if ($backslashEntry) {
+            throw "ZIP entry uses a backslash separator: '$backslashEntry'."
+        }
+
+        $entryNames = @($rawEntryNames | ForEach-Object { $_.Replace('\', '/') })
         $forbiddenPathPatterns = @(
             '(?i)openai',
             '(?i)langchain',
             '(?i)ollama',
             '(?i)chatgpt',
+            '(?i)\bchat\b',
             '(?i)ai_engine',
             '(?i)hybrid_query',
             '(?i)conversation_memory',
+            '(?i)conversation\s+memory',
             '(?i)operational_memory',
             '(?i)(^|/)reports_widget\.py$',
             '(?i)(^|/)report_ai_engine\.py$',
             '(?i)(^|/)query_interpreter\.py$',
-            '(?i)(^|/)query_preprocessor\.py$'
+            '(?i)(^|/)query_preprocessor\.py$',
+            '(?i)PowerPages',
+            '(?i)Power\s+BI',
+            '(?i)powerbi',
+            '(?i)Microsoft',
+            '(?i)Graphic\s+Walker'
         )
 
         foreach ($pattern in $forbiddenPathPatterns) {
@@ -175,13 +198,20 @@ function Test-ZipPublicClean {
             '(?i)langchain',
             '(?i)ollama',
             '(?i)chatgpt',
+            '(?i)\bchat\b',
             '(?i)ai_engine',
             '(?i)hybrid_query',
             '(?i)conversation_memory',
+            '(?i)conversation\s+memory',
             '(?i)operational_memory',
             '(?i)\bllm\b',
             '(?i)\bprompt\b',
-            '(?i)\bagent\b'
+            '(?i)\bagent\b',
+            '(?i)PowerPages',
+            '(?i)Power\s+BI',
+            '(?i)powerbi',
+            '(?i)Microsoft',
+            '(?i)Graphic\s+Walker'
         )
         $textExtensions = @(".py", ".txt", ".md", ".json", ".qss", ".svg", ".csv", ".ini")
 
@@ -212,6 +242,45 @@ function Test-ZipPublicClean {
     }
 }
 
+function New-ReleaseZip {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceDirectory,
+        [Parameter(Mandatory = $true)]
+        [string]$ZipPath,
+        [Parameter(Mandatory = $true)]
+        [string]$RootFolderName
+    )
+
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $sourceRoot = [System.IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\', '/')
+    $zipStream = [System.IO.File]::Open($ZipPath, [System.IO.FileMode]::Create)
+    $archive = [System.IO.Compression.ZipArchive]::new(
+        $zipStream,
+        [System.IO.Compression.ZipArchiveMode]::Create
+    )
+
+    try {
+        $files = Get-ChildItem -LiteralPath $sourceRoot -Recurse -Force -File
+        foreach ($file in $files) {
+            $relativePath = $file.FullName.Substring($sourceRoot.Length).TrimStart('\', '/')
+            $entryName = "$RootFolderName/$($relativePath.Replace('\', '/'))"
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $file.FullName,
+                $entryName,
+                [System.IO.Compression.CompressionLevel]::Optimal
+            ) | Out-Null
+        }
+    }
+    finally {
+        $archive.Dispose()
+        $zipStream.Dispose()
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sourcePlugin = Join-Path $repoRoot "plugin\Summarizer"
 $pluginFolderName = Split-Path $sourcePlugin -Leaf
@@ -229,7 +298,7 @@ $stagePluginRoot = Join-Path $stageRoot $pluginFolderName
 $zipPath = Join-Path $releaseDir "Summarizer-qgis-release.zip"
 
 Assert-FileExists -Path (Join-Path $sourcePlugin "metadata.txt") -Message "metadata.txt not found in $sourcePlugin."
-# Keep the raster companion alongside the SVG metadata icon so packaging stays compatible with the release flow.
+Assert-FileExists -Path (Join-Path $sourcePlugin "icon.png") -Message "icon.png not found in plugin root."
 Assert-FileExists -Path (Join-Path $sourcePlugin "resources\icon.png") -Message "icon.png not found in $sourcePlugin\resources."
 
 $metadataText = Get-Content -LiteralPath (Join-Path $sourcePlugin "metadata.txt") -Raw
@@ -265,7 +334,7 @@ try {
     Get-ChildItem -LiteralPath $sourcePlugin -Force | Copy-Item -Destination $stagePluginRoot -Recurse -Force
     Remove-GeneratedArtifacts -Root $stageRoot
 
-    Compress-Archive -LiteralPath $stagePluginRoot -DestinationPath $zipPath -CompressionLevel Optimal -Force
+    New-ReleaseZip -SourceDirectory $stagePluginRoot -ZipPath $zipPath -RootFolderName $pluginFolderName
     Test-ZipStructure -ZipPath $zipPath -PluginFolderName $pluginFolderName
     Test-ZipPublicClean -ZipPath $zipPath
 

@@ -281,7 +281,7 @@ class LineChartRenderer(_BaseChartRenderer):
 
 
 class SummarizerVisualWidget(QWidget):
-    """Card that renders a visual using QPainter with a Power BI like theme."""
+    """Card that renders a visual using QPainter with a modern analytics theme."""
 
     dataPointClicked = pyqtSignal(str, object)
 

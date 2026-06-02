@@ -63,8 +63,8 @@ Summarizer/
 ## O que o script faz
 
 1. valida `metadata.txt`;
-2. valida o `icon.svg` referenciado no metadata e o `icon.png` usado como ativo auxiliar do pacote;
-3. roda `compileall` em `plugin/Summarizer` e `tests`;
+2. valida o `icon.png` na raiz do plugin, referenciado no metadata;
+3. roda `compileall` em `plugin/Summarizer`;
 4. limpa caches e artefatos gerados;
 5. monta o staging fora do repositorio;
 6. cria o ZIP final em `Summarizer_release`;
@@ -73,9 +73,8 @@ Summarizer/
 
 ## Icones
 
-O `metadata.txt` aponta para `resources/icon.svg`, que e o icone principal usado pelo QGIS na instalacao do plugin.
-O `scripts/build_release.ps1` tambem valida `resources/icon.png` porque o pacote de release mantem esse ativo auxiliar disponivel para o empacotamento.
-Os dois arquivos sao mantidos de proposito para nao quebrar o carregamento do plugin nem o fluxo de distribuicao.
+O `metadata.txt` aponta para `icon.png` na raiz do plugin, que e o icone principal usado pelo QGIS na instalacao e publicacao do plugin.
+O arquivo SVG auxiliar pode permanecer como recurso local, mas o pacote oficial usa o PNG da raiz no metadata.
 
 ## Checklist rapido
 
@@ -84,7 +83,7 @@ Os dois arquivos sao mantidos de proposito para nao quebrar o carregamento do pl
 3. Abrir o ZIP e verificar que a raiz e `Summarizer/`.
 4. Confirmar que nao existem `tests/`, `.github/`, `__pycache__/` ou `*.pyc`.
 5. Instalar o ZIP no QGIS e testar a abertura do plugin.
-6. Publicar somente o ZIP final fora do repositorio.
+6. Publicar somente o ZIP final fora do repositorio. Nao use o Source Code ZIP automatico do GitHub como pacote do QGIS.
 
 ## Observacao importante
 

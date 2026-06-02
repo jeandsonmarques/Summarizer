@@ -34,7 +34,7 @@ from .utils.logging_utils import log_exception
 from .utils.security_utils import reveal_connection_payload, secure_connection_payload
 from .walker_dialogs import WalkerMessageBox as QMessageBox
 SAVED_CONNECTIONS_KEY = "Summarizer/integration/saved_connections"
-ROOT_ICON = svg_icon("PowerPages.svg")
+ROOT_ICON = svg_icon("AppLogo.svg")
 CONNECTION_ICON = ROOT_ICON
 TABLE_ICON = svg_icon("Table.svg")
 OFFLINE_ICON = QgsApplication.getThemeIcon("/mIconDisconnected.svg")

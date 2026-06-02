@@ -15,7 +15,10 @@ def test_chart_visual_state_defaults_are_isolated():
 
 
 def test_chart_visual_state_small_font_scale_round_trips():
-    from Summarizer.dashboard_models import deserialize_chart_visual_state, serialize_chart_visual_state
+    from Summarizer.dashboard_models import (
+        deserialize_chart_visual_state,
+        serialize_chart_visual_state,
+    )
 
     state = ChartVisualState(font_scale=0.82)
     restored = deserialize_chart_visual_state(serialize_chart_visual_state(state))
