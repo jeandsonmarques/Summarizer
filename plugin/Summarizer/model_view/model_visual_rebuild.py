@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import uuid
@@ -7,6 +10,7 @@ from typing import Dict, List, Optional
 from ..dashboard_models import (
     DashboardChartBinding,
     DashboardChartItem,
+    DashboardItemLayout,
     FieldBindingItem,
     ROLE_FILTERS,
     ROLE_LEGEND,
@@ -265,7 +269,6 @@ def rebuild_matrix_item_from_binding(item: DashboardChartItem, binding: Dashboar
     value_items = resolve_binding_items_for_layer(updated_binding, ROLE_VALUES, layer)
     rows = [item.field for item in row_items]
     columns = [item.field for item in column_items]
-    values = [item.field for item in value_items]
     value_item = value_items[0] if value_items else None
     value_field = value_item.field if value_item is not None else ""
     aggregation = normalize_aggregation(value_item.aggregation if value_item is not None else updated_binding.aggregation, value_item.type if value_item is not None else "", ROLE_VALUES)
@@ -273,7 +276,7 @@ def rebuild_matrix_item_from_binding(item: DashboardChartItem, binding: Dashboar
     has_numeric_values = False
     for feature in layer.getFeatures():
         row_parts = [str(feature.attribute(field) or _rt("(vazio)")).strip() for field in rows]
-        column_parts = [str(feature.attribute(field) or _rt("(vazio)")).strip() for field in columns[:1]]
+        column_parts = [str(feature.attribute(field) or _rt("(vazio)")).strip() for field in columns]
         category = " / ".join([part for part in [*row_parts, *column_parts] if part]) or _rt("(vazio)")
         bucket = grouped.setdefault(category, {"sum": 0.0, "count": 0, "feature_ids": []})
         try:
@@ -305,9 +308,8 @@ def rebuild_matrix_item_from_binding(item: DashboardChartItem, binding: Dashboar
             value = float(count)
         matrix_rows.append({"category": category, "value": value, "feature_ids": list(bucket.get("feature_ids") or [])})
     matrix_rows.sort(key=lambda row: float(row.get("value") or 0.0), reverse=True)
-    top_n = max(1, int(updated_binding.top_n or 50))
-    truncated = len(matrix_rows) > top_n
-    matrix_rows = matrix_rows[:top_n]
+    truncated = False
+    matrix_rows = list(matrix_rows)
     title_text = str(updated_binding.title_override or "").strip() or _rt("Matriz - {layer_name}", layer_name=layer.name())
     updated_item.binding = updated_binding
     updated_item.title = title_text if updated_binding.title_override else ""
@@ -330,6 +332,7 @@ def rebuild_matrix_item_from_binding(item: DashboardChartItem, binding: Dashboar
         "empty_visual": False,
         "metadata": {"layer_id": layer.id(), "layer_name": layer.name()},
     }
+    updated_item.layout.height = 340
     return updated_item
 
 
@@ -570,12 +573,16 @@ def build_model_chart_item_from_layer(
         if not value_field:
             return BuilderChartResult(error=_rt("O campo de metrica nao existe na camada selecionada."))
 
+    effective_top_n = max(1, int(top_n or 12))
+    if chart_type == "matrix":
+        effective_top_n = max(effective_top_n, 1000000)
+
     rows, truncated, has_numeric_values = aggregate_feature_rows(
         layer,
         dimension_field=dimension_field,
         value_field=value_field,
         aggregation=aggregation,
-        top_n=top_n,
+        top_n=effective_top_n,
     )
     if value_field != "__count__" and not has_numeric_values:
         return BuilderChartResult(error=_rt("Nao foi possivel calcular valores numericos para esse campo."))
@@ -611,7 +618,11 @@ def build_model_chart_item_from_layer(
     )
 
     item_id = uuid.uuid4().hex
-    visual_state = ChartVisualState(chart_type=chart_type, show_legend=chart_type in {"pie", "donut", "funnel"})
+    visual_state = ChartVisualState(
+        chart_type=chart_type,
+        show_legend=chart_type in {"pie", "donut", "funnel"},
+        font_scale=0.88,
+    )
     value_binding_field = dimension_field if value_field == "__count__" else value_field
     value_binding_label = _rt("Contagem") if value_field == "__count__" else value_field
     binding = DashboardChartBinding(
@@ -650,6 +661,7 @@ def build_model_chart_item_from_layer(
         },
     ).normalized()
     subtitle = f"{layer.name()} - {dimension_field} - {value_label}"
+    matrix_height = 340
     return BuilderChartResult(
         item=DashboardChartItem(
             item_id=item_id,
@@ -661,8 +673,9 @@ def build_model_chart_item_from_layer(
             subtitle=subtitle,
             source_meta={
                 "metadata": {"layer_id": layer.id(), "layer_name": layer.name()},
-    },
-)
+            },
+            layout=DashboardItemLayout(height=matrix_height) if chart_type == "matrix" else DashboardItemLayout(),
+        ),
     )
 
 

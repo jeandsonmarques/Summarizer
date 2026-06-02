@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -36,4 +39,5 @@ class ReportExportBundle:
     rows: List[Dict[str, Any]] = field(default_factory=list)
     helper_text: str = ""
     value_label: str = ""
+
 

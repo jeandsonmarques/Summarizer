@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import json
@@ -81,14 +84,37 @@ except Exception:
 
     def log_exception(_message: str):
         return None
+
 try:
-    from .model_theme import _force_model_white_background, _model_panel_fields_icon, _model_theme_color
+    from ..walker_tooltips import set_walker_tooltip
+except Exception:
+
+    def set_walker_tooltip(widget, text: str):
+        try:
+            widget.setToolTip(text)
+        except Exception:
+            return None
+
+try:
+    from .model_theme import (
+        _force_model_white_background,
+        _model_panel_chevron_icon,
+        _model_panel_fields_icon,
+        _model_tinted_svg_icon,
+        _model_theme_color,
+    )
 except Exception:
 
     def _force_model_white_background(widget):
         return None
 
+    def _model_panel_chevron_icon(direction: str = "right", size: int = 20):
+        return QIcon() if QIcon is not None else None
+
     def _model_panel_fields_icon(size: int = 14):
+        return QIcon() if QIcon is not None else None
+
+    def _model_tinted_svg_icon(icon_name: str, size: int = 18, accent_color: str = ""):
         return QIcon() if QIcon is not None else None
 
     def _model_theme_color(name: str) -> str:
@@ -100,7 +126,7 @@ MODEL_FIELD_ROLE_OFFSET = 41
 
 def model_fields_panel_font():
     font = ui_font()
-    font.setPixelSize(12)
+    font.setPixelSize(11)
     return font
 
 
@@ -176,6 +202,8 @@ class ModelDataPanelParts:
     data_panel_toggle_btn: QToolButton
     data_panel_body: QWidget
     builder_layer_combo: QgsMapLayerComboBox
+    builder_database_source_display: QLabel
+    builder_source_hint: QLabel
     builder_fields_list: ModelFieldList
     data_panel_collapsed_rail: QFrame
     data_panel_collapsed_btn: QToolButton
@@ -312,14 +340,8 @@ def desired_data_panel_width(
                 continue
             text = str(item.text() or item.data(Qt.UserRole + 2) or "")
             max_text = max(max_text, text_width(metrics, text))
-        layer_text = ""
-        try:
-            layer_text = layer_combo.currentText()
-        except Exception:
-            layer_text = ""
-        max_text = max(max_text, text_width(metrics, layer_text))
         icon_width = int(fields_list.iconSize().width() or 14)
-        chrome = icon_width + 54
+        chrome = icon_width + 48
         desired = max(minimum_width, max_text + chrome)
         return min(maximum_width, desired)
     except Exception:
@@ -384,11 +406,27 @@ def build_model_data_panel(
         QComboBox#ModelBuilderCombo {
             min-height: 28px;
             border: 1px solid rgba(17, 24, 39, 0.09);
-            border-radius: 6px;
+            border-radius: 5px;
             background: #FFFFFF;
-            padding: 3px 8px;
+            padding: 2px 7px;
             color: #111827;
-            font-size: 12px;
+            font-size: 11px;
+        }
+        QLabel#ModelBuilderSourceHint {
+            color: #475569;
+            font-size: 10px;
+            font-weight: 500;
+            padding: 1px 2px 2px 2px;
+        }
+        QLabel#ModelBuilderDatabaseSource {
+            min-height: 20px;
+            border: 1px solid rgba(34, 197, 94, 0.35);
+            border-radius: 5px;
+            background: rgba(34, 197, 94, 0.10);
+            padding: 2px 7px;
+            color: #047857;
+            font-size: 10px;
+            font-weight: 600;
         }
         QListWidget#ModelBuilderFieldList {
             border: 1px solid rgba(17, 24, 39, 0.09);
@@ -396,14 +434,15 @@ def build_model_data_panel(
             background: #FFFFFF;
             padding: 2px;
             color: #111827;
-            font-size: 12px;
+            font-size: 11px;
             outline: 0px;
         }
         QWidget#ModelBuilderFieldListViewport {
             background: #FFFFFF;
         }
         QListWidget#ModelBuilderFieldList::item {
-            padding: 4px 6px;
+            min-height: 22px;
+            padding: 2px 5px;
             margin: 0px;
             border-radius: 2px;
         }
@@ -443,14 +482,14 @@ def build_model_data_panel(
         QLabel#ModelBuilderFieldLabel {
             color: #6B7280;
             font-size: 10px;
-            font-weight: 500;
+            font-weight: 400;
         }
         """
     )
 
     layout = QVBoxLayout(panel)
-    layout.setContentsMargins(8, 8, 8, 8)
-    layout.setSpacing(6)
+    layout.setContentsMargins(6, 6, 6, 6)
+    layout.setSpacing(5)
 
     data_panel_header = QWidget(panel)
     data_panel_header.setObjectName("ModelDataPanelHeader")
@@ -460,7 +499,7 @@ def build_model_data_panel(
     header.setSpacing(6)
     data_panel_icon = QLabel(data_panel_header)
     data_panel_icon.setObjectName("ModelDataPanelIcon")
-    data_panel_icon.setPixmap(_model_panel_fields_icon(14).pixmap(14, 14))
+    data_panel_icon.setPixmap(_model_tinted_svg_icon("Layers.svg", 14).pixmap(14, 14))
     header.addWidget(data_panel_icon, 0, Qt.AlignVCenter)
     data_panel_title = QLabel(_rt("Campos"), data_panel_header)
     data_panel_title.setObjectName("ModelBuilderTitle")
@@ -480,14 +519,14 @@ def build_model_data_panel(
     _force_model_white_background(data_panel_body)
     body_layout = QVBoxLayout(data_panel_body)
     body_layout.setContentsMargins(0, 0, 0, 0)
-    body_layout.setSpacing(6)
+    body_layout.setSpacing(5)
 
     layer_card = QFrame(panel)
     layer_card.setObjectName("ModelBuilderDataSection")
     _force_model_white_background(layer_card)
     layer_layout = QHBoxLayout(layer_card)
     layer_layout.setContentsMargins(0, 0, 0, 0)
-    layer_layout.setSpacing(8)
+    layer_layout.setSpacing(6)
     layer_title = QLabel(_rt("Camada"), layer_card)
     layer_title.setObjectName("ModelBuilderFieldLabel")
     layer_layout.addWidget(layer_title, 0, Qt.AlignVCenter)
@@ -501,7 +540,18 @@ def build_model_data_panel(
     builder_layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
     builder_layer_combo.layerChanged.connect(on_builder_layer_changed)
     layer_layout.addWidget(builder_layer_combo, 1)
+    builder_database_source_display = QLabel("", panel)
+    builder_database_source_display.setObjectName("ModelBuilderDatabaseSource")
+    builder_database_source_display.setVisible(False)
+    builder_database_source_display.setTextInteractionFlags(Qt.NoTextInteraction)
     body_layout.addWidget(layer_card, 0)
+    body_layout.addWidget(builder_database_source_display, 0)
+
+    builder_source_hint = QLabel("", panel)
+    builder_source_hint.setObjectName("ModelBuilderSourceHint")
+    builder_source_hint.setWordWrap(True)
+    builder_source_hint.setVisible(False)
+    body_layout.addWidget(builder_source_hint, 0)
 
     fields_card = QFrame(panel)
     fields_card.setObjectName("ModelBuilderDataSection")
@@ -523,7 +573,7 @@ def build_model_data_panel(
     _force_model_white_background(builder_fields_list.viewport())
     builder_fields_list.setMinimumHeight(220)
     builder_fields_list.setUniformItemSizes(True)
-    builder_fields_list.setSpacing(1)
+    builder_fields_list.setSpacing(0)
     builder_fields_list.setIconSize(QSize(14, 14))
     builder_fields_list.fieldActivated.connect(handle_field_list_activation)
     fields_body_layout.addWidget(builder_fields_list, 1)
@@ -558,6 +608,8 @@ def build_model_data_panel(
         data_panel_toggle_btn=data_panel_toggle_btn,
         data_panel_body=data_panel_body,
         builder_layer_combo=builder_layer_combo,
+        builder_database_source_display=builder_database_source_display,
+        builder_source_hint=builder_source_hint,
         builder_fields_list=builder_fields_list,
         data_panel_collapsed_rail=data_panel_collapsed_rail,
         data_panel_collapsed_btn=data_panel_collapsed_btn,
@@ -569,6 +621,8 @@ def refresh_builder_data_fonts(data_panel_owner):
     for widget in (
         getattr(data_panel_owner, "data_panel_title", None),
         getattr(data_panel_owner, "builder_layer_combo", None),
+        getattr(data_panel_owner, "builder_database_source_display", None),
+        getattr(data_panel_owner, "builder_source_hint", None),
         getattr(data_panel_owner, "builder_fields_list", None),
     ):
         if widget is None:
@@ -641,16 +695,22 @@ def sync_data_panel_chrome(data_panel_owner, *, collapsed_width: int, min_width:
         data_panel_owner.data_panel_collapsed_rail.setVisible(collapsed)
     if hasattr(data_panel_owner, "data_panel_toggle_btn"):
         data_panel_owner.data_panel_toggle_btn.setArrowType(Qt.NoArrow)
-        data_panel_owner.data_panel_toggle_btn.setIcon(QIcon())
+        data_panel_owner.data_panel_toggle_btn.setIcon(_model_panel_chevron_icon("right", 18))
+        data_panel_owner.data_panel_toggle_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        data_panel_owner.data_panel_toggle_btn.setText("")
         data_panel_owner.data_panel_toggle_btn.setText("‹")
+        data_panel_owner.data_panel_toggle_btn.setText("")
         data_panel_owner.data_panel_toggle_btn.setFixedSize(22, 22)
-        data_panel_owner.data_panel_toggle_btn.setToolTip(_rt("Recolher campos"))
+        set_walker_tooltip(data_panel_owner.data_panel_toggle_btn, _rt("Recolher campos"))
     if hasattr(data_panel_owner, "data_panel_collapsed_btn"):
         data_panel_owner.data_panel_collapsed_btn.setArrowType(Qt.NoArrow)
-        data_panel_owner.data_panel_collapsed_btn.setIcon(QIcon())
+        data_panel_owner.data_panel_collapsed_btn.setIcon(_model_panel_chevron_icon("left", 18))
+        data_panel_owner.data_panel_collapsed_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        data_panel_owner.data_panel_collapsed_btn.setText("")
         data_panel_owner.data_panel_collapsed_btn.setText("›")
+        data_panel_owner.data_panel_collapsed_btn.setText("")
         data_panel_owner.data_panel_collapsed_btn.setFixedSize(22, 22)
-        data_panel_owner.data_panel_collapsed_btn.setToolTip(_rt("Expandir campos"))
+        set_walker_tooltip(data_panel_owner.data_panel_collapsed_btn, _rt("Expandir campos"))
     try:
         data_panel_owner.data_panel.style().unpolish(data_panel_owner.data_panel)
         data_panel_owner.data_panel.style().polish(data_panel_owner.data_panel)

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -381,3 +384,4 @@ class QueryResult:
     total_value: float = 0.0
     chart_payload: Optional[ChartPayload] = None
     message: str = ""
+

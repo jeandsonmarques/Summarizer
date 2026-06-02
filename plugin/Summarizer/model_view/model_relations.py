@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
@@ -76,3 +79,4 @@ def ensure_field_selections(
     if persist and update_callback is not None:
         update_callback(metadata.get("id"), metadata)
     return metadata
+

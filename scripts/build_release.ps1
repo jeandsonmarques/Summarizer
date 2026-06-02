@@ -115,6 +115,8 @@ function Test-ZipStructure {
         $requiredEntries = @(
             "$PluginFolderName/__init__.py",
             "$PluginFolderName/metadata.txt",
+            "$PluginFolderName/LICENSE",
+            "$PluginFolderName/TRADEMARKS.md",
             "$PluginFolderName/README.md",
             "$PluginFolderName/CHANGELOG.md",
             "$PluginFolderName/resources/",

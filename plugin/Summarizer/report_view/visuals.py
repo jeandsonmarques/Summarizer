@@ -1,11 +1,17 @@
-﻿from dataclasses import dataclass
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from dataclasses import dataclass
 from typing import List, Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt, QSize, QSettings, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QCursor
-from qgis.PyQt.QtWidgets import QWidget, QToolTip, QColorDialog, QMenu
+from qgis.PyQt.QtWidgets import QWidget, QToolTip, QMenu
 
 from ..utils.fonts import ui_font
+from ..utils.i18n_runtime import tr_text as _rt
+from ..walker_dialogs import apply_walker_menu
+from ..walker_color_dialog import walker_get_color
 
 
 from ..utils.logging_utils import log_exception
@@ -77,7 +83,7 @@ class _BaseChartRenderer(VisualRenderer):
     def _draw_empty(self, painter: QPainter, rect: QRectF):
         painter.save()
         painter.setPen(QPen(QColor("#9E9E9E")))
-        painter.drawText(rect, Qt.AlignCenter, "Sem dados para exibir")
+        painter.drawText(rect, Qt.AlignCenter, _rt("Sem dados para exibir"))
         painter.restore()
 
 
@@ -317,19 +323,23 @@ class SummarizerVisualWidget(QWidget):
             "#7030A0",
             "#2B579A",
         ]
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         actions = []
         for color in preset_colors:
             action = menu.addAction(color)
             action.setData(color)
             actions.append(action)
-        custom = menu.addAction("Personalizar...")
+        custom = menu.addAction(_rt("Personalizar..."))
         chosen = menu.exec_(QCursor.pos())
         if chosen is None:
             return
         color_value = chosen.data()
         if chosen == custom:
-            color = QColorDialog.getColor(QColor(self.definition.opcoes.get("color") if self.definition.opcoes else "#4472C4"), self, "Escolher cor da série")
+            color = walker_get_color(
+                QColor(self.definition.opcoes.get("color") if self.definition.opcoes else "#4472C4"),
+                self,
+                _rt("Escolher cor da série"),
+            )
             if color.isValid():
                 color_value = color.name()
         if color_value:
@@ -339,8 +349,8 @@ class SummarizerVisualWidget(QWidget):
             self.update()
 
     def contextMenuEvent(self, event):
-        menu = QMenu(self)
-        color_action = menu.addAction("Cor da série...")
+        menu = apply_walker_menu(QMenu(self))
+        color_action = menu.addAction(_rt("Cor da série..."))
         chosen = menu.exec_(event.globalPos())
         if chosen == color_action:
             self._pick_series_color()
@@ -411,16 +421,15 @@ class SummarizerVisualWidget(QWidget):
         if event.button() == Qt.LeftButton and event.modifiers() & Qt.ControlModifier:
             pos = QPointF(event.pos())
             hit_idx = None
-            hit_value = None
-            for geom, idx, value in self._bar_geometries:
+            for geom, idx, _value in self._bar_geometries:
                 if geom.contains(pos):
-                    hit_idx, hit_value = idx, value
+                    hit_idx = idx
                     break
             if hit_idx is None and self._point_positions:
                 tolerance = 8.0
-                for pt, idx, value in self._point_positions:
+                for pt, idx, _value in self._point_positions:
                     if (pt - pos).manhattanLength() <= tolerance:
-                        hit_idx, hit_value = idx, value
+                        hit_idx = idx
                         break
             if hit_idx is not None and self.category_field:
                 cat_value = self.definition.categorias[hit_idx] if hit_idx < len(self.definition.categorias) else None

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 import json
 import math
 import os
@@ -197,3 +200,4 @@ class ExportManager:
                 y += 18
 
         painter.end()
+

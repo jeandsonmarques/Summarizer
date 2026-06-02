@@ -18,4 +18,3 @@ def test_metadata_txt_has_required_fields():
     assert general.get("qgisMinimumVersion")
     assert general.get("qgisMaximumVersion")
     assert general.get("repository")
-

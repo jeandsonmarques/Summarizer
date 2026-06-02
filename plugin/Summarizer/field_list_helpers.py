@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -131,3 +134,4 @@ def configure_field_item(
     item.setData(Qt.UserRole + 4, field_kind_badge(kind_key))
     item.setSizeHint(QSize(0, 24))
     return item
+

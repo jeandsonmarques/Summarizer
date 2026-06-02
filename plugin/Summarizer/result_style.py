@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from .utils.fonts import ui_font_family
 
 # Helper para aplicar o CSS tipografico dentro do HTML renderizado em QTextBrowser
@@ -18,3 +21,4 @@ def apply_result_style(html: str) -> str:
     </style>
     """ % font_family
     return base + html
+

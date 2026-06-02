@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 import os
 from typing import Dict, Optional
 
@@ -55,12 +58,14 @@ class SidebarController(QObject):
     ICON_MAP = {
         "resumo": ("Resumo", "Table.svg"),
         "model": ("Model", "Model.svg"),
+        "database": ("Banco de dados", "Dataset.svg"),
         "integracao": ("Conexão", "Linked-Entity.svg"),
     }
 
     PAGE_MAP = {
         "resumo": "pageResultados",
         "model": "pageModel",
+        "database": "pageDatabaseExplorer",
         "integracao": "pageIntegracao",
     }
 
@@ -77,6 +82,7 @@ class SidebarController(QObject):
         self._button_icon_names: Dict[str, str] = {}
         self.current_mode: Optional[str] = None
         self._all_nav_buttons = []
+        self._database_status_dot: Optional[QFrame] = None
         self._sidebar_container: Optional[QWidget] = None
         self._active_indicator: Optional[QFrame] = None
         self._indicator_animation = QVariantAnimation(self.ui if isinstance(self.ui, QWidget) else None)
@@ -120,6 +126,7 @@ class SidebarController(QObject):
             btn.setIconSize(QSize(22, 22))
             btn.setProperty("navIcon", "true")
             btn.setProperty("active", False)
+            btn.setProperty("connected", False)
             btn.setIcon(svg_icon(icon_name))
             self._button_icon_names[mode] = icon_name
             btn.clicked.connect(lambda checked, m=mode: self._handle_nav_click(m))
@@ -127,6 +134,14 @@ class SidebarController(QObject):
             btn.installEventFilter(self)
             self.buttons[mode] = btn
             self._all_nav_buttons.append(btn)
+            if mode == "database":
+                btn.hide()
+                self._database_status_dot = QFrame(btn)
+                self._database_status_dot.setObjectName("databaseConnectionDot")
+                self._database_status_dot.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                self._database_status_dot.setFixedSize(8, 8)
+                self._database_status_dot.setStyleSheet("background: #22C55E; border-radius: 4px;")
+                self._database_status_dot.hide()
 
         layout.addStretch(1)
 
@@ -172,6 +187,10 @@ class SidebarController(QObject):
                     host.show_summary_welcome()
             elif mode == "model":
                 host.show_model_page()
+            elif mode == "database":
+                show_database = getattr(host, "show_database_explorer_page", None)
+                if callable(show_database):
+                    show_database()
             elif mode == "integracao":
                 host.show_integration_page()
         except Exception:
@@ -194,8 +213,45 @@ class SidebarController(QObject):
     def show_model_page(self):
         self._set_mode("model")
 
+    def show_database_page(self):
+        self._set_mode("database")
+
+    def set_database_tab_visible(self, visible: bool):
+        btn = self.buttons.get("database")
+        if btn is None:
+            return
+        btn.setVisible(bool(visible))
+        if not visible and self.current_mode == "database":
+            self._set_mode("resumo")
+        self._position_database_status_dot()
+        QTimer.singleShot(0, self._sync_indicator_to_current_mode)
+
+    def set_database_connected(self, connected: bool):
+        self.set_database_status("connected" if connected else "idle")
+
+    def set_database_status(self, status: str):
+        btn = self.buttons.get("database")
+        if btn is None:
+            return
+        normalized = str(status or "idle").strip().lower()
+        btn.setProperty("connected", normalized == "connected")
+        dot = self._database_status_dot
+        if dot is not None:
+            colors = {
+                "connected": "#22C55E",
+                "empty": "#F59E0B",
+                "loading": "#F59E0B",
+                "error": "#EF4444",
+                "idle": "#94A3B8",
+            }
+            color = colors.get(normalized, colors["idle"])
+            dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
+            dot.setVisible(btn.isVisible())
+        self._position_database_status_dot()
+
     def refresh_styles(self):
         self._refresh_nav_styles()
+        self._position_database_status_dot()
 
     def _refresh_nav_styles(self):
         dark_mode = _is_dark_theme()
@@ -221,7 +277,20 @@ class SidebarController(QObject):
         if watched is self._sidebar_container or watched in self._all_nav_buttons:
             if event.type() in (QEvent.Move, QEvent.Resize, QEvent.Show):
                 QTimer.singleShot(0, self._sync_indicator_to_current_mode)
+                QTimer.singleShot(0, self._position_database_status_dot)
         return False
+
+    def _position_database_status_dot(self):
+        btn = self.buttons.get("database")
+        dot = self._database_status_dot
+        if btn is None or dot is None:
+            return
+        if not btn.isVisible():
+            dot.hide()
+            return
+        dot.move(btn.width() - dot.width() - 8, 7)
+        dot.show()
+        dot.raise_()
 
     def _indicator_rect_for_button(self, btn: Optional[QPushButton]) -> QRect:
         if btn is None or self._sidebar_container is None:
@@ -277,3 +346,4 @@ class SidebarController(QObject):
         self._indicator_animation.setStartValue(start_rect)
         self._indicator_animation.setEndValue(target_rect)
         self._indicator_animation.start()
+

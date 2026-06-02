@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Optional
@@ -6,6 +9,7 @@ from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QSize, Qt
 from qgis.PyQt.QtWidgets import QToolButton, QWidget
 
+from ..utils.i18n_runtime import tr_text as _rt
 from ..utils.resources import svg_icon
 
 
@@ -42,28 +46,30 @@ def create_presentation_button(parent: Optional[QWidget], controller) -> QToolBu
     button.setAutoRaise(False)
     button.setCursor(Qt.PointingHandCursor)
     button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-    button.setText("Apresentar")
-    button.setToolTip("Apresentar com mapa ao lado do dashboard")
-    button.setIconSize(QSize(16, 16))
+    button.setText(_rt("Apresentar"))
+    button.setToolTip(_rt("Apresentar com mapa ao lado do dashboard"))
+    button.setIconSize(QSize(15, 15))
     button.setStyleSheet(
         """
         QToolButton#PresentationMapButton {
-            padding: 4px 10px;
+            padding: 3px 7px;
             border: 1px solid transparent;
             border-radius: 6px;
             background: transparent;
+            font-size: 12px;
+            min-height: 22px;
         }
         QToolButton#PresentationMapButton:hover {
-            background: rgba(108, 76, 241, 0.08);
+            background: rgba(17, 24, 39, 0.05);
         }
         QToolButton#PresentationMapButton:checked {
-            background: rgba(108, 76, 241, 0.24);
-            border-color: rgba(108, 76, 241, 0.62);
-            color: #2b1f75;
+            background: rgba(17, 24, 39, 0.08);
+            border-color: rgba(17, 24, 39, 0.18);
+            color: #111827;
             font-weight: 400;
         }
         QToolButton#PresentationMapButton:checked:hover {
-            background: rgba(108, 76, 241, 0.30);
+            background: rgba(17, 24, 39, 0.12);
         }
         """
     )

@@ -17,11 +17,14 @@ def test_pivot_calculations_normalize_and_resolve_field_names():
 
     assert normalize_field_token("  NOME   DO municipio ") == "nome do municipio"
     assert resolve_available_field_name("nome do municipio", fields) == "Nome do Município"
-    assert resolve_available_field_name(
-        "",
-        fields,
-        fallback_candidates=["valor_total"],
-    ) == "valor_total"
+    assert (
+        resolve_available_field_name(
+            "",
+            fields,
+            fallback_candidates=["valor_total"],
+        )
+        == "valor_total"
+    )
 
 
 def test_pivot_calculations_coerce_and_aggregate_series():

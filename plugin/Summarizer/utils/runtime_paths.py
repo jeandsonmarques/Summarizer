@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import os
@@ -57,3 +60,4 @@ def runtime_state_file(filename: str, app_name: str = APP_NAME) -> Path:
 
 
 __all__ = ["APP_NAME", "runtime_state_dir", "runtime_state_file"]
+

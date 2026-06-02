@@ -1,5 +1,7 @@
-﻿import os
-import random
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import os
 from copy import deepcopy
 import uuid
 from typing import Any, Dict, List, Optional
@@ -13,14 +15,12 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMessageBox,
     QMenu,
     QPushButton,
     QScrollArea,
     QSplitter,
-    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
@@ -37,7 +37,9 @@ from .report_view.charts import ChartVisualState
 from .report_view.pivot.pivot_formatters import PivotFormatter
 from .report_view.result_models import ChartPayload
 from .utils.fonts import ui_font
+from .utils.i18n_runtime import tr_text as _rt
 from .utils.logging_utils import log_exception
+from .walker_dialogs import WalkerMessageBox as QMessageBox, apply_walker_menu
 from .visual_format_panel import VisualFormatPanel
 
 def _icon_from_resource(name: str) -> QIcon:
@@ -62,7 +64,7 @@ class DashboardWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName("DashboardRoot")
-        self.setWindowTitle("Dashboard Interativo - Summarizer")
+        self.setWindowTitle(_rt("Dashboard Interativo - Summarizer"))
         self.setMinimumSize(1040, 720)
 
         self.current_df: pd.DataFrame = pd.DataFrame()
@@ -98,13 +100,13 @@ class DashboardWidget(QWidget):
         helper_font = ui_font()
         helper_font.setPixelSize(int(TYPOGRAPHY.get("font_caption_px", 11)))
 
-        self.title_label = QLabel("Dashboard Interativo")
+        self.title_label = QLabel(_rt("Dashboard Interativo"))
         self.title_label.setFont(header_font)
         self.title_label.setProperty("role", "title")
         self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.title_label.hide()
 
-        self.subtitle_label = QLabel("Selecione uma camada e gere um resumo para visualizar o dashboard.")
+        self.subtitle_label = QLabel(_rt("Selecione uma camada e gere um resumo para visualizar o dashboard."))
         self.subtitle_label.setObjectName("Subtitle")
         self.subtitle_label.setProperty("role", "helper")
         self.subtitle_label.setFont(body_font)
@@ -123,36 +125,36 @@ class DashboardWidget(QWidget):
         toolbar_layout.setContentsMargins(12, 10, 12, 10)
         toolbar_layout.setSpacing(10)
 
-        self.chart_kind_label = QLabel("Canvas aleatório")
+        self.chart_kind_label = QLabel(_rt("Canvas aleatório"))
         self.chart_kind_label.setObjectName("SectionTitle")
         self.chart_kind_label.setFont(body_font)
         toolbar_layout.addWidget(self.chart_kind_label, 0)
         toolbar_layout.addStretch(1)
 
-        self.clear_filter_btn = QPushButton("Limpar filtros")
+        self.clear_filter_btn = QPushButton(_rt("Limpar filtros"))
         self.clear_filter_btn.setObjectName("DashboardGhostButton")
         self.clear_filter_btn.setFont(body_font)
         self.clear_filter_btn.clicked.connect(self._clear_category_filters)
         toolbar_layout.addWidget(self.clear_filter_btn, 0)
 
-        self.refresh_btn = QPushButton("Atualizar")
+        self.refresh_btn = QPushButton(_rt("Atualizar"))
         self.refresh_btn.setObjectName("DashboardGhostButton")
         self.refresh_btn.setFont(body_font)
         toolbar_layout.addWidget(self.refresh_btn, 0)
 
-        self.export_dashboard_btn = QPushButton("Exportar dashboard")
+        self.export_dashboard_btn = QPushButton(_rt("Exportar dashboard"))
         self.export_dashboard_btn.setObjectName("DashboardPrimaryButton")
         self.export_dashboard_btn.setFont(body_font)
         toolbar_layout.addWidget(self.export_dashboard_btn, 0)
 
         self.add_chart_btn = QToolButton()
         self.add_chart_btn.setObjectName("AddChartButton")
-        self.add_chart_btn.setText("Novo gráfico")
+        self.add_chart_btn.setText(_rt("Novo gráfico"))
         self.add_chart_btn.setFont(body_font)
         self.add_chart_btn.setPopupMode(QToolButton.InstantPopup)
         self.add_chart_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.add_chart_btn.setCursor(Qt.PointingHandCursor)
-        self.add_chart_menu = QMenu(self.add_chart_btn)
+        self.add_chart_menu = apply_walker_menu(QMenu(self.add_chart_btn))
         self._populate_add_chart_menu(self.add_chart_menu)
         self.add_chart_btn.setMenu(self.add_chart_menu)
         toolbar_layout.addWidget(self.add_chart_btn, 0)
@@ -163,7 +165,7 @@ class DashboardWidget(QWidget):
         self.center_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.center_btn.setIcon(_icon_from_resource("dashboard_center.svg"))
         self.center_btn.setIconSize(QSize(16, 16))
-        self.center_btn.setToolTip("Ajustar visualização")
+        self.center_btn.setToolTip(_rt("Ajustar visualização"))
         self.center_btn.clicked.connect(self._center_dashboard_items)
         toolbar_layout.addWidget(self.center_btn, 0)
 
@@ -174,7 +176,7 @@ class DashboardWidget(QWidget):
         self.visual_panel_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.visual_panel_btn.setIcon(_icon_from_resource("icon_chart.svg"))
         self.visual_panel_btn.setIconSize(QSize(16, 16))
-        self.visual_panel_btn.setToolTip("Formatar visual")
+        self.visual_panel_btn.setToolTip(_rt("Formatar visual"))
         self.visual_panel_btn.clicked.connect(self.toggle_visual_panel)
         toolbar_layout.addWidget(self.visual_panel_btn, 0)
 
@@ -212,7 +214,7 @@ class DashboardWidget(QWidget):
         charts_layout.setContentsMargins(14, 14, 14, 14)
         charts_layout.setSpacing(10)
 
-        chart_title = QLabel("Canvas de visualização")
+        chart_title = QLabel(_rt("Canvas de visualização"))
         chart_title.setObjectName("SectionTitle")
         chart_title.setFont(body_font)
         charts_layout.addWidget(chart_title)
@@ -304,6 +306,10 @@ class DashboardWidget(QWidget):
     def _sync_dashboard_lock_button(self, edit_mode: bool):
         locked = not bool(edit_mode)
         self._dashboard_locked = locked
+        try:
+            self.clear_filter_btn.setEnabled(True)
+        except Exception:
+            log_exception("falha opcional ignorada")
         if not hasattr(self, "lock_btn"):
             return
         try:
@@ -559,7 +565,7 @@ class DashboardWidget(QWidget):
                 self.dashboard_canvas.clear_items()
             except Exception:
                 log_exception("falha opcional ignorada")
-            self.chart_kind_label.setText("Canvas aleatório")
+            self.chart_kind_label.setText(_rt("Canvas aleatório"))
             return
 
         current_items = self._current_dashboard_items()
@@ -577,57 +583,37 @@ class DashboardWidget(QWidget):
             previous_chart_type = str(getattr(items_by_role["chart"].visual_state, "chart_type", "") or "").strip().lower()
         chart_type = self._next_dashboard_chart_type(previous_chart_type)
 
-        total_item = self._dashboard_item_from_payload(
-            role="total",
-            payload=self._dashboard_total_payload(chart_df),
-            layout=DashboardItemLayout(x=24, y=24, width=300, height=240),
-            item_id="dashboard-total",
-            chart_type="card",
-            title="Total",
-            item=items_by_role.get("total"),
-        )
         chart_item = self._dashboard_item_from_payload(
             role="chart",
             payload=self._dashboard_chart_payload(chart_df, chart_type),
-            layout=DashboardItemLayout(x=344, y=24, width=560, height=360),
+            layout=DashboardItemLayout(x=32, y=24, width=880, height=500),
             item_id="dashboard-chart",
             chart_type=chart_type,
             title="Gráfico",
             item=items_by_role.get("chart"),
         )
-        table_item = self._dashboard_item_from_payload(
-            role="table",
-            payload=self._dashboard_table_payload(chart_df),
-            layout=DashboardItemLayout(x=24, y=288, width=880, height=360),
-            item_id="dashboard-table",
-            chart_type="matrix",
-            title="Tabela",
-            item=items_by_role.get("table"),
-        )
-
-        updated_items: List[DashboardChartItem] = [total_item, chart_item, table_item]
+        updated_items: List[DashboardChartItem] = [chart_item]
         updated_items.extend(extra_items)
         try:
             self.dashboard_canvas.update_items(updated_items)
         except Exception:
             self.dashboard_canvas.set_items(updated_items)
-        self.chart_kind_label.setText(f"Canvas aleatório | {self._dashboard_chart_type_label(chart_type)}")
+        self.chart_kind_label.setText(f"{_rt('Canvas aleatório')} | {self._dashboard_chart_type_label(chart_type)}")
 
     def _add_dashboard_chart_card(self, chart_type: str, title: str):
         chart_df = self._build_chart_dataset()
         if chart_df.empty or float(chart_df["Valor"].fillna(0).sum()) == 0.0:
-            QMessageBox.information(self, "Novo gráfico", "Nao ha dados suficientes para criar outro grafico.")
+            QMessageBox.information(self, _rt("Novo gráfico"), _rt("Não há dados suficientes para criar outro gráfico."))
             return
 
         payload_map = {
-            "card": (self._dashboard_total_payload(chart_df), "Total"),
-            "matrix": (self._dashboard_table_payload(chart_df), "Tabela"),
+            "card": self._dashboard_total_payload(chart_df),
+            "matrix": self._dashboard_table_payload(chart_df),
         }
         if chart_type in payload_map:
-            payload, label = payload_map[chart_type]
+            payload = payload_map[chart_type]
         else:
             payload = self._dashboard_chart_payload(chart_df, chart_type)
-            label = self._dashboard_chart_type_label(chart_type)
         if payload is None:
             return
 
@@ -860,7 +846,7 @@ class DashboardWidget(QWidget):
             self.current_df = pd.DataFrame()
             self.current_metadata = metadata
             self.current_config = self._build_dashboard_config(metadata)
-            self._render_empty_state("Nao foi possivel reconstruir os registros reais para este resumo.")
+            self._render_empty_state(_rt("Não foi possível reconstruir os registros reais para este resumo."))
             return
 
         self.current_source_df = raw_df.copy()
@@ -941,12 +927,12 @@ class DashboardWidget(QWidget):
 
     def _export_dashboard(self):
         if self.current_df.empty:
-            QMessageBox.information(self, "Exportar dashboard", "Nao ha dados disponiveis para exportar.")
+            QMessageBox.information(self, _rt("Exportar dashboard"), _rt("Não há dados disponíveis para exportar."))
             return
 
         directory = QFileDialog.getExistingDirectory(
             self,
-            "Escolha a pasta para salvar o dashboard",
+            _rt("Escolha a pasta para salvar o dashboard"),
             "",
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
         )
@@ -960,17 +946,17 @@ class DashboardWidget(QWidget):
             table_path = os.path.join(directory, f"{base_name}_dados.csv")
 
             if hasattr(self, "dashboard_canvas") and not self.dashboard_canvas.export_image(primary_path):
-                raise RuntimeError("Nao foi possivel exportar o canvas do dashboard.")
+                raise RuntimeError(_rt("Não foi possível exportar o canvas do dashboard."))
             saved_paths.append(primary_path)
 
             export_df = self.current_view_df if not self.current_view_df.empty else self.current_df
             export_df.to_csv(table_path, index=False, sep=";", decimal=",", encoding="utf-8-sig")
             saved_paths.append(table_path)
         except Exception as exc:
-            QMessageBox.critical(self, "Exportar dashboard", f"Falha ao exportar os arquivos do dashboard: {exc}")
+            QMessageBox.critical(self, _rt("Exportar dashboard"), _rt("Falha ao exportar os arquivos do dashboard: {error}", error=exc))
             return
 
-        QMessageBox.information(self, "Exportar dashboard", "Arquivos salvos:\n" + "\n".join(saved_paths))
+        QMessageBox.information(self, _rt("Exportar dashboard"), _rt("Arquivos salvos:") + "\n" + "\n".join(saved_paths))
 
     # ------------------------------------------------------------------ Rendering
     def _render_current_data(self):
@@ -981,7 +967,7 @@ class DashboardWidget(QWidget):
     def _render_empty_state(self, message: Optional[str] = None):
         self.subtitle_label.setText("")
         self.summary_line_label.setText("")
-        self.chart_kind_label.setText("Canvas aleatório")
+        self.chart_kind_label.setText(_rt("Canvas aleatório"))
         if hasattr(self, "dashboard_canvas"):
             try:
                 self.dashboard_canvas.clear_items()
@@ -1412,10 +1398,104 @@ class DashboardWidget(QWidget):
                 self.dashboard_canvas.clear_selection(emit_signal=False)
         except Exception:
             log_exception("falha opcional ignorada")
+        self._clear_map_selection()
         self._apply_active_filters()
         self._sync_chart_selection()
         self._update_summary_line()
         self._update_filter_label()
+
+    def _clear_map_selection(self):
+        changed = False
+        for layer in self._dashboard_selection_layers():
+            try:
+                selected_count = getattr(layer, "selectedFeatureCount", None)
+                if callable(selected_count) and selected_count() <= 0:
+                    continue
+                layer.removeSelection()
+                changed = True
+            except Exception:
+                log_exception("falha opcional ignorada")
+        if changed:
+            self._refresh_map_views()
+
+    def _dashboard_selection_layers(self) -> List[QgsVectorLayer]:
+        layers: List[QgsVectorLayer] = []
+        seen = set()
+        for layer_id in self._dashboard_selection_layer_ids():
+            layer = QgsProject.instance().mapLayer(layer_id)
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            layer_uid = str(layer.id())
+            if layer_uid in seen:
+                continue
+            seen.add(layer_uid)
+            layers.append(layer)
+        return layers
+
+    def _dashboard_selection_layer_ids(self) -> List[str]:
+        layer_ids: List[str] = []
+        for source in (
+            self.current_metadata,
+            getattr(self.current_pivot_result, "metadata", None),
+        ):
+            if not isinstance(source, dict):
+                continue
+            layer_id = str(source.get("layer_id") or "").strip()
+            if layer_id:
+                layer_ids.append(layer_id)
+        return layer_ids
+
+    def _refresh_map_views(self):
+        iface = self._iface()
+        if iface is not None:
+            try:
+                canvas = iface.mapCanvas()
+                if canvas is not None and hasattr(canvas, "refresh"):
+                    canvas.refresh()
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+        controller = self._presentation_controller()
+        if controller is not None:
+            try:
+                controller.refresh()
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _iface(self):
+        current = self
+        visited = set()
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            iface = getattr(current, "iface", None)
+            if iface is not None:
+                return iface
+            current = self._parent_of(current)
+        return None
+
+    def _presentation_controller(self):
+        current = self
+        visited = set()
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            for attr in ("presentation_controller", "presentation_map_controller"):
+                controller = getattr(current, attr, None)
+                if controller is not None:
+                    return controller
+            current = self._parent_of(current)
+        return None
+
+    def _parent_of(self, widget):
+        try:
+            parent = widget.parentWidget()
+        except Exception:
+            parent = None
+        if parent is not None:
+            return parent
+        try:
+            return widget.parent()
+        except Exception:
+            return None
 
     def _apply_active_filters(self):
         if self.current_source_df is None or self.current_source_df.empty:
@@ -1460,6 +1540,18 @@ class DashboardWidget(QWidget):
         self._update_table()
 
     def _update_table(self):
+        if (
+            not self.details_table.isVisible()
+            and not self.table_hint_label.isVisible()
+            and not self.table_filter_label.isVisible()
+        ):
+            self.details_table.clear()
+            self.details_table.setRowCount(0)
+            self.details_table.setColumnCount(0)
+            self.table_hint_label.setText("")
+            self.table_filter_label.setText("")
+            return
+
         df = self.current_view_df.copy()
         max_rows = min(len(df), 200)
         df = df.head(max_rows)
@@ -1469,7 +1561,7 @@ class DashboardWidget(QWidget):
         self.details_table.setColumnCount(0)
 
         if df.empty:
-            self.table_hint_label.setText("Sem dados filtrados a exibir.")
+            self.table_hint_label.setText(_rt("Sem dados filtrados a exibir."))
             self.table_filter_label.setText("")
             return
 

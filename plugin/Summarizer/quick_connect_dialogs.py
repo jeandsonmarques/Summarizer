@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 from typing import Dict, Optional
 
@@ -18,6 +21,7 @@ from .slim_dialogs import SlimDialogBase
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.logging_utils import log_exception
 from .utils.security_utils import secure_connection_payload
+from .walker_dialogs import WalkerMessageBox as QMessageBox
 
 
 class PostgresQuickConnectDialog(SlimDialogBase):
@@ -123,5 +127,6 @@ class PostgresQuickConnectDialog(SlimDialogBase):
 
 
 __all__ = ["PostgresQuickConnectDialog"]
+
 
 

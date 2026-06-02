@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,6 +18,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..utils.i18n_runtime import tr_text as _rt
+from ..walker_tooltips import set_walker_tooltip
 from .model_cards import _ModelModeToggle
 
 
@@ -30,6 +34,8 @@ class ModelHeaderParts:
     redo_btn: QPushButton
     create_chart_btn: QPushButton
     format_visual_btn: QPushButton
+    database_fields_btn: QPushButton
+    data_fields_btn: QPushButton
     edit_mode_btn: QPushButton
     settings_btn: QPushButton
     close_project_btn: QToolButton
@@ -79,27 +85,37 @@ def build_model_header(
     redo_btn = QPushButton(_rt("Refazer"))
     create_chart_btn = QPushButton(_rt("Criar grafico"))
     format_visual_btn = QPushButton(_rt("Formatar visual"))
+    database_fields_btn = QPushButton(_rt("Banco"))
+    data_fields_btn = QPushButton(_rt("Campos"))
     edit_mode_btn = QPushButton(_rt("Edicao"))
     settings_btn = QPushButton(_rt("Configuracoes"))
     create_chart_btn.setCheckable(True)
     create_chart_btn.setChecked(False)
     format_visual_btn.setCheckable(True)
     format_visual_btn.setChecked(False)
+    database_fields_btn.setCheckable(True)
+    database_fields_btn.setChecked(False)
+    data_fields_btn.setCheckable(True)
+    data_fields_btn.setChecked(False)
     edit_mode_btn.setCheckable(True)
     edit_mode_btn.setChecked(True)
     close_project_btn = QToolButton()
     close_project_btn.setObjectName("ModelCloseProjectButton")
 
-    configure_toolbar_icon_button(undo_btn, "Walker-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
-    configure_toolbar_icon_button(redo_btn, "Walker-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
-    configure_toolbar_icon_button(new_btn, "Walker-New.svg", _rt("Novo"))
-    configure_toolbar_icon_button(open_btn, "Walker-Open.svg", _rt("Abrir"))
-    configure_toolbar_icon_button(save_btn, "Walker-Save.svg", _rt("Salvar"))
-    configure_toolbar_icon_button(save_as_btn, "Walker-SaveAs.svg", _rt("Salvar como"))
-    configure_toolbar_icon_button(export_btn, "Walker-Image.svg", _rt("Exportar imagem"))
-    configure_toolbar_icon_button(create_chart_btn, "ModelVisual-Pie.svg", _rt("Criar grafico"))
-    configure_toolbar_icon_button(format_visual_btn, "Walker-Format.svg", _rt("Formatar visual"))
-    configure_toolbar_icon_button(edit_mode_btn, "Walker-Edit.svg", _rt("Edicao"))
+    configure_toolbar_icon_button(undo_btn, "Walker-Undo.svg", _rt("Desfazer (Ctrl+Z)"), icon_size=20)
+    configure_toolbar_icon_button(redo_btn, "Walker-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"), icon_size=20)
+    configure_toolbar_icon_button(new_btn, "Walker-New.svg", _rt("Novo"), icon_size=20)
+    configure_toolbar_icon_button(open_btn, "Walker-Open.svg", _rt("Abrir"), icon_size=20)
+    configure_toolbar_icon_button(save_btn, "Walker-Save.svg", _rt("Salvar"), icon_size=20)
+    configure_toolbar_icon_button(save_as_btn, "Walker-SaveAs.svg", _rt("Salvar como"), icon_size=20)
+    configure_toolbar_icon_button(export_btn, "Walker-Image.svg", _rt("Exportar imagem"), icon_size=20)
+    configure_toolbar_icon_button(create_chart_btn, "ModelVisual-Pie.svg", _rt("Criar grafico"), icon_size=20)
+    configure_toolbar_icon_button(format_visual_btn, "Walker-Format.svg", _rt("Formatar visual"), icon_size=20)
+    configure_toolbar_icon_button(database_fields_btn, "Dataset.svg", _rt("Banco de dados"), icon_size=20)
+    database_fields_btn.setProperty("toolbarMode", "database")
+    database_fields_btn.setText(_rt("PostgreSQL"))
+    configure_toolbar_icon_button(data_fields_btn, "Layers.svg", _rt("Campos"), icon_size=20)
+    configure_toolbar_icon_button(edit_mode_btn, "Walker-Edit.svg", _rt("Edicao"), icon_size=20)
     configure_toolbar_icon_button(
         settings_btn,
         "Walker-Settings.svg",
@@ -123,6 +139,8 @@ def build_model_header(
         export_btn,
         create_chart_btn,
         format_visual_btn,
+        database_fields_btn,
+        data_fields_btn,
         edit_mode_btn,
         settings_btn,
         close_project_btn,
@@ -132,6 +150,7 @@ def build_model_header(
     toolbar_strip = QFrame(header)
     toolbar_strip.setObjectName("ModelToolbarStrip")
     toolbar_strip.setAttribute(Qt.WA_StyledBackground, True)
+    toolbar_strip.setMinimumHeight(44)
     toolbar_layout = QHBoxLayout(toolbar_strip)
     toolbar_layout.setContentsMargins(8, 5, 8, 5)
     toolbar_layout.setSpacing(2)
@@ -141,7 +160,7 @@ def build_model_header(
     for button in (new_btn, open_btn, save_btn, save_as_btn, export_btn):
         toolbar_layout.addWidget(button, 0)
     toolbar_layout.addWidget(_create_toolbar_separator(toolbar_strip), 0)
-    for button in (create_chart_btn, format_visual_btn, edit_mode_btn):
+    for button in (create_chart_btn, format_visual_btn, database_fields_btn, data_fields_btn, edit_mode_btn):
         toolbar_layout.addWidget(button, 0)
     visual_types_leading_separator = _create_toolbar_separator(toolbar_strip)
     toolbar_layout.addWidget(visual_types_leading_separator, 0)
@@ -151,7 +170,11 @@ def build_model_header(
     toolbar_visuals_layout = QHBoxLayout(toolbar_visuals_strip)
     toolbar_visuals_layout.setContentsMargins(4, 0, 4, 0)
     toolbar_visuals_layout.setSpacing(1)
-    build_visual_type_buttons(toolbar_visuals_strip, toolbar_visuals_layout, button_size=32, icon_size=20)
+    build_visual_type_buttons(toolbar_visuals_strip, toolbar_visuals_layout, button_size=32,
+        icon_size=20,
+        fixed_chart_types=("pie", "barh", "line", "area", "card"),
+        overflow_enabled=True,
+    )
     toolbar_visuals_strip.setVisible(False)
     toolbar_layout.addWidget(toolbar_visuals_strip, 0)
 
@@ -169,14 +192,13 @@ def build_model_header(
     mode_toggle = _ModelModeToggle(mode_switch_wrap)
     mode_toggle.setObjectName("ModelModeToggle")
     mode_toggle.setChecked(True, animated=False)
-    mode_toggle.setToolTip(_rt("Alternar entre modo de edição e pré-visualização"))
+    set_walker_tooltip(mode_toggle, _rt("Alternar entre modo de edição e pré-visualização"))
     mode_layout.addWidget(mode_state_label, 0)
     mode_layout.addWidget(mode_toggle, 0)
 
     clear_filters_btn = QPushButton(_rt("Limpar filtros"))
     clear_filters_btn.setObjectName("ModelActionButton")
     clear_filters_btn.setVisible(False)
-    toolbar_layout.addWidget(clear_filters_btn, 0)
     toolbar_layout.addSpacing(8)
     toolbar_layout.addWidget(settings_btn, 0)
     toolbar_layout.addSpacing(8)
@@ -218,6 +240,8 @@ def build_model_header(
         redo_btn=redo_btn,
         create_chart_btn=create_chart_btn,
         format_visual_btn=format_visual_btn,
+        database_fields_btn=database_fields_btn,
+        data_fields_btn=data_fields_btn,
         edit_mode_btn=edit_mode_btn,
         settings_btn=settings_btn,
         close_project_btn=close_project_btn,

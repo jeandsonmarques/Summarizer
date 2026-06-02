@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from .pivot_calculations import (
     aggregate_series,
     coerce_python_value,
@@ -34,3 +37,4 @@ __all__ = [
     "resolve_available_field_name",
     "token_matches_query",
 ]
+

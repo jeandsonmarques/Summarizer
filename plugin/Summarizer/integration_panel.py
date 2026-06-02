@@ -1,8 +1,12 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -11,13 +15,15 @@ import pandas as pd
 from qgis.PyQt.QtCore import (
     QDateTime,
     QEvent,
+    QPointF,
+    QRectF,
     QSettings,
     QSize,
     Qt,
     QTimer,
     pyqtSignal,
 )
-from qgis.PyQt.QtGui import QColor, QCursor, QFont, QKeySequence, QIcon
+from qgis.PyQt.QtGui import QColor, QCursor, QFont, QIcon, QKeySequence, QPainter, QPen, QPixmap
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -27,7 +33,6 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog,
     QFrame,
     QGridLayout,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -40,6 +45,7 @@ from qgis.PyQt.QtWidgets import (
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -51,7 +57,9 @@ from .palette import COLORS, DARK_COLORS
 from .utils.fonts import harmonize_widget_fonts, ui_font, ui_font_stack
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.resources import svg_icon
-from .utils.security_utils import secure_connection_payload
+from .utils.security_utils import reveal_connection_payload, secure_connection_payload
+from .utils.window_theme import apply_windows_rounded_corners
+from .walker_dialogs import WalkerMessageBox as QMessageBox, apply_walker_combo
 
 from .utils.logging_utils import log_exception
 _ICON_DIR = os.path.join(os.path.dirname(__file__), "resources", "icons")
@@ -74,6 +82,202 @@ PREVIEW_ROW_LIMIT = 120
 RECENTS_SETTINGS_KEY = "Summarizer/integration/recent_sources"
 SAVED_CONNECTIONS_KEY = "Summarizer/integration/saved_connections"
 LAST_DB_PARAMS_KEY = "Summarizer/integration/last_db_params"
+_CONNECTED_DATABASE_KEYS: set[str] = set()
+_CONNECTED_DATABASE_TABLES: Dict[str, List[str]] = {}
+_CONNECTED_DATABASE_PARAMS: Dict[str, Dict] = {}
+
+
+def connected_database_drivers() -> set[str]:
+    return {
+        key.split("|", 1)[0]
+        for key in _CONNECTED_DATABASE_KEYS
+        if key
+    }
+
+
+def _connection_status_key_from_params(values: Dict) -> str:
+    driver = str(values.get("source_driver") or values.get("driver") or "").strip()
+    host = str(values.get("host") or "").strip().lower()
+    port = str(values.get("port") or "").strip()
+    database = str(values.get("database") or "").strip().lower()
+    user = str(values.get("user") or "").strip().lower()
+    ssl_mode = str(values.get("ssl_mode") or "").strip().lower()
+    use_ssl = "1" if values.get("use_ssl") else "0"
+    if not driver or not host or not database or not user:
+        return ""
+    return "|".join((driver, host, port, database, user, ssl_mode, use_ssl))
+
+
+def _normalize_ssl_mode(value: object) -> str:
+    text = str(value or "").strip().lower()
+    mapping = {
+        "ssldisable": "disable",
+        "sslprefer": "prefer",
+        "sslrequire": "require",
+        "disable": "disable",
+        "prefer": "prefer",
+        "require": "require",
+    }
+    return mapping.get(text, text.replace("ssl", "", 1) if text.startswith("ssl") else text)
+
+
+def _database_params_from_connection(connection: Dict) -> Dict:
+    data = reveal_connection_payload(connection)
+    source_driver = str(data.get("source_driver") or data.get("driver") or "PostgreSQL")
+    normalized_driver = "PostgreSQL" if source_driver == "PostGIS" else source_driver
+    try:
+        port = int(data.get("port") or 5432)
+    except (TypeError, ValueError):
+        port = 5432
+    return {
+        "driver": normalized_driver,
+        "source_driver": source_driver,
+        "host": str(data.get("host") or "").strip(),
+        "port": port,
+        "database": str(data.get("database") or "").strip(),
+        "user": str(data.get("user") or "").strip(),
+        "password": str(data.get("password") or ""),
+        "ssl_mode": _normalize_ssl_mode(data.get("ssl_mode") or data.get("sslmode") or "disable"),
+        "use_ssl": bool(data.get("use_ssl")),
+    }
+
+
+def _mark_connected_database_params(params: Dict, tables: Optional[List[str]] = None):
+    key = _connection_status_key_from_params(params)
+    if not key:
+        return
+    _CONNECTED_DATABASE_KEYS.add(key)
+    _CONNECTED_DATABASE_PARAMS[key] = dict(params)
+    if tables is not None:
+        _CONNECTED_DATABASE_TABLES[key] = list(tables)
+
+
+def _forget_connected_database_params(params: Dict):
+    key = _connection_status_key_from_params(params)
+    if not key:
+        return
+    _CONNECTED_DATABASE_KEYS.discard(key)
+    _CONNECTED_DATABASE_PARAMS.pop(key, None)
+    _CONNECTED_DATABASE_TABLES.pop(key, None)
+
+
+def _open_database_connection(params: Dict, owner_token: object = "auto") -> Tuple[bool, object]:
+    if QSqlDatabase is None:
+        return False, _rt("QtSql nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+
+    conn_name = f"integ_{owner_token}_{QDateTime.currentMSecsSinceEpoch()}"
+    driver = params.get("driver")
+    available_drivers = set(QSqlDatabase.drivers())
+
+    if driver == "PostgreSQL":
+        if "QPSQL" not in available_drivers:
+            return False, _rt("Driver PostgreSQL (QPSQL) nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+        db = QSqlDatabase.addDatabase("QPSQL", conn_name)
+        db.setHostName(params.get("host"))
+        db.setPort(params.get("port") or 5432)
+        db.setDatabaseName(params.get("database"))
+        db.setUserName(params.get("user"))
+        db.setPassword(params.get("password"))
+        ssl_mode = str(params.get("ssl_mode") or "").strip()
+        if ssl_mode:
+            db.setConnectOptions(f"sslmode={ssl_mode}")
+    elif driver == "SQL Server":
+        if "QODBC" not in available_drivers:
+            return False, _rt("Driver SQL Server (QODBC) nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+        db = QSqlDatabase.addDatabase("QODBC", conn_name)
+        connection_string = (
+            "Driver={ODBC Driver 17 for SQL Server};"
+            f"Server={params.get('host')},{params.get('port') or 1433};"
+            f"Database={params.get('database')};"
+            f"Uid={params.get('user')};"
+            f"Pwd={params.get('password')};"
+        )
+        db.setDatabaseName(connection_string)
+    elif driver == "Oracle":
+        if "QOCI" not in available_drivers:
+            return False, _rt("Driver Oracle (QOCI) nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+        db = QSqlDatabase.addDatabase("QOCI", conn_name)
+        db.setHostName(params.get("host"))
+        db.setPort(params.get("port") or 1521)
+        db.setDatabaseName(params.get("database"))
+        db.setUserName(params.get("user"))
+        db.setPassword(params.get("password"))
+    elif driver == "MySQL":
+        if "QMYSQL" not in available_drivers:
+            return False, _rt("Driver MySQL (QMYSQL) nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
+        db = QSqlDatabase.addDatabase("QMYSQL", conn_name)
+        db.setHostName(params.get("host"))
+        db.setPort(params.get("port") or 3306)
+        db.setDatabaseName(params.get("database"))
+        db.setUserName(params.get("user"))
+        db.setPassword(params.get("password"))
+        if params.get("use_ssl"):
+            db.setConnectOptions("CLIENT_SSL=1")
+    else:
+        return False, _rt("Conector de banco de dados nÃ£o suportado nesta instalaÃ§Ã£o.")
+
+    if not db.open():
+        error = db.lastError().text()
+        db = None
+        return False, error or _rt("Falha ao abrir a conexÃ£o.")
+    return True, db
+
+
+def _database_table_names(db, driver: str) -> List[str]:
+    tables: List[str] = []
+    if QSqlQuery is None:
+        return tables
+    query = QSqlQuery(db)
+    if driver == "PostgreSQL":
+        query.exec_(
+            "SELECT table_schema || '.' || table_name "
+            "FROM information_schema.tables "
+            "WHERE table_type = 'BASE TABLE' "
+            "ORDER BY 1"
+        )
+    elif driver == "SQL Server":
+        query.exec_(
+            "SELECT TABLE_SCHEMA + '.' + TABLE_NAME "
+            "FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_TYPE = 'BASE TABLE' "
+            "ORDER BY 1"
+        )
+    elif driver == "Oracle":
+        query.exec_(
+            "SELECT OWNER || '.' || TABLE_NAME "
+            "FROM ALL_TABLES "
+            "ORDER BY 1"
+        )
+    else:
+        query.exec_(
+            "SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) "
+            "FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_TYPE = 'BASE TABLE' "
+            "ORDER BY 1"
+        )
+    while query.next():
+        tables.append(str(query.value(0) or ""))
+    return tables
+
+
+def auto_connect_saved_databases(saved_connections: Optional[Sequence[Dict]] = None) -> set[str]:
+    connections = list(saved_connections if saved_connections is not None else connection_registry.saved_connections())
+    for connection in connections:
+        params = _database_params_from_connection(connection)
+        if not params.get("host") or not params.get("database") or not params.get("user"):
+            continue
+        if not params.get("password") and not connection.get("authcfg"):
+            continue
+        ok, db_or_error = _open_database_connection(params, owner_token="auto")
+        if not ok:
+            continue
+        db = db_or_error
+        try:
+            tables = _database_table_names(db, params["driver"])
+            _mark_connected_database_params(params, tables)
+        finally:
+            db.close()
+    return connected_database_drivers()
 
 
 def _apply_walker_dialog_buttons(*, primary=None, secondary=None):
@@ -247,6 +451,49 @@ class ResponsiveGrid(QWidget):
             self._layout.setColumnStretch(col, 0)
 
 
+def _show_walker_modal_overlay(dialog: QDialog) -> Optional[QFrame]:
+    parent = dialog.parentWidget()
+    if parent is None:
+        return None
+    host = parent.window() or parent
+    overlay = QFrame(host)
+    overlay.setObjectName("WalkerModalOverlay")
+    overlay.setAttribute(Qt.WA_StyledBackground, True)
+    overlay.setStyleSheet("QFrame#WalkerModalOverlay { background-color: rgba(0, 0, 0, 128); }")
+    overlay.setGeometry(host.rect())
+    overlay.show()
+    overlay.raise_()
+    return overlay
+
+
+def _center_dialog_on_parent(dialog: QDialog):
+    parent = dialog.parentWidget()
+    if parent is None:
+        return
+    host = parent.window() or parent
+    try:
+        center = host.mapToGlobal(host.rect().center())
+        dialog.move(
+            int(center.x() - (dialog.width() / 2)),
+            int(center.y() - (dialog.height() / 2)),
+        )
+    except Exception:
+        log_exception("falha opcional ignorada")
+
+
+def _walker_database_dialog_flags():
+    flags = Qt.Dialog
+    if sys.platform.startswith("win"):
+        flags |= Qt.FramelessWindowHint
+    else:
+        flags |= Qt.WindowCloseButtonHint
+    try:
+        flags |= Qt.NoDropShadowWindowHint
+    except Exception:
+        pass
+    return flags
+
+
 class IntegrationPanel(QWidget):
     """Integration hub for loading external datasets."""
 
@@ -305,7 +552,7 @@ class IntegrationPanel(QWidget):
         header_layout = QVBoxLayout()
         header_layout.setSpacing(6)
 
-        self.title_label = QLabel("Adicionar dados ao seu relatório", wrapper)
+        self.title_label = QLabel(_rt("Adicionar dados ao seu relatorio"), wrapper)
         self.title_label.setProperty("cardTitle", True)
         self.title_label.setFont(ui_font(18, QFont.DemiBold))
         header_layout.addWidget(self.title_label)
@@ -325,13 +572,13 @@ class IntegrationPanel(QWidget):
 
         recents_header = QHBoxLayout()
         recents_header.setSpacing(6)
-        recents_title = QLabel("Recentes", recents_frame)
+        recents_title = QLabel(_rt("Recentes"), recents_frame)
         recents_title.setProperty("cardTitle", True)
         recents_title.setFont(ui_font(12, QFont.DemiBold))
         recents_header.addWidget(recents_title)
         recents_header.addStretch(1)
 
-        self.clear_recent_btn = QPushButton("Limpar", recents_frame)
+        self.clear_recent_btn = QPushButton(_rt("Limpar"), recents_frame)
         self.clear_recent_btn.setProperty("role", "recentClear")
         self.clear_recent_btn.clicked.connect(self._clear_recents)
         recents_header.addWidget(self.clear_recent_btn)
@@ -344,7 +591,7 @@ class IntegrationPanel(QWidget):
         self.recents_list.itemActivated.connect(self._open_recent)
         recents_layout.addWidget(self.recents_list)
 
-        self.recents_placeholder = QLabel("Nenhuma conexão recente…", recents_frame)
+        self.recents_placeholder = QLabel(_rt("Nenhuma conexao recente..."), recents_frame)
         self.recents_placeholder.setAlignment(Qt.AlignCenter)
         self.recents_placeholder.setProperty("role", "helper")
         recents_layout.addWidget(self.recents_placeholder)
@@ -763,7 +1010,7 @@ class IntegrationPanel(QWidget):
             path = data.get("source_path")
             sheet = data.get("sheet_name")
             if not path or not os.path.exists(path):
-                QMessageBox.warning(self, "Recentes", "Arquivo não está mais disponível.")
+                QMessageBox.warning(self, _rt("Recentes"), _rt("Arquivo n?o est? mais dispon?vel."))
                 return
             df = self._read_excel(path, sheet)
             self._finalize_import(
@@ -778,7 +1025,7 @@ class IntegrationPanel(QWidget):
         elif connector in ("CSV", "Parquet"):
             path = data.get("source_path")
             if not path or not os.path.exists(path):
-                QMessageBox.warning(self, "Recentes", "Arquivo não está mais disponível.")
+                QMessageBox.warning(self, _rt("Recentes"), _rt("Arquivo n?o est? mais dispon?vel."))
                 return
             options = data.get("options") or {}
             df = self._read_delimited(path, options)
@@ -794,14 +1041,14 @@ class IntegrationPanel(QWidget):
         elif connector == "GeoPackage":
             path = data.get("source_path")
             if not path or not os.path.exists(path):
-                QMessageBox.warning(self, "Recentes", "Arquivo não está mais disponível.")
+                QMessageBox.warning(self, _rt("Recentes"), _rt("Arquivo n?o est? mais dispon?vel."))
                 return
             self._import_geopackage_path(path)
         else:
             QMessageBox.information(
                 self,
-                "Recentes",
-                "Conexões deste tipo precisam ser configuradas novamente.",
+                _rt("Recentes"),
+                _rt("Conex?es deste tipo precisam ser configuradas novamente."),
             )
 
     # ------------------------------------------------------------------ Saved connections
@@ -998,9 +1245,8 @@ class IntegrationPanel(QWidget):
             self,
             self._saved_connections,
             browser_sync_callback=self._mirror_connection_in_browser,
+            preferred_driver=preferred_driver or "PostgreSQL",
         )
-        if preferred_driver:
-            dialog.driver_combo.setCurrentText(preferred_driver)
         if dialog.exec_() == QDialog.Accepted:
             df, metadata, connection_meta, session_connection = dialog.result()
             self._finalize_import(df, metadata)
@@ -1060,7 +1306,7 @@ class IntegrationPanel(QWidget):
     def _handle_geopackage(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Selecionar GeoPackage",
+            _rt("Selecionar GeoPackage"),
             self.settings.value("integ/last_gpkg_dir", ""),
             "GeoPackage (*.gpkg)",
         )
@@ -1072,7 +1318,7 @@ class IntegrationPanel(QWidget):
     def _import_geopackage_path(self, path: str):
         layer = QgsVectorLayer(path, os.path.basename(path), "ogr")
         if not layer or not layer.isValid():
-            QMessageBox.warning(self, "GeoPackage", "Não foi possível abrir o arquivo informado.")
+            QMessageBox.warning(self, _rt("GeoPackage"), _rt("Não foi possível abrir o arquivo informado."))
             return
 
         columns = [field.name() for field in layer.fields()]
@@ -1193,10 +1439,11 @@ class IntegrationPanel(QWidget):
 class ExcelImportDialog(SlimDialogBase):
     def __init__(self, parent: QWidget, last_dir: str):
         super().__init__(parent, geometry_key="Summarizer/integration/excelDialog")
+        self.setProperty("forceCenterOnParent", True)
         self._df: Optional[pd.DataFrame] = None
         self._metadata: Dict = {}
         self.last_dir = last_dir or ""
-        self.setWindowTitle("Importar dados do Excel")
+        self.setWindowTitle(_rt("Importar dados do Excel"))
         self.resize(640, 540)
         self._build_ui()
 
@@ -1207,7 +1454,7 @@ class ExcelImportDialog(SlimDialogBase):
 
         row = QHBoxLayout()
         self.path_edit = QLineEdit(self)
-        self.path_edit.setPlaceholderText("Selecione o arquivo Excel…")
+        self.path_edit.setPlaceholderText(_rt("Selecione o arquivo Excel…"))
         browse_btn = QPushButton(_rt("Procurar…"), self)
         browse_btn.clicked.connect(self._browse)
         row.addWidget(self.path_edit, 1)
@@ -1247,7 +1494,7 @@ class ExcelImportDialog(SlimDialogBase):
         try:
             excel = pd.ExcelFile(path)
         except Exception as exc:
-            QMessageBox.warning(self, "Excel", f"Não foi possível abrir o arquivo: {exc}")
+            QMessageBox.warning(self, _rt("Excel"), _rt("Não foi possível abrir o arquivo: {exc}", exc=exc))
             return
         self.sheet_combo.clear()
         self.sheet_combo.addItems(excel.sheet_names)
@@ -1256,13 +1503,13 @@ class ExcelImportDialog(SlimDialogBase):
     def _preview(self):
         path = self.path_edit.text().strip()
         if not path:
-            QMessageBox.information(self, "Excel", "Selecione um arquivo.")
+            QMessageBox.information(self, _rt("Excel"), _rt("Selecione um arquivo."))
             return
         sheet = self.sheet_combo.currentText() or None
         try:
             df = pd.read_excel(path, sheet_name=sheet, nrows=PREVIEW_ROW_LIMIT)
         except Exception as exc:
-            QMessageBox.warning(self, "Excel", f"Falha na pré-visualização: {exc}")
+            QMessageBox.warning(self, _rt("Excel"), _rt("Falha na pré-visualização: {exc}", exc=exc))
             return
         self._fill_preview(df)
 
@@ -1280,13 +1527,13 @@ class ExcelImportDialog(SlimDialogBase):
     def _load(self):
         path = self.path_edit.text().strip()
         if not path:
-            QMessageBox.warning(self, "Excel", "Selecione um arquivo.")
+            QMessageBox.warning(self, _rt("Excel"), _rt("Selecione um arquivo."))
             return
         sheet = self.sheet_combo.currentText() or None
         try:
             df = pd.read_excel(path, sheet_name=sheet)
         except Exception as exc:
-            QMessageBox.critical(self, "Excel", f"Erro ao carregar: {exc}")
+            QMessageBox.critical(self, _rt("Excel"), _rt("Erro ao carregar: {exc}", exc=exc))
             return
         self._df = df
         self._metadata = {
@@ -1304,6 +1551,7 @@ class ExcelImportDialog(SlimDialogBase):
 class DelimitedFileDialog(SlimDialogBase):
     def __init__(self, parent: QWidget, last_dir: str):
         super().__init__(parent, geometry_key="Summarizer/integration/delimitedDialog")
+        self.setProperty("forceCenterOnParent", True)
         self._df: Optional[pd.DataFrame] = None
         self._metadata: Dict = {}
         self.last_dir = last_dir or ""
@@ -1543,14 +1791,202 @@ class ClipboardImportDialog(SlimDialogBase):
         return self._df, self._metadata
 
 
+class _WalkerSslModePicker(QFrame):
+    """Small in-dialog dropdown used to avoid native combo popup corners."""
+
+    changed = pyqtSignal(str)
+    _WIDTH = 90
+    _POPUP_WIDTH = 116
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setObjectName("WalkerSslPicker")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFixedSize(self._WIDTH, 36)
+        self._options = ["Disable", "Prefer", "Require"]
+        self._current = "Disable"
+        self._popup: Optional[QFrame] = None
+        self._items: List[QToolButton] = []
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.button = QToolButton(self)
+        self.button.setObjectName("WalkerSslButton")
+        self.button.setText(self._current)
+        self.button.setIcon(self._chevron_icon())
+        self.button.setIconSize(QSize(12, 12))
+        self.button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.button.setLayoutDirection(Qt.RightToLeft)
+        self.button.clicked.connect(self._toggle_popup)
+        layout.addWidget(self.button, 1)
+
+    def currentText(self) -> str:
+        return self._current
+
+    def setCurrentText(self, text: str):
+        value = str(text or "").strip()
+        if value not in self._options:
+            return
+        self._current = value
+        self.button.setText(self._current)
+        self._refresh_items()
+        self.changed.emit(value)
+
+    def hidePopup(self):
+        if self._popup is not None:
+            self._popup.hide()
+        app = QApplication.instance()
+        if app is not None:
+            try:
+                app.removeEventFilter(self)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def eventFilter(self, watched, event):
+        popup = self._popup
+        if popup is None or not popup.isVisible():
+            return super().eventFilter(watched, event)
+        if event.type() == QEvent.MouseButtonPress:
+            try:
+                point = event.globalPos()
+                picker_rect = self.rect()
+                picker_top_left = self.mapToGlobal(picker_rect.topLeft())
+                picker_rect.moveTopLeft(picker_top_left)
+                popup_rect = popup.rect()
+                popup_top_left = popup.mapToGlobal(popup_rect.topLeft())
+                popup_rect.moveTopLeft(popup_top_left)
+                if not picker_rect.contains(point) and not popup_rect.contains(point):
+                    self.hidePopup()
+            except Exception:
+                log_exception("falha opcional ignorada")
+        if event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:
+            self.hidePopup()
+            return True
+        return super().eventFilter(watched, event)
+
+    def _chevron_icon(self) -> QIcon:
+        pixmap = QPixmap(12, 12)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        pen = QPen(QColor("#6B7280"), 1.6)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(pen)
+        painter.drawLine(3, 5, 6, 8)
+        painter.drawLine(6, 8, 9, 5)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _toggle_popup(self):
+        popup = self._ensure_popup()
+        if popup.isVisible():
+            self.hidePopup()
+            return
+        self._show_popup()
+
+    def _ensure_popup(self) -> QFrame:
+        if self._popup is not None:
+            return self._popup
+        parent = self.window() or self.parentWidget() or self
+        popup = QFrame(parent)
+        popup.setObjectName("WalkerSslDropdown")
+        popup.setAttribute(Qt.WA_StyledBackground, True)
+        popup.setFixedSize(self._POPUP_WIDTH, 92)
+
+        layout = QVBoxLayout(popup)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(0)
+        for option in self._options:
+            item = QToolButton(popup)
+            item.setObjectName("WalkerSslDropdownItem")
+            item.setText(option)
+            item.setCheckable(True)
+            item.clicked.connect(lambda checked=False, value=option: self._select(value))
+            layout.addWidget(item)
+            self._items.append(item)
+        popup.hide()
+        self._popup = popup
+        self._refresh_items()
+        return popup
+
+    def _show_popup(self):
+        popup = self._ensure_popup()
+        parent = popup.parentWidget()
+        if parent is None:
+            return
+        point = self.mapToGlobal(self.rect().bottomLeft())
+        point.setY(point.y() + 4)
+        local = parent.mapFromGlobal(point)
+        popup.move(local)
+        popup.raise_()
+        popup.show()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def _select(self, value: str):
+        self.setCurrentText(value)
+        self.hidePopup()
+
+    def _refresh_items(self):
+        for item in self._items:
+            is_current = item.text() == self._current
+            item.setChecked(is_current)
+            item.setProperty("current", is_current)
+            item.style().unpolish(item)
+            item.style().polish(item)
+
+
+class _WalkerDatabaseTitleIcon(QWidget):
+    """Database icon with a connection status dot."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setObjectName("WalkerDatabaseTitleIcon")
+        self.setFixedSize(24, 22)
+        self._connected = False
+
+    def setConnected(self, connected: bool):  # noqa: N802 - Qt naming style
+        self._connected = bool(connected)
+        self.update()
+
+    def paintEvent(self, event):
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        pen = QPen(QColor("#111827"), 1.5)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+
+        top = QRectF(2.5, 3.0, 12.0, 5.6)
+        body = QRectF(2.5, 3.0, 12.0, 14.5)
+        painter.drawEllipse(top)
+        painter.drawLine(QPointF(body.left(), top.center().y()), QPointF(body.left(), body.bottom() - 2.7))
+        painter.drawLine(QPointF(body.right(), top.center().y()), QPointF(body.right(), body.bottom() - 2.7))
+        painter.drawArc(QRectF(body.left(), body.bottom() - 5.4, body.width(), 5.4), 180 * 16, 180 * 16)
+
+        if self._connected:
+            painter.setPen(QPen(QColor("#FFFFFF"), 1.4))
+            painter.setBrush(QColor("#22C55E"))
+            painter.drawEllipse(QRectF(14.0, 12.0, 8.0, 8.0))
+
+
 class DatabaseImportDialog(SlimDialogBase):
     def __init__(
         self,
         parent: QWidget,
         saved_connections: List[Dict],
         browser_sync_callback: Optional[Callable[[Dict], None]] = None,
+        preferred_driver: Optional[str] = None,
     ):
         super().__init__(parent, geometry_key="Summarizer/integration/databaseDialog")
+        self._walker_overlay: Optional[QFrame] = None
         self.settings = QSettings()
         self.saved_connections = saved_connections or []
         self._df: Optional[pd.DataFrame] = None
@@ -1560,12 +1996,22 @@ class DatabaseImportDialog(SlimDialogBase):
         self._browser_sync_callback = browser_sync_callback
         self._last_params: Dict[str, Dict] = self._load_last_params()
         self._suspend_defaults = False
-        self.setWindowTitle(_rt("Importar dados do banco de dados"))
-        self.resize(560, 430)
-        self.setMinimumWidth(540)
+        self._preferred_driver = preferred_driver or "PostgreSQL"
+        self._active_saved_fingerprint = ""
+        self.setWindowTitle(_rt("Connect to PostgreSQL"))
+        self.setObjectName("WalkerDatabaseDialog")
+        self.setWindowFlags(_walker_database_dialog_flags())
+        try:
+            self.setGraphicsEffect(None)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setFixedSize(500, 430)
         self._build_ui()
         harmonize_widget_fonts(self)
         self._apply_runtime_i18n()
+        self._apply_walker_dialog_style()
+        apply_windows_rounded_corners(self)
 
     def _apply_runtime_i18n(self):
         try:
@@ -1575,60 +2021,152 @@ class DatabaseImportDialog(SlimDialogBase):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._hide_walker_overlay()
+        self._walker_overlay = _show_walker_modal_overlay(self)
+        self.raise_()
+        _center_dialog_on_parent(self)
         harmonize_widget_fonts(self)
         self._apply_runtime_i18n()
+        self._apply_walker_dialog_style()
+        apply_windows_rounded_corners(self)
+        QTimer.singleShot(0, lambda: apply_windows_rounded_corners(self))
+        QTimer.singleShot(0, self._ensure_walker_dialog_visible)
+
+    def closeEvent(self, event):
+        self._hide_walker_overlay()
+        super().closeEvent(event)
+
+    def hideEvent(self, event):
+        self._hide_walker_overlay()
+        super().hideEvent(event)
+
+    def _hide_walker_overlay(self):
+        overlay = getattr(self, "_walker_overlay", None)
+        if overlay is not None:
+            overlay.hide()
+            overlay.deleteLater()
+            self._walker_overlay = None
+
+    def _ensure_walker_dialog_visible(self):
+        if not self.isVisible():
+            return
+        try:
+            self.setWindowOpacity(1.0)
+            self.raise_()
+            self.activateWindow()
+            panel = getattr(self, "_walker_panel", None)
+            if panel is not None:
+                panel.show()
+                panel.raise_()
+                panel.update()
+            self.update()
+        except Exception:
+            log_exception("falha opcional ignorada")
 
     def _build_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(8)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        panel = QFrame(self)
+        panel.setObjectName("WalkerDatabasePanel")
+        panel.setAttribute(Qt.WA_StyledBackground, True)
+        self._walker_panel = panel
+        root_layout.addWidget(panel)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 10)
+        header.setSpacing(8)
+
+        self.connection_status_icon = _WalkerDatabaseTitleIcon(self)
+        header.addWidget(self.connection_status_icon, 0, Qt.AlignVCenter)
+
+        self.title_label = QLabel(_rt("Connect to PostgreSQL"), self)
+        self.title_label.setObjectName("WalkerDatabaseTitle")
+        header.addWidget(self.title_label, 1, Qt.AlignVCenter)
+
+        close_btn = QToolButton(self)
+        close_btn.setObjectName("WalkerDialogCloseButton")
+        close_btn.setText("×")
+        close_btn.clicked.connect(self.reject)
+        header.addWidget(close_btn, 0, Qt.AlignTop)
+        layout.addLayout(header)
 
         form = QGridLayout()
-        form.setHorizontalSpacing(8)
-        form.setVerticalSpacing(6)
-        form.setColumnMinimumWidth(0, 82)
-        form.setColumnMinimumWidth(2, 72)
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(8)
         form.setColumnStretch(1, 1)
         form.setColumnStretch(3, 1)
 
         def _field_label(text: str) -> QLabel:
-            label = QLabel(_rt(text), self)
-            label.setProperty("role", "dbLabel")
+            label = QLabel(_rt(text).rstrip(":"), self)
+            label.setObjectName("WalkerDatabaseLabel")
             return label
 
         self.driver_combo = QComboBox(self)
         self.driver_combo.addItems(["PostgreSQL", "PostGIS", "SQL Server", "Oracle", "MySQL"])
+        if self._preferred_driver in {"PostgreSQL", "PostGIS", "SQL Server", "Oracle", "MySQL"}:
+            self.driver_combo.setCurrentText(self._preferred_driver)
         self.driver_combo.currentTextChanged.connect(self._on_driver_changed)
-        form.addWidget(_field_label("Conector:"), 0, 0)
-        form.addWidget(self.driver_combo, 0, 1, 1, 3)
+        self.driver_combo.setVisible(False)
 
         self.host_edit = QLineEdit(self)
         self.host_edit.setPlaceholderText("servidor.empresa.com")
-        form.addWidget(_field_label("Host:"), 1, 0)
-        form.addWidget(self.host_edit, 1, 1)
+        self.host_label = _field_label("Host")
+        form.addWidget(self.host_label, 0, 0)
+        form.addWidget(self.host_edit, 1, 0, 1, 2)
 
         self.port_edit = QLineEdit(self)
         self.port_edit.setPlaceholderText("5432 ou 1433…")
-        form.addWidget(_field_label("Porta:"), 1, 2)
-        form.addWidget(self.port_edit, 1, 3)
+        self.port_label = _field_label("Port")
+        form.addWidget(self.port_label, 0, 2)
+        form.addWidget(self.port_edit, 1, 2, 1, 2)
 
         self.database_edit = QLineEdit(self)
-        form.addWidget(_field_label("Banco:"), 2, 0)
-        form.addWidget(self.database_edit, 2, 1, 1, 3)
+        self.database_label = _field_label("Database")
+        form.addWidget(self.database_label, 2, 0)
+        form.addWidget(self.database_edit, 3, 0, 1, 4)
 
         self.user_edit = QLineEdit(self)
-        form.addWidget(_field_label("Usuário:"), 3, 0)
-        form.addWidget(self.user_edit, 3, 1)
+        self.user_label = _field_label("Username")
+        form.addWidget(self.user_label, 4, 0)
+        form.addWidget(self.user_edit, 5, 0, 1, 2)
 
         self.password_edit = QLineEdit(self)
         self.password_edit.setEchoMode(QLineEdit.Password)
-        form.addWidget(_field_label("Senha:"), 3, 2)
-        form.addWidget(self.password_edit, 3, 3)
+        self.password_label = _field_label("Password")
+        form.addWidget(self.password_label, 4, 2)
+        form.addWidget(self.password_edit, 5, 2, 1, 2)
+
+        self.ssl_label = _field_label("SSL Mode")
+        self.ssl_combo = _WalkerSslModePicker(self)
+        form.addWidget(self.ssl_label, 6, 0)
+        form.addWidget(self.ssl_combo, 7, 0)
+
+        self.use_ssl_box = QCheckBox(_rt("Use SSL"), self)
+        self.use_ssl_box.setObjectName("WalkerUseSslCheck")
+        form.addWidget(self.use_ssl_box, 7, 0)
+
+        self.remember_box = QCheckBox(_rt("Salvar conexão"), self)
+        self.remember_box.setObjectName("WalkerSaveConnectionCheck")
+        form.addWidget(self.remember_box, 7, 1, Qt.AlignVCenter)
+
+        self.delete_connection_btn = QPushButton(_rt("Excluir conexão"), self)
+        self.delete_connection_btn.setObjectName("WalkerDeleteConnectionButton")
+        self.delete_connection_btn.clicked.connect(self._delete_saved_connection)
+        self.delete_connection_btn.setVisible(False)
+        form.addWidget(self.delete_connection_btn, 7, 2, 1, 2, Qt.AlignRight | Qt.AlignVCenter)
+
+        for field in (self.host_edit, self.port_edit, self.database_edit, self.user_edit, self.password_edit):
+            field.textEdited.connect(lambda *_: self._set_connection_status(False))
+        self.ssl_combo.changed.connect(lambda *_: self._set_connection_status(False))
+        self.use_ssl_box.toggled.connect(lambda *_: self._set_connection_status(False))
 
         layout.addLayout(form)
-
-        self.remember_box = QCheckBox(_rt("Lembrar credenciais neste computador"), self)
-        layout.addWidget(self.remember_box)
 
         saved_row = QHBoxLayout()
         self.saved_combo = QComboBox(self)
@@ -1647,31 +2185,236 @@ class DatabaseImportDialog(SlimDialogBase):
         self.browser_sync_btn.setToolTip(_rt("Força o nó 'Summarizer' a exibir esta conexão."))
         self.browser_sync_btn.clicked.connect(self._force_browser_sync)
         saved_row.addWidget(self.browser_sync_btn, 0)
+        self.saved_combo.setVisible(False)
+        self.test_btn.setVisible(False)
+        self.browser_sync_btn.setVisible(False)
         layout.addLayout(saved_row)
 
         self.tables_combo = QComboBox(self)
         self.tables_combo.setPlaceholderText(_rt("Selecione uma tabela…"))
+        self.tables_combo.setVisible(False)
         layout.addWidget(self.tables_combo)
 
         self.preview_table = QTableWidget(self)
-        self.preview_table.setMinimumHeight(128)
+        self.preview_table.setMinimumHeight(84)
+        self.preview_table.setVisible(False)
         layout.addWidget(self.preview_table, 1)
+        layout.addStretch(1)
 
         buttons = QDialogButtonBox(self)
         preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
-        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
+        self.load_btn = buttons.addButton(_rt("Connect"), QDialogButtonBox.AcceptRole)
         cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
+        cancel_btn.setText(_rt("Cancel"))
         _apply_walker_dialog_buttons(
-            primary=[load_btn],
+            primary=[self.load_btn],
             secondary=[preview_btn, cancel_btn, self.test_btn, self.browser_sync_btn],
         )
+        preview_btn.setVisible(False)
+        buttons.setObjectName("WalkerDatabaseButtons")
         layout.addWidget(buttons)
 
         preview_btn.clicked.connect(lambda: self._retrieve(preview=True))
-        load_btn.clicked.connect(lambda: self._retrieve(preview=False))
+        self.load_btn.clicked.connect(lambda: self._retrieve(preview=False))
         cancel_btn.clicked.connect(self.reject)
 
         self._apply_driver_defaults()
+        self._apply_driver_ui()
+        self._apply_initial_saved_connection()
+
+    def _apply_walker_dialog_style(self):
+        self.setStyleSheet(
+            """
+            QDialog#WalkerDatabaseDialog {
+                background: #FFFFFF;
+                border: 1px solid #E5E7EB;
+                border-radius: 14px;
+            }
+            QFrame#WalkerDatabasePanel {
+                background: #FFFFFF;
+                border: none;
+                border-radius: 14px;
+            }
+            QLabel#WalkerDatabaseTitle {
+                color: #111827;
+                font-size: 17px;
+                font-weight: 600;
+            }
+            QLabel#WalkerDatabaseTitleIcon {
+                background: transparent;
+            }
+            QLabel#WalkerDatabaseLabel {
+                color: #1F2937;
+                font-size: 12px;
+                font-weight: 600;
+                background: transparent;
+            }
+            QLineEdit,
+            QComboBox {
+                min-height: 34px;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+                padding: 0 12px;
+                background: #FFFFFF;
+                color: #111827;
+                font-size: 12px;
+            }
+            QLineEdit:focus,
+            QComboBox:focus {
+                border: 2px solid #9CA3AF;
+                padding: 0 11px;
+                background: #FFFFFF;
+            }
+            QComboBox::drop-down {
+                width: 26px;
+                border: none;
+            }
+            QFrame#WalkerSslPicker {
+                min-width: 90px;
+                max-width: 90px;
+                min-height: 34px;
+                max-height: 34px;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+                background: #FFFFFF;
+            }
+            QFrame#WalkerSslPicker:focus {
+                border: 2px solid #9CA3AF;
+            }
+            QToolButton#WalkerSslButton {
+                border: none;
+                background: #FFFFFF;
+                color: #111827;
+                font-size: 12px;
+                font-weight: 400;
+                padding: 0 8px 0 10px;
+                text-align: left;
+            }
+            QToolButton#WalkerSslButton:hover,
+            QToolButton#WalkerSslButton:pressed {
+                background: #FFFFFF;
+            }
+            QFrame#WalkerSslDropdown {
+                border: 1px solid #E5E7EB;
+                border-radius: 12px;
+                background: #FFFFFF;
+            }
+            QCheckBox#WalkerUseSslCheck,
+            QCheckBox#WalkerSaveConnectionCheck {
+                color: #111827;
+                font-size: 12px;
+                font-weight: 400;
+                background: transparent;
+            }
+            QCheckBox#WalkerUseSslCheck::indicator,
+            QCheckBox#WalkerSaveConnectionCheck::indicator {
+                width: 14px;
+                height: 14px;
+                border: 1px solid #9CA3AF;
+                border-radius: 3px;
+                background: #FFFFFF;
+            }
+            QCheckBox#WalkerUseSslCheck::indicator:checked,
+            QCheckBox#WalkerSaveConnectionCheck::indicator:checked {
+                background: #111111;
+                border-color: #111111;
+            }
+            QToolButton#WalkerSslDropdownItem {
+                min-height: 28px;
+                border: none;
+                border-radius: 8px;
+                background: transparent;
+                color: #111827;
+                font-size: 12px;
+                font-weight: 400;
+                padding: 0 10px;
+                text-align: left;
+            }
+            QToolButton#WalkerSslDropdownItem:hover,
+            QToolButton#WalkerSslDropdownItem[current="true"] {
+                background: #F3F4F6;
+            }
+            QTableWidget {
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+                background: #FFFFFF;
+                gridline-color: #EEF2F7;
+                color: #111827;
+                font-size: 11px;
+            }
+            QPushButton {
+                min-width: 82px;
+                min-height: 34px;
+                border-radius: 7px;
+                padding: 0 14px;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QPushButton#SlimPrimaryButton {
+                background: #111111;
+                border: 1px solid #111111;
+                color: #FFFFFF;
+                font-weight: 600;
+            }
+            QPushButton#SlimPrimaryButton:hover {
+                background: #262626;
+                border-color: #262626;
+            }
+            QPushButton#SlimSecondaryButton {
+                background: #FFFFFF;
+                border: 1px solid #E5E7EB;
+                color: #111827;
+            }
+            QPushButton#SlimSecondaryButton:hover {
+                background: #F9FAFB;
+                border-color: #D1D5DB;
+            }
+            QPushButton#WalkerDeleteConnectionButton {
+                min-width: 100px;
+                min-height: 26px;
+                border-radius: 7px;
+                padding: 0 10px;
+                background: #FFFFFF;
+                border: 1px solid #E5E7EB;
+                color: #991B1B;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QPushButton#WalkerDeleteConnectionButton:hover {
+                background: #FEF2F2;
+                border-color: #FCA5A5;
+            }
+            QToolButton#WalkerDialogCloseButton {
+                min-width: 24px;
+                max-width: 24px;
+                min-height: 24px;
+                max-height: 24px;
+                border: none;
+                border-radius: 6px;
+                background: transparent;
+                color: #6B7280;
+                font-size: 16px;
+            }
+            QToolButton#WalkerDialogCloseButton:hover {
+                background: #F3F4F6;
+                color: #111827;
+            }
+            """
+        )
+        for combo in self.findChildren(QComboBox):
+            apply_walker_combo(combo)
+
+    def _apply_initial_saved_connection(self):
+        current_driver = self.driver_combo.currentText() or self._preferred_driver
+        for index in range(1, self.saved_combo.count()):
+            data = self.saved_combo.itemData(index)
+            if not isinstance(data, dict):
+                continue
+            saved_driver = str(data.get("source_driver") or data.get("driver") or "")
+            if saved_driver == current_driver or (saved_driver == "PostgreSQL" and current_driver == "PostGIS"):
+                self.saved_combo.setCurrentIndex(index)
+                self._apply_saved(index)
+                return
 
     def _apply_saved(self, index: int):
         if index <= 0:
@@ -1679,6 +2422,8 @@ class DatabaseImportDialog(SlimDialogBase):
         data = self.saved_combo.itemData(index)
         if not isinstance(data, dict):
             return
+        data = reveal_connection_payload(data)
+        self._active_saved_fingerprint = str(data.get("fingerprint") or "")
         self._suspend_defaults = True
         try:
             self.driver_combo.setCurrentText(data.get("driver", "PostgreSQL"))
@@ -1690,6 +2435,93 @@ class DatabaseImportDialog(SlimDialogBase):
         finally:
             self._suspend_defaults = False
         self.remember_box.setChecked(True)
+        self.delete_connection_btn.setVisible(bool(self._active_saved_fingerprint))
+        self._refresh_connection_status_from_fields()
+
+    def _delete_saved_connection(self):
+        fingerprint = str(self._active_saved_fingerprint or "").strip()
+        if not fingerprint:
+            return
+        confirm = QMessageBox.question(
+            self,
+            _rt("Excluir conexão"),
+            _rt("Excluir esta conexão salva?"),
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        _forget_connected_database_params(self._params())
+        connection_registry.remove_connection(fingerprint)
+        self.saved_connections = [
+            conn for conn in self.saved_connections if str(conn.get("fingerprint") or "") != fingerprint
+        ]
+        for index in range(self.saved_combo.count() - 1, 0, -1):
+            data = self.saved_combo.itemData(index)
+            if isinstance(data, dict) and str(data.get("fingerprint") or "") == fingerprint:
+                self.saved_combo.removeItem(index)
+        self._active_saved_fingerprint = ""
+        self.saved_combo.setCurrentIndex(0)
+        self.remember_box.setChecked(False)
+        self.delete_connection_btn.setVisible(False)
+        self.tables_combo.clear()
+        self.tables_combo.setVisible(False)
+        if hasattr(self, "load_btn"):
+            self.load_btn.setText(_rt("Connect"))
+        self._set_connection_status(False)
+        self._notify_parent_database_status()
+
+    def _notify_parent_database_status(self):
+        widget = self.parentWidget()
+        while widget is not None:
+            refresh = getattr(widget, "_refresh_model_database_status", None)
+            if callable(refresh):
+                refresh()
+                return
+            widget = widget.parentWidget()
+
+    def _set_connection_status(self, connected: bool):
+        icon = getattr(self, "connection_status_icon", None)
+        if icon is not None:
+            icon.setConnected(connected)
+
+    def _connection_status_key(self, params: Optional[Dict] = None) -> str:
+        return _connection_status_key_from_params(params or self._params())
+
+    def _remember_connected_connection(self, params: Dict, tables: Optional[List[str]] = None):
+        key = self._connection_status_key(params)
+        _mark_connected_database_params(params, tables)
+        self._set_connection_status(bool(key))
+
+    def _refresh_connection_status_from_fields(self):
+        key = self._connection_status_key()
+        connected = bool(key and key in _CONNECTED_DATABASE_KEYS)
+        self._set_connection_status(connected)
+        if connected:
+            self._restore_connected_tables(key)
+
+    def _current_table_names(self) -> List[str]:
+        return [
+            str(self.tables_combo.itemText(index) or "")
+            for index in range(self.tables_combo.count())
+            if str(self.tables_combo.itemText(index) or "").strip()
+        ]
+
+    def _restore_connected_tables(self, key: str):
+        tables = _CONNECTED_DATABASE_TABLES.get(key) or []
+        if not tables:
+            return
+        self.tables_combo.blockSignals(True)
+        try:
+            self.tables_combo.clear()
+            for table in tables:
+                self.tables_combo.addItem(table)
+        finally:
+            self.tables_combo.blockSignals(False)
+        self.tables_combo.setVisible(True)
+        if hasattr(self, "load_btn"):
+            self.load_btn.setText(_rt("Carregar"))
+        if self.height() < 472:
+            self.setFixedSize(500, 472)
+            _center_dialog_on_parent(self)
 
     def _params(self) -> Dict:
         driver = self.driver_combo.currentText()
@@ -1698,7 +2530,7 @@ class DatabaseImportDialog(SlimDialogBase):
         except ValueError:
             port = self._default_port_for_driver(driver)
         normalized_driver = "PostgreSQL" if driver == "PostGIS" else driver
-        return {
+        params = {
             "driver": normalized_driver,
             "source_driver": driver,
             "host": self.host_edit.text().strip(),
@@ -1706,7 +2538,14 @@ class DatabaseImportDialog(SlimDialogBase):
             "database": self.database_edit.text().strip(),
             "user": self.user_edit.text().strip(),
             "password": self.password_edit.text(),
+            "ssl_mode": self.ssl_combo.currentText().strip().lower(),
+            "use_ssl": self.use_ssl_box.isChecked(),
         }
+        if not params["password"]:
+            connected = _CONNECTED_DATABASE_PARAMS.get(self._connection_status_key(params))
+            if connected and connected.get("password"):
+                params["password"] = connected.get("password")
+        return params
 
     def _default_port_for_driver(self, driver: str) -> int:
         mapping = {
@@ -1757,19 +2596,55 @@ class DatabaseImportDialog(SlimDialogBase):
     def _apply_driver_defaults(self):
         driver = self.driver_combo.currentText()
         params = self._last_params.get(driver)
-        if not params:
-            return
         self._suspend_defaults = True
         try:
-            self.host_edit.setText(params.get("host", ""))
-            self.port_edit.setText(str(params.get("port", "")))
-            self.database_edit.setText(params.get("database", ""))
-            self.user_edit.setText(params.get("user", ""))
-            self.password_edit.setText(params.get("password", ""))
+            if params:
+                self.host_edit.setText(params.get("host", ""))
+                self.port_edit.setText(str(params.get("port", "")))
+                self.database_edit.setText(params.get("database", ""))
+                self.user_edit.setText(params.get("user", ""))
+                self.password_edit.setText(params.get("password", ""))
+            else:
+                self.port_edit.setText(str(self._default_port_for_driver(driver)))
         finally:
             self._suspend_defaults = False
+        self._apply_driver_ui()
+        self._refresh_connection_status_from_fields()
+
+    def _apply_driver_ui(self):
+        driver = self.driver_combo.currentText() or "PostgreSQL"
+        title = _rt("Connect to {driver}", driver=driver)
+        self.setWindowTitle(title)
+        if hasattr(self, "title_label"):
+            self.title_label.setText(title)
+
+        database_label = "Database"
+        database_placeholder = "Database name"
+        host_placeholder = "localhost"
+        port_placeholder = str(self._default_port_for_driver(driver))
+        ssl_mode_visible = driver in {"PostgreSQL", "PostGIS"}
+        use_ssl_visible = driver == "MySQL"
+        if driver == "Oracle":
+            database_label = "Service / SID"
+            database_placeholder = "Service name or SID"
+        elif driver == "SQL Server":
+            database_placeholder = "Database name"
+        elif driver == "PostGIS":
+            database_placeholder = "Spatial database name"
+
+        self.host_edit.setPlaceholderText(host_placeholder)
+        self.port_edit.setPlaceholderText(port_placeholder)
+        self.database_label.setText(_rt(database_label))
+        self.database_edit.setPlaceholderText(_rt(database_placeholder))
+        self.ssl_label.setVisible(ssl_mode_visible)
+        self.ssl_combo.setVisible(ssl_mode_visible)
+        self.use_ssl_box.setVisible(use_ssl_visible)
+        if not ssl_mode_visible:
+            self.ssl_combo.hidePopup()
 
     def _on_driver_changed(self, *_):
+        self._set_connection_status(False)
+        self._apply_driver_ui()
         if self._suspend_defaults:
             return
         self._apply_driver_defaults()
@@ -1782,6 +2657,10 @@ class DatabaseImportDialog(SlimDialogBase):
             "database": params.get("database"),
             "user": params.get("user"),
             "password": params.get("password"),
+            "authcfg": params.get("authcfg", ""),
+            "source_driver": params.get("source_driver") or params.get("driver"),
+            "ssl_mode": params.get("ssl_mode"),
+            "use_ssl": params.get("use_ssl"),
         }
         payload = secure_connection_payload(payload, name=str(params.get("display_name") or "Summarizer"))
         payload["name"] = f"{payload.get('database')} ({payload.get('driver')})"
@@ -1799,8 +2678,10 @@ class DatabaseImportDialog(SlimDialogBase):
             QMessageBox.information(self, _rt("Conexão"), _rt("Conexão estabelecida com sucesso."))
             self._remember_last_params(params)
             self._populate_tables(db_or_error, params["driver"])
+            self._remember_connected_connection(params, self._current_table_names())
             db_or_error.close()
         else:
+            self._set_connection_status(False)
             QMessageBox.warning(self, _rt("Conexão"), db_or_error)
 
     def _create_connection(self, params: Dict) -> Tuple[bool, object]:
@@ -1820,6 +2701,9 @@ class DatabaseImportDialog(SlimDialogBase):
             db.setDatabaseName(params.get("database"))
             db.setUserName(params.get("user"))
             db.setPassword(params.get("password"))
+            ssl_mode = str(params.get("ssl_mode") or "").strip()
+            if ssl_mode:
+                db.setConnectOptions(f"sslmode={ssl_mode}")
         elif driver == "SQL Server":
             if "QODBC" not in available_drivers:
                 return False, _rt("Driver SQL Server (QODBC) não está disponível nesta instalação.")
@@ -1850,6 +2734,8 @@ class DatabaseImportDialog(SlimDialogBase):
             db.setDatabaseName(params.get("database"))
             db.setUserName(params.get("user"))
             db.setPassword(params.get("password"))
+            if params.get("use_ssl"):
+                db.setConnectOptions("CLIENT_SSL=1")
         else:
             return False, _rt("Conector de banco de dados não suportado nesta instalação.")
 
@@ -1973,6 +2859,7 @@ class DatabaseImportDialog(SlimDialogBase):
         finally:
             QApplication.restoreOverrideCursor()
         if not ok:
+            self._set_connection_status(False)
             QMessageBox.warning(self, _rt("Importar"), db_or_error)
             return
         db = db_or_error
@@ -1981,6 +2868,14 @@ class DatabaseImportDialog(SlimDialogBase):
             QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
             if self.tables_combo.count() == 0:
                 self._populate_tables(db, params["driver"])
+            self._remember_connected_connection(params, self._current_table_names())
+            if not preview and not self.tables_combo.isVisible():
+                self.tables_combo.setVisible(True)
+                self.setFixedSize(500, 472)
+                if hasattr(self, "load_btn"):
+                    self.load_btn.setText(_rt("Carregar"))
+                _center_dialog_on_parent(self)
+                return
             table = self.tables_combo.currentText()
             if not table:
                 QMessageBox.information(self, _rt("Importar"), _rt("Selecione uma tabela."))
@@ -2037,6 +2932,10 @@ class DatabaseImportDialog(SlimDialogBase):
             db.close()
 
     def _fill_preview(self, df: pd.DataFrame):
+        self.preview_table.setVisible(True)
+        self.tables_combo.setVisible(True)
+        self.setFixedSize(500, 520)
+        _center_dialog_on_parent(self)
         self.preview_table.clear()
         self.preview_table.setRowCount(min(PREVIEW_ROW_LIMIT, len(df.index)))
         self.preview_table.setColumnCount(len(df.columns))
@@ -2075,6 +2974,7 @@ class DatabaseImportDialog(SlimDialogBase):
 class GoogleSheetsDialog(SlimDialogBase):
     def __init__(self, parent: QWidget):
         super().__init__(parent, geometry_key="Summarizer/integration/googleSheetsDialog")
+        self.setProperty("forceCenterOnParent", True)
         self._df: Optional[pd.DataFrame] = None
         self._metadata: Dict = {}
         self.setWindowTitle(_rt("Importar dados do Google Sheets"))
@@ -2105,7 +3005,7 @@ class GoogleSheetsDialog(SlimDialogBase):
         layout.addWidget(info)
 
         self.url_edit = QLineEdit(self)
-        self.url_edit.setPlaceholderText("URL pública…")
+        self.url_edit.setPlaceholderText(_rt("URL pública…"))
         layout.addWidget(self.url_edit)
 
         buttons = QDialogButtonBox(self)
@@ -2161,14 +3061,14 @@ class GoogleSheetsDialog(SlimDialogBase):
 class ExtendedConnectorsDialog(SlimDialogBase):
     def __init__(self, connectors: Dict[str, ConnectorConfig], parent: QWidget):
         super().__init__(parent, geometry_key="Summarizer/integration/extendedConnectors")
-        self.setWindowTitle("Catálogo de fontes disponíveis")
+        self.setWindowTitle(_rt("Catálogo de fontes disponíveis"))
         self.resize(760, 420)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
 
         info = QLabel(
-            "Lista completa de fontes suportadas pelo plugin. Algumas exigem configuração adicional, mas todas refletem cenários úteis para o ecossistema QGIS.",
+            _rt("Lista completa de fontes suportadas pelo plugin. Algumas exigem configuração adicional, mas todas refletem cenários úteis para o ecossistema QGIS."),
             self,
         )
         info.setWordWrap(True)
@@ -2194,6 +3094,3 @@ class ExtendedConnectorsDialog(SlimDialogBase):
         close_btn.rejected.connect(self.reject)
         layout.addWidget(close_btn)
         _apply_i18n_widgets(self)
-
-
-

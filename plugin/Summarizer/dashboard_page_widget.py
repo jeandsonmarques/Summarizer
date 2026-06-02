@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Dict, Optional
@@ -106,3 +109,4 @@ class DashboardPageWidget(QWidget):
 
     def export_image(self, path: str) -> bool:
         return self.canvas.export_image(path)
+

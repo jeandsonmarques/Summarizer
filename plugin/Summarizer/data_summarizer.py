@@ -1,73 +1,168 @@
-import base64
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 import os
 import re
 import tempfile
 import uuid
 from datetime import datetime
-from typing import Dict, Optional, List
 from string import Template
+from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
-from pandas.api import types as ptypes
-from qgis.PyQt.QtCore import QBuffer, QCoreApplication, QSettings, QTimer, QTranslator, Qt, QVariant, QRectF, QUrl
-from qgis.PyQt.QtGui import QFont, QImage, QPainter
+from qgis.core import (
+    Qgis,
+    QgsDataSourceUri,
+    QgsFeatureRequest,
+    QgsMapLayerStyle,
+    QgsMessageLog,
+    QgsProject,
+    QgsProviderRegistry,
+    QgsVectorFileWriter,
+    QgsVectorLayer,
+)
+from qgis.PyQt.QtCore import (
+    QCoreApplication,
+    QSettings,
+    Qt,
+    QTimer,
+    QTranslator,
+    QUrl,
+    QVariant,
+)
+from qgis.PyQt.QtGui import QFont
 from qgis.PyQt.QtWidgets import (
     QAction,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QHBoxLayout,
+    QFrame,
     QLabel,
-    QMessageBox,
     QMenu,
+    QMessageBox,
     QPushButton,
-    QStackedWidget,
     QScrollArea,
-    QTextEdit,
     QSizePolicy,
+    QStackedWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
-    QFrame,
 )
+try:  # pragma: no cover - QtSql availability depends on the QGIS install
+    from qgis.PyQt.QtSql import QSqlDatabase, QSqlQuery
+except Exception:  # pragma: no cover
+    QSqlDatabase = None
+    QSqlQuery = None
 
-from .report_view.visuals import BarChartRenderer, VisualDefinition, VisualTheme
-from qgis.core import (
-    QgsDataSourceUri,
-    QgsFeature,
-    QgsFeatureRequest,
-    QgsGeometry,
-    QgsMapLayerStyle,
-    QgsProject,
-    QgsMessageLog,
-    QgsVectorFileWriter,
-    QgsVectorLayer,
-    QgsWkbTypes,
-    Qgis,
-)
-
-from .export_manager import ExportManager
-from .presentation import PresentationMapController, create_presentation_button
-from .result_style import apply_result_style
-from .ui_main_dialog import Ui_SummarizerDialog
-from .layout_nav import SidebarController
-from .interactive_table import InteractiveTable
-from .pivot_table_widget import PivotTableWidget
-from .palette import palette_context
-from .slim_dialogs import SlimDialogBase, SlimLayerSelectionDialog, slim_get_item
-from .utils.resources import svg_icon
-from .utils.i18n_runtime import tr_text as _rt_runtime, apply_widget_translations as _apply_i18n_widgets
 from .browser_integration import (
+    connection_registry,
     register_browser_provider,
     unregister_browser_provider,
-    connection_registry,
 )
+from .export_manager import ExportManager
+from .interactive_table import InteractiveTable
+from .layout_nav import SidebarController
+from .palette import palette_context
+from .pivot_table_widget import PivotTableWidget
+from .presentation import PresentationMapController, create_presentation_button
+from .slim_dialogs import SlimDialogBase, SlimLayerSelectionDialog
+from .summary_view.summary_calculations import (
+    build_dataframe_summary as _summary_build_dataframe_summary,
+)
+from .summary_view.summary_calculations import (
+    calculate_advanced_summary as _summary_calculate_advanced_summary,
+)
+from .summary_view.summary_calculations import (
+    filter_empty_matches as _summary_filter_empty_matches,
+)
+from .summary_view.summary_calculations import (
+    is_meaningful_value as _summary_is_meaningful_value,
+)
+from .summary_view.summary_chart_preview import (
+    chart_preview_style_block as _summary_chart_preview_style_block,
+)
+from .summary_view.summary_chart_preview import (
+    update_charts_preview as _summary_update_charts_preview,
+)
+from .summary_view.summary_export_controller import SummaryExportController
+from .summary_view.summary_layer_io import (
+    build_geometry_lookup as _summary_build_geometry_lookup,
+)
+from .summary_view.summary_layer_io import (
+    create_layer_from_dataframe as _summary_create_layer_from_dataframe,
+)
+from .summary_view.summary_layer_io import (
+    create_memory_table_from_dataframe as _summary_create_memory_table_from_dataframe,
+)
+from .walker_dialogs import (
+    WALKER_DIALOG_STYLE,
+    WalkerMessageBox as QMessageBox,
+    add_walker_close_button,
+    apply_walker_buttons,
+    apply_walker_menu,
+    install_walker_modal_chrome,
+)
+from .summary_view.summary_layer_io import (
+    export_layer_to_gpkg as _summary_export_layer_to_gpkg,
+)
+from .summary_view.summary_layer_io import (
+    format_comparison_values as _summary_format_comparison_values,
+)
+from .summary_view.summary_layer_io import (
+    geometry_from_lookup as _summary_geometry_from_lookup,
+)
+from .summary_view.summary_layer_io import (
+    make_unique_field_name as _summary_make_unique_field_name,
+)
+from .summary_view.summary_layer_io import (
+    map_series_to_variant as _summary_map_series_to_variant,
+)
+from .summary_view.summary_layer_io import (
+    python_value as _summary_python_value,
+)
+from .summary_view.summary_layer_io import (
+    sanitize_field_name as _summary_sanitize_field_name,
+)
+from .summary_view.summary_layer_io import (
+    unique_layer_name as _summary_unique_layer_name,
+)
+from .summary_view.summary_layer_io import (
+    variant_type_for_series as _summary_variant_type_for_series,
+)
+from .summary_view.summary_materialize_dialog import (
+    materialize_dataframe_dialog as _summary_materialize_dataframe_dialog,
+)
+from .summary_view.summary_results_view import (
+    build_summary_unavailable_html as _summary_build_unavailable_html,
+)
+from .summary_view.summary_results_view import (
+    build_summary_welcome_html as _summary_build_welcome_html,
+)
+from .summary_view.summary_results_view import (
+    display_advanced_summary as _summary_display_advanced_summary,
+)
+from .summary_view.summary_results_view import (
+    escape_html as _summary_escape_html,
+)
+from .summary_view.summary_results_view import (
+    set_results_view as _summary_set_results_view,
+)
+from .summary_view.summary_results_view import (
+    show_results_message as _summary_show_results_message,
+)
+from .summary_view.summary_results_view import (
+    show_summary_welcome as _summary_show_summary_welcome,
+)
+from .ui_main_dialog import Ui_SummarizerDialog
 from .utils.fonts import attach_ui_font_enforcer, ensure_ui_fonts_registered, harmonize_widget_fonts
+from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets
+from .utils.i18n_runtime import tr_text as _rt_runtime
+from .utils.logging_utils import log_exception
 from .utils.plugin_logging import log_error
+from .utils.resources import svg_icon
 from .utils.window_theme import apply_windows_title_bar_theme
 
-from .utils.logging_utils import log_exception
 PROTECTED_COLUMNS_DEFAULT = {"__feature_id", "__geometry_wkb", "__target_feature_id"}
 
 
@@ -109,6 +204,7 @@ class Summarizer:
         self.menu = self.tr("Summarizer")
         self.dlg = None
         self._browser_provider = None
+        self._database_explorer_activation_error = ""
 
     def tr(self, message):
         return QCoreApplication.translate("Summarizer", message)
@@ -332,7 +428,13 @@ class Summarizer:
 
 
 class SummarizerDialog(QDialog):
-    def __init__(self, iface, plugin_host=None, active_locale: str = "", has_translation: bool = False):
+    def __init__(
+        self,
+        iface,
+        plugin_host=None,
+        active_locale: str = "",
+        has_translation: bool = False,
+    ):
         super().__init__(iface.mainWindow())
         self._enable_native_window_controls()
         self.iface = iface
@@ -395,6 +497,9 @@ class SummarizerDialog(QDialog):
         self.model_tab = None
         self.integration_panel = None
         self.integration_scroll = None
+        self.database_explorer_panel = None
+        self._database_explorer_connection_meta = {}
+        self._database_explorer_layer_objects = {}
         self._defer_page_build = True
         self._deferred_page_build_queue = []
         # Inject QuickOSM-like sidebar navigation without altering the ui file
@@ -402,6 +507,14 @@ class SummarizerDialog(QDialog):
             self.sidebar = SidebarController(self)
         except Exception:
             self.sidebar = None
+        try:
+            connection_registry.connectionsChanged.connect(self._refresh_database_sidebar_state)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
+            QgsProject.instance().layersRemoved.connect(self._handle_database_layers_removed)
+        except Exception:
+            log_exception("falha opcional ignorada")
         try:
             self._set_ribbon_visible(False)
         except Exception:
@@ -429,7 +542,11 @@ class SummarizerDialog(QDialog):
         # Prepare widgets for the Results view
         try:
             layout = self.ui.results_body_layout
-            self.pivot_widget = PivotTableWidget(iface=self.iface, parent=self.ui.results_body, host=self)
+            self.pivot_widget = PivotTableWidget(
+                iface=self.iface,
+                parent=self.ui.results_body,
+                host=self,
+            )
             self.pivot_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             layout.addWidget(self.pivot_widget)
             try:
@@ -500,6 +617,7 @@ class SummarizerDialog(QDialog):
             self.apply_styles()
         except Exception:
             log_exception("falha opcional ignorada")
+        QTimer.singleShot(0, self._refresh_database_sidebar_state)
         QTimer.singleShot(250, self._finish_deferred_initial_page_build)
 
     def _enable_native_window_controls(self):
@@ -546,6 +664,7 @@ class SummarizerDialog(QDialog):
         for name, builder in (
             ("model", self._ensure_model_page),
             ("integration", self._ensure_integration_page),
+            ("dashboard", self._ensure_dashboard_widget),
         ):
             if all(existing_name != name for existing_name, _ in builders):
                 builders.append((name, builder))
@@ -654,7 +773,7 @@ class SummarizerDialog(QDialog):
             host.reload_dialog_for_language()
 
     def _build_language_menu(self) -> QMenu:
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         choice = self._current_locale_choice()
         options = [
             ("auto", _rt_runtime("Automático")),
@@ -695,7 +814,9 @@ class SummarizerDialog(QDialog):
         return self._normalize_theme_mode(raw)
 
     def _theme_label(self, mode: str) -> str:
-        return _rt_runtime("Escuro") if self._normalize_theme_mode(mode) == "dark" else _rt_runtime("Claro")
+        if self._normalize_theme_mode(mode) == "dark":
+            return _rt_runtime("Escuro")
+        return _rt_runtime("Claro")
 
     def _refresh_theme_button(self):
         btn = getattr(self.ui, "theme_btn", None)
@@ -704,10 +825,10 @@ class SummarizerDialog(QDialog):
         mode = self._current_theme_mode()
         try:
             btn.setIcon(svg_icon("Theme.svg"))
-            btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         except Exception:
             log_exception("falha opcional ignorada")
-        btn.setText(_rt_runtime("Tema"))
+        btn.setText("")
         btn.setToolTip(f"{_rt_runtime('Tema')}: {self._theme_label(mode)}")
 
     def _set_theme_mode(self, mode: str):
@@ -721,7 +842,7 @@ class SummarizerDialog(QDialog):
         apply_windows_title_bar_theme(self, normalized == "dark")
 
     def _build_theme_menu(self) -> QMenu:
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         current = self._current_theme_mode()
         for mode, label in (("light", _rt_runtime("Claro")), ("dark", _rt_runtime("Escuro"))):
             action = menu.addAction(label)
@@ -940,45 +1061,33 @@ class SummarizerDialog(QDialog):
 
     def _set_results_view(self, mode: str):
         """Switch between pivot (summary), message (HTML) and table (comparison) views."""
-        pivot_visible = mode == "pivot"
-        message_visible = mode == "message"
-        table_visible = mode == "table"
-
-        pivot_widget = getattr(self, "pivot_widget", None)
-        if pivot_widget is not None:
-            pivot_widget.setVisible(pivot_visible)
-
-        message_widget = getattr(self, "summary_message_widget", None)
-        if message_widget is not None:
-            message_widget.setVisible(message_visible)
-
-        table_widget = getattr(self, "table_view", None)
-        if table_widget is not None:
-            table_widget.setVisible(table_visible)
+        _summary_set_results_view(
+            getattr(self, "pivot_widget", None),
+            getattr(self, "summary_message_widget", None),
+            getattr(self, "table_view", None),
+            mode,
+        )
 
     def show_results_message(self, html: str):
         """Display HTML content in the results area."""
         message_widget = getattr(self, "summary_message_widget", None)
         if message_widget is None:
             return
-        try:
-            message_widget.setHtml(apply_result_style(html))
-        except Exception:
-            message_widget.setHtml(html)
-        self._set_results_view("message")
+        _summary_show_results_message(
+            message_widget,
+            html,
+            set_results_view=self._set_results_view,
+        )
 
     def show_summary_welcome(self):
-        self._set_ribbon_visible(False)
-        pivot = getattr(self, "pivot_widget", None)
-        if pivot is not None:
-            try:
-                pivot.show_welcome_message()
-                self._set_results_view("pivot")
-                return
-            except Exception:
-                log_exception("falha opcional ignorada")
-        self.show_results_message(
-            f"<p style='margin:8px 0;'>{_rt_runtime('Selecione uma camada e clique em Gerar Resumo.')}</p>"
+        _summary_show_summary_welcome(
+            getattr(self, "pivot_widget", None),
+            getattr(self, "summary_message_widget", None),
+            set_results_view=self._set_results_view,
+            set_ribbon_visible=self._set_ribbon_visible,
+            welcome_html=_summary_build_welcome_html(
+                _rt_runtime("Selecione uma camada e clique em Gerar Resumo.")
+            ),
         )
 
     def _reset_initial_summary_layer_selection(self):
@@ -1077,6 +1186,253 @@ class SummarizerDialog(QDialog):
             log_exception("falha opcional ignorada")
         return self.integration_panel
 
+    def _current_database_connection_meta(self) -> Dict:
+        try:
+            from .database_explorer import provider_key_for_driver
+
+            connections = connection_registry.all_connections()
+            for connection in connections:
+                if provider_key_for_driver(str(connection.get("driver") or "")):
+                    return dict(connection)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return {}
+
+    def _ensure_database_explorer_page(self):
+        if self.database_explorer_panel is not None:
+            return self.database_explorer_panel
+        try:
+            from .database_explorer.database_explorer_panel import DatabaseExplorerPanel
+
+            layout = self._page_layout(self.ui.pageDatabaseExplorer, spacing=0)
+            self._clear_layout_widgets(layout)
+            panel = DatabaseExplorerPanel(parent=self.ui.pageDatabaseExplorer)
+            panel.tableActivated.connect(self._handle_database_object_activated)
+            if hasattr(panel, "set_connection_edit_handler"):
+                panel.set_connection_edit_handler(self._open_database_connection_dialog)
+            panel.connectionEditRequested.connect(self._open_database_connection_dialog)
+            panel.statusChanged.connect(self._update_database_sidebar_status)
+            layout.addWidget(panel)
+            self.database_explorer_panel = panel
+        except Exception:
+            self.database_explorer_panel = None
+            log_exception("falha opcional ignorada")
+        return self.database_explorer_panel
+
+    def _update_database_sidebar_status(self, status: str):
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is None:
+            return
+        try:
+            set_status = getattr(sidebar, "set_database_status", None)
+            if callable(set_status):
+                set_status(status)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def _open_database_connection_dialog(self, connection_meta: Optional[Dict] = None):
+        try:
+            from .integration_panel import DatabaseImportDialog
+
+            active_connection = self._database_dialog_connection_meta(connection_meta or {})
+            saved = connection_registry.saved_connections()
+            if active_connection:
+                fingerprint = str(active_connection.get("fingerprint") or "")
+                saved = [
+                    conn
+                    for conn in saved
+                    if str(conn.get("fingerprint") or "") != fingerprint
+                ]
+                saved.insert(0, active_connection)
+            preferred_driver = str(
+                active_connection.get("source_driver")
+                or active_connection.get("driver")
+                or "PostgreSQL"
+            )
+            dialog = DatabaseImportDialog(self.dlg, saved, preferred_driver=preferred_driver)
+            dialog.raise_()
+            dialog.activateWindow()
+            result = dialog.exec_()
+            if result != QDialog.Accepted:
+                self._refresh_database_sidebar_state()
+                return
+            df, metadata, updated_connection, session_connection = dialog.result()
+            if df is not None and not df.empty:
+                self.register_integration_dataframe(df, metadata or {"connector": preferred_driver})
+            if session_connection:
+                connection_registry.register_runtime_connection(session_connection)
+            if updated_connection:
+                fingerprint = updated_connection.get("fingerprint")
+                saved = [
+                    conn
+                    for conn in connection_registry.saved_connections()
+                    if conn.get("fingerprint") != fingerprint
+                ]
+                saved.insert(0, updated_connection)
+                connection_registry.replace_saved_connections(saved, persist=True)
+            self._refresh_database_sidebar_state()
+        except Exception as exc:
+            log_exception("falha opcional ignorada")
+            try:
+                QMessageBox.warning(
+                    self.dlg,
+                    "PostgreSQL",
+                    _rt_runtime("Não foi possível abrir o popup de conexão: {exc}", exc=exc),
+                )
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _database_dialog_connection_meta(self, connection_meta: Dict) -> Dict:
+        meta = dict(connection_meta or {})
+        if not meta:
+            return {}
+        driver = str(meta.get("source_driver") or meta.get("driver") or "").strip()
+        normalized_driver = driver.lower()
+        if normalized_driver in {"postgres", "postgresql", "postgis"}:
+            dialog_driver = "PostGIS" if normalized_driver == "postgis" else "PostgreSQL"
+            meta["driver"] = dialog_driver
+            meta["source_driver"] = dialog_driver
+            meta.setdefault("port", 5432)
+        if not meta.get("fingerprint"):
+            meta["fingerprint"] = "::".join(
+                [
+                    str(meta.get("driver") or "").lower(),
+                    str(meta.get("host") or meta.get("service") or ""),
+                    str(meta.get("port") or ""),
+                    str(meta.get("database") or ""),
+                    str(meta.get("user") or meta.get("username") or ""),
+                ]
+            )
+        return meta
+
+    def _handle_database_object_activated(self, database_object):
+        connection_meta = dict(getattr(self, "_database_explorer_connection_meta", {}) or {})
+        if not connection_meta:
+            self._finish_database_object_activation(database_object, loaded=False)
+            return
+        name = str(getattr(database_object, "name", "") or "").strip()
+        schema = str(getattr(database_object, "schema", "") or "").strip()
+        geometry_column = str(getattr(database_object, "geometry_column", "") or "").strip()
+        provider_key = str(getattr(database_object, "provider_key", "") or "").strip()
+        loaded_successfully = False
+        self._database_explorer_activation_error = ""
+        try:
+            if geometry_column and provider_key == "postgres":
+                descriptor = {
+                    "connector": connection_meta.get("driver") or "PostgreSQL",
+                    "display_name": name,
+                    "db_connection": connection_meta,
+                    "schema": schema,
+                    "table_name": name,
+                    "geometry_column": geometry_column,
+                    "import_target": "project",
+                }
+                try:
+                    layer = self._load_integration_database_layer(descriptor)
+                except Exception:
+                    layer = None
+                    log_exception("falha opcional ignorada")
+                if layer is not None and layer.isValid():
+                    loaded_successfully = True
+                    self._database_explorer_activation_error = ""
+                    try:
+                        self._database_explorer_layer_objects[layer.id()] = database_object
+                    except Exception:
+                        log_exception("falha opcional ignorada")
+                    try:
+                        if self.model_manager is not None:
+                            self.model_manager.refresh_model()
+                    except Exception:
+                        log_exception("falha opcional ignorada")
+                    return
+                if layer is not None:
+                    self._database_explorer_activation_error = self._layer_error_text(layer)
+            try:
+                detail = str(getattr(self, "_database_explorer_activation_error", "") or "").strip()
+                if detail:
+                    message = _rt_runtime(
+                        "Nao foi possivel abrir esta camada diretamente.\n\nDetalhe: {detail}",
+                        detail=detail,
+                    )
+                else:
+                    message = _rt_runtime("Abra o importador de banco para carregar esta tabela.")
+                QMessageBox.information(
+                    self,
+                    _rt_runtime("Banco"),
+                    message,
+                )
+            except Exception:
+                log_exception("falha opcional ignorada")
+        finally:
+            self._finish_database_object_activation(database_object, loaded=loaded_successfully)
+
+    def _finish_database_object_activation(self, database_object, loaded: bool = False):
+        panel = getattr(self, "database_explorer_panel", None)
+        marker = getattr(panel, "mark_object_loaded", None)
+        if callable(marker):
+            try:
+                marker(database_object, loaded=loaded)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _handle_database_layers_removed(self, layer_ids):
+        removed_ids = list(layer_ids or [])
+        if not removed_ids:
+            return
+        panel = getattr(self, "database_explorer_panel", None)
+        marker = getattr(panel, "mark_object_unloaded", None)
+        for layer_id in removed_ids:
+            database_object = self._database_explorer_layer_objects.pop(layer_id, None)
+            if database_object is None or not callable(marker):
+                continue
+            try:
+                marker(database_object)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _refresh_database_sidebar_state(self):
+        connection_meta = self._current_database_connection_meta()
+        self._database_explorer_connection_meta = dict(connection_meta)
+        visible = bool(connection_meta)
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is not None:
+            try:
+                sidebar.set_database_tab_visible(visible)
+                sidebar.set_database_connected(visible)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        panel = getattr(self, "database_explorer_panel", None)
+        if panel is not None:
+            if connection_meta:
+                try:
+                    panel.set_connection(connection_meta)
+                except Exception:
+                    log_exception("falha opcional ignorada")
+            else:
+                try:
+                    panel.clear()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+
+    def show_database_explorer_page(self):
+        self._set_ribbon_visible(False)
+        connection_meta = self._current_database_connection_meta()
+        self._database_explorer_connection_meta = dict(connection_meta)
+        try:
+            self.ui.stackedWidget.setCurrentWidget(self.ui.pageDatabaseExplorer)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        panel = self._ensure_database_explorer_page()
+        if panel is not None:
+            try:
+                if connection_meta:
+                    panel.set_connection(connection_meta)
+                else:
+                    panel.clear()
+            except Exception:
+                log_exception("falha opcional ignorada")
+        self._refresh_database_sidebar_state()
+
     def _ensure_dashboard_widget(self):
         if self.dashboard_widget is not None:
             return self.dashboard_widget
@@ -1084,11 +1440,6 @@ class SummarizerDialog(QDialog):
             from .dashboard_widget import DashboardWidget
 
             self.dashboard_widget = DashboardWidget()
-            try:
-                self.dashboard_widget.primary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
-                self.dashboard_widget.secondary_chart.addToModelRequested.connect(self.handle_add_chart_to_model_request)
-            except Exception:
-                log_exception("falha opcional ignorada")
         except Exception:
             self.dashboard_widget = None
             log_exception("falha opcional ignorada")
@@ -1138,7 +1489,11 @@ class SummarizerDialog(QDialog):
         try:
             added = bool(model_tab.request_add_chart(dict(snapshot or {})))
         except Exception as exc:
-            QMessageBox.warning(self, "Model", f"Nao foi possivel adicionar o grafico ao Model: {exc}")
+            QMessageBox.warning(
+                self,
+                "Model",
+                f"Nao foi possivel adicionar o grafico ao Model: {exc}",
+            )
             return
         if not added:
             return
@@ -1180,7 +1535,10 @@ class SummarizerDialog(QDialog):
         descriptor.setdefault("display_name", descriptor.get("source_path") or "Dados externos")
         descriptor.setdefault("connector", descriptor.get("connector") or "Fonte externa")
         descriptor.setdefault("record_count", int(len(df)))
-        descriptor.setdefault("timestamp", descriptor.get("timestamp") or datetime.now().isoformat())
+        descriptor.setdefault(
+            "timestamp",
+            descriptor.get("timestamp") or datetime.now().isoformat(),
+        )
         import_target = str(descriptor.get("import_target") or "").strip().lower()
 
         layer = self._create_integration_project_layer(df, descriptor)
@@ -1207,7 +1565,11 @@ class SummarizerDialog(QDialog):
         self.sidebar.show_results_page()
         return descriptor
 
-    def _create_integration_project_layer(self, df: pd.DataFrame, descriptor: Dict) -> Optional[QgsVectorLayer]:
+    def _create_integration_project_layer(
+        self,
+        df: pd.DataFrame,
+        descriptor: Dict,
+    ) -> Optional[QgsVectorLayer]:
         connector = str(descriptor.get("connector") or "").strip().lower()
         source_path = str(descriptor.get("source_path") or "").strip()
         geometry_column = str(descriptor.get("geometry_column") or "").strip()
@@ -1229,8 +1591,16 @@ class SummarizerDialog(QDialog):
             log_exception("falha opcional ignorada")
         return self._create_memory_table_from_dataframe(df, descriptor)
 
-    def _load_integration_source_layer(self, source_path: str, descriptor: Dict) -> Optional[QgsVectorLayer]:
-        base_name = (descriptor.get("display_name") or os.path.basename(source_path) or "Camada externa").strip()
+    def _load_integration_source_layer(
+        self,
+        source_path: str,
+        descriptor: Dict,
+    ) -> Optional[QgsVectorLayer]:
+        base_name = (
+            descriptor.get("display_name")
+            or os.path.basename(source_path)
+            or "Camada externa"
+        ).strip()
         if not base_name:
             base_name = "Camada externa"
 
@@ -1274,17 +1644,544 @@ class SummarizerDialog(QDialog):
                 str(connection.get("user") or ""),
                 str(connection.get("password") or ""),
             )
-        uri.setDataSource(schema, table_name, geometry_column)
+        table_meta = self._postgres_layer_open_metadata(
+            connection,
+            schema,
+            table_name,
+            geometry_column,
+        )
+        key_column = str(table_meta.get("key_column") or "")
+        try:
+            uri.setDataSource(schema, table_name, geometry_column, "", key_column)
+        except TypeError:
+            uri.setDataSource(schema, table_name, geometry_column)
+            if key_column:
+                try:
+                    uri.setKeyColumn(key_column)
+                except Exception:
+                    uri.setParam("key", key_column)
+
+        srid = str(table_meta.get("srid") or "")
+        geometry_type = str(table_meta.get("geometry_type") or "")
+        if srid:
+            try:
+                uri.setSrid(srid)
+            except Exception:
+                uri.setParam("srid", srid)
+        if geometry_type:
+            uri.setParam("type", geometry_type)
 
         base_name = (descriptor.get("display_name") or table_name or "Camada externa").strip()
         if not base_name:
             base_name = table_name or "Camada externa"
-        layer = QgsVectorLayer(uri.uri(), self._unique_layer_name(base_name), "postgres")
+
+        layer_name = self._unique_layer_name(base_name)
+        source_uri = uri.uri()
+        layer = self._add_database_layer_via_iface(source_uri, layer_name)
+        if layer is not None and layer.isValid():
+            style_uris = [
+                layer.source(),
+                source_uri,
+                self._postgres_table_uri(uri, schema, table_name),
+            ]
+            self._apply_database_native_style(
+                layer,
+                style_uris,
+                connection,
+                schema,
+                table_name,
+                geometry_column,
+            )
+            return layer
+
+        layer_options = QgsVectorLayer.LayerOptions()
+        try:
+            layer_options.loadDefaultStyle = True
+            layer_options.loadAllStoredStyles = True
+        except Exception:
+            log_exception("falha opcional ignorada")
+        layer = QgsVectorLayer(source_uri, layer_name, "postgres", layer_options)
         if not layer or not layer.isValid():
             return None
+        style_uris = [
+            layer.source(),
+            source_uri,
+            self._postgres_table_uri(uri, schema, table_name),
+        ]
+        self._apply_database_native_style(
+            layer,
+            style_uris,
+            connection,
+            schema,
+            table_name,
+            geometry_column,
+        )
         return self._add_layer_to_project(layer)
 
-    def _materialize_integration_text_layer(self, df: pd.DataFrame, descriptor: Dict) -> Optional[QgsVectorLayer]:
+    def _add_database_layer_via_iface(self, source_uri: str, layer_name: str) -> Optional[QgsVectorLayer]:
+        add_vector_layer = getattr(self.iface, "addVectorLayer", None)
+        if not callable(add_vector_layer):
+            return None
+        try:
+            layer = add_vector_layer(source_uri, layer_name, "postgres")
+        except Exception as exc:
+            QgsMessageLog.logMessage(
+                f"Falha ao adicionar camada PostGIS via iface.addVectorLayer: {exc}",
+                "Summarizer",
+                Qgis.Warning,
+            )
+            return None
+        if layer is None or not layer.isValid():
+            return None
+        return layer
+
+    def _postgres_layer_open_metadata(
+        self,
+        connection_meta: Dict,
+        schema: str,
+        table_name: str,
+        geometry_column: str,
+    ) -> Dict[str, str]:
+        result = {"key_column": "", "srid": "", "geometry_type": ""}
+        if QSqlDatabase is None or QSqlQuery is None:
+            return result
+        if str(connection_meta.get("authcfg") or "").strip():
+            return result
+
+        conn_name = f"summarizer_layer_meta_{uuid.uuid4().hex}"
+        db = None
+        try:
+            db = QSqlDatabase.addDatabase("QPSQL", conn_name)
+            db.setHostName(str(connection_meta.get("host") or ""))
+            try:
+                db.setPort(int(connection_meta.get("port") or 5432))
+            except Exception:
+                db.setPort(5432)
+            db.setDatabaseName(str(connection_meta.get("database") or ""))
+            db.setUserName(str(connection_meta.get("user") or ""))
+            db.setPassword(str(connection_meta.get("password") or ""))
+            if not db.open():
+                return result
+
+            pk_query = QSqlQuery(db)
+            if pk_query.prepare(
+                "SELECT a.attname "
+                "FROM pg_index i "
+                "JOIN pg_class c ON c.oid = i.indrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey) "
+                "WHERE i.indisprimary "
+                "  AND n.nspname = :schema "
+                "  AND c.relname = :table_name "
+                "ORDER BY array_position(i.indkey, a.attnum) "
+                "LIMIT 1"
+            ):
+                pk_query.bindValue(":schema", schema)
+                pk_query.bindValue(":table_name", table_name)
+                if pk_query.exec_() and pk_query.next():
+                    result["key_column"] = str(pk_query.value(0) or "")
+
+            geom_query = QSqlQuery(db)
+            if geom_query.prepare(
+                "SELECT "
+                "  NULLIF(Find_SRID(:schema, :table_name, :geometry_column), 0), "
+                "  UPPER(GeometryType(("
+                "    SELECT {geom} "
+                "    FROM {schema_table} "
+                "    WHERE {geom} IS NOT NULL "
+                "    LIMIT 1"
+                "  )))"
+                .format(
+                    geom=self._pg_quote_identifier(geometry_column),
+                    schema_table=(
+                        f"{self._pg_quote_identifier(schema)}."
+                        f"{self._pg_quote_identifier(table_name)}"
+                    ),
+                )
+            ):
+                geom_query.bindValue(":schema", schema)
+                geom_query.bindValue(":table_name", table_name)
+                geom_query.bindValue(":geometry_column", geometry_column)
+                if geom_query.exec_() and geom_query.next():
+                    srid = str(geom_query.value(0) or "")
+                    geometry_type = self._qgis_uri_geometry_type(str(geom_query.value(1) or ""))
+                    if srid:
+                        result["srid"] = srid
+                    if geometry_type:
+                        result["geometry_type"] = geometry_type
+        except Exception:
+            log_exception("falha opcional ignorada")
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+            try:
+                QSqlDatabase.removeDatabase(conn_name)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        return result
+
+    def _pg_quote_identifier(self, identifier: str) -> str:
+        return '"' + str(identifier or "").replace('"', '""') + '"'
+
+    def _qgis_uri_geometry_type(self, geometry_type: str) -> str:
+        normalized = str(geometry_type or "").upper().replace("ST_", "")
+        if "MULTIPOINT" in normalized:
+            return "MultiPoint"
+        if "MULTILINESTRING" in normalized:
+            return "MultiLineString"
+        if "MULTIPOLYGON" in normalized:
+            return "MultiPolygon"
+        if "POINT" in normalized:
+            return "Point"
+        if "LINESTRING" in normalized:
+            return "LineString"
+        if "POLYGON" in normalized:
+            return "Polygon"
+        return ""
+
+    def _postgres_table_uri(self, uri: QgsDataSourceUri, schema: str, table_name: str) -> str:
+        if not schema or not table_name:
+            return ""
+        try:
+            metadata = QgsProviderRegistry.instance().providerMetadata("postgres")
+        except Exception:
+            metadata = None
+        if metadata is None:
+            return ""
+        try:
+            connection = metadata.createConnection(uri.connectionInfo(), {})
+        except Exception:
+            connection = None
+        if connection is None:
+            return ""
+        table_uri_getter = getattr(connection, "tableUri", None)
+        if not callable(table_uri_getter):
+            return ""
+        try:
+            return str(table_uri_getter(schema, table_name) or "")
+        except Exception:
+            return ""
+
+    def _apply_database_native_style(
+        self,
+        layer: Optional[QgsVectorLayer],
+        uris,
+        connection_meta: Optional[Dict] = None,
+        schema: str = "",
+        table_name: str = "",
+        geometry_column: str = "",
+    ):
+        if layer is None:
+            return
+        style_uris: List[str] = []
+        if isinstance(uris, str):
+            candidates = [uris]
+        else:
+            candidates = list(uris or [])
+        for candidate in candidates:
+            candidate_uri = str(candidate or "").strip()
+            if candidate_uri and candidate_uri not in style_uris:
+                style_uris.append(candidate_uri)
+
+        if self._try_apply_postgres_layer_style_table(
+            layer,
+            connection_meta or {},
+            schema,
+            table_name,
+            geometry_column,
+        ):
+            return
+        for candidate_uri in style_uris:
+            if self._try_load_provider_style(layer, candidate_uri):
+                return
+        for candidate_uri in style_uris:
+            if self._try_load_layer_named_style(layer, candidate_uri):
+                return
+        if self._try_load_layer_default_style(layer):
+            return
+
+    def _try_load_layer_default_style(self, layer: QgsVectorLayer) -> bool:
+        try:
+            load_default_style = getattr(layer, "loadDefaultStyle", None)
+            if not callable(load_default_style):
+                return False
+            return self._style_result_is_success(load_default_style())
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return False
+
+    def _try_load_layer_named_style(self, layer: QgsVectorLayer, uri: str) -> bool:
+        if not uri:
+            return False
+        try:
+            load_named_style = getattr(layer, "loadNamedStyle", None)
+            if not callable(load_named_style):
+                return False
+            return self._style_result_is_success(load_named_style(uri, False))
+        except TypeError:
+            try:
+                return self._style_result_is_success(load_named_style(uri))
+            except Exception:
+                log_exception("falha opcional ignorada")
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return False
+
+    def _try_load_provider_style(self, layer: QgsVectorLayer, uri: str) -> bool:
+        if not uri:
+            return False
+        try:
+            provider_registry = QgsProviderRegistry.instance()
+        except Exception:
+            return False
+        provider_key = "postgres"
+
+        for style_xml in self._provider_style_xml_candidates(provider_registry, provider_key, uri):
+            if self._apply_style_xml(layer, style_xml):
+                return True
+        return False
+
+    def _try_apply_postgres_layer_style_table(
+        self,
+        layer: QgsVectorLayer,
+        connection_meta: Dict,
+        schema: str,
+        table_name: str,
+        geometry_column: str,
+    ) -> bool:
+        style_xml = self._postgres_layer_style_qml(
+            connection_meta,
+            schema,
+            table_name,
+            geometry_column,
+        )
+        if not style_xml:
+            return False
+        return self._apply_style_xml(layer, style_xml)
+
+    def _postgres_layer_style_qml(
+        self,
+        connection_meta: Dict,
+        schema: str,
+        table_name: str,
+        geometry_column: str,
+    ) -> str:
+        if QSqlDatabase is None or QSqlQuery is None:
+            return ""
+        schema = str(schema or "").strip()
+        table_name = str(table_name or "").strip()
+        geometry_column = str(geometry_column or "").strip()
+        if not schema or not table_name:
+            return ""
+        if str(connection_meta.get("authcfg") or "").strip():
+            return ""
+
+        conn_name = f"summarizer_style_{uuid.uuid4().hex}"
+        db = None
+        try:
+            db = QSqlDatabase.addDatabase("QPSQL", conn_name)
+            db.setHostName(str(connection_meta.get("host") or ""))
+            try:
+                db.setPort(int(connection_meta.get("port") or 5432))
+            except Exception:
+                db.setPort(5432)
+            db.setDatabaseName(str(connection_meta.get("database") or ""))
+            db.setUserName(str(connection_meta.get("user") or ""))
+            db.setPassword(str(connection_meta.get("password") or ""))
+            if not db.open():
+                return ""
+
+            for styles_schema in self._postgres_layer_style_schemas(db):
+                style_xml = self._postgres_layer_style_qml_from_schema(
+                    db,
+                    styles_schema,
+                    schema,
+                    table_name,
+                    geometry_column,
+                )
+                if style_xml:
+                    return style_xml
+            return ""
+        except Exception:
+            log_exception("falha opcional ignorada")
+            return ""
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+            try:
+                QSqlDatabase.removeDatabase(conn_name)
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def _postgres_layer_style_schemas(self, db) -> List[str]:
+        schemas: List[str] = []
+        query = QSqlQuery(db)
+        if query.exec_(
+            "SELECT n.nspname "
+            "FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE c.relname = 'layer_styles' "
+            "  AND c.relkind IN ('r', 'p', 'v', 'm', 'f') "
+            "ORDER BY CASE WHEN n.nspname = 'public' THEN 0 ELSE 1 END, n.nspname"
+        ):
+            while query.next():
+                schema = str(query.value(0) or "").strip()
+                if schema and schema not in schemas:
+                    schemas.append(schema)
+        return schemas or ["public"]
+
+    def _postgres_layer_style_qml_from_schema(
+        self,
+        db,
+        styles_schema: str,
+        table_schema: str,
+        table_name: str,
+        geometry_column: str,
+    ) -> str:
+        query = QSqlQuery(db)
+        table_ref = f"{self._pg_quote_identifier(styles_schema)}.layer_styles"
+        if not query.prepare(
+            "SELECT styleqml "
+            f"FROM {table_ref} "
+            "WHERE f_table_schema = :schema "
+            "  AND f_table_name = :table_name "
+            "  AND COALESCE(styleqml, '') <> '' "
+            "  AND ("
+            "    COALESCE(f_geometry_column, '') = :geometry_column "
+            "    OR COALESCE(f_geometry_column, '') = ''"
+            "  ) "
+            "ORDER BY "
+            "  CASE WHEN useasdefault THEN 0 ELSE 1 END, "
+            "  CASE WHEN COALESCE(f_geometry_column, '') = :geometry_column THEN 0 ELSE 1 END, "
+            "  update_time DESC NULLS LAST, "
+            "  id DESC "
+            "LIMIT 1"
+        ):
+            return ""
+        query.bindValue(":schema", table_schema)
+        query.bindValue(":table_name", table_name)
+        query.bindValue(":geometry_column", geometry_column)
+        if not query.exec_() or not query.next():
+            return ""
+        return str(query.value(0) or "").strip()
+
+    def _provider_style_xml_candidates(self, provider_registry, provider_key: str, uri: str) -> List[str]:
+        styles: List[str] = []
+        for loader_name in ("loadStoredStyle", "loadStyle"):
+            loader = getattr(provider_registry, loader_name, None)
+            if not callable(loader):
+                continue
+            try:
+                if loader_name == "loadStoredStyle":
+                    style_result = loader(provider_key, uri, "", "")
+                else:
+                    style_result = loader(provider_key, uri, "")
+            except Exception:
+                style_result = ""
+            self._append_style_xml(styles, style_result)
+
+        list_styles = getattr(provider_registry, "listStyles", None)
+        get_style_by_id = getattr(provider_registry, "getStyleById", None)
+        if callable(list_styles) and callable(get_style_by_id):
+            ids: List[str] = []
+            names: List[str] = []
+            descriptions: List[str] = []
+            try:
+                result = list_styles(provider_key, uri, ids, names, descriptions, "")
+            except Exception:
+                result = -1
+            style_ids = ids
+            if isinstance(result, tuple):
+                for value in result:
+                    if isinstance(value, (list, tuple)) and value:
+                        style_ids = [str(item) for item in value]
+                        break
+            if style_ids:
+                for style_id in style_ids:
+                    try:
+                        style_result = get_style_by_id(provider_key, uri, str(style_id), "")
+                    except Exception:
+                        style_result = ""
+                    self._append_style_xml(styles, style_result)
+        return styles
+
+    def _append_style_xml(self, styles: List[str], style_result):
+        if isinstance(style_result, tuple):
+            values = style_result
+        else:
+            values = (style_result,)
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            style_xml = value.strip()
+            if "<qgis" in style_xml[:500].lower() and style_xml not in styles:
+                styles.append(style_xml)
+
+    def _apply_style_xml(self, layer: QgsVectorLayer, style_xml: str) -> bool:
+        if not style_xml:
+            return False
+        try:
+            layer_style = QgsMapLayerStyle(style_xml)
+            if not layer_style.isValid() or not layer_style.writeToLayer(layer):
+                return False
+            try:
+                layer.triggerRepaint()
+            except Exception:
+                pass
+            return True
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return False
+
+    def _style_result_is_success(self, result) -> bool:
+        if isinstance(result, tuple) and len(result) >= 2:
+            ok = bool(result[1])
+            if ok:
+                return True
+        elif isinstance(result, bool):
+            return bool(result)
+        if isinstance(result, tuple) and result:
+            for value in result:
+                if isinstance(value, bool):
+                    return value
+        return False
+
+    def _layer_error_text(self, layer: Optional[QgsVectorLayer]) -> str:
+        if layer is None:
+            return ""
+        for attr_name in ("error", "lastError"):
+            getter = getattr(layer, attr_name, None)
+            if not callable(getter):
+                continue
+            try:
+                error_obj = getter()
+            except Exception:
+                continue
+            if error_obj is None:
+                continue
+            for text_attr in ("summary", "message", "text"):
+                text_getter = getattr(error_obj, text_attr, None)
+                if not callable(text_getter):
+                    continue
+                try:
+                    text = str(text_getter() or "").strip()
+                except Exception:
+                    text = ""
+                if text:
+                    return text
+        return ""
+
+    def _materialize_integration_text_layer(
+        self,
+        df: pd.DataFrame,
+        descriptor: Dict,
+    ) -> Optional[QgsVectorLayer]:
         base_name = (descriptor.get("display_name") or "Tabela externa").strip()
         if not base_name:
             base_name = "Tabela externa"
@@ -1351,152 +2248,33 @@ class SummarizerDialog(QDialog):
         return layer
 
     def _build_dataframe_summary(self, df: pd.DataFrame, descriptor: Dict) -> Dict:
-        numeric_columns = [col for col in df.columns if ptypes.is_numeric_dtype(df[col])]
-        stats = {
-            "total": 0.0,
-            "count": int(len(df)),
-            "average": 0.0,
-            "min": 0.0,
-            "max": 0.0,
-            "median": 0.0,
-            "std_dev": 0.0,
-        }
-        percentiles = {}
+        return _summary_build_dataframe_summary(df, descriptor)
 
-        if numeric_columns:
-            series = pd.to_numeric(df[numeric_columns[0]], errors="coerce").dropna()
-            if not series.empty:
-                stats.update(
-                    {
-                        "total": float(series.sum()),
-                        "average": float(series.mean()),
-                        "min": float(series.min()),
-                        "max": float(series.max()),
-                        "median": float(series.median()),
-                        "std_dev": float(series.std()),
-                    }
-                )
-                percentiles = {
-                    "p25": float(series.quantile(0.25)),
-                    "p50": float(series.quantile(0.50)),
-                    "p75": float(series.quantile(0.75)),
-                    "p90": float(series.quantile(0.90)),
-                    "p95": float(series.quantile(0.95)),
-                }
-
-        metadata = {
-            "layer_name": descriptor.get("display_name", "Dados externos"),
-            "layer_id": descriptor.get("layer_id", ""),
-            "field_name": numeric_columns[0] if numeric_columns else "-",
-            "timestamp": descriptor.get("timestamp", datetime.now().isoformat()),
-            "total_features": len(df),
-            "source": descriptor.get("connector"),
-            "filter_expression": descriptor.get("filter_expression", ""),
-        }
-
-        return {
-            "basic_stats": stats,
-            "grouped_data": {},
-            "percentiles": percentiles,
-            "metadata": metadata,
-            "filter_description": "Nenhum",
-            "raw_data": {
-                "columns": list(df.columns),
-                "rows": df.to_dict(orient="records"),
-            },
-        }
-
-    def _create_memory_table_from_dataframe(self, df: pd.DataFrame, descriptor: Dict) -> Optional[QgsVectorLayer]:
-        try:
-            base_name = (descriptor.get("display_name") or "Tabela externa").strip()
-            if not base_name:
-                base_name = "Tabela externa"
-            layer_name = self._unique_layer_name(base_name)
-            layer, error_message = self._create_layer_from_dataframe(
-                df,
-                layer_name,
-                with_geometry=False,
-                geometry_layer=None,
-            )
-            if layer is None:
-                if error_message:
-                    QgsMessageLog.logMessage(
-                        f"Falha ao criar tabela de integração: {error_message}",
-                        "Summarizer",
-                        Qgis.Warning,
-                    )
-                return None
-            return self._add_layer_to_project(layer)
-        except Exception:
-            return None
+    def _create_memory_table_from_dataframe(
+        self,
+        df: pd.DataFrame,
+        descriptor: Dict,
+    ) -> Optional[QgsVectorLayer]:
+        return _summary_create_memory_table_from_dataframe(
+            df,
+            descriptor,
+            unique_layer_name_fn=self._unique_layer_name,
+            create_layer_from_dataframe_fn=self._create_layer_from_dataframe,
+            add_layer_to_project_fn=self._add_layer_to_project,
+        )
 
     def _map_series_to_variant(self, series: pd.Series) -> QVariant.Type:
-        if ptypes.is_integer_dtype(series):
-            return QVariant.LongLong
-        if ptypes.is_float_dtype(series):
-            return QVariant.Double
-        if ptypes.is_bool_dtype(series):
-            return QVariant.Bool
-        if ptypes.is_datetime64_any_dtype(series):
-            return QVariant.DateTime
-        return QVariant.String
+        return _summary_map_series_to_variant(series)
 
     def load_layers(self):
         """QgsMapLayerComboBox já lida automaticamente com as camadas."""
         pass
 
     def _build_geometry_lookup(self, layer: QgsVectorLayer, id_series: pd.Series):
-        if layer is None or not layer.isValid():
-            return {}
-        if id_series is None or id_series.empty:
-            return {}
-        try:
-            unique_ids = id_series.dropna().unique().tolist()
-        except Exception:
-            return {}
-        candidate_ids = []
-        for raw in unique_ids:
-            if pd.isna(raw):
-                continue
-            try:
-                candidate_ids.append(int(float(raw)))
-            except Exception:
-                try:
-                    candidate_ids.append(int(str(raw)))
-                except Exception:
-                    continue
-        if not candidate_ids:
-            return {}
-        lookup = {}
-        request = QgsFeatureRequest()
-        request.setFilterFids(candidate_ids)
-        try:
-            for feature in layer.getFeatures(request):
-                try:
-                    lookup[int(feature.id())] = feature.geometry().clone()
-                except Exception:
-                    log_exception("falha opcional ignorada")
-        except Exception:
-            return {}
-        return lookup
+        return _summary_build_geometry_lookup(layer, id_series, log_exception)
 
     def _geometry_from_lookup(self, fid_value, geometry_lookup):
-        if fid_value is None or pd.isna(fid_value):
-            return None
-        try:
-            fid = int(float(fid_value))
-        except Exception:
-            try:
-                fid = int(str(fid_value))
-            except Exception:
-                return None
-        geometry = geometry_lookup.get(fid)
-        if geometry is None:
-            return None
-        try:
-            return geometry.clone()
-        except Exception:
-            return QgsGeometry(geometry)
+        return _summary_geometry_from_lookup(fid_value, geometry_lookup)
 
     def _create_layer_from_dataframe(
         self,
@@ -1505,225 +2283,44 @@ class SummarizerDialog(QDialog):
         with_geometry: bool,
         geometry_layer: Optional[QgsVectorLayer] = None,
     ):
-        if df is None or df.empty:
-            return None, "Nenhum dado disponível para materializar."
-
-        display_columns = [c for c in df.columns if c not in PROTECTED_COLUMNS_DEFAULT]
-        if not display_columns:
-            return None, "Nenhuma coluna disponível após proteger os campos internos."
-
-        qfields = QgsFields()
-        field_mapping = {}
-        existing_names = []
-        for column in display_columns:
-            try:
-                variant = self._variant_type_for_series(df[column])
-            except Exception:
-                variant = QVariant.String
-            safe_name = self._make_unique_field_name(existing_names, column)
-            qfields.append(QgsField(safe_name, variant))
-            field_mapping[column] = safe_name
-            existing_names.append(safe_name)
-
-        geometry_lookup = {}
-        geometry_column_available = False
-        geom_type = None
-        crs_authid = ""
-
-        if with_geometry:
-            if "__geometry_wkb" in df.columns:
-                try:
-                    geometry_column_available = df["__geometry_wkb"].notna().any()
-                except Exception:
-                    geometry_column_available = False
-
-            if geometry_layer is not None and geometry_layer.isValid():
-                geom_type = QgsWkbTypes.displayString(geometry_layer.wkbType())
-                try:
-                    crs_authid = geometry_layer.crs().authid()
-                except Exception:
-                    crs_authid = ""
-
-            if "__target_feature_id" in df.columns and geometry_layer is not None and geometry_layer.isValid():
-                geometry_lookup = self._build_geometry_lookup(geometry_layer, df["__target_feature_id"])
-                if geometry_lookup:
-                    geometry_column_available = True
-                    if geom_type is None:
-                        geom_type = QgsWkbTypes.displayString(geometry_layer.wkbType())
-                        try:
-                            crs_authid = geometry_layer.crs().authid()
-                        except Exception:
-                            crs_authid = ""
-
-            if geom_type is None and geometry_column_available:
-                sample_hex = None
-                try:
-                    for raw in df["__geometry_wkb"]:
-                        if isinstance(raw, str) and raw:
-                            sample_hex = raw
-                            break
-                except Exception:
-                    sample_hex = None
-                if sample_hex:
-                    try:
-                        sample_geom = QgsGeometry.fromWkb(bytes.fromhex(sample_hex))
-                        geom_type = QgsWkbTypes.displayString(sample_geom.wkbType())
-                    except Exception:
-                        geom_type = None
-
-            if not geometry_column_available:
-                return None, "Os dados atuais não possuem geometria disponível."
-            if geom_type is None:
-                return None, "Não foi possível determinar o tipo de geometria."
-
-        uri = "None"
-        if with_geometry:
-            uri = geom_type if not crs_authid else f"{geom_type}?crs={crs_authid}"
-
-        temp_layer = QgsVectorLayer(uri, layer_name, "memory")
-        if not temp_layer or not temp_layer.isValid():
-            return None, "Não foi possível criar a camada em memória."
-
-        provider = temp_layer.dataProvider()
-        if not provider.addAttributes(qfields):
-            return None, "Falha ao definir os campos da camada."
-        temp_layer.updateFields()
-
-        features = []
-        for _, row in df.iterrows():
-            feature = QgsFeature(temp_layer.fields())
-            if with_geometry:
-                geometry = None
-                geom_hex = row.get("__geometry_wkb") if "__geometry_wkb" in df.columns else None
-                if isinstance(geom_hex, str) and geom_hex:
-                    try:
-                        geometry = QgsGeometry.fromWkb(bytes.fromhex(geom_hex))
-                    except Exception:
-                        geometry = None
-                if geometry is None and geometry_lookup:
-                    geometry = self._geometry_from_lookup(row.get("__target_feature_id"), geometry_lookup)
-                if geometry is None:
-                    continue
-                try:
-                    feature.setGeometry(geometry)
-                except Exception:
-                    continue
-            attrs = []
-            for column in display_columns:
-                attrs.append(self._python_value(row[column]))
-            feature.setAttributes(attrs)
-            features.append(feature)
-
-        if not features:
-            return None, "Nenhuma feição gerada a partir dos dados filtrados."
-
-        if not provider.addFeatures(features):
-            return None, "Falha ao adicionar as feições na camada."
-
-        temp_layer.updateExtents()
-        return temp_layer, None
+        return _summary_create_layer_from_dataframe(
+            df,
+            layer_name,
+            with_geometry,
+            geometry_layer=geometry_layer,
+            protected_columns=PROTECTED_COLUMNS_DEFAULT,
+            log_exception=log_exception,
+        )
 
     def _export_layer_to_gpkg(self, layer: QgsVectorLayer, path: str, layer_name: str):
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = "GPKG"
-        options.layerName = layer_name
-        options.fileEncoding = "UTF-8"
-        options.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
-        context = QgsProject.instance().transformContext()
-        result = QgsVectorFileWriter.writeAsVectorFormatV2(layer, path, context, options)
-        error = result[0] if isinstance(result, (list, tuple)) else result
-        message = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else ""
-        if error != QgsVectorFileWriter.NoError:
-            return False, message
-        return True, ""
+        return _summary_export_layer_to_gpkg(layer, path, layer_name)
 
     def _variant_type_for_series(self, series: pd.Series) -> QVariant.Type:
-        try:
-            if ptypes.is_bool_dtype(series):
-                return QVariant.Bool
-            if ptypes.is_integer_dtype(series):
-                return QVariant.LongLong
-            if ptypes.is_float_dtype(series):
-                return QVariant.Double
-            if ptypes.is_datetime64_any_dtype(series):
-                return QVariant.DateTime
-        except Exception:
-            log_exception("falha opcional ignorada")
-        return QVariant.String
+        return _summary_variant_type_for_series(series)
 
     def _python_value(self, value):
-        if pd.isna(value):
-            return None
-        if isinstance(value, (np.integer,)):
-            return int(value)
-        if isinstance(value, (np.floating,)):
-            return float(value)
-        if isinstance(value, pd.Timestamp):
-            return value.to_pydatetime()
-        if isinstance(value, np.bool_):
-            return bool(value)
-        return value
+        return _summary_python_value(value)
 
     def _format_comparison_values(self, values):
-        formatted = []
-        for value in values:
-            if not self._is_meaningful_value(value):
-                formatted.append("(vazio)")
-            else:
-                formatted.append(str(value))
-        return ", ".join(formatted)
+        return _summary_format_comparison_values(values, self._is_meaningful_value)
 
     def _sanitize_field_name(self, raw_name: str) -> str:
-        if not raw_name:
-            raw_name = "resultado"
-        sanitized = re.sub(r"\W+", "_", raw_name).strip("_")
-        if not sanitized:
-            sanitized = "resultado"
-        if sanitized[0].isdigit():
-            sanitized = f"f_{sanitized}"
-        return sanitized[:30]
+        return _summary_sanitize_field_name(raw_name)
 
     def _make_unique_field_name(self, existing_names, base_name: str) -> str:
-        sanitized = self._sanitize_field_name(base_name)
-        candidate = sanitized
-        counter = 1
-        existing = set(existing_names)
-        while candidate in existing:
-            counter += 1
-            candidate = f"{sanitized}_{counter}"
-        return candidate
+        return _summary_make_unique_field_name(existing_names, base_name)
 
     def _unique_layer_name(self, base_name: str) -> str:
-        base = base_name.strip() if base_name else "Camada_Resultado"
-        if not base:
-            base = "Camada_Resultado"
         existing_names = {
             layer.name() for layer in QgsProject.instance().mapLayers().values()
         }
-        candidate = base
-        counter = 1
-        while candidate in existing_names:
-            counter += 1
-            candidate = f"{base} ({counter})"
-        return candidate
+        return _summary_unique_layer_name(base_name, existing_names)
 
     def _is_meaningful_value(self, value) -> bool:
-        if value is None:
-            return False
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return False
-            return stripped.lower() not in {"null", "none"}
-        return True
+        return _summary_is_meaningful_value(value)
 
     def _filter_empty_matches(self, matches):
-        filtered = {}
-        for key, values in matches.items():
-            meaningful_values = [value for value in values if self._is_meaningful_value(value)]
-            if meaningful_values:
-                filtered[key] = meaningful_values
-        return filtered
+        return _summary_filter_empty_matches(matches)
 
     def on_layer_changed(self):
         layer = self.ui.layer_combo.currentLayer()
@@ -1803,37 +2400,14 @@ class SummarizerDialog(QDialog):
     ):
         field_index = layer.fields().indexFromName(field_name)
         group_index = layer.fields().indexFromName(group_field) if group_field else -1
-        filter_index = layer.fields().indexFromName(filter_field) if filter_field else -1
 
         request = QgsFeatureRequest()
         filter_description = "Nenhum"
+        filter_expression = ""
         if filter_field and filter_value:
             filter_description = f'{filter_field} contém "{filter_value}"'
-            expression = f'"{filter_field}" ILIKE \'%{filter_value}%\''
-            request.setFilterExpression(expression)
-
-        summary = {
-            "basic_stats": {
-                "total": 0.0,
-                "count": 0,
-                "average": 0.0,
-                "min": float("inf"),
-                "max": float("-inf"),
-                "median": 0.0,
-                "std_dev": 0.0,
-            },
-            "grouped_data": {},
-            "percentiles": {},
-            "metadata": {
-                "layer_name": layer.name(),
-                "layer_id": layer.id(),
-                "field_name": field_name,
-                "timestamp": datetime.now().isoformat(),
-                "total_features": layer.featureCount(),
-                "filter_expression": expression if filter_field and filter_value else "",
-            },
-            "filter_description": filter_description,
-        }
+            filter_expression = f'"{filter_field}" ILIKE \'%{filter_value}%\''
+            request.setFilterExpression(filter_expression)
 
         if field_index < 0:
             raise ValueError(f"Campo numérico '{field_name}' não encontrado na camada.")
@@ -1859,326 +2433,72 @@ class SummarizerDialog(QDialog):
                 continue
 
             values.append(numeric_value)
-            summary["basic_stats"]["total"] += numeric_value
-            summary["basic_stats"]["min"] = min(
-                summary["basic_stats"]["min"], numeric_value
-            )
-            summary["basic_stats"]["max"] = max(
-                summary["basic_stats"]["max"], numeric_value
-            )
 
             if group_index != -1:
                 group_value = feature[group_index]
                 grouped_values.setdefault(group_value, []).append(numeric_value)
 
-        if values:
-            n = len(values)
-            sorted_vals = sorted(values)
-
-            summary["basic_stats"]["count"] = n
-            summary["basic_stats"]["average"] = summary["basic_stats"]["total"] / n
-
-            if n % 2 == 0:
-                summary["basic_stats"]["median"] = (
-                    sorted_vals[n // 2 - 1] + sorted_vals[n // 2]
-                ) / 2
-            else:
-                summary["basic_stats"]["median"] = sorted_vals[n // 2]
-
-            mean = summary["basic_stats"]["average"]
-            variance = sum((x - mean) ** 2 for x in values) / n
-            summary["basic_stats"]["std_dev"] = variance ** 0.5
-
-            summary["percentiles"] = {
-                "p25": np.percentile(sorted_vals, 25),
-                "p50": np.percentile(sorted_vals, 50),
-                "p75": np.percentile(sorted_vals, 75),
-                "p90": np.percentile(sorted_vals, 90),
-                "p95": np.percentile(sorted_vals, 95),
-            }
-        else:
-            summary["basic_stats"]["min"] = 0.0
-            summary["basic_stats"]["max"] = 0.0
-
-        for group, numbers in grouped_values.items():
-            if not numbers:
-                continue
-
-            group_sum = sum(numbers)
-            summary["grouped_data"][str(group)] = {
-                "count": len(numbers),
-                "sum": group_sum,
-                "average": group_sum / len(numbers),
-                "min": min(numbers),
-                "max": max(numbers),
-                "percentage": (
-                    (group_sum / summary["basic_stats"]["total"]) * 100
-                    if summary["basic_stats"]["total"]
-                    else 0.0
-                ),
-            }
-
-        summary["raw_data"] = {"columns": field_names, "rows": raw_rows}
-
-        return summary
+        return _summary_calculate_advanced_summary(
+            layer_name=layer.name(),
+            layer_id=layer.id(),
+            field_name=field_name,
+            field_names=field_names,
+            raw_rows=raw_rows,
+            values=values,
+            grouped_values=grouped_values,
+            filter_description=filter_description,
+            filter_expression=filter_expression,
+            timestamp=datetime.now().isoformat(),
+            total_features=layer.featureCount(),
+        )
 
     def display_advanced_summary(self, summary_data):
         pivot = getattr(self, "pivot_widget", None)
+        fallback_html = _summary_build_unavailable_html(
+            _rt_runtime("Não foi possível exibir a tabela dinâmica para estes dados.")
+        )
         if pivot is not None:
             try:
-                pivot.set_summary_data(summary_data)
-                self._set_results_view("pivot")
-                return
+                if _summary_display_advanced_summary(
+                    pivot,
+                    summary_data,
+                    set_results_view=self._set_results_view,
+                ):
+                    return
             except Exception as exc:
                 QMessageBox.warning(
                     self,
                     "Tabela dinamica",
                     f"Não foi possível atualizar a tabela dinâmica: {exc}",
                 )
-                self._set_results_view("message")
-                self.show_results_message(
-                    "<p style='margin:8px 0;'>Não foi possível exibir a tabela dinâmica para estes dados.</p>"
+                _summary_show_results_message(
+                    getattr(self, "summary_message_widget", None),
+                    fallback_html,
+                    set_results_view=self._set_results_view,
                 )
                 return
 
-        self._set_results_view("message")
-        self.show_results_message(
-            "<p style='margin:8px 0;'>Não foi possível exibir a tabela dinâmica para estes dados.</p>"
+        _summary_show_results_message(
+            getattr(self, "summary_message_widget", None),
+            fallback_html,
+            set_results_view=self._set_results_view,
         )
         return
 
     def _escape_html(self, text: str) -> str:
-        if text is None:
-            return ""
-        return (
-            str(text)
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&#39;")
-        )
+        return _summary_escape_html(text)
 
     def update_charts_preview(self, summary_data):
         if not hasattr(self.ui, "chart_preview_text"):
             return
-        pivot_widget = getattr(self, "pivot_widget", None)
-        if pivot_widget is not None and hasattr(pivot_widget, "get_current_pivot_result"):
-            try:
-                pivot_result = pivot_widget.get_current_pivot_result()
-            except Exception:
-                pivot_result = None
-            if pivot_result is not None:
-                metadata = dict(getattr(pivot_result, "metadata", {}) or {})
-                grouped_data = {}
-                totals_source = pivot_result.row_totals or pivot_result.column_totals or {}
-                grand_total = float(pivot_result.grand_total or 0.0)
-                for key, value in totals_source.items():
-                    if value is None:
-                        continue
-                    label = " / ".join(str(item) for item in (key or ()) if item not in (None, ""))
-                    label = label or "Total"
-                    numeric_value = float(value)
-                    grouped_data[label] = {
-                        "sum": numeric_value,
-                        "percentage": (numeric_value / grand_total * 100) if grand_total else 0.0,
-                    }
-                summary_data = dict(summary_data or {})
-                summary_data["grouped_data"] = grouped_data
-                basic_stats = dict(summary_data.get("basic_stats") or {})
-                basic_stats["total"] = grand_total
-                summary_data["basic_stats"] = basic_stats
-                merged_metadata = dict(summary_data.get("metadata") or {})
-                merged_metadata.update(
-                    {
-                        "layer_name": metadata.get("layer_name", merged_metadata.get("layer_name", "-")),
-                        "field_name": metadata.get("value_field", merged_metadata.get("field_name", "-")),
-                    }
-                )
-                summary_data["metadata"] = merged_metadata
-        grouped = summary_data.get("grouped_data") or {}
-        layer_name = summary_data.get("metadata", {}).get("layer_name", "-")
-        field_name = summary_data.get("metadata", {}).get("field_name", "-")
-        stats = summary_data.get("basic_stats", {})
-
-        timestamp_str = summary_data.get("metadata", {}).get("timestamp")
-        try:
-            human_ts = datetime.fromisoformat(timestamp_str).strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            human_ts = datetime.now().strftime("%d/%m/%Y %H:%M")
-
-        total_label = f"{stats.get('total', 0):,.2f}"
-
-        if not grouped:
-            empty_html = f"""
-            <div class="preview-card empty">
-                <div class="preview-header">
-                    <h2>Distribuição percentual dos grupos – "{self._escape_html(field_name)}" em {self._escape_html(layer_name)}</h2>
-                    <div class="meta-grid">
-                        <div class="meta-item">
-                            <span class="meta-label">Camada</span>
-                            <span class="meta-value">{self._escape_html(layer_name)}</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Campo numérico</span>
-                            <span class="meta-value">{self._escape_html(field_name)}</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Total geral</span>
-                            <span class="meta-value">{total_label}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="empty-body">
-                    Nenhum agrupamento disponível para exibir.
-                </div>
-                <div class="preview-footer">Gerado em: {human_ts}</div>
-            </div>
-            """
-            self.ui.chart_preview_text.setHtml(
-                apply_result_style(empty_html) + self._chart_preview_style_block()
-            )
-            return
-
-        sorted_groups = sorted(
-            grouped.items(), key=lambda item: item[1].get("percentage", 0), reverse=True
-        )
-
-        labels = [
-            "Sem valor" if key in (None, "") else str(key) for key, _ in sorted_groups
-        ]
-        values = [max(data.get("percentage", 0.0), 0.0) for _, data in sorted_groups]
-
-        chart_html = ""
-        if values and max(values) > 0:
-            height_px = max(320, int(len(values) * 38 + 120))
-            width_px = 780
-            image = QImage(width_px, height_px, QImage.Format_ARGB32)
-            theme = VisualTheme()
-            image.fill(theme.bg)
-            painter = QPainter(image)
-            painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
-            definition = VisualDefinition(
-                tipo="barra",
-                categorias=labels,
-                valores=values,
-                titulo="% do total",
-            )
-            BarChartRenderer().render(painter, QRectF(0, 0, width_px, height_px), definition, theme)
-            painter.end()
-            buffer = QBuffer()
-            buffer.open(QBuffer.ReadWrite)
-            image.save(buffer, "PNG")
-            encoded = base64.b64encode(bytes(buffer.data())).decode("utf-8")
-            chart_html = (
-                f'<img class="preview-chart" src="data:image/png;base64,{encoded}" '
-                'alt="Distribuicao percentual dos grupos">'
-            )
-
-        html = f"""
-        <div class="preview-card">
-            <div class="preview-header">
-                <h2>Distribuicao percentual dos grupos - "{self._escape_html(field_name)}" em {self._escape_html(layer_name)}</h2>
-                <div class="meta-grid">
-                    <div class="meta-item">
-                        <span class="meta-label">Camada</span>
-                        <span class="meta-value">{self._escape_html(layer_name)}</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Campo numerico</span>
-                        <span class="meta-value">{self._escape_html(field_name)}</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Total geral</span>
-                        <span class="meta-value">{total_label}</span>
-                    </div>
-                </div>
-            </div>
-            <div class="groups-wrapper">
-                {chart_html or '<div class="empty-body">Nenhum agrupamento disponível para exibir.</div>'}
-            </div>
-            <div class="preview-footer">Gerado em: {human_ts}</div>
-        </div>
-        """
-
-        self.ui.chart_preview_text.setHtml(
-            apply_result_style(html) + self._chart_preview_style_block()
+        _summary_update_charts_preview(
+            self.ui.chart_preview_text,
+            summary_data,
+            pivot_widget=getattr(self, "pivot_widget", None),
         )
 
     def _chart_preview_style_block(self) -> str:
-        return """
-        <style>
-            .preview-card {
-                background: #f5f6fb;
-                border: 1px solid #e3e7f1;
-                border-radius: 0px;
-                padding: 18px 22px;
-                display: flex;
-                flex-direction: column;
-                gap: 18px;
-            }
-            .preview-card.empty {
-                gap: 24px;
-            }
-            .preview-header h2 {
-                margin: 0 0 12px 0;
-                font-size: 18px;
-                color: #1d2a4b;
-            }
-            .meta-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 10px;
-            }
-            .meta-item {
-                background: #ffffff;
-                border-radius: 0px;
-                border: 1px solid #e6eaf4;
-                padding: 10px 12px;
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-            }
-            .meta-label {
-                font-size: 10pt;
-                color: #64748b;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            .meta-value {
-                font-size: 12pt;
-                font-weight: 600;
-                color: #1d2a4b;
-            }
-            .groups-wrapper {
-                display: flex;
-                justify-content: center;
-                padding: 4px;
-            }
-            .preview-chart {
-                max-width: 100%;
-                background: rgba(255, 255, 255, 0.7);
-                border-radius: 0px;
-                padding: 6px;
-                border: 1px solid #e6eaf4;
-            }
-            .preview-footer {
-                margin-top: 8px;
-                font-size: 10pt;
-                color: #7b8794;
-                text-align: right;
-            }
-            .empty-body {
-                background: #ffffff;
-                border-radius: 0px;
-                border: 1px dashed #d2d8e6;
-                padding: 18px;
-                text-align: center;
-                color: #7b8794;
-                font-size: 11pt;
-            }
-        </style>
-        """
+        return _summary_chart_preview_style_block()
 
     def open_export_tab(self):
         try:
@@ -2193,68 +2513,28 @@ class SummarizerDialog(QDialog):
             )
 
     def _current_export_format(self):
-        text = self.ui.export_format_combo.currentText()
-        return self.export_formats.get(text, next(iter(self.export_formats.values())))
+        return SummaryExportController(self).current_export_format()
 
     def _strip_existing_timestamp(self, base_path: str) -> str:
-        if self._timestamp_pattern.search(base_path):
-            return self._timestamp_pattern.sub("", base_path)
-        return base_path
+        return SummaryExportController(self).strip_existing_timestamp(base_path)
 
     def _normalize_filename_component(self, value: str) -> str:
-        if not value:
-            return ""
-        normalized = "".join(
-            ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value.strip()
-        )
-        return normalized.strip("_")
+        return SummaryExportController(self).normalize_filename_component(value)
 
     def _build_default_export_basename(self, summary_data):
-        metadata = summary_data.get("metadata", {})
-        layer_part = self._normalize_filename_component(metadata.get("layer_name", ""))
-        field_part = self._normalize_filename_component(metadata.get("field_name", ""))
-        parts = [part for part in (layer_part, field_part) if part]
-        return "_".join(parts) if parts else "resumo_summarizer"
+        return SummaryExportController(self).build_default_export_basename(summary_data)
 
     def _set_export_path(self, path: str):
-        base, ext = os.path.splitext(path)
-        base = self._strip_existing_timestamp(base)
-        sanitized = base + ext
-        self._export_base_path = base
-        self._updating_export_path = True
-        self.ui.export_path_edit.setText(sanitized)
-        self._updating_export_path = False
+        SummaryExportController(self).set_export_path(path)
 
     def prepare_export_tab_defaults(self, summary_data):
-        if not summary_data:
-            return
-        format_info = self._current_export_format()
-        base_name = self._build_default_export_basename(summary_data)
-        suggested_dir = self.export_manager.export_dir
-        suggested_path = os.path.join(
-            suggested_dir, base_name + format_info["extension"]
-        )
-        self._set_export_path(suggested_path)
+        SummaryExportController(self).prepare_export_tab_defaults(summary_data)
 
     def on_export_format_changed(self):
-        format_info = self._current_export_format()
-        if self._export_base_path:
-            self._set_export_path(self._export_base_path + format_info["extension"])
-        elif self.current_summary_data:
-            self.prepare_export_tab_defaults(self.current_summary_data)
+        SummaryExportController(self).on_export_format_changed()
 
     def on_export_path_edited(self):
-        if self._updating_export_path:
-            return
-        path = self.ui.export_path_edit.text().strip()
-        if not path:
-            self._export_base_path = ""
-            return
-
-        base, _ = os.path.splitext(path)
-        base = self._strip_existing_timestamp(base)
-        format_info = self._current_export_format()
-        self._set_export_path(base + format_info["extension"])
+        SummaryExportController(self).on_export_path_edited()
 
     def _ask_layer_selection(self, layers):
         names = [layer.name() or "Camada sem nome" for layer in layers]
@@ -2335,7 +2615,6 @@ class SummarizerDialog(QDialog):
                 options,
             )
 
-            result = write_output
             error_message = ""
             status = write_output
             if isinstance(write_output, tuple):
@@ -2446,7 +2725,10 @@ class SummarizerDialog(QDialog):
                     log_exception("falha opcional ignorada")
 
         summary_lines = [
-            f"{exported_count} de {len(selected_layers)} camada(s) exportada(s) para GeoPackage em:",
+            (
+                f"{exported_count} de {len(selected_layers)} camada(s) "
+                "exportada(s) para GeoPackage em:"
+            ),
             target_dir,
         ]
 
@@ -2479,7 +2761,7 @@ class SummarizerDialog(QDialog):
 
         directory = QFileDialog.getExistingDirectory(
             self,
-            "Selecionar pasta de destino",
+            _rt_runtime("Selecionar pasta de destino"),
             initial_dir,
         )
 
@@ -2500,61 +2782,10 @@ class SummarizerDialog(QDialog):
         return directory
 
     def choose_export_path(self):
-        format_info = self._current_export_format()
-        initial_path = self.ui.export_path_edit.text().strip()
-        if not initial_path:
-            initial_path = os.path.join(self.export_manager.export_dir, "")
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Selecionar arquivo",
-            initial_path,
-            format_info["filter"],
-        )
-
-        if file_path:
-            base, _ = os.path.splitext(file_path)
-            base = self._strip_existing_timestamp(base)
-            self._set_export_path(base + format_info["extension"])
-            return True
-        return False
+        return SummaryExportController(self).choose_export_path()
 
     def export_results(self):
-        if not self.current_summary_data:
-            QMessageBox.warning(self, "Aviso", "Gere um resumo primeiro!")
-            self.open_export_tab()
-            return
-
-        format_info = self._current_export_format()
-        target_path = self.ui.export_path_edit.text().strip()
-
-        if not target_path:
-            if not self.choose_export_path():
-                QMessageBox.warning(
-                    self, "Aviso", "Selecione o arquivo de destino para exportar."
-                )
-                return
-            target_path = self.ui.export_path_edit.text().strip()
-
-        base, _ = os.path.splitext(target_path)
-        base = self._strip_existing_timestamp(base)
-
-        if self.ui.export_include_timestamp_check.isChecked():
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            export_path = f"{base}_{stamp}{format_info['extension']}"
-        else:
-            export_path = base + format_info["extension"]
-
-        try:
-            self.export_manager.export_data(
-                self.current_summary_data, export_path, format_info["filter"]
-            )
-            QMessageBox.information(
-                self, "Sucesso", f"Dados exportados para:\n{export_path}"
-            )
-            self._set_export_path(base + format_info["extension"])
-        except Exception as exc:
-            QMessageBox.critical(self, "Erro", f"Erro na exportação: {exc}")
+        SummaryExportController(self).export_results()
 
     def _materialize_dataframe_dialog(
         self,
@@ -2568,178 +2799,18 @@ class SummarizerDialog(QDialog):
         memory_prefix: str,
         export_prefix: str,
     ):
-        if df is None or df.empty:
-            QMessageBox.information(self, dialog_title, "Nenhum dado disponível para materializar.")
-            return
-
-        base_name = (base_name or "resultado").strip()
-        if not base_name:
-            base_name = "resultado"
-
-        options = ["Tabela (somente atributos)"]
-        gpkg_label = "Salvar como GPKG"
-        if can_use_geometry:
-            options.append("Camada temporaria (memoria)")
-            options.append(gpkg_label)
-        else:
-            gpkg_label = "Salvar como GPKG (tabela)"
-            options.append(gpkg_label)
-
-        choice, ok = slim_get_item(
+        _summary_materialize_dataframe_dialog(
             self,
+            df,
+            base_name,
+            can_use_geometry,
+            geometry_layer,
+            settings_key,
             dialog_title,
-            "Escolha como deseja materializar o resultado atual:",
-            options,
-            current=0,
+            table_prefix,
+            memory_prefix,
+            export_prefix,
         )
-        if not ok or not choice:
-            return
-
-        if choice.startswith("Tabela"):
-            table_name = self._unique_layer_name(f"{table_prefix} {base_name}".strip())
-            layer, error_message = self._create_layer_from_dataframe(
-                df,
-                table_name,
-                with_geometry=False,
-            )
-            if layer is None:
-                QMessageBox.warning(
-                    self,
-                    dialog_title,
-                    error_message or "Não foi possível gerar a tabela.",
-                )
-                return
-            QgsProject.instance().addMapLayer(layer)
-            QMessageBox.information(
-                self,
-                dialog_title,
-                f"Tabela '{layer.name()}' criada com {layer.featureCount()} registros.",
-            )
-            return
-
-        if choice.startswith("Camada temporaria"):
-            layer_name = self._unique_layer_name(f"{memory_prefix} {base_name}".strip())
-            layer, error_message = self._create_layer_from_dataframe(
-                df,
-                layer_name,
-                with_geometry=True,
-                geometry_layer=geometry_layer,
-            )
-            fallback_note = ""
-            if (
-                layer is None
-                and can_use_geometry
-                and error_message
-                and "Nenhuma feição" in error_message
-            ):
-                layer, error_message = self._create_layer_from_dataframe(
-                    df,
-                    layer_name,
-                    with_geometry=False,
-                    geometry_layer=None,
-                )
-                if layer is not None:
-                    fallback_note = (
-                        "\n\nAs transformacoes removeram as geometrias. "
-                        "Foi criada uma tabela temporaria sem geometria."
-                    )
-            if layer is None:
-                QMessageBox.warning(
-                    self,
-                    dialog_title,
-                    error_message or "Não foi possível criar a camada temporária.",
-                )
-                return
-            QgsProject.instance().addMapLayer(layer)
-            QMessageBox.information(
-                self,
-                dialog_title,
-                f"Camada '{layer.name()}' criada com {layer.featureCount()} feições.{fallback_note}",
-            )
-            return
-
-        if choice.startswith("Salvar como GPKG"):
-            suggested_name = re.sub(r"[^a-zA-Z0-9_\\-]+", "_", base_name).strip("_") or "resultado"
-            last_dir = ""
-            if settings_key:
-                try:
-                    last_dir = QSettings().value(settings_key, "", type=str)
-                except Exception:
-                    last_dir = ""
-            default_path = (
-                os.path.join(last_dir, f"{suggested_name}.gpkg") if last_dir else f"{suggested_name}.gpkg"
-            )
-            path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Salvar GeoPackage",
-                default_path,
-                "GeoPackage (*.gpkg)",
-            )
-            if not path:
-                return
-            directory = os.path.dirname(path)
-            if settings_key and directory:
-                QSettings().setValue(settings_key, directory)
-            if not path.lower().endswith(".gpkg"):
-                path += ".gpkg"
-
-            with_geometry = can_use_geometry and not choice.endswith("(tabela)")
-            export_layer_name = f"{export_prefix} {base_name}".strip() or base_name
-            layer, error_message = self._create_layer_from_dataframe(
-                df,
-                export_layer_name,
-                with_geometry=with_geometry,
-                geometry_layer=geometry_layer,
-            )
-            fallback_note = ""
-            if (
-                layer is None
-                and with_geometry
-                and error_message
-                and "Nenhuma feição" in error_message
-            ):
-                layer, error_message = self._create_layer_from_dataframe(
-                    df,
-                    export_layer_name,
-                    with_geometry=False,
-                    geometry_layer=None,
-                )
-                if layer is not None:
-                    fallback_note = (
-                        "\n\nAs transformacoes removeram as geometrias. "
-                        "O arquivo foi salvo apenas com atributos."
-                    )
-            if layer is None:
-                QMessageBox.warning(
-                    self,
-                    dialog_title,
-                    error_message or "Não foi possível preparar os dados para exportação.",
-                )
-                return
-
-            success, writer_message = self._export_layer_to_gpkg(layer, path, export_layer_name)
-            if not success:
-                QMessageBox.critical(
-                    self,
-                    dialog_title,
-                    writer_message or "Falha ao exportar o GeoPackage.",
-                )
-                return
-
-            try:
-                uri = f"{path}|layername={export_layer_name}"
-                exported_layer = QgsVectorLayer(uri, export_layer_name, "ogr")
-                if exported_layer and exported_layer.isValid():
-                    QgsProject.instance().addMapLayer(exported_layer)
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-            final_message = f"Arquivo GeoPackage salvo em:\n{path}{fallback_note}"
-            QMessageBox.information(
-                self,
-                dialog_title,
-                final_message,
-            )
 
     def show_dashboard(self):
         self._set_ribbon_visible(False)
@@ -2757,10 +2828,6 @@ class SummarizerDialog(QDialog):
             return
 
         try:
-            pivot_result = None
-            if hasattr(pivot_widget, "get_current_pivot_result"):
-                pivot_result = pivot_widget.get_current_pivot_result()
-            pivot_df = pivot_widget.get_visible_pivot_dataframe()
             raw_df = getattr(pivot_widget, "raw_df", None)
             metadata = pivot_widget.get_summary_metadata()
             config = pivot_widget.get_current_configuration()
@@ -2781,14 +2848,32 @@ class SummarizerDialog(QDialog):
             )
             return
 
-        if pivot_result is not None and hasattr(dashboard_widget, "set_pivot_result"):
-            dashboard_widget.set_pivot_result(pivot_result)
-        elif raw_df is not None and not getattr(raw_df, "empty", True):
-            dashboard_widget.set_pivot_data(raw_df, metadata, config)
-        else:
-            dashboard_widget.set_pivot_data(pivot_df, metadata, config)
         dashboard_widget.show()
         dashboard_widget.raise_()
+
+        def _populate_dashboard():
+            try:
+                if hasattr(pivot_widget, "get_current_pivot_result"):
+                    pivot_result = pivot_widget.get_current_pivot_result()
+                else:
+                    pivot_result = None
+                if pivot_result is not None and hasattr(
+                    dashboard_widget, "set_pivot_result"
+                ):
+                    dashboard_widget.set_pivot_result(pivot_result)
+                elif raw_df is not None and not getattr(raw_df, "empty", True):
+                    dashboard_widget.set_pivot_data(raw_df, metadata, config)
+                else:
+                    pivot_df = pivot_widget.get_visible_pivot_dataframe()
+                    dashboard_widget.set_pivot_data(pivot_df, metadata, config)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    "Dashboard",
+                    f"NÃ£o foi possÃ­vel obter os dados filtrados da tabela dinÃ¢mica: {exc}",
+                )
+
+        QTimer.singleShot(0, _populate_dashboard)
 
     def show_about_dialog(self):
         dialog = SlimDialogBase(self, geometry_key="Summarizer/dialogs/about")
@@ -2802,7 +2887,10 @@ class SummarizerDialog(QDialog):
         layout.addWidget(title)
 
         body = QLabel(
-            _rt_runtime("Resumo e exportação de camadas do QGIS com visual focado em análise e relatórios."),
+            _rt_runtime(
+                "Resumo e exportação de camadas do QGIS com visual focado em "
+                "análise e relatórios."
+            ),
             dialog,
         )
         body.setWordWrap(True)
@@ -2836,19 +2924,33 @@ class GetDataDialog(QDialog):
     def __init__(self, host, parent=None):
         super().__init__(parent)
         self.host = host
+        self.setProperty("walkerDialog", True)
         self.setWindowTitle(_rt_runtime("Obter Dados"))
         self.resize(680, 420)
         self._datasets: list = []
         self._build_ui()
+        install_walker_modal_chrome(self)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        title = QLabel(_rt_runtime("Obter Dados"), self)
+        title.setObjectName("WalkerDialogTitle")
+        header.addWidget(title, 1)
+        add_walker_close_button(header, self)
+        layout.addLayout(header)
+
         info = QLabel(
             _rt_runtime("Escolha a fonte de dados disponível para importar.")
-            + _rt_runtime("As tabelas selecionadas serão adicionadas ao modelo sem abrir camadas no mapa.")
+            + _rt_runtime(
+                "As tabelas selecionadas serão adicionadas ao modelo sem abrir "
+                "camadas no mapa."
+            )
         )
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -2880,7 +2982,12 @@ class GetDataDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        apply_walker_buttons(
+            primary=[buttons.button(QDialogButtonBox.Ok), self.db_import_btn],
+            secondary=[buttons.button(QDialogButtonBox.Cancel)],
+        )
         layout.addWidget(buttons)
+        self.setStyleSheet(WALKER_DIALOG_STYLE)
 
         self._on_source_changed(0)
         _apply_i18n_widgets(self)
@@ -2901,11 +3008,18 @@ class GetDataDialog(QDialog):
             return
         df, metadata, connection_meta, session_connection = dialog.result()
         if df is None or df.empty:
-            QMessageBox.information(self, _rt_runtime("Banco"), _rt_runtime("Nenhuma tabela carregada."))
+            QMessageBox.information(
+                self,
+                _rt_runtime("Banco"),
+                _rt_runtime("Nenhuma tabela carregada."),
+            )
             return
         self._datasets.append((df, metadata or {"connector": "PostgreSQL"}))
         self.db_status.setText(
-            _rt_runtime("Tabela carregada: {display_name}", display_name=metadata.get("display_name"))
+            _rt_runtime(
+                "Tabela carregada: {display_name}",
+                display_name=metadata.get("display_name"),
+            )
         )
         # Replica conexão no Navegador, se houver
         if connection_meta:
@@ -2922,7 +3036,3 @@ class GetDataDialog(QDialog):
     # ------------------------------------------------------------------ API
     def results(self) -> List:
         return list(self._datasets)
-
-
-
-

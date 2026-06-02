@@ -1,14 +1,15 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from functools import partial
-import json
 import re
-import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
-from qgis.PyQt.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QMimeData, QRect, QRegExp, QSettings, QSize, QTimer, Qt, QSortFilterProxyModel, QVariant
-from qgis.PyQt.QtGui import QCursor, QDrag, QMouseEvent, QColor, QFont, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette, QPen, QPixmap, QStandardItem, QStandardItemModel
+from qgis.PyQt.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QRegExp, QSettings, QSize, QTimer, Qt, QSortFilterProxyModel, QVariant
+from qgis.PyQt.QtGui import QCursor, QColor, QFont, QIcon, QKeySequence, QPainter, QPalette, QPixmap, QStandardItemModel
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QAbstractScrollArea,
@@ -16,15 +17,11 @@ from qgis.PyQt.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
-    QDialog,
     QFrame,
-    QGraphicsDropShadowEffect,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListView,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -33,36 +30,22 @@ from qgis.PyQt.QtWidgets import (
     QScrollArea,
     QShortcut,
     QSizePolicy,
-    QSpinBox,
     QSplitter,
     QStackedWidget,
     QStyle,
-    QStyleOptionViewItem,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableView,
     QToolButton,
-    QToolTip,
     QVBoxLayout,
     QWidget,
-    QFileDialog,
 )
 from qgis.PyQt.QtSvg import QSvgRenderer
-from qgis.core import (
-    QgsFeatureRequest,
-    QgsFields,
-    QgsField,
-    QgsFeature,
-    QgsProject,
-    QgsVectorFileWriter,
-    QgsVectorLayer,
-    QgsMessageLog,
-    Qgis,
-)
+from qgis.core import QgsMessageLog, QgsProject, QgsVectorLayer, Qgis
 
-from .palette import DARK_COLORS, TYPOGRAPHY
+from .palette import TYPOGRAPHY
 from .pivot import (
     aggregate_series as _pivot_aggregate_series,
-    coerce_python_value as _pivot_coerce_python_value,
     flatten_pandas_columns as _pivot_flatten_pandas_columns,
     format_header_tuple as _pivot_format_header_tuple,
     normalize_field_token as _pivot_normalize_field_token,
@@ -70,12 +53,92 @@ from .pivot import (
     resolve_available_field_name as _pivot_resolve_available_field_name,
 )
 from .pivot.pivot_models import PivotExportSpec
-from .pivot.pivot_export import export_dataframe_to_csv, export_dataframes_to_excel
+from .pivot.pivot_export import export_dataframes_to_excel
+from .pivot_view.pivot_theme import (
+    apply_styles as _pivot_apply_styles,
+    enforce_filters_surface_backgrounds as _pivot_enforce_filters_surface_backgrounds,
+    refresh_toolbar_chrome as _pivot_refresh_toolbar_chrome,
+)
+from .walker_dialogs import apply_walker_menu
+from .pivot_view.pivot_field_panel import (
+    _PivotFieldListDelegate,
+    _PivotFieldSourceListWidget,
+    _SummarySourceCard,
+    _VerticalPanelLabel,
+    clear_field_search as _pivot_clear_field_search,
+    detect_numeric_candidates as _pivot_detect_numeric_candidates,
+    desired_fields_panel_width as _pivot_desired_fields_panel_width,
+    filter_field_list as _pivot_filter_field_list,
+    handle_field_double_click as _pivot_handle_field_double_click,
+    populate_field_panel as _pivot_populate_field_panel,
+    sync_fields_panel_width_to_content as _pivot_sync_fields_panel_width_to_content,
+)
+from .pivot_view.pivot_area_panel import (
+    add_field_to_area as _pivot_add_field_to_area,
+    add_selected_field_to_area as _pivot_add_selected_field_to_area,
+    area_combo as _pivot_area_combo,
+    area_label as _pivot_area_label,
+    area_list as _pivot_area_list,
+    build_area_panels as _pivot_build_area_panels,
+    clear_area as _pivot_clear_area,
+    create_area_chip_widget as _pivot_create_area_chip_widget,
+    handle_filter_panel_drop_event as _pivot_handle_filter_panel_drop_event,
+    move_selected_area_field as _pivot_move_selected_area_field,
+    placeholder_item as _pivot_placeholder_item,
+    refresh_active_area_styles as _pivot_refresh_active_area_styles,
+    refresh_area_item_widgets as _pivot_refresh_area_item_widgets,
+    remove_area_field_by_key as _pivot_remove_area_field_by_key,
+    remove_selected_area_field as _pivot_remove_selected_area_field,
+    selected_area_specs as _pivot_selected_area_specs,
+    set_last_active_area as _pivot_set_last_active_area,
+    take_area_field_by_key as _pivot_take_area_field_by_key,
+)
+from .pivot_view.pivot_export_controller import export_pivot_table as _pivot_export_pivot_table
+from .pivot_view.pivot_layer_io import (
+    build_export_layer_dataframe as _pivot_build_export_layer_dataframe,
+    build_layer_dataframe_from_pivot_config as _pivot_build_layer_dataframe_from_pivot_config,
+    build_layer_dataframe_from_request as _pivot_build_layer_dataframe_from_request,
+    export_to_gpkg as _pivot_export_to_gpkg,
+    resolve_layer_field_name as _pivot_resolve_layer_field_name,
+)
+from .pivot_view.pivot_settings_dialog import (
+    open_table_settings_dialog as _pivot_open_table_settings_dialog,
+)
+from .pivot_view.pivot_state_controller import (
+    apply_saved_configuration as _pivot_apply_saved_configuration,
+    commit_history_if_changed as _pivot_commit_history_if_changed,
+    configuration_key_from_metadata as _pivot_configuration_key_from_metadata,
+    field_spec_from_field_name as _pivot_field_spec_from_field_name,
+    get_current_configuration as _pivot_get_current_configuration,
+    get_current_pivot_result as _pivot_get_current_pivot_result,
+    get_summary_metadata as _pivot_get_summary_metadata,
+    get_visible_pivot_dataframe as _pivot_get_visible_pivot_dataframe,
+    redo_last_action as _pivot_redo_last_action,
+    reset_history_state as _pivot_reset_history_state,
+    restore_default_summary_layout as _pivot_restore_default_summary_layout,
+    restore_saved_configuration_for_metadata as _pivot_restore_saved_configuration_for_metadata,
+    undo_last_action as _pivot_undo_last_action,
+)
+from .pivot_view.pivot_excel_export import (
+    try_create_native_excel_pivot as _pivot_try_create_native_excel_pivot,
+)
+from .pivot_view.pivot_switch import PivotSwitch
+from .pivot_view.pivot_table_controller import (
+    compute_dataframe_pivot as _pivot_compute_dataframe_pivot,
+    compute_layer_backed_pivot as _pivot_compute_layer_backed_pivot,
+)
+from .pivot_view.pivot_table_renderer import populate_table as _pivot_populate_table
+from .pivot_view.pivot_toolbar import (
+    build_state_labels as _pivot_build_state_labels,
+    build_toolbar as _pivot_build_toolbar,
+    configure_toolbar_button as _pivot_configure_toolbar_button,
+    configure_toolbar_icon_button as _pivot_configure_toolbar_icon_button,
+    polish_toolbar_button as _pivot_polish_toolbar_button,
+    update_undo_redo_buttons as _pivot_update_undo_redo_buttons,
+)
 from .slim_dialogs import slim_message
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
-from .utils.resources import svg_icon
-from .utils.window_theme import apply_windows_title_bar_theme
 from .report_view.pivot import (
     PivotEngine,
     PivotExportService,
@@ -139,7 +202,46 @@ class _PivotFilterProxy(QSortFilterProxyModel):
         self.invalidateFilter()
 
 
-_PIVOT_FIELD_MIME = "application/x-Summarizer-pivot-field"
+class _PivotTableCellDelegate(QStyledItemDelegate):
+    """Draw pivot cells with stable text margins across zebra rows."""
+
+    HORIZONTAL_PADDING = 9
+
+    def paint(self, painter, option, index):
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        text = opt.text
+        opt.text = ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, widget)
+
+        alignment = index.data(Qt.TextAlignmentRole)
+        if alignment is None:
+            alignment = Qt.AlignLeft | Qt.AlignVCenter
+        text_rect = option.rect.adjusted(
+            self.HORIZONTAL_PADDING,
+            0,
+            -self.HORIZONTAL_PADDING,
+            0,
+        )
+        elided_text = opt.fontMetrics.elidedText(
+            text,
+            opt.textElideMode,
+            max(0, text_rect.width()),
+        )
+        color_role = (
+            QPalette.HighlightedText
+            if opt.state & QStyle.State_Selected
+            else QPalette.Text
+        )
+        painter.save()
+        painter.setFont(opt.font)
+        painter.setPen(opt.palette.color(color_role))
+        painter.drawText(text_rect, alignment, elided_text)
+        painter.restore()
+
+
 _SIDEBAR_COLLAPSED_KEY = "Summarizer/pivot/sidebarCollapsed"
 _SIDEBAR_WIDTH_KEY = "Summarizer/pivot/sidebarWidth"
 _SIDEBAR_COLLAPSED_WIDTH = 52
@@ -147,13 +249,6 @@ _SIDEBAR_MIN_WIDTH = 304
 _SIDEBAR_DEFAULT_WIDTH = 320
 _SIDEBAR_MAX_WIDTH = 420
 _INK_COLOR = "#252B33"
-
-
-def _is_dark_theme() -> bool:
-    try:
-        return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
-    except Exception:
-        return False
 _TOOLS_PANEL_COLLAPSED_WIDTH = 40
 _TOOLS_FIELDS_MIN_WIDTH = 120
 _TOOLS_FIELDS_DEFAULT_WIDTH = 148
@@ -261,480 +356,6 @@ def _svg_icon_from_template(svg_template: str, size: int = 16, color_map: Option
         painter.end()
         icon.addPixmap(pixmap, mode)
     return icon
-
-
-class _PivotFieldSourceListWidget(QListWidget):
-    def __init__(self, owner=None, parent=None):
-        super().__init__(parent)
-        self._owner = owner
-        self.setDragEnabled(True)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setDragDropMode(QAbstractItemView.DragOnly)
-        self.setDefaultDropAction(Qt.CopyAction)
-        self.setContextMenuPolicy(Qt.DefaultContextMenu)
-
-    def supportedDropActions(self):
-        return Qt.CopyAction
-
-    def mimeTypes(self):
-        return [_PIVOT_FIELD_MIME]
-
-    def mimeData(self, items):
-        mime = QMimeData()
-        payload = []
-        for item in items or []:
-            spec_key = item.data(Qt.UserRole)
-            if spec_key:
-                payload.append({"spec_key": spec_key, "text": item.text()})
-        mime.setData(_PIVOT_FIELD_MIME, json.dumps(payload).encode("utf-8"))
-        return mime
-
-    def startDrag(self, supported_actions):
-        items = [item for item in self.selectedItems() if item.data(Qt.UserRole)]
-        if not items:
-            current = self.currentItem()
-            if current is not None and current.data(Qt.UserRole):
-                items = [current]
-        if not items:
-            return
-        drag = QDrag(self)
-        drag.setMimeData(self.mimeData(items))
-        drag.exec_(Qt.CopyAction)
-
-    def contextMenuEvent(self, event):
-        if self._owner is None:
-            super().contextMenuEvent(event)
-            return
-        item = self.itemAt(event.pos()) or self.currentItem()
-        if item is None:
-            return
-        spec_key = item.data(Qt.UserRole)
-        if not spec_key or spec_key == "__placeholder__":
-            return
-        spec = self._owner._field_spec_from_key(spec_key)
-        if spec is None:
-            return
-        menu = QMenu(self)
-        add_last = menu.addAction(
-            f"{_rt('Adicionar em')} {self._owner._area_label(self._owner._last_active_area)}"
-        )
-        add_rows = menu.addAction(_rt("Adicionar em Linhas"))
-        add_columns = menu.addAction(_rt("Adicionar em Colunas"))
-        add_values = menu.addAction(_rt("Adicionar em Valores"))
-        action = menu.exec_(event.globalPos())
-        if action is None:
-            return
-        if action == add_last:
-            self._owner._add_field_to_area(self._owner._last_active_area, spec)
-        elif action == add_rows:
-            self._owner._add_field_to_area("row", spec)
-        elif action == add_columns:
-            self._owner._add_field_to_area("column", spec)
-        elif action == add_values:
-            self._owner._add_field_to_area("value", spec)
-
-
-class _PivotDropListWidget(QListWidget):
-    def __init__(self, owner, area_name: str, allow_multiple: bool = True, parent=None):
-        super().__init__(parent)
-        self._owner = owner
-        self._area_name = area_name
-        self._allow_multiple = allow_multiple
-        self.setAcceptDrops(True)
-        self.setDragEnabled(True)
-        self.setDefaultDropAction(Qt.MoveAction)
-        self.setDragDropMode(QAbstractItemView.DragDrop)
-        self.setDropIndicatorShown(True)
-        self.setDragDropOverwriteMode(False)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setContextMenuPolicy(Qt.DefaultContextMenu)
-        self.setViewMode(QListView.IconMode)
-        self.setFlow(QListView.LeftToRight)
-        self.setWrapping(True)
-        self.setResizeMode(QListView.Adjust)
-        self.setMovement(QListView.Static)
-        self.setUniformItemSizes(False)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.viewport().setAcceptDrops(True)
-
-    def supportedDropActions(self):
-        return Qt.CopyAction | Qt.MoveAction
-
-    def mimeTypes(self):
-        return [_PIVOT_FIELD_MIME]
-
-    def mimeData(self, items):
-        mime = QMimeData()
-        payload = []
-        for item in items or []:
-            spec_key = item.data(Qt.UserRole)
-            if not spec_key or spec_key == "__placeholder__":
-                continue
-            payload.append(
-                {
-                    "spec_key": spec_key,
-                    "text": item.text(),
-                    "from_area": self._area_name,
-                }
-            )
-        mime.setData(_PIVOT_FIELD_MIME, json.dumps(payload).encode("utf-8"))
-        return mime
-
-    def startDrag(self, supported_actions):
-        items = [
-            item
-            for item in self.selectedItems()
-            if item.data(Qt.UserRole) and item.data(Qt.UserRole) != "__placeholder__"
-        ]
-        if not items:
-            current = self.currentItem()
-            if current is not None and current.data(Qt.UserRole) != "__placeholder__":
-                items = [current]
-        if not items:
-            return
-        drag = QDrag(self)
-        drag.setMimeData(self.mimeData(items))
-        drag.exec_(Qt.MoveAction)
-
-    def _resolved_drop_action(self, event):
-        source_widget = event.source()
-        if isinstance(source_widget, _PivotDropListWidget) and source_widget is not self:
-            return Qt.MoveAction
-        if source_widget is self:
-            return Qt.MoveAction
-        return Qt.CopyAction
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasFormat(_PIVOT_FIELD_MIME) or event.source() is self:
-            event.setDropAction(self._resolved_drop_action(event))
-            event.accept()
-            return
-        super().dragEnterEvent(event)
-
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasFormat(_PIVOT_FIELD_MIME) or event.source() is self:
-            event.setDropAction(self._resolved_drop_action(event))
-            event.accept()
-            return
-        super().dragMoveEvent(event)
-
-    def dropEvent(self, event):
-        if event.source() is self:
-            event.setDropAction(Qt.MoveAction)
-            event.accept()
-            return
-
-        if not event.mimeData().hasFormat(_PIVOT_FIELD_MIME):
-            source_widget = event.source() if isinstance(event.source(), _PivotDropListWidget) else None
-            super().dropEvent(event)
-            if self._owner is not None:
-                self._owner._set_last_active_area(self._area_name)
-                self._owner._sync_area_placeholder(self._area_name)
-                if source_widget is not None and source_widget is not self:
-                    self._owner._sync_area_placeholder(source_widget._area_name)
-                self._owner._maybe_refresh()
-            return
-
-        try:
-            payload = json.loads(bytes(event.mimeData().data(_PIVOT_FIELD_MIME)).decode("utf-8"))
-        except Exception:
-            payload = []
-
-        source_widget = event.source() if isinstance(event.source(), _PivotDropListWidget) else None
-        added = False
-        for item in payload or []:
-            spec_key = item.get("spec_key")
-            spec = self._owner._field_spec_from_key(item.get("spec_key"))
-            if spec is None:
-                continue
-            added = self._owner._add_field_to_area(self._area_name, spec, auto_refresh=False) or added
-            if added and source_widget is not None and source_widget is not self and spec_key:
-                self._owner._take_area_field_by_key(source_widget._area_name, spec_key)
-            if not self._allow_multiple:
-                break
-
-        if added:
-            event.setDropAction(Qt.MoveAction if source_widget is not None and source_widget is not self else Qt.CopyAction)
-            event.acceptProposedAction()
-            if self._owner is not None:
-                self._owner._set_last_active_area(self._area_name)
-                self._owner._sync_area_placeholder(self._area_name)
-                if source_widget is not None and source_widget is not self:
-                    self._owner._sync_area_placeholder(source_widget._area_name)
-                self._owner._maybe_refresh()
-        else:
-            event.ignore()
-
-    def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
-            if self.currentRow() >= 0 and self._owner is not None:
-                self._owner._remove_selected_area_field(self._area_name)
-            return
-        super().keyPressEvent(event)
-
-    def mousePressEvent(self, event):
-        if self._owner is not None:
-            self._owner._set_last_active_area(self._area_name)
-        super().mousePressEvent(event)
-
-    def focusInEvent(self, event):
-        if self._owner is not None:
-            self._owner._set_last_active_area(self._area_name)
-        super().focusInEvent(event)
-
-    def contextMenuEvent(self, event):
-        if self._owner is not None:
-            self._owner._set_last_active_area(self._area_name)
-        menu = QMenu(self)
-        remove_action = menu.addAction(_rt("Remover"))
-        up_action = menu.addAction(_rt("Mover para cima"))
-        down_action = menu.addAction(_rt("Mover para baixo"))
-        menu.addSeparator()
-        clear_action = menu.addAction(_rt("Limpar área"))
-        action = menu.exec_(event.globalPos())
-        if action == remove_action and self._owner is not None:
-            self._owner._remove_selected_area_field(self._area_name)
-        elif action == up_action and self._owner is not None:
-            self._owner._move_selected_area_field(self._area_name, -1)
-        elif action == down_action and self._owner is not None:
-            self._owner._move_selected_area_field(self._area_name, 1)
-        elif action == clear_action and self._owner is not None:
-            self._owner._clear_area(self._area_name)
-            self._owner._maybe_refresh()
-
-
-class _VerticalPanelLabel(QLabel):
-    def sizeHint(self):
-        hint = super().sizeHint()
-        return QSize(max(28, hint.height() + 10), max(128, hint.width() + 16))
-
-    def minimumSizeHint(self):
-        return QSize(28, 124)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.TextAntialiasing)
-        painter.translate(self.width() / 2, self.height() / 2)
-        painter.rotate(-90)
-        rect = QRect(
-            int(-self.height() / 2),
-            int(-self.width() / 2),
-            int(self.height()),
-            int(self.width()),
-        )
-        painter.setPen(self.palette().color(QPalette.WindowText))
-        painter.setFont(self.font())
-        painter.drawText(rect, Qt.AlignCenter, self.text())
-
-
-class _PivotAreaChipContainer(QWidget):
-    def __init__(self, list_widget: QListWidget, parent=None):
-        super().__init__(parent)
-        self._list_widget = list_widget
-        self._drag_start_pos = None
-
-    def _find_bound_item(self):
-        if self._list_widget is None:
-            return None
-        for index in range(self._list_widget.count()):
-            item = self._list_widget.item(index)
-            if self._list_widget.itemWidget(item) is self:
-                return item
-        return None
-
-    def _select_bound_item(self):
-        item = self._find_bound_item()
-        if item is None:
-            return None
-        self._list_widget.setCurrentItem(item)
-        self._list_widget.setFocus(Qt.MouseFocusReason)
-        return item
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._drag_start_pos = event.pos()
-            self._select_bound_item()
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if not (event.buttons() & Qt.LeftButton) or self._drag_start_pos is None:
-            super().mouseMoveEvent(event)
-            return
-        if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
-            event.accept()
-            return
-        item = self._select_bound_item()
-        if item is None:
-            self._drag_start_pos = None
-            super().mouseMoveEvent(event)
-            return
-        spec_key = item.data(Qt.UserRole)
-        if not spec_key or spec_key == "__placeholder__":
-            self._drag_start_pos = None
-            event.ignore()
-            return
-        drag = QDrag(self._list_widget)
-        drag.setMimeData(self._list_widget.mimeData([item]))
-        drag.exec_(Qt.MoveAction)
-        self._drag_start_pos = None
-        event.accept()
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._select_bound_item()
-            self._drag_start_pos = None
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
-
-    def eventFilter(self, watched, event):
-        if event.type() in (QEvent.MouseButtonPress, QEvent.MouseMove, QEvent.MouseButtonRelease):
-            mapped = QMouseEvent(
-                event.type(),
-                self.mapFromGlobal(watched.mapToGlobal(event.pos())),
-                event.globalPos(),
-                event.button(),
-                event.buttons(),
-                event.modifiers(),
-            )
-            if event.type() == QEvent.MouseButtonPress:
-                self.mousePressEvent(mapped)
-            elif event.type() == QEvent.MouseMove:
-                self.mouseMoveEvent(mapped)
-            else:
-                self.mouseReleaseEvent(mapped)
-            return True
-        return super().eventFilter(watched, event)
-
-
-class _SummarySourceCard(QToolButton):
-    def __init__(
-        self,
-        title: str,
-        badge_text: Optional[str] = None,
-        tooltip_text: Optional[str] = None,
-        parent=None,
-    ):
-        super().__init__(parent)
-        self.setObjectName("summarySourceCard")
-        self.setCheckable(True)
-        self.setAutoExclusive(False)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setText(title)
-        self.setFixedSize(244, 68)
-        self.setAutoRaise(False)
-        self.setMouseTracking(True)
-        if tooltip_text:
-            self.setToolTip(tooltip_text)
-        self._hovered = False
-        self._shadow = QGraphicsDropShadowEffect(self)
-        self._shadow.setOffset(0, 4)
-        self.setGraphicsEffect(self._shadow)
-        self._badge = None
-        self.toggled.connect(self._sync_shadow)
-        if badge_text:
-            self._badge = QLabel(badge_text, self)
-            self._badge.setObjectName("summarySourceCardBadge")
-            self._badge.adjustSize()
-        self._sync_shadow()
-
-    def _sync_shadow(self):
-        active = self._hovered or self.isChecked()
-        self._shadow.setBlurRadius(14 if active else 8)
-        self._shadow.setOffset(0, 4 if active else 2)
-        self._shadow.setColor(QColor(15, 23, 42, 10 if active else 5))
-
-    def enterEvent(self, event):
-        self._hovered = True
-        self._sync_shadow()
-        if self.toolTip():
-            QToolTip.showText(QCursor.pos(), self.toolTip(), self)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self._hovered = False
-        self._sync_shadow()
-        QToolTip.hideText()
-        super().leaveEvent(event)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self._badge is not None:
-            self._badge.adjustSize()
-            self._badge.move(max(10, self.width() - self._badge.width() - 14), 12)
-
-    def paintEvent(self, event):
-        del event
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        rect = self.rect().adjusted(1, 1, -1, -1)
-        radius = 12
-
-        if self.isDown():
-            fill_color = QColor("#F8FAFC")
-            border_color = QColor("#CBD5E1")
-        elif self.isChecked():
-            fill_color = QColor("#FFFFFF")
-            border_color = QColor("#94A3B8")
-        elif self._hovered:
-            fill_color = QColor("#F8FAFC")
-            border_color = QColor("#CBD5E1")
-        else:
-            fill_color = QColor("#FFFFFF")
-            border_color = QColor("#D7DEE8")
-
-        painter.setPen(QPen(border_color, 1))
-        painter.setBrush(fill_color)
-        painter.drawRoundedRect(rect, radius, radius)
-
-        text_rect = rect.adjusted(18, 0, -18, 0)
-        title_font = QFont(self.font())
-        title_font.setPixelSize(int(TYPOGRAPHY.get("font_body_px", 13)))
-        title_font.setWeight(int(TYPOGRAPHY.get("font_weight_regular", 400)))
-        title_font.setBold(False)
-        painter.setFont(title_font)
-        painter.setPen(QColor("#0F172A"))
-        metrics = QFontMetrics(title_font)
-        title = metrics.elidedText(self.text(), Qt.ElideRight, text_rect.width())
-        painter.drawText(text_rect, Qt.AlignCenter, title)
-
-
-class _PivotFieldListDelegate(QStyledItemDelegate):
-    _TEXT_COLOR = QColor(_INK_COLOR)
-    _TEXT_SELECTED_COLOR = QColor(_INK_COLOR)
-    _TEXT_SELECTED_BG = QColor("#E5E7EB")
-    _NUMERIC_COLOR = QColor(_INK_COLOR)
-    _NUMERIC_SELECTED_COLOR = QColor(_INK_COLOR)
-    _NUMERIC_SELECTED_BG = QColor("#E5E7EB")
-
-    def paint(self, painter, option, index):
-        opt = QStyleOptionViewItem(option)
-        self.initStyleOption(opt, index)
-        is_numeric = bool(index.data(Qt.UserRole + 1))
-        is_selected = bool(opt.state & QStyle.State_Selected)
-
-        if is_selected:
-            painter.save()
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(self._NUMERIC_SELECTED_BG if is_numeric else self._TEXT_SELECTED_BG)
-            painter.drawRoundedRect(opt.rect.adjusted(1, 0, -1, 0), 4, 4)
-            painter.restore()
-
-        opt.state &= ~QStyle.State_Selected
-        opt.state &= ~QStyle.State_HasFocus
-        opt.palette.setColor(QPalette.Text, self._NUMERIC_COLOR if is_numeric else self._TEXT_COLOR)
-        if is_selected:
-            opt.palette.setColor(
-                QPalette.Text,
-                self._NUMERIC_SELECTED_COLOR if is_numeric else self._TEXT_SELECTED_COLOR,
-            )
-
-        style = opt.widget.style() if opt.widget is not None else QApplication.style()
-        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
 
 
 class PivotTableWidget(QWidget):
@@ -854,7 +475,7 @@ class PivotTableWidget(QWidget):
         helper_text_font.setPixelSize(helper_text_px)
         helper_text_font.setWeight(QFont.Normal)
         root = QVBoxLayout(self)
-        root.setContentsMargins(4, 2, 4, 3)
+        root.setContentsMargins(0, 2, 4, 3)
         root.setSpacing(4)
         root.setSizeConstraint(QLayout.SetNoConstraint)
 
@@ -886,11 +507,11 @@ class PivotTableWidget(QWidget):
 
         self.context_layout.addLayout(self.context_layer_row)
 
-        self.meta_label = QLabel("")
-        self.meta_label.setObjectName("summaryMetaLabel")
-        self.meta_label.setWordWrap(True)
-        self.meta_label.setFont(helper_text_font)
-        self.context_layout.addWidget(self.meta_label)
+        self._build_state_labels(
+            context_layout=self.context_layout,
+            selection_layout=None,
+            helper_text_font=helper_text_font,
+        )
 
         self.initial_state_frame = QFrame()
         self.initial_state_frame.setObjectName("summaryInitialState")
@@ -965,150 +586,7 @@ class PivotTableWidget(QWidget):
         initial_layout.addWidget(self.initial_welcome_wrap, 0, Qt.AlignTop | Qt.AlignHCenter)
         initial_layout.addStretch(1)
 
-        self.toolbar_frame = QWidget()
-        self.toolbar_frame.setObjectName("summaryToolbar")
-        toolbar = QHBoxLayout(self.toolbar_frame)
-        toolbar.setContentsMargins(0, 0, 0, 0)
-        toolbar.setSpacing(8)
-        self.toolbar_layout = toolbar
-
-        self.undo_btn = QPushButton(_rt("Desfazer"))
-        self.redo_btn = QPushButton(_rt("Refazer"))
-        self.import_sheet_btn = QPushButton(_rt("Importar planilha"))
-        self.clear_filters_btn = QPushButton(_rt("Limpar busca"))
-        self.export_btn = QPushButton(_rt("Exportar"))
-        self.edit_mode_btn = QPushButton(_rt("Edicao"))
-        self.settings_btn = QPushButton(_rt("Configuracoes"))
-        self.edit_mode_btn.setCheckable(True)
-        self.edit_mode_btn.setChecked(True)
-        self.sidebar_toggle_btn = self.edit_mode_btn
-        self.clear_filters_btn.setProperty("variant", "secondary")
-
-        for button in (
-            self.undo_btn,
-            self.redo_btn,
-            self.import_sheet_btn,
-            self.clear_filters_btn,
-            self.export_btn,
-            self.edit_mode_btn,
-            self.settings_btn,
-        ):
-            button.setObjectName("summaryToolbarButton")
-            button.setProperty("toolbarMode", "icon")
-            button.setProperty("iconOnly", True)
-            button.setFixedSize(30, 30)
-            button.setCursor(Qt.PointingHandCursor)
-            button.setText("")
-            button.setFlat(True)
-            button.setAutoDefault(False)
-            button.setDefault(False)
-
-        self._configure_toolbar_icon_button(self.undo_btn, "Walker-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
-        self._configure_toolbar_icon_button(self.redo_btn, "Walker-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
-        self._configure_toolbar_icon_button(self.import_sheet_btn, "Excel-Workbook.svg", _rt("Importar planilha"))
-        self._configure_toolbar_icon_button(self.export_btn, "Walker-Image.svg", _rt("Exportar"))
-        self._configure_toolbar_icon_button(self.edit_mode_btn, "Walker-Edit.svg", _rt("Mostrar ou ocultar camada e filtros"))
-        self._configure_toolbar_icon_button(self.settings_btn, "Walker-Settings.svg", _rt("Personalizar tabela"))
-        mono_icon_colors = {
-            QIcon.Normal: _INK_COLOR,
-            QIcon.Active: _INK_COLOR,
-            QIcon.Selected: _INK_COLOR,
-            QIcon.Disabled: "#C7CDD6",
-        }
-        self.import_sheet_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_sheet"], size=18, color_map=mono_icon_colors))
-        self.export_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_image"], size=18, color_map=mono_icon_colors))
-        self.edit_mode_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_edit"], size=18, color_map=mono_icon_colors))
-        self.settings_btn.setIcon(_svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_settings"], size=18, color_map=mono_icon_colors))
-
-        self.toolbar_strip = QFrame(self.toolbar_frame)
-        self.toolbar_strip.setObjectName("summaryToolbarStrip")
-        self.toolbar_strip.setAttribute(Qt.WA_StyledBackground, True)
-        self.toolbar_strip.setFrameShape(QFrame.StyledPanel)
-        self.toolbar_strip.setStyleSheet(
-            """
-            QFrame#summaryToolbarStrip {
-                background: #FFFFFF;
-                border: 1px solid #D6D9E0;
-                border-radius: 8px;
-            }
-            QFrame#summaryToolbarSeparator {
-                min-width: 1px;
-                max-width: 1px;
-                margin: 4px 6px;
-                background: #E5E7EB;
-                border: none;
-            }
-            QPushButton#summaryToolbarButton {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 30px;
-                max-height: 30px;
-                padding: 0px;
-                color: #111827;
-                background: transparent;
-                border: none;
-                border-radius: 6px;
-                text-align: center;
-            }
-            QPushButton#summaryToolbarButton:hover {
-                background: #F3F4F6;
-            }
-            QPushButton#summaryToolbarButton:checked,
-            QPushButton#summaryToolbarButton:pressed {
-                background: #E5E7EB;
-                color: #111827;
-            }
-            QPushButton#summaryToolbarButton:disabled {
-                color: #C7CDD6;
-            }
-            QPushButton[variant="secondary"] {
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                color: #111827;
-                border-radius: 8px;
-                padding: 0 12px;
-                min-height: 30px;
-            }
-            QPushButton[variant="secondary"]:hover {
-                background: #F9FAFB;
-                border-color: #9CA3AF;
-            }
-            QLineEdit#summarySearch {
-                min-height: 30px;
-                padding: 0 9px;
-                color: #4b5563;
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: 400;
-            }
-            QLineEdit#summarySearch:hover,
-            QLineEdit#summarySearch:focus {
-                background: #FFFFFF;
-                border: 1px solid #9CA3AF;
-            }
-            """
-        )
-        self.toolbar_strip_layout = QHBoxLayout(self.toolbar_strip)
-        self.toolbar_strip_layout.setContentsMargins(8, 5, 8, 5)
-        self.toolbar_strip_layout.setSpacing(2)
-        for button in (self.undo_btn, self.redo_btn):
-            self.toolbar_strip_layout.addWidget(button, 0)
-        self.toolbar_strip_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
-        for button in (self.import_sheet_btn, self.export_btn):
-            self.toolbar_strip_layout.addWidget(button, 0)
-        self.toolbar_strip_layout.addWidget(self._create_toolbar_separator(self.toolbar_strip), 0)
-        for button in (self.edit_mode_btn, self.settings_btn):
-            self.toolbar_strip_layout.addWidget(button, 0)
-
-        self.search_input = QLineEdit()
-        self.search_input.setObjectName("summarySearch")
-        self.search_input.setPlaceholderText(_rt("Buscar"))
-        self.search_input.setFixedHeight(30)
-        self.search_input.setMinimumWidth(166)
-        self.search_input.setMaximumWidth(220)
-        self.search_input.setFont(body_text_font)
+        self._build_toolbar(body_text_font=body_text_font)
         self.search_input.textChanged.connect(self._on_search_text_changed)
         self.import_sheet_btn.clicked.connect(self._open_spreadsheet_source_menu)
         self.clear_filters_btn.clicked.connect(self._clear_filters)
@@ -1117,10 +595,6 @@ class PivotTableWidget(QWidget):
         self.redo_btn.clicked.connect(self._redo_last_action)
         self.edit_mode_btn.clicked.connect(self._toggle_sidebar)
         self.settings_btn.clicked.connect(self._open_table_settings_dialog)
-        self.toolbar_strip_layout.addStretch(1)
-        self.toolbar_strip_layout.addWidget(self.search_input, 0)
-        self.toolbar_strip_layout.addWidget(self.clear_filters_btn, 0)
-        toolbar.addWidget(self.toolbar_strip, 1)
 
         self.main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter.setObjectName("summaryMainSplitter")
@@ -1280,6 +754,15 @@ class PivotTableWidget(QWidget):
         self.filters_builder_layout = QVBoxLayout(self.filters_builder_content)
         self.filters_builder_layout.setContentsMargins(0, 0, 0, 0)
         self.filters_builder_layout.setSpacing(10)
+        for drop_target in (
+            self.filters_panel,
+            self.filters_panel_body,
+            self.filters_builder_scroll,
+            self.filters_builder_scroll.viewport(),
+            self.filters_builder_content,
+        ):
+            drop_target.setAcceptDrops(True)
+            drop_target.installEventFilter(self)
         self.filters_panel_collapsed_rail = QFrame(self.filters_panel)
         self.filters_panel_collapsed_rail.setObjectName("summaryPanelCollapsedRail")
         self.filters_panel_collapsed_rail.hide()
@@ -1357,6 +840,7 @@ class PivotTableWidget(QWidget):
         self.table_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table_view.setFocusPolicy(Qt.NoFocus)
+        self.table_view.setItemDelegate(_PivotTableCellDelegate(self.table_view))
         self.table_view.horizontalHeader().setStretchLastSection(True)
         self.table_view.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.table_view.clicked.connect(self._handle_table_cell_clicked)
@@ -1370,16 +854,16 @@ class PivotTableWidget(QWidget):
         self.table_stack.setCurrentWidget(self.empty_state_frame)
         table_card_layout.addWidget(self.table_stack, 1)
 
-        self.status_label = QLabel("")
-        self.status_label.setObjectName("summaryStatusLabel")
-        self.status_label.setFont(helper_text_font)
-
         self.selection_summary_bar = QFrame()
         self.selection_summary_bar.setObjectName("summaryTableFooter")
         selection_layout = QHBoxLayout(self.selection_summary_bar)
         selection_layout.setContentsMargins(2, 0, 2, 0)
         selection_layout.setSpacing(6)
-        selection_layout.addWidget(self.status_label, 1)
+        self._build_state_labels(
+            context_layout=self.context_layout,
+            selection_layout=selection_layout,
+            helper_text_font=helper_text_font,
+        )
         self.selection_summary_label = QLabel("Selecione celulas para ver soma e contagem.")
         self.selection_summary_label.setObjectName("summarySelectionLabel")
         self.selection_summary_label.setFont(helper_text_font)
@@ -1457,102 +941,11 @@ class PivotTableWidget(QWidget):
         self.fields_list.setItemDelegate(_PivotFieldListDelegate(self.fields_list))
         self.fields_panel_body_layout.addWidget(self.fields_list, 1)
 
-        self.filter_field_combo = QComboBox()
-        self.filter_field_combo.hide()
-        self.row_field_combo = QComboBox()
-        self.row_field_combo.hide()
-        self.column_field_combo = QComboBox()
-        self.column_field_combo.hide()
-        self.filter_fields_list = _PivotDropListWidget(self, "filter", allow_multiple=False)
-        self.filter_fields_list.setObjectName("summaryFilterList")
-        self.filter_fields_list.setUniformItemSizes(False)
-        self.filter_fields_list.setSpacing(2)
-        self.filter_fields_list.setMinimumHeight(78)
-        self.filter_fields_list.setMaximumHeight(120)
-        self.filter_fields_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.filter_fields_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.filter_fields_list.hide()
-        self.value_fields_list = _PivotDropListWidget(self, "value", allow_multiple=False)
-        self.value_fields_list.setObjectName("summaryValueList")
-        self.value_fields_list.setUniformItemSizes(False)
-        self.value_fields_list.setSpacing(2)
-        self.value_fields_list.setMinimumHeight(58)
-        self.value_fields_list.setMaximumHeight(74)
-        self.value_fields_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-        self.row_fields_list = _PivotDropListWidget(self, "row", allow_multiple=True)
-        self.row_fields_list.setObjectName("summaryRowList")
-        self.row_fields_list.setSizeAdjustPolicy(QAbstractScrollArea.AdjustIgnored)
-        self.row_fields_list.setUniformItemSizes(False)
-        self.row_fields_list.setSpacing(2)
-        self.row_fields_list.setMinimumHeight(58)
-        self.row_fields_list.setMaximumHeight(80)
-        self.row_fields_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-        self.column_fields_list = _PivotDropListWidget(self, "column", allow_multiple=True)
-        self.column_fields_list.setObjectName("summaryColumnList")
-        self.column_fields_list.setSizeAdjustPolicy(QAbstractScrollArea.AdjustIgnored)
-        self.column_fields_list.setUniformItemSizes(False)
-        self.column_fields_list.setSpacing(2)
-        self.column_fields_list.setMinimumHeight(58)
-        self.column_fields_list.setMaximumHeight(80)
-        self.column_fields_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-        self.row_area_card = QWidget()
-        self.row_area_card.setProperty("sidebarSection", True)
-        self.row_area_card.setProperty("filterSectionCard", True)
-        self.row_area_card.setAttribute(Qt.WA_StyledBackground, True)
-        row_layout = QVBoxLayout(self.row_area_card)
-        row_layout.setContentsMargins(6, 6, 6, 6)
-        row_layout.setSpacing(4)
-        self.row_area_title = QLabel(_rt("Linhas"))
-        self.row_area_title.setObjectName("summaryAxisTitle")
-        self.row_area_title.setFont(section_title_font)
-        row_layout.addWidget(self.row_area_title)
-        row_layout.addWidget(self.row_fields_list)
-        self.filters_builder_layout.addWidget(self.row_area_card)
-
-        self.column_area_card = QWidget()
-        self.column_area_card.setProperty("sidebarSection", True)
-        self.column_area_card.setProperty("filterSectionCard", True)
-        self.column_area_card.setAttribute(Qt.WA_StyledBackground, True)
-        col_layout = QVBoxLayout(self.column_area_card)
-        col_layout.setContentsMargins(6, 6, 6, 6)
-        col_layout.setSpacing(4)
-        self.column_area_title = QLabel(_rt("Colunas"))
-        self.column_area_title.setObjectName("summaryAxisTitle")
-        self.column_area_title.setFont(section_title_font)
-        col_layout.addWidget(self.column_area_title)
-        col_layout.addWidget(self.column_fields_list)
-        self.filters_builder_layout.addWidget(self.column_area_card)
-
-        self.value_area_card = QWidget()
-        self.value_area_card.setProperty("sidebarSection", True)
-        self.value_area_card.setProperty("filterSectionCard", True)
-        self.value_area_card.setAttribute(Qt.WA_StyledBackground, True)
-        value_layout = QVBoxLayout(self.value_area_card)
-        value_layout.setContentsMargins(6, 6, 6, 6)
-        value_layout.setSpacing(4)
-        self.value_area_title = QLabel(_rt("Valores"))
-        self.value_area_title.setObjectName("summaryAxisTitle")
-        self.value_area_title.setFont(section_title_font)
-        value_layout.addWidget(self.value_area_title)
-        operation_label = QLabel(_rt("Operação"))
-        operation_label.setObjectName("summaryFieldLabel")
-        operation_label.setFont(helper_text_font)
-        value_layout.addWidget(operation_label)
-
-        self.agg_combo = QComboBox()
-        self.agg_combo.setObjectName("summaryOperationCombo")
-        self.agg_combo.setFixedHeight(32)
-        self.agg_combo.setFont(body_text_font)
-        for label, func in self.SUPPORTED_AGGREGATORS:
-            self.agg_combo.addItem(label, func)
-        self.agg_combo.setCurrentIndex(self.agg_combo.findData("count"))
-        self.agg_combo.currentIndexChanged.connect(self._on_operation_changed)
-        value_layout.addWidget(self.agg_combo)
-        value_layout.addWidget(self.value_fields_list)
-        self.filters_builder_layout.addWidget(self.value_area_card)
+        self._build_area_panels(
+            section_title_font=section_title_font,
+            helper_text_font=helper_text_font,
+            body_text_font=body_text_font,
+        )
 
         self.advanced_group = QGroupBox("Avançado")
         self.advanced_group.setObjectName("summaryAdvancedGroup")
@@ -1576,20 +969,34 @@ class PivotTableWidget(QWidget):
         self.advanced_value_label.hide()
         self.value_field_combo.setVisible(False)
 
-        self.only_selected_check = QCheckBox("Apenas selecionadas")
+        self.only_selected_label = QLabel(_rt("Apenas selecionadas"))
+        self.only_selected_label.setObjectName("summaryFieldLabel")
+        self.only_selected_label.setFont(body_text_font)
+        self.only_selected_check = PivotSwitch()
         self.only_selected_check.setObjectName("summaryAdvancedCheck")
-        self.only_selected_check.setFont(body_text_font)
-        self.only_selected_check.stateChanged.connect(self._maybe_refresh)
-        self.include_nulls_check = QCheckBox("Incluir nulos")
+        self.only_selected_check.toggled.connect(self._maybe_refresh)
+
+        only_selected_row = QHBoxLayout()
+        only_selected_row.setContentsMargins(0, 0, 0, 0)
+        only_selected_row.setSpacing(8)
+        only_selected_row.addWidget(self.only_selected_label, 1)
+        only_selected_row.addWidget(self.only_selected_check, 0, Qt.AlignRight | Qt.AlignVCenter)
+        advanced_layout.addLayout(only_selected_row)
+
+        self.include_nulls_label = QLabel(_rt("Incluir nulos"))
+        self.include_nulls_label.setObjectName("summaryFieldLabel")
+        self.include_nulls_label.setFont(body_text_font)
+        self.include_nulls_check = PivotSwitch()
         self.include_nulls_check.setObjectName("summaryAdvancedCheck")
-        self.include_nulls_check.setFont(body_text_font)
-        self.include_nulls_check.stateChanged.connect(self._maybe_refresh)
-        flags_column = QVBoxLayout()
-        flags_column.setContentsMargins(0, 0, 0, 0)
-        flags_column.setSpacing(6)
-        flags_column.addWidget(self.only_selected_check, 0, Qt.AlignLeft)
-        flags_column.addWidget(self.include_nulls_check, 0, Qt.AlignLeft)
-        advanced_layout.addLayout(flags_column)
+        self.include_nulls_check.setChecked(True)
+        self.include_nulls_check.toggled.connect(self._maybe_refresh)
+
+        include_nulls_row = QHBoxLayout()
+        include_nulls_row.setContentsMargins(0, 0, 0, 0)
+        include_nulls_row.setSpacing(8)
+        include_nulls_row.addWidget(self.include_nulls_label, 1)
+        include_nulls_row.addWidget(self.include_nulls_check, 0, Qt.AlignRight | Qt.AlignVCenter)
+        advanced_layout.addLayout(include_nulls_row)
         self.filters_builder_layout.addWidget(self.advanced_group)
         self.filters_builder_layout.addStretch(1)
 
@@ -1716,92 +1123,16 @@ class PivotTableWidget(QWidget):
             self.side_panel.style().polish(self.side_panel)
 
     def _create_area_chip_widget(self, area: str, field_spec: PivotFieldSpec) -> QWidget:
-        row_widget = _PivotAreaChipContainer(self._area_list(area))
-        row_widget.setObjectName("summaryAreaChipRow")
-        row_widget.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(0)
-
-        chip = QFrame(row_widget)
-        chip.setObjectName("summaryAreaChip")
-        chip.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        layout = QHBoxLayout(chip)
-        layout.setContentsMargins(6, 4, 6, 4)
-        layout.setSpacing(6)
-
-        remove_btn = QToolButton(chip)
-        remove_btn.setObjectName("summaryAreaChipRemove")
-        remove_btn.setCursor(Qt.PointingHandCursor)
-        remove_btn.setAutoRaise(True)
-        remove_btn.setFixedSize(18, 18)
-        remove_btn.setIcon(
-            _svg_icon_from_template(
-                _TOOLBAR_SVG_ICONS["clear"],
-                size=14,
-                color_map={
-                    QIcon.Normal: "#ef4444",
-                    QIcon.Active: "#dc2626",
-                    QIcon.Selected: "#dc2626",
-                    QIcon.Disabled: "#fca5a5",
-                },
-            )
+        return _pivot_create_area_chip_widget(
+            self,
+            area,
+            field_spec,
+            icon_factory=_svg_icon_from_template,
+            toolbar_icons=_TOOLBAR_SVG_ICONS,
         )
-        remove_btn.setIconSize(QSize(14, 14))
-        remove_btn.setToolTip(f"Remover de {self._area_label(area)}")
-        remove_btn.clicked.connect(partial(self._remove_area_field_by_key, area, self._register_field_spec(field_spec)))
-        layout.addWidget(remove_btn, 0, Qt.AlignTop)
-
-        label = QLabel(field_spec.display_name)
-        label.setObjectName("summaryAreaChipText")
-        label.setWordWrap(False)
-        label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
-        layout.addWidget(label, 0, Qt.AlignVCenter)
-
-        chip.installEventFilter(row_widget)
-        label.installEventFilter(row_widget)
-
-        row_layout.addWidget(chip, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        row_widget.ensurePolished()
-        chip.ensurePolished()
-        label.ensurePolished()
-        text_width = label.fontMetrics().horizontalAdvance(field_spec.display_name) + 10
-        label.setMinimumWidth(text_width)
-        label.setMaximumWidth(text_width)
-        chip_width = (
-            layout.contentsMargins().left()
-            + remove_btn.width()
-            + layout.spacing()
-            + text_width
-            + layout.contentsMargins().right()
-            + 6
-        )
-        chip.setMinimumWidth(chip_width)
-        row_widget.setMinimumWidth(chip_width)
-        layout.activate()
-        row_layout.activate()
-        chip.adjustSize()
-        row_widget.adjustSize()
-        return row_widget
 
     def _refresh_area_item_widgets(self, area: str):
-        list_widget = self._area_list(area)
-        for index in range(list_widget.count()):
-            item = list_widget.item(index)
-            spec_key = item.data(Qt.UserRole)
-            if spec_key == "__placeholder__":
-                list_widget.removeItemWidget(item)
-                item.setSizeHint(QSize(0, 28))
-                continue
-            spec = self._field_spec_from_key(spec_key)
-            if spec is None:
-                continue
-            widget = self._create_area_chip_widget(area, spec)
-            hint = widget.sizeHint()
-            item.setSizeHint(QSize(hint.width() + 6, hint.height()))
-            list_widget.setItemWidget(item, widget)
-        list_widget.doItemsLayout()
-        list_widget.updateGeometry()
+        _pivot_refresh_area_item_widgets(self, area)
 
     def _toggle_fields_panel(self):
         if hasattr(self, "analytics_splitter") and not self._fields_panel_collapsed:
@@ -1950,139 +1281,63 @@ class PivotTableWidget(QWidget):
             self.controls_layout.insertWidget(0, self.context_bar)
         self._context_in_fields_panel = target_in_fields
 
+    def _build_toolbar(self, body_text_font):
+        _pivot_build_toolbar(
+            self,
+            body_text_font=body_text_font,
+            translate=_rt,
+            icon_factory=_svg_icon_from_template,
+            toolbar_icons=_TOOLBAR_SVG_ICONS,
+            ink_color=_INK_COLOR,
+        )
+
+    def _build_state_labels(self, context_layout, selection_layout, helper_text_font):
+        _pivot_build_state_labels(
+            self,
+            context_layout=context_layout,
+            selection_layout=selection_layout,
+            helper_text_font=helper_text_font,
+        )
+
+    def _build_area_panels(self, section_title_font, helper_text_font, body_text_font):
+        _pivot_build_area_panels(
+            self,
+            section_title_font=section_title_font,
+            helper_text_font=helper_text_font,
+            body_text_font=body_text_font,
+            translate=_rt,
+            supported_aggregators=self.SUPPORTED_AGGREGATORS,
+        )
+
     def _configure_toolbar_button(self, button: Optional[QPushButton]):
-        if button is None:
-            return
-        button.setFlat(True)
-        button.setAutoDefault(False)
-        button.setDefault(False)
-        button.setCursor(Qt.PointingHandCursor)
+        _pivot_configure_toolbar_button(button)
 
     def _configure_toolbar_icon_button(self, button: Optional[QPushButton], icon_name: str, tooltip: str, icon_size: int = 18):
-        if button is None:
-            return
-        self._configure_toolbar_button(button)
-        button.setProperty("toolbarMode", "icon")
-        button.setProperty("iconOnly", True)
-        button.setFocusPolicy(Qt.NoFocus)
-        button.setToolTip(tooltip)
-        button.setStatusTip(tooltip)
-        try:
-            button.setAccessibleName(tooltip)
-        except Exception:
-            log_exception("falha opcional ignorada")
-        icon = svg_icon(icon_name)
-        if not icon.isNull():
-            button.setIcon(icon)
-        button.setIconSize(QSize(icon_size, icon_size))
-
-    def _create_toolbar_separator(self, parent: QWidget) -> QFrame:
-        separator = QFrame(parent)
-        separator.setObjectName("summaryToolbarSeparator")
-        separator.setFrameShape(QFrame.NoFrame)
-        separator.setFrameShadow(QFrame.Plain)
-        separator.setFixedWidth(1)
-        return separator
+        _pivot_configure_toolbar_icon_button(button, icon_name, tooltip, icon_size=icon_size)
 
     def _polish_toolbar_button(self, button: Optional[QPushButton]):
-        if button is None:
-            return
-        style = button.style()
-        if style is not None:
-            style.unpolish(button)
-            style.polish(button)
-        button.update()
-
-    def _history_snapshot(self) -> Dict[str, Any]:
-        snapshot = dict(self.get_current_configuration() or {})
-        snapshot["_tools_panels_hidden"] = bool(self._tools_panels_hidden)
-        snapshot["_fields_panel_collapsed"] = bool(self._fields_panel_collapsed)
-        snapshot["_filters_panel_collapsed"] = bool(self._filters_panel_collapsed)
-        return snapshot
-
-    def _history_snapshot_key(self, snapshot: Optional[Dict[str, Any]]) -> str:
-        payload = dict(snapshot or {})
-        try:
-            return json.dumps(payload, sort_keys=True, ensure_ascii=True)
-        except Exception:
-            return str(payload)
+        _pivot_polish_toolbar_button(button)
 
     def _reset_history_state(self):
-        self._history_undo = []
-        self._history_redo = []
-        self._history_current = self._history_snapshot()
-        self._update_undo_redo_buttons()
+        _pivot_reset_history_state(self)
 
     def _commit_history_if_changed(self):
-        if self._history_restoring or self._block_updates:
-            return
-        snapshot = self._history_snapshot()
-        if self._history_current is None:
-            self._history_current = snapshot
-            self._update_undo_redo_buttons()
-            return
-        if self._history_snapshot_key(snapshot) == self._history_snapshot_key(self._history_current):
-            self._update_undo_redo_buttons()
-            return
-        self._history_undo.append(dict(self._history_current))
-        if len(self._history_undo) > self._history_limit:
-            self._history_undo = self._history_undo[-self._history_limit :]
-        self._history_current = snapshot
-        self._history_redo = []
-        self._update_undo_redo_buttons()
-
-    def _apply_history_snapshot(self, snapshot: Optional[Dict[str, Any]]):
-        payload = dict(snapshot or {})
-        config = dict(payload)
-        tools_hidden = bool(config.pop("_tools_panels_hidden", self._tools_panels_hidden))
-        self._fields_panel_collapsed = bool(config.pop("_fields_panel_collapsed", self._fields_panel_collapsed))
-        self._filters_panel_collapsed = bool(config.pop("_filters_panel_collapsed", self._filters_panel_collapsed))
-        self._history_restoring = True
-        self._block_updates = True
-        try:
-            self._apply_saved_configuration(config)
-        finally:
-            self._block_updates = False
-            self._history_restoring = False
-        self._apply_tools_panels_visibility(not tools_hidden)
-        self.refresh()
-        self._history_current = self._history_snapshot()
-        self._update_undo_redo_buttons()
+        _pivot_commit_history_if_changed(self)
 
     def _undo_last_action(self):
-        if not self._history_undo:
-            self._update_undo_redo_buttons()
-            return
-        current_snapshot = self._history_snapshot()
-        target_snapshot = dict(self._history_undo.pop())
-        self._history_redo.append(current_snapshot)
-        self._apply_history_snapshot(target_snapshot)
+        _pivot_undo_last_action(self)
 
     def _redo_last_action(self):
-        if not self._history_redo:
-            self._update_undo_redo_buttons()
-            return
-        current_snapshot = self._history_snapshot()
-        target_snapshot = dict(self._history_redo.pop())
-        self._history_undo.append(current_snapshot)
-        self._apply_history_snapshot(target_snapshot)
+        _pivot_redo_last_action(self)
 
     def _update_undo_redo_buttons(self):
-        has_data = self.raw_df is not None and not self.raw_df.empty
-        if hasattr(self, "undo_btn") and self.undo_btn is not None:
-            self.undo_btn.setEnabled(bool(has_data and self._history_undo))
-        if hasattr(self, "redo_btn") and self.redo_btn is not None:
-            self.redo_btn.setEnabled(bool(has_data and self._history_redo))
+        _pivot_update_undo_redo_buttons(self)
 
     def _restore_default_summary_layout(self):
-        self._fields_panel_collapsed = False
-        self._filters_panel_collapsed = False
-        self._tools_fields_width = _TOOLS_FIELDS_DEFAULT_WIDTH
-        self._tools_builder_width = _TOOLS_FILTERS_DEFAULT_WIDTH
-        self._apply_tools_panels_visibility(True)
+        _pivot_restore_default_summary_layout(self)
 
     def _open_summary_settings_menu(self):
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         fields_text = _rt("Expandir campos") if self._fields_panel_collapsed else _rt("Recolher campos")
         filters_text = _rt("Expandir filtros") if self._filters_panel_collapsed else _rt("Recolher filtros")
         fields_action = menu.addAction(fields_text)
@@ -2099,463 +1354,19 @@ class PivotTableWidget(QWidget):
             self._commit_history_if_changed()
 
     def _open_table_settings_dialog(self):
-        dialog = QDialog(self)
-        dialog.setObjectName("SummaryTableSettingsDialog")
-        dialog.setWindowTitle(_rt("Personalizar tabela"))
-        dialog.setModal(True)
-        dialog.resize(360, 250)
-        dialog.setFont(ui_font())
-        dialog._font_enforcer = attach_ui_font_enforcer(dialog)
-        dialog.setStyleSheet(
-            """
-            QDialog#SummaryTableSettingsDialog {
-                background: #FFFFFF;
-                border: 1px solid #D6D9E0;
-                border-radius: 8px;
-            }
-            QLabel#SummarySettingsTitle {
-                color: #111827;
-                font-size: 15px;
-                font-weight: 500;
-            }
-            QLabel#SummarySettingsLabel,
-            QCheckBox#SummarySettingsCheck {
-                color: #111827;
-                font-size: 12px;
-                font-weight: 400;
-            }
-            QSpinBox#SummarySettingsInput {
-                min-height: 30px;
-                padding: 0 8px;
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                border-radius: 6px;
-            }
-            QPushButton#SummarySettingsPrimary,
-            QPushButton#SummarySettingsSecondary {
-                min-height: 32px;
-                border-radius: 6px;
-                padding: 0 14px;
-                font-size: 12px;
-                font-weight: 400;
-            }
-            QPushButton#SummarySettingsPrimary {
-                color: #FFFFFF;
-                background: #111827;
-                border: 1px solid #111827;
-            }
-            QPushButton#SummarySettingsPrimary:hover {
-                background: #1F2937;
-            }
-            QPushButton#SummarySettingsSecondary {
-                color: #111827;
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
-            }
-            QPushButton#SummarySettingsSecondary:hover {
-                background: #F9FAFB;
-                border-color: #9CA3AF;
-            }
-            """
+        _pivot_open_table_settings_dialog(
+            self,
+            translate=_rt,
+            apply_preferences_callback=self._apply_table_preferences,
         )
-        if _is_dark_theme():
-            dialog.setStyleSheet(
-                """
-                QDialog#SummaryTableSettingsDialog {
-                    background: #111827;
-                    border: 1px solid #334155;
-                    border-radius: 8px;
-                    color: #F8FAFC;
-                }
-                QLabel#SummarySettingsTitle {
-                    color: #F8FAFC;
-                    font-size: 15px;
-                    font-weight: 500;
-                    background: transparent;
-                }
-                QLabel#SummarySettingsLabel,
-                QCheckBox#SummarySettingsCheck {
-                    color: #F8FAFC;
-                    font-size: 12px;
-                    font-weight: 400;
-                    background: transparent;
-                }
-                QSpinBox#SummarySettingsInput {
-                    min-height: 30px;
-                    padding: 0 8px;
-                    background: #172033;
-                    color: #F8FAFC;
-                    border: 1px solid #334155;
-                    border-radius: 6px;
-                    selection-background-color: #1E293B;
-                    selection-color: #F8FAFC;
-                }
-                QSpinBox#SummarySettingsInput:focus {
-                    border-color: #7C6CFF;
-                }
-                QSpinBox#SummarySettingsInput::up-button,
-                QSpinBox#SummarySettingsInput::down-button,
-                QSpinBox#SummarySettingsInput::up-arrow,
-                QSpinBox#SummarySettingsInput::down-arrow {
-                    width: 0px;
-                    height: 0px;
-                    border: none;
-                    background: transparent;
-                    image: none;
-                }
-                QPushButton#SummarySettingsPrimary,
-                QPushButton#SummarySettingsSecondary {
-                    min-height: 32px;
-                    border-radius: 6px;
-                    padding: 0 14px;
-                    font-size: 12px;
-                    font-weight: 400;
-                }
-                QPushButton#SummarySettingsPrimary {
-                    color: #0B1020;
-                    background: #F8FAFC;
-                    border: 1px solid #F8FAFC;
-                    font-weight: 500;
-                }
-                QPushButton#SummarySettingsPrimary:hover {
-                    background: #E2E8F0;
-                    border-color: #E2E8F0;
-                }
-                QPushButton#SummarySettingsSecondary {
-                    color: #F8FAFC;
-                    background: #111827;
-                    border: 1px solid #334155;
-                }
-                QPushButton#SummarySettingsSecondary:hover {
-                    background: #1F2A3D;
-                    border-color: #475569;
-                }
-                """
-            )
-            apply_windows_title_bar_theme(dialog, True)
-
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(16, 16, 16, 14)
-        layout.setSpacing(12)
-
-        body_text_font = ui_font()
-        body_text_font.setPixelSize(12)
-
-        title = QLabel(_rt("Personalizar tabela"), dialog)
-        title.setObjectName("SummarySettingsTitle")
-        title_font = ui_font()
-        title_font.setPixelSize(15)
-        title_font.setWeight(600)
-        title.setFont(title_font)
-        layout.addWidget(title, 0)
-
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
-
-        row_label = QLabel(_rt("Altura da linha"), dialog)
-        row_label.setObjectName("SummarySettingsLabel")
-        row_label.setFont(body_text_font)
-        row_spin = QSpinBox(dialog)
-        row_spin.setObjectName("SummarySettingsInput")
-        row_spin.setFont(body_text_font)
-        row_spin.setRange(24, 52)
-        row_spin.setValue(int(getattr(self, "_table_row_height", 30) or 30))
-        row_spin.setButtonSymbols(QSpinBox.NoButtons)
-        grid.addWidget(row_label, 0, 0)
-        grid.addWidget(row_spin, 0, 1)
-
-        alternating_check = QCheckBox(_rt("Linhas alternadas"), dialog)
-        alternating_check.setObjectName("SummarySettingsCheck")
-        alternating_check.setFont(body_text_font)
-        alternating_check.setChecked(bool(getattr(self, "_table_alternating_rows", True)))
-        grid.addWidget(alternating_check, 1, 0, 1, 2)
-
-        compact_check = QCheckBox(_rt("Cabeçalho compacto"), dialog)
-        compact_check.setObjectName("SummarySettingsCheck")
-        compact_check.setFont(body_text_font)
-        compact_check.setChecked(bool(getattr(self, "_table_header_compact", True)))
-        grid.addWidget(compact_check, 2, 0, 1, 2)
-        layout.addLayout(grid)
-        layout.addStretch(1)
-
-        actions = QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(8)
-        actions.addStretch(1)
-        cancel_btn = QPushButton(_rt("Cancelar"), dialog)
-        cancel_btn.setObjectName("SummarySettingsSecondary")
-        cancel_btn.setFont(body_text_font)
-        apply_btn = QPushButton(_rt("Aplicar"), dialog)
-        apply_btn.setObjectName("SummarySettingsPrimary")
-        apply_btn.setFont(body_text_font)
-        actions.addWidget(cancel_btn, 0)
-        actions.addWidget(apply_btn, 0)
-        layout.addLayout(actions)
-        harmonize_widget_fonts(dialog)
-
-        cancel_btn.clicked.connect(dialog.reject)
-
-        def _apply():
-            self._table_row_height = int(row_spin.value())
-            self._table_alternating_rows = bool(alternating_check.isChecked())
-            self._table_header_compact = bool(compact_check.isChecked())
-            self._apply_table_preferences()
-            dialog.accept()
-
-        apply_btn.clicked.connect(_apply)
-        dialog.exec_()
 
     def _refresh_toolbar_chrome(self):
-        dark_mode = _is_dark_theme()
-        icon_size = QSize(18, 18)
-        icon_normal = "#E5E7EB" if dark_mode else _INK_COLOR
-        icon_active = "#FFFFFF" if dark_mode else _INK_COLOR
-        icon_disabled = "#94A3B8" if dark_mode else "#C7CDD6"
-        mono_icon_colors = {
-            QIcon.Normal: icon_normal,
-            QIcon.Active: icon_active,
-            QIcon.Selected: icon_active,
-            QIcon.Disabled: icon_disabled,
-        }
-        search_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["search"], size=18, color_map=mono_icon_colors)
-        clear_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["clear"], size=18, color_map=mono_icon_colors)
-        undo_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["undo"], size=18, color_map=mono_icon_colors)
-        redo_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["redo"], size=18, color_map=mono_icon_colors)
-        dashboard_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["dashboard"], size=18, color_map=mono_icon_colors)
-        edit_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_edit"], size=18, color_map=mono_icon_colors)
-        sheet_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_sheet"], size=18, color_map=mono_icon_colors)
-        image_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_image"], size=18, color_map=mono_icon_colors)
-        settings_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_settings"], size=18, color_map=mono_icon_colors)
-        panel_field_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["fields"], size=14, color_map=mono_icon_colors)
-        panel_filter_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["filter_panel"], size=14, color_map=mono_icon_colors)
-        if hasattr(self, "toolbar_strip") and self.toolbar_strip is not None:
-            if dark_mode:
-                toolbar_style = """
-                QFrame#summaryToolbarStrip {
-                    background: transparent;
-                    border: 1px solid #334155;
-                    border-radius: 8px;
-                }
-                QFrame#summaryToolbarSeparator {
-                    min-width: 1px;
-                    max-width: 1px;
-                    margin: 4px 6px;
-                    background: rgba(148, 163, 184, 0.22);
-                    border: none;
-                }
-                QPushButton#summaryToolbarButton {
-                    min-width: 30px;
-                    max-width: 30px;
-                    min-height: 30px;
-                    max-height: 30px;
-                    padding: 0px;
-                    color: #E5E7EB;
-                    background: transparent;
-                    border: none;
-                    border-radius: 6px;
-                    text-align: center;
-                }
-                QPushButton#summaryToolbarButton:hover {
-                    background: #1F2A3D;
-                    color: #FFFFFF;
-                }
-                QPushButton#summaryToolbarButton:checked,
-                QPushButton#summaryToolbarButton:pressed {
-                    background: #312E81;
-                    color: #FFFFFF;
-                }
-                QPushButton#summaryToolbarButton:disabled {
-                    color: #94A3B8;
-                }
-                QPushButton[variant="secondary"] {
-                    background: #172033;
-                    border: 1px solid #334155;
-                    color: #E5E7EB;
-                    border-radius: 8px;
-                    padding: 0 12px;
-                    min-height: 30px;
-                }
-                QPushButton[variant="secondary"]:hover {
-                    background: #1F2A3D;
-                    border-color: #475569;
-                    color: #FFFFFF;
-                }
-                QLineEdit#summarySearch {
-                    min-height: 30px;
-                    padding: 0 9px;
-                    color: #F8FAFC;
-                    background: #111827;
-                    border: 1px solid #334155;
-                    border-radius: 6px;
-                    font-size: 12px;
-                    font-weight: 400;
-                    selection-background-color: #1E293B;
-                    selection-color: #F8FAFC;
-                }
-                QLineEdit#summarySearch:hover,
-                QLineEdit#summarySearch:focus {
-                    background: #111827;
-                    border: 1px solid #475569;
-                }
-                """
-            else:
-                toolbar_style = """
-                QFrame#summaryToolbarStrip {
-                    background: #FFFFFF;
-                    border: 1px solid #D6D9E0;
-                    border-radius: 8px;
-                }
-                QFrame#summaryToolbarSeparator {
-                    min-width: 1px;
-                    max-width: 1px;
-                    margin: 4px 6px;
-                    background: #E5E7EB;
-                    border: none;
-                }
-                QPushButton#summaryToolbarButton {
-                    min-width: 30px;
-                    max-width: 30px;
-                    min-height: 30px;
-                    max-height: 30px;
-                    padding: 0px;
-                    color: #111827;
-                    background: transparent;
-                    border: none;
-                    border-radius: 6px;
-                    text-align: center;
-                }
-                QPushButton#summaryToolbarButton:hover {
-                    background: #F3F4F6;
-                }
-                QPushButton#summaryToolbarButton:checked,
-                QPushButton#summaryToolbarButton:pressed {
-                    background: #E5E7EB;
-                    color: #111827;
-                }
-                QPushButton#summaryToolbarButton:disabled {
-                    color: #C7CDD6;
-                }
-                QPushButton[variant="secondary"] {
-                    background: #FFFFFF;
-                    border: 1px solid #D1D5DB;
-                    color: #111827;
-                    border-radius: 8px;
-                    padding: 0 12px;
-                    min-height: 30px;
-                }
-                QPushButton[variant="secondary"]:hover {
-                    background: #F9FAFB;
-                    border-color: #9CA3AF;
-                }
-                QLineEdit#summarySearch {
-                    min-height: 30px;
-                    padding: 0 9px;
-                    color: #4b5563;
-                    background: #FFFFFF;
-                    border: 1px solid #D1D5DB;
-                    border-radius: 6px;
-                    font-size: 12px;
-                    font-weight: 400;
-                }
-                QLineEdit#summarySearch:hover,
-                QLineEdit#summarySearch:focus {
-                    background: #FFFFFF;
-                    border: 1px solid #9CA3AF;
-                }
-                """
-            self.toolbar_strip.setStyleSheet(toolbar_style)
-
-        if hasattr(self, "search_input") and self.search_input is not None:
-            if getattr(self, "_search_icon_action", None) is None:
-                self._search_icon_action = self.search_input.addAction(
-                    search_icon,
-                    QLineEdit.LeadingPosition,
-                )
-            else:
-                self._search_icon_action.setIcon(search_icon)
-            self.search_input.setPlaceholderText(_rt("Buscar"))
-            self.search_input.setToolTip(_rt("Pesquisar na tabela"))
-
-        if hasattr(self, "clear_filters_btn") and self.clear_filters_btn is not None:
-            self._configure_toolbar_button(self.clear_filters_btn)
-            self.clear_filters_btn.setToolTip(_rt("Limpar busca"))
-            self.clear_filters_btn.setIcon(clear_icon)
-            self.clear_filters_btn.setIconSize(icon_size)
-            self._polish_toolbar_button(self.clear_filters_btn)
-
-        if hasattr(self, "export_btn") and self.export_btn is not None:
-            self._configure_toolbar_button(self.export_btn)
-            self.export_btn.setToolTip(_rt("Exportar"))
-            self.export_btn.setIcon(image_icon)
-            self.export_btn.setIconSize(icon_size)
-            self._polish_toolbar_button(self.export_btn)
-
-        if hasattr(self, "undo_btn") and self.undo_btn is not None:
-            self.undo_btn.setToolTip(_rt("Desfazer (Ctrl+Z)"))
-            self.undo_btn.setIcon(undo_icon)
-            self.undo_btn.setIconSize(icon_size)
-            self._polish_toolbar_button(self.undo_btn)
-
-        if hasattr(self, "redo_btn") and self.redo_btn is not None:
-            self.redo_btn.setToolTip(_rt("Refazer (Ctrl+Shift+Z)"))
-            self.redo_btn.setIcon(redo_icon)
-            self.redo_btn.setIconSize(icon_size)
-            self._polish_toolbar_button(self.redo_btn)
-
-        if hasattr(self, "import_sheet_btn") and self.import_sheet_btn is not None:
-            self.import_sheet_btn.setToolTip(_rt("Importar planilha"))
-            self.import_sheet_btn.setIcon(sheet_icon)
-            self.import_sheet_btn.setIconSize(icon_size)
-            self._polish_toolbar_button(self.import_sheet_btn)
-
-        if hasattr(self, "sidebar_toggle_btn") and self.sidebar_toggle_btn is not None:
-            collapsed = bool(getattr(self, "_tools_panels_hidden", False))
-            self._configure_toolbar_button(self.sidebar_toggle_btn)
-            self.sidebar_toggle_btn.setToolTip(
-                _rt("Mostrar campos e filtros") if collapsed else _rt("Ocultar campos e filtros")
-            )
-            self.sidebar_toggle_btn.setIcon(edit_icon)
-            self.sidebar_toggle_btn.setIconSize(icon_size)
-            self._polish_toolbar_button(self.sidebar_toggle_btn)
-
-        if hasattr(self, "settings_btn") and self.settings_btn is not None:
-            self.settings_btn.setToolTip(_rt("Personalizar tabela"))
-            self.settings_btn.setIcon(settings_icon)
-            self.settings_btn.setIconSize(icon_size)
-            self._polish_toolbar_button(self.settings_btn)
-
-        if self._external_dashboard_button is not None:
-            self._configure_toolbar_button(self._external_dashboard_button)
-            self._external_dashboard_button.setObjectName("summaryToolbarButton")
-            self._external_dashboard_button.setProperty("toolbarMode", "icon")
-            self._external_dashboard_button.setProperty("iconOnly", True)
-            self._external_dashboard_button.setProperty("toolbarPrimary", False)
-            self._external_dashboard_button.setFixedSize(30, 30)
-            self._external_dashboard_button.setText("")
-            self._external_dashboard_button.setToolTip(_rt("Dashboard interativo"))
-            self._external_dashboard_button.setIcon(dashboard_icon)
-            self._external_dashboard_button.setIconSize(icon_size)
-            self._polish_toolbar_button(self._external_dashboard_button)
-
-        if self._external_auto_checkbox is not None:
-            self._external_auto_checkbox.setText(_rt("Auto"))
-            self._external_auto_checkbox.setToolTip(_rt("Atualização automática"))
-
-        if hasattr(self, "fields_panel_icon"):
-            self.fields_panel_icon.setPixmap(panel_field_icon.pixmap(14, 14))
-        if hasattr(self, "filters_panel_icon"):
-            self.filters_panel_icon.setPixmap(panel_filter_icon.pixmap(14, 14))
-        if hasattr(self, "fields_panel_title"):
-            self.fields_panel_title.setText(_rt("Campos"))
-        if hasattr(self, "fields_panel_collapsed_title"):
-            self.fields_panel_collapsed_title.setText(_rt("Campos"))
-        if hasattr(self, "filter_area_title"):
-            self.filter_area_title.setText(_rt("Filtros"))
-        if hasattr(self, "filters_panel_collapsed_title"):
-            self.filters_panel_collapsed_title.setText(_rt("Filtros"))
-        self._apply_runtime_i18n()
+        _pivot_refresh_toolbar_chrome(
+            self,
+            icon_factory=_svg_icon_from_template,
+            toolbar_icons=_TOOLBAR_SVG_ICONS,
+            translate=_rt,
+        )
 
     def _handle_splitter_moved(self, pos: int, index: int):
         if self._sidebar_collapsed or self.main_splitter is None:
@@ -2685,7 +1496,7 @@ class PivotTableWidget(QWidget):
         if panel is None:
             slim_message(self, _rt("Resumo"), _rt("O painel de integração ainda não está disponível."))
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         excel_action = menu.addAction(_rt("Importar Excel (.xlsx / .xls)"))
         csv_action = menu.addAction(_rt("Importar CSV (.csv)"))
         anchor = getattr(self, "import_sheet_btn", None)
@@ -2720,1192 +1531,18 @@ class PivotTableWidget(QWidget):
         self._apply_runtime_i18n()
 
     def _apply_styles(self):
-        dark_mode = _is_dark_theme()
-        tokens = {
-            "__FONT_UI_STACK__": str(
-                TYPOGRAPHY.get(
-                    "font_ui_stack",
-                    '"Inter", sans-serif',
-                )
-            ),
-            "__FONT_PAGE_TITLE_PX__": str(int(TYPOGRAPHY.get("font_page_title_px", 24))),
-            "__FONT_SECTION_TITLE_PX__": str(int(TYPOGRAPHY.get("font_section_title_px", 16))),
-            "__FONT_BODY_PX__": str(int(TYPOGRAPHY.get("font_body_px", 13))),
-            "__FONT_SECONDARY_PX__": str(int(TYPOGRAPHY.get("font_secondary_px", 12))),
-            "__FONT_CAPTION_PX__": str(int(TYPOGRAPHY.get("font_caption_px", 11))),
-            "__FONT_BUTTON_PX__": str(int(TYPOGRAPHY.get("font_button_px", 13))),
-            "__FONT_WEIGHT_REGULAR__": str(int(TYPOGRAPHY.get("font_weight_regular", 400))),
-            "__FONT_WEIGHT_MEDIUM__": str(int(TYPOGRAPHY.get("font_weight_medium", 500))),
-            "__FONT_WEIGHT_SEMIBOLD__": str(int(TYPOGRAPHY.get("font_weight_semibold", 600))),
-        }
-        tokens["__TITLE_PX__"] = str(
-            max(int(tokens["__FONT_BODY_PX__"]) + 2, int(tokens["__FONT_SECONDARY_PX__"]) + 3)
-        )
-        tokens["__WELCOME_TITLE_PX__"] = str(max(int(tokens["__FONT_PAGE_TITLE_PX__"]) + 8, 30))
-        tokens["__WELCOME_SUBTITLE_PX__"] = str(max(int(tokens["__FONT_BODY_PX__"]) + 4, 16))
-        qss = """
-            QWidget#summaryPivotRoot {
-                background: #ffffff;
-                font-family: __FONT_UI_STACK__;
-                font-size: __FONT_BODY_PX__px;
-                color: #111827;
-            }
-            #summaryPivotRoot QWidget#summaryControlsZone,
-            #summaryPivotRoot QWidget#summaryContextBar,
-            #summaryPivotRoot QWidget#summaryToolbar {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QFrame#summaryInitialState {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QWidget#summaryWelcomeWrap {
-                background: transparent;
-                border: none;
-                min-width: 780px;
-                max-width: 860px;
-            }
-            #summaryPivotRoot QLabel#summaryWelcomeTitle {
-                color: #111827;
-                font-size: __WELCOME_TITLE_PX__px;
-                font-weight: __FONT_WEIGHT_SEMIBOLD__;
-                letter-spacing: -0.42px;
-            }
-            #summaryPivotRoot QLabel#summaryWelcomeText {
-                color: #475569;
-                font-size: __WELCOME_SUBTITLE_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QFrame#summaryEntrySelectionHost {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QWidget#summarySourceCardsHost {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QToolButton#summarySourceCard {
-                background: transparent;
-                border: none;
-                padding: 0;
-                color: #111827;
-                font-size: __FONT_BODY_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-                min-height: 92px;
-            }
-            #summaryPivotRoot QToolButton#summarySourceCard:hover {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QToolButton#summarySourceCard:checked {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QToolButton#summarySourceCard:pressed {
-                background: transparent;
-            }
-            #summaryPivotRoot QLabel#summarySourceCardBadge {
-                background: #F2EEFF;
-                color: #6E56CF;
-                border: 1px solid rgba(139, 124, 246, 0.24);
-                border-radius: 10px;
-                padding: 2px 8px;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_SEMIBOLD__;
-            }
-            #summaryPivotRoot QFrame#summaryTableCard {
-                background: #ffffff;
-                border: 1px solid rgba(17, 24, 39, 0.09);
-                border-radius: 5px;
-            }
-            #summaryPivotRoot QSplitter#summaryAnalyticsSplitter {
-                background: transparent;
-            }
-            #summaryPivotRoot QSplitter#summaryMainSplitter {
-                background: transparent;
-            }
-            #summaryPivotRoot QSplitter#summaryMainSplitter::handle {
-                background: transparent;
-                width: 6px;
-                margin: 0;
-            }
-            #summaryPivotRoot QSplitter#summaryAnalyticsSplitter::handle {
-                background: transparent;
-                width: 6px;
-                margin: 0;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel,
-            #summaryPivotRoot QFrame#summaryFiltersPanel {
-                background: #ffffff;
-                border: 1px solid rgba(17, 24, 39, 0.055);
-                border-radius: 2px;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel[collapsed="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel[collapsed="true"] {
-                background: #fbfbfc;
-            }
-            #summaryPivotRoot QScrollArea#summaryFiltersScroll,
-            #summaryPivotRoot QWidget#summaryFiltersViewport,
-            #summaryPivotRoot QWidget#summaryFiltersBuilderContent {
-                background: #ffffff;
-                border: none;
-            }
-            #summaryPivotRoot QWidget#summaryPanelHeader {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QWidget#summaryPanelBody {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QFrame#summaryPanelCollapsedRail {
-                background: #fbfbfc;
-                border: none;
-            }
-            #summaryPivotRoot QLabel#summaryPanelCollapsedTitle {
-                color: #6b7280;
-                font-size: __FONT_SECONDARY_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-            }
-            #summaryPivotRoot QToolButton#summaryPanelToggle {
-                background: transparent;
-                border: 1px solid transparent;
-                border-radius: 6px;
-                padding: 0px;
-                color: #6b7280;
-                font-size: 16px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-            }
-            #summaryPivotRoot QToolButton#summaryPanelToggle:hover {
-                background: rgba(17, 24, 39, 0.045);
-                border-color: rgba(17, 24, 39, 0.08);
-                color: #111827;
-            }
-            #summaryPivotRoot QWidget#summaryFieldsContextCard {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QLabel#summaryPanelIcon {
-                min-width: 14px;
-                max-width: 14px;
-                min-height: 14px;
-                max-height: 14px;
-            }
-            #summaryPivotRoot QWidget#summaryFieldsContextCard QLabel#summaryContextLabel {
-                color: #6b7280;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-            }
-            #summaryPivotRoot QWidget#summaryFieldsContextCard QLabel#summaryMetaLabel {
-                color: #8b95a1;
-                font-size: __FONT_CAPTION_PX__px;
-            }
-            #summaryPivotRoot QLabel#summaryPanelTitle {
-                color: #4b5563;
-                font-size: __FONT_SECONDARY_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-                padding: 0 0 1px 0;
-            }
-            #summaryPivotRoot QLabel#summaryPanelTitle[activeArea="true"] {
-                color: #516074;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel {
-                background: #f7f7f8;
-                border: none;
-                border-left: 1px solid rgba(17, 24, 39, 0.08);
-                border-radius: 0px;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel[collapsed="true"] {
-                background: #f2f3f5;
-            }
-            #summaryPivotRoot QFrame#summarySidebarHeader,
-            #summaryPivotRoot QFrame#summarySidebarFooter {
-                background: rgba(247, 247, 248, 0.96);
-                border: none;
-            }
-            #summaryPivotRoot QFrame#summarySidebarHeader {
-                border-bottom: 1px solid rgba(17, 24, 39, 0.05);
-            }
-            #summaryPivotRoot QFrame#summarySidebarFooter {
-                border-top: 1px solid rgba(17, 24, 39, 0.05);
-            }
-            #summaryPivotRoot QWidget#summaryBuilderContent {
-                background: transparent;
-            }
-            #summaryPivotRoot QLabel#summaryContextLabel {
-                color: #9aa3af;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QLabel#summarySidebarTitle {
-                color: #111827;
-                font-size: __FONT_SECONDARY_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-            }
-            #summaryPivotRoot QToolButton#summarySidebarToggle {
-                background: rgba(255, 255, 255, 0.88);
-                border: 1px solid rgba(17, 24, 39, 0.06);
-                border-radius: 8px;
-                padding: 0px;
-                color: #6b7280;
-            }
-            #summaryPivotRoot QToolButton#summarySidebarToggle:hover {
-                background: rgba(17, 24, 39, 0.04);
-                border-color: rgba(17, 24, 39, 0.10);
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel[collapsed="true"] QFrame#summarySidebarHeader {
-                border-bottom: none;
-                background: #f2f3f5;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel[collapsed="true"] QToolButton#summarySidebarToggle {
-                background: rgba(255, 255, 255, 0.92);
-                border-color: rgba(17, 24, 39, 0.10);
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QLabel#summarySectionTitle {
-                color: #6b7280;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-                padding: 1px 0 2px 0;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QLabel#summaryAxisTitle,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QLabel#summaryAxisTitle {
-                color: #374151;
-                font-size: __FONT_SECONDARY_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-                padding: 0 0 1px 0;
-            }
-            #summaryPivotRoot QLabel#summaryMetaLabel,
-            #summaryPivotRoot QLabel#summaryStatusLabel,
-            #summaryPivotRoot QLabel#summarySelectionLabel,
-            #summaryPivotRoot QLabel#summaryLayerPlaceholder,
-            #summaryPivotRoot QLabel#summaryEmptyText {
-                color: #6b7280;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QLabel#summaryMetaLabel {
-                color: #a8b0bb;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QLabel#summaryFieldLabel,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QLabel#summaryFieldLabel {
-                color: #6b7280;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QGroupBox#summaryAdvancedGroup,
-            #summaryPivotRoot QGroupBox#summaryAdvancedGroup::title,
-            #summaryPivotRoot QCheckBox#summaryAdvancedCheck,
-            #summaryPivotRoot QComboBox#summaryOperationCombo {
-                font-size: __FONT_SECONDARY_PX__px;
-            }
-            #summaryPivotRoot QLabel#summaryEmptyTitle {
-                color: #111827;
-                font-size: __TITLE_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-            }
-            #summaryPivotRoot QFrame#summaryLayerHost {
-                background: transparent;
-                border: none;
-                padding: 0px;
-            }
-            #summaryPivotRoot QLineEdit#summarySearch,
-            #summaryPivotRoot QComboBox#summaryLayerCombo {
-                background: #ffffff;
-                border: 1px solid rgba(17, 24, 39, 0.06);
-                border-radius: 8px;
-                padding: 0 9px;
-                color: #111827;
-                font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QLineEdit#summarySearch,
-            #summaryPivotRoot QComboBox#summaryLayerCombo {
-                min-height: 30px;
-            }
-            #summaryPivotRoot QLineEdit#summarySearch {
-                padding-right: 8px;
-                padding-left: 8px;
-                background: rgba(255, 255, 255, 0.92);
-            }
-            #summaryPivotRoot QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            #summaryPivotRoot QLineEdit#summarySearch:hover,
-            #summaryPivotRoot QComboBox#summaryLayerCombo:hover {
-                border-color: rgba(17, 24, 39, 0.10);
-            }
-            #summaryPivotRoot QLineEdit#summarySearch:focus,
-            #summaryPivotRoot QComboBox#summaryLayerCombo:focus {
-                border: 1px solid rgba(81, 96, 116, 0.55);
-                background: #ffffff;
-            }
-            #summaryPivotRoot QPushButton#summaryPrimaryButton {
-                background: #1f2937;
-                color: #ffffff;
-                border: 1px solid #111827;
-                border-radius: 8px;
-                padding: 0 14px;
-                font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-            }
-            #summaryPivotRoot QFrame#summaryToolbarStrip {
-                background: #FFFFFF;
-                border: 1px solid #D6D9E0;
-                border-radius: 8px;
-            }
-            #summaryPivotRoot QFrame#summaryToolbarSeparator {
-                min-width: 1px;
-                max-width: 1px;
-                margin: 4px 6px;
-                background: #E5E7EB;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton {
-                background: transparent;
-                color: #111827;
-                border: none;
-                border-radius: 6px;
-                padding: 0 4px;
-                font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-                text-align: left;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton {
-                min-width: 30px;
-                max-width: 30px;
-                min-height: 30px;
-                max-height: 30px;
-                padding: 0px;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton:checked {
-                background: #E5E7EB;
-                color: #111827;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton:disabled {
-                color: #C7CDD6;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton:hover {
-                background: #F3F4F6;
-                color: #111827;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch {
-                min-height: 30px;
-                padding: 0 9px;
-                background: transparent;
-                border: none;
-                border-radius: 7px;
-                color: #4b5563;
-                font-size: __FONT_SECONDARY_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch:hover,
-            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch:focus {
-                background: #F9FAFB;
-                border: none;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryPrimaryButton[toolbarPrimary="true"] {
-                background: transparent;
-                color: #111827;
-                border: 1px solid transparent;
-                border-radius: 10px;
-                padding: 0 10px;
-                font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-                text-align: left;
-            }
-            #summaryPivotRoot QPushButton#summaryPrimaryButton:hover {
-                background: #111827;
-                border-color: #0b1220;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryPrimaryButton[toolbarPrimary="true"]:hover {
-                background: rgba(17, 24, 39, 0.045);
-                border-color: rgba(17, 24, 39, 0.08);
-                color: #111827;
-            }
-            #summaryPivotRoot QPushButton#summarySecondaryButton {
-                background: transparent;
-                color: #111827;
-                border: 1px solid transparent;
-                border-radius: 10px;
-                padding: 0 10px;
-                font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-                text-align: left;
-            }
-            #summaryPivotRoot QPushButton#summaryBackButton {
-                background: transparent;
-                color: #111827;
-                border: 1px solid transparent;
-                border-radius: 10px;
-                padding: 0 10px;
-                font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-                text-align: left;
-            }
-            #summaryPivotRoot QPushButton#summaryBackButton:hover {
-                background: rgba(17, 24, 39, 0.045);
-                border-color: rgba(17, 24, 39, 0.08);
-            }
-            #summaryPivotRoot QPushButton#summarySecondaryButton[iconOnly="true"] {
-                padding: 0px;
-                min-width: 28px;
-                max-width: 28px;
-            }
-            #summaryPivotRoot QPushButton#summaryGhostButton {
-                background: transparent;
-                color: #4b5563;
-                border: 1px solid transparent;
-                border-radius: 10px;
-                padding: 0 10px;
-                font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-                text-align: left;
-            }
-            #summaryPivotRoot QPushButton#summaryGhostButton:checked {
-                background: rgba(17, 24, 39, 0.055);
-                color: #1f2937;
-                border: 1px solid rgba(17, 24, 39, 0.10);
-            }
-            #summaryPivotRoot QCheckBox#summaryAutoUpdateCheck,
-            #summaryPivotRoot QCheckBox {
-                color: #9aa3af;
-                spacing: 5px;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QCheckBox#summaryAutoUpdateCheck {
-                padding-left: 8px;
-                background: transparent;
-                border: none;
-                border-radius: 0px;
-                outline: none;
-            }
-            #summaryPivotRoot QCheckBox#summaryAutoUpdateCheck:hover,
-            #summaryPivotRoot QCheckBox#summaryAutoUpdateCheck:focus {
-                background: transparent;
-                border: none;
-                outline: none;
-            }
-            #summaryPivotRoot QCheckBox::indicator {
-                width: 12px;
-                height: 12px;
-                border: 1px solid rgba(17, 24, 39, 0.20);
-                border-radius: 3px;
-                background: #ffffff;
-            }
-            #summaryPivotRoot QCheckBox::indicator:checked {
-                background: #7b8798;
-                border-color: #6b7280;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QLabel#summaryAxisTitle[activeArea="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QLabel#summaryAxisTitle[activeArea="true"] {
-                color: #516074;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QWidget[sidebarSection="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[sidebarSection="true"] {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[filterSectionCard="true"] {
-                background: #ffffff;
-                border: 1px solid rgba(17, 24, 39, 0.08);
-                border-radius: 2px;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox#summaryOperationCombo,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox,
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox#summaryOperationCombo,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QLineEdit {
-                background: rgba(255, 255, 255, 0.96);
-                border: 1px solid rgba(17, 24, 39, 0.08);
-                border-radius: 2px;
-                padding: 0 8px;
-                color: #111827;
-                min-height: 28px;
-                selection-background-color: rgba(81, 96, 116, 0.14);
-                selection-color: #111827;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch:hover,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox#summaryOperationCombo:hover,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox:hover,
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox#summaryOperationCombo:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QLineEdit:hover {
-                background: #ffffff;
-                border-color: rgba(17, 24, 39, 0.12);
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch:focus,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox#summaryOperationCombo:focus,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox:focus,
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit:focus,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox#summaryOperationCombo:focus,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox:focus,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QLineEdit:focus {
-                background: #ffffff;
-                border-color: rgba(81, 96, 116, 0.48);
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget {
-                background: rgba(255, 255, 255, 0.92);
-                border: 1px solid rgba(17, 24, 39, 0.06);
-                border-radius: 10px;
-                padding: 5px;
-                color: #111827;
-                outline: 0;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget[activeArea="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget[activeArea="true"] {
-                background: rgba(255, 255, 255, 0.96);
-                border: 1px solid rgba(81, 96, 116, 0.32);
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget::item,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item {
-                padding: 8px 10px;
-                margin: 1px 0;
-                border-radius: 6px;
-                font-size: __FONT_SECONDARY_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget::item:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item:hover {
-                background: rgba(17, 24, 39, 0.035);
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget::item:selected,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item:selected {
-                background: rgba(81, 96, 116, 0.12);
-                color: #111827;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget#summaryFieldsList,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryFilterList {
-                background: rgba(255, 255, 255, 0.96);
-                border: 1px solid rgba(17, 24, 39, 0.09);
-                border-radius: 2px;
-                padding: 2px;
-                color: #111827;
-                outline: 0;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList {
-                background: rgba(255, 255, 255, 0.98);
-                border: 1px solid rgba(17, 24, 39, 0.08);
-                border-radius: 2px;
-                padding: 4px;
-                outline: 0;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList::item,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList::item,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList::item {
-                background: transparent;
-                border: none;
-                padding: 0px;
-                margin: 0px;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList::item:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList::item:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList::item:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList::item:selected,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList::item:selected,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList::item:selected {
-                background: transparent;
-                color: #111827;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList[activeArea="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList[activeArea="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList[activeArea="true"] {
-                background: #ffffff;
-                border-color: rgba(81, 96, 116, 0.22);
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryFilterList[activeArea="true"] {
-                border-color: rgba(81, 96, 116, 0.28);
-                background: #ffffff;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item {
-                padding: 4px 6px;
-                margin: 0;
-                border-radius: 2px;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item:hover {
-                background: rgba(17, 24, 39, 0.035);
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item:selected,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item:selected {
-                background: rgba(81, 96, 116, 0.12);
-                color: #111827;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QScrollBar:vertical,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar:vertical {
-                background: transparent;
-                width: 10px;
-                margin: 4px 0;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QScrollBar::handle:vertical,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar::handle:vertical {
-                background: rgba(107, 114, 128, 0.28);
-                border-radius: 5px;
-                min-height: 24px;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QScrollBar::handle:vertical:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar::handle:vertical:hover {
-                background: rgba(107, 114, 128, 0.40);
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QScrollBar::add-line:vertical,
-            #summaryPivotRoot QFrame#summaryFieldsPanel QScrollBar::sub-line:vertical,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar::add-line:vertical,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QScrollBar::add-page:vertical,
-            #summaryPivotRoot QFrame#summaryFieldsPanel QScrollBar::sub-page:vertical,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar::add-page:vertical,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar::sub-page:vertical {
-                background: transparent;
-            }
-            #summaryPivotRoot QWidget#summaryAreaChip {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QWidget#summaryAreaChipRow {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QFrame#summaryAreaChip {
-                background: #ffffff;
-                border: 1px solid rgba(17, 24, 39, 0.10);
-                border-radius: 2px;
-            }
-            #summaryPivotRoot QLabel#summaryAreaChipText {
-                color: #111827;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QToolButton#summaryAreaChipRemove {
-                background: transparent;
-                border: 1px solid transparent;
-                border-radius: 2px;
-                padding: 0px;
-            }
-            #summaryPivotRoot QToolButton#summaryAreaChipRemove:hover {
-                background: rgba(239, 68, 68, 0.08);
-                border-color: rgba(239, 68, 68, 0.20);
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup {
-                background: #ffffff;
-                border: 1px solid rgba(17, 24, 39, 0.08);
-                border-radius: 2px;
-                margin-top: 8px;
-                padding-top: 8px;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup::title,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup::title {
-                subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 4px;
-                background: #ffffff;
-                color: #4b5563;
-                font-size: __FONT_SECONDARY_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup::indicator,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup::indicator {
-                width: 14px;
-                height: 14px;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QCheckBox,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QCheckBox {
-                color: #6b7280;
-                spacing: 8px;
-                font-size: __FONT_SECONDARY_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QCheckBox#summaryAdvancedCheck {
-                min-height: 18px;
-                padding: 0px;
-                margin: 0px;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QScrollBar:vertical {
-                background: transparent;
-                width: 10px;
-                margin: 4px 0;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QScrollBar::handle:vertical {
-                background: rgba(107, 114, 128, 0.28);
-                border-radius: 5px;
-                min-height: 24px;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QScrollBar::handle:vertical:hover {
-                background: rgba(107, 114, 128, 0.40);
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QScrollBar::add-line:vertical,
-            #summaryPivotRoot QFrame#summarySidebarPanel QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QScrollBar::add-page:vertical,
-            #summaryPivotRoot QFrame#summarySidebarPanel QScrollBar::sub-page:vertical {
-                background: transparent;
-            }
-            #summaryPivotRoot QFrame#summarySidebarFooter QPushButton#summaryPrimaryButton,
-            #summaryPivotRoot QFrame#summaryFiltersFooter QPushButton#summaryPrimaryButton {
-                background: #FFFFFF;
-                color: #111827;
-                border: 1px solid #D1D5DB;
-                border-radius: 7px;
-                padding: 0 12px;
-                min-height: 34px;
-                font-size: __FONT_BUTTON_PX__px;
-                font-weight: __FONT_WEIGHT_REGULAR__;
-            }
-            #summaryPivotRoot QFrame#summarySidebarFooter QPushButton#summaryPrimaryButton:hover,
-            #summaryPivotRoot QFrame#summaryFiltersFooter QPushButton#summaryPrimaryButton:hover {
-                background: #F9FAFB;
-                border-color: #9CA3AF;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersFooter {
-                background: #FFFFFF;
-                border: 1px solid rgba(17, 24, 39, 0.08);
-                border-radius: 8px;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QScrollBar:vertical {
-                width: 0px;
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QFrame#summaryTableFooter {
-                background: transparent;
-                border-top: 1px solid rgba(17, 24, 39, 0.05);
-                border-radius: 0px;
-            }
-            #summaryPivotRoot QFrame#summaryEmptyState {
-                background: #ffffff;
-                border: none;
-                border-radius: 0px;
-            }
-            #summaryPivotRoot QTableView {
-                background: #ffffff;
-                border: 1px solid rgba(17, 24, 39, 0.07);
-                border-radius: 5px;
-                gridline-color: rgba(17, 24, 39, 0.045);
-                alternate-background-color: #fcfcfd;
-                selection-background-color: #E5E7EB;
-                selection-color: #111827;
-            }
-            #summaryPivotRoot QTableView::item {
-                padding: 6px 9px;
-            }
-            #summaryPivotRoot QTableView::item:selected {
-                background: #E5E7EB;
-                color: #111827;
-                border: none;
-                outline: none;
-            }
-            #summaryPivotRoot QHeaderView::section {
-                background: #f9fafb;
-                color: #4b5563;
-                border: none;
-                border-right: 1px solid rgba(17, 24, 39, 0.035);
-                border-bottom: 1px solid rgba(17, 24, 39, 0.06);
-                padding: 7px 8px;
-                font-size: __FONT_CAPTION_PX__px;
-                font-weight: __FONT_WEIGHT_MEDIUM__;
-            }
-            #summaryPivotRoot QTableCornerButton::section {
-                background: #f9fafb;
-                border: none;
-                border-bottom: 1px solid rgba(17, 24, 39, 0.06);
-            }
-            #summaryPivotRoot QSplitter::handle {
-                background: transparent;
-                width: 6px;
-                margin: 0;
-            }
-            #summaryPivotRoot QScrollArea {
-                background: transparent;
-                border: none;
-            }
-            """
-        if dark_mode:
-            qss += """
-            QWidget#summaryPivotRoot,
-            #summaryPivotRoot QFrame#summaryEmptyState {
-                background: #0B1020;
-                color: #F8FAFC;
-            }
-            #summaryPivotRoot QFrame#summaryTableCard,
-            #summaryPivotRoot QFrame#summaryFieldsPanel,
-            #summaryPivotRoot QFrame#summaryFiltersPanel,
-            #summaryPivotRoot QScrollArea#summaryFiltersScroll,
-            #summaryPivotRoot QWidget#summaryFiltersViewport,
-            #summaryPivotRoot QWidget#summaryFiltersBuilderContent,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[filterSectionCard="true"],
-            #summaryPivotRoot QFrame#summarySidebarPanel QWidget[sidebarSection="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[sidebarSection="true"],
-            #summaryPivotRoot QFrame#summaryAreaChip,
-            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup,
-            #summaryPivotRoot QFrame#summaryFiltersFooter {
-                background: #0B1020;
-                border-color: #334155;
-                color: #F8FAFC;
-            }
-            #summaryPivotRoot QFrame#summaryTableCard,
-            #summaryPivotRoot QFrame#summaryFieldsPanel,
-            #summaryPivotRoot QFrame#summaryFiltersPanel {
-                border: 1px solid #334155;
-                border-radius: 5px;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel[collapsed="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel[collapsed="true"],
-            #summaryPivotRoot QFrame#summaryPanelCollapsedRail,
-            #summaryPivotRoot QHeaderView::section,
-            #summaryPivotRoot QTableCornerButton::section {
-                background: #0B1020;
-                color: #CBD5E1;
-                border-color: rgba(148, 163, 184, 0.16);
-            }
-            #summaryPivotRoot QLabel,
-            #summaryPivotRoot QCheckBox,
-            #summaryPivotRoot QToolButton,
-            #summaryPivotRoot QLabel#summaryWelcomeTitle,
-            #summaryPivotRoot QLabel#summaryAreaChipText,
-            #summaryPivotRoot QToolButton#summarySourceCard {
-                color: #F8FAFC;
-            }
-            #summaryPivotRoot QLabel#summaryWelcomeText,
-            #summaryPivotRoot QLabel#summaryPanelCollapsedTitle,
-            #summaryPivotRoot QFrame#summarySidebarPanel QCheckBox,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QCheckBox,
-            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup::title,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup::title {
-                color: #CBD5E1;
-                background: transparent;
-            }
-            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup::title,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup::title {
-                background: #0B1020;
-            }
-            #summaryPivotRoot QLabel#summaryEmptyTitle {
-                color: #F8FAFC;
-            }
-            #summaryPivotRoot QLabel#summaryEmptyText,
-            #summaryPivotRoot QLabel#summaryStatusLabel,
-            #summaryPivotRoot QLabel#summarySelectionLabel {
-                color: #94A3B8;
-            }
-            #summaryPivotRoot QTableView {
-                background: #0B1020;
-                color: #F8FAFC;
-                border-color: rgba(148, 163, 184, 0.18);
-                gridline-color: rgba(148, 163, 184, 0.14);
-                alternate-background-color: #0F172A;
-                selection-background-color: #1E293B;
-                selection-color: #F8FAFC;
-            }
-            #summaryPivotRoot QTableView::item:selected,
-            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item:selected,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item:selected {
-                background: #1E293B;
-                color: #F8FAFC;
-            }
-            #summaryPivotRoot QFrame#summarySidebarFooter QPushButton#summaryPrimaryButton,
-            #summaryPivotRoot QFrame#summaryFiltersFooter QPushButton#summaryPrimaryButton {
-                background: #1F2937;
-                color: #F8FAFC;
-                border-color: #475569;
-            }
-            #summaryPivotRoot QFrame#summarySidebarFooter QPushButton#summaryPrimaryButton:hover,
-            #summaryPivotRoot QFrame#summaryFiltersFooter QPushButton#summaryPrimaryButton:hover {
-                background: #273449;
-                border-color: #64748B;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar,
-            #summaryPivotRoot QFrame#summaryLayerHost,
-            #summaryPivotRoot QWidget#summaryFieldsContextCard {
-                background: #0B1020;
-                color: #F8FAFC;
-            }
-            #summaryPivotRoot QFrame#summaryToolbarStrip {
-                background: transparent;
-                border: 1px solid #334155;
-                border-radius: 8px;
-            }
-            #summaryPivotRoot QWidget#summaryFieldsContextCard,
-            #summaryPivotRoot QFrame#summaryLayerHost {
-                border: none;
-            }
-            #summaryPivotRoot QWidget#summaryMainColumn,
-            #summaryPivotRoot QWidget#summaryControlsZone,
-            #summaryPivotRoot QWidget#summaryContentZone,
-            #summaryPivotRoot QWidget#summaryTablePane,
-            #summaryPivotRoot QWidget#summaryPanelBody,
-            #summaryPivotRoot QStackedWidget#summaryTableStack,
-            #summaryPivotRoot QSplitter#summaryMainSplitter,
-            #summaryPivotRoot QSplitter#summaryAnalyticsSplitter {
-                background: #0B1020;
-                border: none;
-            }
-            #summaryPivotRoot QFrame#summaryToolbarSeparator,
-            #summaryPivotRoot QFrame#summarySidebarPanel[collapsed="true"] QFrame#summarySidebarHeader {
-                background: rgba(148, 163, 184, 0.22);
-            }
-            #summaryPivotRoot QLineEdit#summarySearch,
-            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch,
-            #summaryPivotRoot QComboBox#summaryLayerCombo,
-            #summaryPivotRoot QComboBox#summaryOperationCombo,
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch,
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QLineEdit,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox {
-                background: #172033;
-                color: #F8FAFC;
-                border: 1px solid #334155;
-                selection-background-color: #1E293B;
-                selection-color: #F8FAFC;
-            }
-            #summaryPivotRoot QComboBox QAbstractItemView,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox QAbstractItemView,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox QAbstractItemView {
-                background: #172033;
-                color: #F8FAFC;
-                border: 1px solid #334155;
-                selection-background-color: #312E81;
-                selection-color: #F8FAFC;
-            }
-            #summaryPivotRoot QComboBox::drop-down {
-                background: transparent;
-                border: none;
-            }
-            #summaryPivotRoot QLineEdit#summarySearch:hover,
-            #summaryPivotRoot QWidget#summaryToolbar QLineEdit#summarySearch:hover,
-            #summaryPivotRoot QComboBox#summaryLayerCombo:hover,
-            #summaryPivotRoot QComboBox#summaryOperationCombo:hover,
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit#summaryFieldSearch:hover,
-            #summaryPivotRoot QFrame#summarySidebarPanel QLineEdit:hover,
-            #summaryPivotRoot QFrame#summarySidebarPanel QComboBox:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QLineEdit:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QComboBox:hover {
-                background: #1F2A3D;
-                border: 1px solid #475569;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget#summaryFieldsList,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryFilterList,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList,
-            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget {
-                background: #0B1020;
-                color: #F8FAFC;
-                border: 1px solid #334155;
-                alternate-background-color: #0F172A;
-                selection-background-color: #1E293B;
-                selection-color: #F8FAFC;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item,
-            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget::item {
-                background: transparent;
-                color: #F8FAFC;
-                border: none;
-            }
-            #summaryPivotRoot QFrame#summaryFieldsPanel QListWidget::item:hover,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget::item:hover,
-            #summaryPivotRoot QFrame#summarySidebarPanel QListWidget::item:hover {
-                background: #1F2A3D;
-                color: #F8FAFC;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryRowList[activeArea="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryColumnList[activeArea="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryValueList[activeArea="true"],
-            #summaryPivotRoot QFrame#summaryFiltersPanel QListWidget#summaryFilterList[activeArea="true"] {
-                background: #172033;
-                border: 1px solid #475569;
-            }
-            #summaryPivotRoot QFrame#summaryAreaChip,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QWidget[filterSectionCard="true"],
-            #summaryPivotRoot QFrame#summarySidebarPanel QGroupBox#summaryAdvancedGroup,
-            #summaryPivotRoot QFrame#summaryFiltersPanel QGroupBox#summaryAdvancedGroup {
-                background: #0B1020;
-                border: 1px solid #334155;
-                color: #F8FAFC;
-            }
-            #summaryPivotRoot QFrame#summaryFiltersFooter {
-                border: 1px solid #334155;
-                border-radius: 8px;
-            }
-            #summaryPivotRoot QCheckBox::indicator {
-                background: #172033;
-                border-color: #475569;
-            }
-            #summaryPivotRoot QCheckBox::indicator:checked {
-                background: #7C6CFF;
-                border-color: #8B7CFF;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton,
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryPrimaryButton[toolbarPrimary="true"],
-            #summaryPivotRoot QPushButton#summarySecondaryButton,
-            #summaryPivotRoot QPushButton#summaryBackButton,
-            #summaryPivotRoot QPushButton#summaryGhostButton,
-            #summaryPivotRoot QToolButton#summarySidebarToggle {
-                color: #E5E7EB;
-                background: transparent;
-                border-color: transparent;
-            }
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton:hover,
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryToolbarButton:checked,
-            #summaryPivotRoot QWidget#summaryToolbar QPushButton#summaryPrimaryButton[toolbarPrimary="true"]:hover,
-            #summaryPivotRoot QPushButton#summarySecondaryButton:hover,
-            #summaryPivotRoot QPushButton#summaryBackButton:hover,
-            #summaryPivotRoot QPushButton#summaryGhostButton:hover,
-            #summaryPivotRoot QToolButton#summarySidebarToggle:hover {
-                background: #1F2A3D;
-                border-color: #334155;
-                color: #F8FAFC;
-            }
-            """
-        for key, value in tokens.items():
-            qss = qss.replace(key, value)
-        if not dark_mode:
-            qss = qss.replace("#111827", _INK_COLOR)
-        self.setStyleSheet(qss)
-        self._refresh_toolbar_chrome()
-        self._enforce_filters_surface_backgrounds()
+        _pivot_apply_styles(self)
 
     def _enforce_filters_surface_backgrounds(self):
-        dark_mode = _is_dark_theme()
-        surface = QColor("#0B1020" if dark_mode else "#ffffff")
-        input_surface = QColor("#111827" if dark_mode else "#ffffff")
-        text = QColor("#F8FAFC" if dark_mode else "#111827")
-
-        for widget in (
-            getattr(self, "toolbar_strip", None),
-            getattr(self, "controls_zone", None),
-            getattr(self, "toolbar_frame", None),
-            getattr(self, "main_column", None),
-            getattr(self, "content_zone", None),
-            getattr(self, "table_container", None),
-            getattr(self, "table_stack", None),
-            getattr(self, "table_page", None),
-            getattr(self, "table_card", None),
-            getattr(self, "empty_state_frame", None),
-            getattr(self, "fields_panel", None),
-            getattr(self, "fields_panel_body", None),
-            getattr(self, "filters_panel", None),
-            getattr(self, "filters_panel_body", None),
-            getattr(self, "filters_builder_scroll", None),
-            getattr(self, "filters_builder_scroll", None).viewport() if getattr(self, "filters_builder_scroll", None) is not None else None,
-            getattr(self, "filters_builder_content", None),
-            getattr(self, "row_area_card", None),
-            getattr(self, "column_area_card", None),
-            getattr(self, "value_area_card", None),
-            getattr(self, "advanced_group", None),
-        ):
-            if widget is None:
-                continue
-            try:
-                palette = widget.palette()
-                palette.setColor(QPalette.Window, surface)
-                palette.setColor(QPalette.Base, surface)
-                palette.setColor(QPalette.Text, text)
-                palette.setColor(QPalette.WindowText, text)
-                widget.setPalette(palette)
-                widget.setAutoFillBackground(True)
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-        for list_widget in (
-            getattr(self, "fields_list", None),
-            getattr(self, "filter_fields_list", None),
-            getattr(self, "row_fields_list", None),
-            getattr(self, "column_fields_list", None),
-            getattr(self, "value_fields_list", None),
-        ):
-            if list_widget is None:
-                continue
-            try:
-                palette = list_widget.palette()
-                palette.setColor(QPalette.Base, surface)
-                palette.setColor(QPalette.Window, surface)
-                palette.setColor(QPalette.Text, text)
-                palette.setColor(QPalette.WindowText, text)
-                list_widget.setPalette(palette)
-                list_widget.setAutoFillBackground(True)
-                viewport = list_widget.viewport()
-                if viewport is not None:
-                    viewport.setPalette(palette)
-                    viewport.setAutoFillBackground(True)
-                    viewport.setBackgroundRole(QPalette.Base)
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-        combo_style = (
-            """
-            QComboBox {
-                background: #111827;
-                color: #F8FAFC;
-                border: 1px solid #334155;
-                border-radius: 4px;
-                padding: 2px 8px;
-                selection-background-color: #1E293B;
-                selection-color: #F8FAFC;
-            }
-            QComboBox:hover,
-            QComboBox:focus {
-                background: #111827;
-                border-color: #475569;
-            }
-            QComboBox::drop-down {
-                background: transparent;
-                border: none;
-                width: 18px;
-            }
-            QComboBox QAbstractItemView {
-                background: #111827;
-                color: #F8FAFC;
-                border: 1px solid #334155;
-                selection-background-color: #1E293B;
-                selection-color: #F8FAFC;
-            }
-            """
-            if dark_mode
-            else ""
-        )
-        for combo in (
-            getattr(self, "agg_combo", None),
-            getattr(self, "value_field_combo", None),
-        ):
-            if combo is None:
-                continue
-            try:
-                palette = combo.palette()
-                palette.setColor(QPalette.Window, input_surface)
-                palette.setColor(QPalette.Base, input_surface)
-                palette.setColor(QPalette.Button, input_surface)
-                palette.setColor(QPalette.Text, text)
-                palette.setColor(QPalette.ButtonText, text)
-                palette.setColor(QPalette.WindowText, text)
-                combo.setPalette(palette)
-                combo.setAutoFillBackground(True)
-                combo.setStyleSheet(combo_style)
-            except Exception:
-                log_exception("falha opcional ignorada")
+        _pivot_enforce_filters_surface_backgrounds(self)
 
     # ------------------------------------------------------------------ Data intake
     def set_summary_data(self, summary_data: Dict):
         self._block_updates = True
         try:
-            previous_key = self._configuration_key_from_metadata(self._current_metadata)
+            previous_key = _pivot_configuration_key_from_metadata(self._current_metadata)
             if previous_key:
-                self._store_current_configuration(previous_key)
+                self._saved_configurations[previous_key] = dict(self.get_current_configuration() or {})
 
             metadata = summary_data.get("metadata", {}) or {}
             raw = summary_data.get("raw_data") or {}
@@ -3916,7 +1553,7 @@ class PivotTableWidget(QWidget):
             self.raw_df = df
             self.filtered_df = df
             self.column_dtypes = {col: str(df[col].dtype) for col in df.columns}
-            self.numeric_candidates = self._detect_numeric_candidates(df)
+            self.numeric_candidates = _pivot_detect_numeric_candidates(df, self._is_numeric_column)
             self._current_metadata = metadata
             self._current_summary_data = dict(summary_data or {})
             self._current_layer = self._resolve_current_layer()
@@ -3925,7 +1562,8 @@ class PivotTableWidget(QWidget):
 
             self._update_meta_label(metadata, summary_data.get("filter_description"))
             self._populate_field_panel(df)
-            self._restore_saved_configuration_for_metadata(metadata)
+            _pivot_restore_saved_configuration_for_metadata(self, metadata)
+            self.include_nulls_check.setChecked(True)
         finally:
             self._block_updates = False
 
@@ -3988,169 +1626,19 @@ class PivotTableWidget(QWidget):
             )
 
     def _populate_field_panel(self, df: pd.DataFrame):
-        self.fields_list.clear()
-        self._field_specs_by_key = {}
-        self.filter_fields_list.clear()
-        self.row_fields_list.clear()
-        self.column_fields_list.clear()
-        self.value_fields_list.clear()
-        self._sync_area_placeholder()
-
-        text_icon = _svg_icon_from_template(
-            _TOOLBAR_SVG_ICONS["field_text"],
-            size=14,
-            color_map={
-                QIcon.Normal: "#60a5fa",
-                QIcon.Active: "#3b82f6",
-                QIcon.Selected: "#1d4ed8",
-                QIcon.Disabled: "#cbd5e1",
-            },
+        _pivot_populate_field_panel(
+            self,
+            df,
+            icon_factory=_svg_icon_from_template,
+            toolbar_icons=_TOOLBAR_SVG_ICONS,
+            translate=_rt,
         )
-        numeric_icon = _svg_icon_from_template(
-            _TOOLBAR_SVG_ICONS["field_numeric"],
-            size=14,
-            color_map={
-                QIcon.Normal: "#c084fc",
-                QIcon.Active: "#a855f7",
-                QIcon.Selected: "#9333ea",
-                QIcon.Disabled: "#e9d5ff",
-            },
-        )
-
-        combos = [
-            self.filter_field_combo,
-            self.column_field_combo,
-            self.row_field_combo,
-            self.value_field_combo,
-        ]
-        for combo in combos:
-            combo.blockSignals(True)
-            combo.clear()
-            combo.addItem("(Nenhum)", None)
-            combo.blockSignals(False)
-
-        layer = self._current_layer
-        for column in df.columns:
-            field_spec = self._build_attribute_field_spec(column, layer, df)
-            spec_key = self._register_field_spec(field_spec)
-            is_numeric = bool(field_spec.data_type == "numeric")
-            item = QListWidgetItem(
-                f"# {field_spec.display_name}" if is_numeric else field_spec.display_name
-            )
-            item.setData(Qt.UserRole, spec_key)
-            item.setData(Qt.UserRole + 1, is_numeric)
-            item.setData(Qt.UserRole + 2, field_spec.display_name)
-            item.setIcon(numeric_icon if is_numeric else text_icon)
-            self.fields_list.addItem(item)
-            self.filter_field_combo.addItem(field_spec.display_name, spec_key)
-            self.column_field_combo.addItem(field_spec.display_name, spec_key)
-            self.row_field_combo.addItem(field_spec.display_name, spec_key)
-            self.value_field_combo.addItem(field_spec.display_name, spec_key)
-
-        if layer is not None:
-            geometry_specs = self._geometry_field_specs_for_layer(layer)
-            for field_spec in geometry_specs:
-                spec_key = self._register_field_spec(field_spec)
-                self.value_field_combo.addItem(field_spec.display_name, spec_key)
-
-        self.value_field_combo.blockSignals(True)
-        self.value_field_combo.setCurrentIndex(0)
-        self.value_field_combo.blockSignals(False)
-        self._sync_value_area_from_combo()
-        self._update_context_summary()
-        QTimer.singleShot(0, self._sync_fields_panel_width_to_content)
-
-    def _configuration_key_from_metadata(self, metadata: Optional[Dict[str, Any]]) -> str:
-        metadata = dict(metadata or {})
-        layer_id = str(metadata.get("layer_id") or "").strip()
-        if layer_id:
-            return f"layer:{layer_id}"
-        layer_name = str(metadata.get("layer_name") or "").strip()
-        if layer_name:
-            return f"name:{layer_name}"
-        return ""
-
-    def _store_current_configuration(self, key: str):
-        if not key or self.raw_df is None or self.raw_df.empty:
-            return
-        try:
-            self._saved_configurations[key] = dict(self.get_current_configuration() or {})
-        except Exception:
-            return
-
-    def _restore_saved_configuration_for_metadata(self, metadata: Optional[Dict[str, Any]]):
-        key = self._configuration_key_from_metadata(metadata)
-        if not key:
-            return
-        config = dict(self._saved_configurations.get(key) or {})
-        if not config:
-            return
-        self._apply_saved_configuration(config)
 
     def _apply_saved_configuration(self, config: Dict[str, Any]):
-        if not config:
-            return
-
-        self.filter_fields_list.clear()
-        self.row_fields_list.clear()
-        self.column_fields_list.clear()
-        self.value_fields_list.clear()
-        self._sync_area_placeholder()
-
-        aggregation = str(config.get("aggregation") or "count")
-        for index in range(self.agg_combo.count()):
-            if str(self.agg_combo.itemData(index) or "") == aggregation:
-                self.agg_combo.setCurrentIndex(index)
-                break
-
-        row_fields = list(config.get("row_fields") or [])
-        column_fields = list(config.get("column_fields") or [])
-        filter_fields = list(config.get("filter_fields") or [])
-
-        for field_name in row_fields:
-            spec = self._field_spec_from_field_name(field_name)
-            if spec is not None:
-                self._add_field_to_area("row", spec, auto_refresh=False)
-
-        for field_name in column_fields:
-            spec = self._field_spec_from_field_name(field_name)
-            if spec is not None:
-                self._add_field_to_area("column", spec, auto_refresh=False)
-
-        for field_name in filter_fields:
-            spec = self._field_spec_from_field_name(field_name)
-            if spec is not None:
-                self._add_field_to_area("filter", spec, auto_refresh=False)
-
-        value_field = str(config.get("value_field") or "").strip()
-        if value_field:
-            spec = self._field_spec_from_field_name(value_field)
-            if spec is not None:
-                spec_key = self._register_field_spec(spec)
-                idx = self.value_field_combo.findData(spec_key)
-                if idx != -1:
-                    self.value_field_combo.setCurrentIndex(idx)
-        self._sync_value_area_from_combo()
-
-        self.only_selected_check.setChecked(bool(config.get("only_selected")))
-        self.include_nulls_check.setChecked(bool(config.get("include_nulls")))
-        self.advanced_group.setChecked(aggregation != "count")
-        self._on_advanced_toggled(aggregation != "count")
-        self._sync_area_placeholder()
-
-        if row_fields:
-            self._set_last_active_area("row")
-        elif column_fields:
-            self._set_last_active_area("column")
+        _pivot_apply_saved_configuration(self, config)
 
     def _field_spec_from_field_name(self, field_name: Optional[str]) -> Optional[PivotFieldSpec]:
-        target = str(field_name or "").strip()
-        if not target:
-            return None
-        for spec in self._field_specs_by_key.values():
-            if spec.field_name == target:
-                return spec
-        return None
+        return _pivot_field_spec_from_field_name(self, field_name)
 
     # ------------------------------------------------------------------ Filters & refresh
     def refresh(self):
@@ -4182,221 +1670,24 @@ class PivotTableWidget(QWidget):
         self.filtered_df = filtered
 
     def _compute_dataframe_pivot(self):
-        df = self.filtered_df
-        self._current_pivot_request = None
-        self._current_pivot_result = None
-        if df is None or df.empty:
-            self.pivot_df = pd.DataFrame()
-            return
-
-        metric_key = self.value_field_combo.currentData()
-        row_specs = self._selected_area_specs("row")
-        col_specs = self._selected_area_specs("column")
-        agg_func = self.agg_combo.currentData()
-        metric = self._field_name_from_key(metric_key)
-        row_fields = [spec.field_name for spec in row_specs if spec.source_type == "attribute"]
-        col_fields = [spec.field_name for spec in col_specs if spec.source_type == "attribute"]
-
-        if metric is None and agg_func != "count":
-            self.pivot_df = pd.DataFrame()
-            return
-
-        if metric is not None and agg_func not in {"count", "min", "max", "unique"} and metric not in self.numeric_candidates:
-            try:
-                df[metric] = pd.to_numeric(df[metric], errors="coerce")
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-        if not row_fields and not col_fields:
-            if metric is None:
-                self.pivot_df = pd.DataFrame({"Indicador": ["Contagem"], "Valor": [len(df.index)]})
-                return
-            series = df[metric]
-            if agg_func == "count":
-                value = series.count()
-            else:
-                value = self._aggregate_series(series, agg_func)
-            self.pivot_df = pd.DataFrame({"Indicador": [metric], "Valor": [value]})
-            return
-
-        working = df.copy()
-        synthetic_row = False
-        if not row_fields:
-            working["__row_total__"] = "Total"
-            row_fields = ["__row_total__"]
-            synthetic_row = True
-
-        if col_fields:
-            if metric is None and agg_func == "count":
-                pivot = pd.crosstab(
-                    index=[working[field] for field in row_fields] if len(row_fields) > 1 else working[row_fields[0]],
-                    columns=[working[field] for field in col_fields] if len(col_fields) > 1 else working[col_fields[0]],
-                    dropna=False,
-                )
-            else:
-                values = None if metric is None else metric
-                if values is not None and agg_func not in {"count", "min", "max", "unique"} and values not in self.numeric_candidates:
-                    try:
-                        working[values] = pd.to_numeric(working[values], errors="coerce")
-                    except Exception:
-                        log_exception("falha opcional ignorada")
-                pivot = pd.pivot_table(
-                    working,
-                    index=row_fields,
-                    columns=col_fields,
-                    values=values,
-                    aggfunc="size" if metric is None and agg_func == "count" else self._pandas_aggfunc_name(agg_func),
-                    dropna=False,
-                )
-            pivot = pivot.reset_index()
-            pivot = self._flatten_pandas_columns(pivot, synthetic_row=synthetic_row)
-            if agg_func != "count":
-                pivot = pivot.applymap(lambda v: round(v, 2) if isinstance(v, (float, np.floating)) else v)
-            self.pivot_df = pivot
-            return
-
-        if metric is None:
-            grouped = working.groupby(row_fields, dropna=False).size()
-        else:
-            grouped = working.groupby(row_fields, dropna=False)[metric].agg(self._pandas_aggfunc_name(agg_func))
-        pivot = grouped.reset_index()
-        header = f"{agg_func.upper()}({metric})" if agg_func != "count" else f"COUNT({metric})"
-        pivot.columns = row_fields + [header]
-        if synthetic_row and row_fields:
-            pivot = pivot.rename(columns={"__row_total__": "Total"})
-            row_fields = ["Total"]
-            header = pivot.columns[-1]
-        if agg_func != "count":
-            pivot[header] = pivot[header].round(2)
-        if agg_func in ("sum", "count"):
-            total = pivot[header].sum()
-            if total:
-                pivot["% do total"] = (pivot[header] / total * 100).round(2)
-        pivot = pivot.sort_values(by=header, ascending=False).reset_index(drop=True)
-        self.pivot_df = pivot
+        _pivot_compute_dataframe_pivot(self)
 
     def _compute_layer_backed_pivot(self, layer):
-        try:
-            request = self._build_pivot_request(layer)
-            self._current_pivot_request = request
-            self._current_pivot_result = self.pivot_engine.execute(request)
-            self.pivot_df = self._pivot_result_to_dataframe(self._current_pivot_result)
-            self.status_label.setText("")
-        except PivotValidationError as exc:
-            self._current_pivot_result = None
-            self.pivot_df = pd.DataFrame()
-            self.status_label.setText(str(exc))
-        except Exception as exc:
-            self._current_pivot_result = None
-            self.pivot_df = pd.DataFrame()
-            self.status_label.setText(_rt("Falha ao calcular a pivot: {exc}", exc=exc))
+        _pivot_compute_layer_backed_pivot(
+            self,
+            layer,
+            pivot_validation_error=PivotValidationError,
+            translate=_rt,
+        )
 
     def _populate_table(self):
-        QgsMessageLog.logMessage(
-            "PivotTableWidget: rebuilding table model", "Summarizer", Qgis.Info
-        )
-        self.proxy_model.setSourceModel(None)
-        new_model = QStandardItemModel(self)
-        self._display_row_keys = []
-        self._display_column_keys = []
-        self._pivot_data_column_offset = 0
-        self._row_header_depth = 1
-
-        if self.pivot_df is None or self.pivot_df.empty:
-            new_model.setHorizontalHeaderLabels([_rt("Nenhum resultado")])
-            self.table_model = new_model
-            self.proxy_model.setSourceModel(self.table_model)
-            self.table_view.setModel(self.proxy_model)
-            has_structure = bool(self._selected_area_specs("row") or self._selected_area_specs("column"))
-            if has_structure:
-                self.empty_state_title.setText(_rt("Nenhum resultado para a configuração atual"))
-                self.empty_state_text.setText(_rt("Ajuste os agrupamentos ou a operação para continuar a análise."))
-            else:
-                self.empty_state_title.setText(_rt("Adicione campos em Linhas ou Colunas para começar"))
-                self.empty_state_text.setText(
-                    _rt("Escolha os agrupamentos no painel Campos da Tabela Dinamica para montar a tabela dinamica.")
-                )
-            self.table_stack.setCurrentWidget(self.empty_state_frame)
-            self._connect_selection_summary()
-            self.proxy_model.invalidate()
-            self._apply_table_preferences()
-            self._update_status_label()
-            self._update_selection_summary()
-            QgsMessageLog.logMessage(
-                "PivotTableWidget: model rebuilt (empty)",
-                "Summarizer",
-                Qgis.Info,
-            )
-            return
-
-        headers = list(self.pivot_df.columns)
-        new_model.setHorizontalHeaderLabels(headers)
-        self._display_row_keys = list(getattr(self._current_pivot_result, "row_headers", []) or [])
-        self._display_column_keys = list(getattr(self._current_pivot_result, "column_headers", []) or [])
-        self._row_header_depth = max(
-            len((self._current_pivot_result.metadata or {}).get("row_fields") or []),
-            max((len(key) for key in self._display_row_keys), default=0),
-            1,
-        )
-        self._pivot_data_column_offset = self._row_header_depth
-
-        base_font = ui_font()
-        base_font.setPixelSize(int(TYPOGRAPHY.get("font_body_px", 13)))
-        base_font.setWeight(QFont.Medium)
-        total_column_index = headers.index("Total") if "Total" in headers else -1
-        for row_index, row in enumerate(self.pivot_df.itertuples(index=False, name=None)):
-            items = []
-            for column_index, value in enumerate(row):
-                if pd.isna(value):
-                    text = ""
-                elif isinstance(value, (float, np.floating)):
-                    text = f"{value:,.2f}"
-                else:
-                    text = str(value)
-                item = QStandardItem(text)
-                item.setEditable(False)
-                item.setData(None if pd.isna(value) else value, Qt.UserRole + 3)
-                font = QFont(base_font)
-                if column_index == total_column_index:
-                    font.setBold(True)
-                item.setFont(font)
-                if column_index < self._pivot_data_column_offset:
-                    item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
-                if isinstance(value, (float, np.floating, int, np.integer)):
-                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                else:
-                    item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-                if (
-                    self._current_pivot_result is not None
-                    and row_index < len(self._display_row_keys)
-                    and column_index >= self._pivot_data_column_offset
-                ):
-                    pivot_column_index = column_index - self._pivot_data_column_offset
-                    if (
-                        pivot_column_index < len(self._display_column_keys)
-                        and row_index < len(self._current_pivot_result.matrix)
-                        and pivot_column_index < len(self._current_pivot_result.matrix[row_index])
-                    ):
-                        matrix_cell = self._current_pivot_result.matrix[row_index][pivot_column_index]
-                        feature_ids = list(getattr(matrix_cell, "feature_ids", []) or [])
-                        item.setData(",".join(str(fid) for fid in feature_ids), Qt.UserRole)
-                items.append(item)
-            new_model.appendRow(items)
-
-        self.table_model = new_model
-        self.proxy_model.setSourceModel(self.table_model)
-        self.table_view.setModel(self.proxy_model)
-        self.table_stack.setCurrentWidget(self.table_page)
-        self._connect_selection_summary()
-        self.proxy_model.invalidate()
-        self.table_view.resizeColumnsToContents()
-        self._apply_table_preferences()
-        self._update_status_label()
-        self._update_selection_summary()
-        QgsMessageLog.logMessage(
-            f"PivotTableWidget: model rebuilt with {self.table_model.rowCount()} rows",
-            "Summarizer",
-            Qgis.Info,
+        _pivot_populate_table(
+            self,
+            translate=_rt,
+            message_log=QgsMessageLog,
+            qgis_info=Qgis.Info,
+            ui_font_factory=ui_font,
+            typography=TYPOGRAPHY,
         )
 
     def _rebuild_column_filters(self, headers: List[str]):
@@ -4455,36 +1746,15 @@ class PivotTableWidget(QWidget):
         self._commit_history_if_changed()
 
     def _clear_filters(self):
-        self.search_input.blockSignals(True)
-        self.search_input.clear()
-        self.search_input.blockSignals(False)
-
+        _pivot_clear_field_search(self)
         self.proxy_model.set_global_filter("")
         self._update_status_label()
 
     def _filter_field_list(self, text: str):
-        for index in range(self.fields_list.count()):
-            item = self.fields_list.item(index)
-            visible = text.lower() in item.text().lower()
-            self.fields_list.setRowHidden(index, not visible)
+        _pivot_filter_field_list(self, text)
 
     def _handle_field_double_click(self, item: QListWidgetItem):
-        spec_key = item.data(Qt.UserRole)
-        field_spec = self._field_spec_from_key(spec_key)
-        if field_spec is None:
-            return
-        is_numeric = item.data(Qt.UserRole + 1)
-        target_area = getattr(self, "_last_active_area", "row")
-        if target_area == "value":
-            if not is_numeric and field_spec.source_type != "geometry":
-                self._show_inline_message(
-                    f"O campo {field_spec.display_name} nao pode ser usado como valor.",
-                    level="warning",
-                )
-                return
-            self._add_field_to_area("value", field_spec)
-            return
-        self._add_field_to_area(target_area, field_spec)
+        _pivot_handle_field_double_click(self, item)
 
     def _handle_table_cell_clicked(self, proxy_index):
         if not proxy_index.isValid():
@@ -4586,6 +1856,17 @@ class PivotTableWidget(QWidget):
         self._schedule_selection_feedback_refresh()
 
     def eventFilter(self, watched, event):
+        filter_drop_targets = {
+            getattr(self, "filters_panel", None),
+            getattr(self, "filters_panel_body", None),
+            getattr(self, "filters_builder_scroll", None),
+            getattr(getattr(self, "filters_builder_scroll", None), "viewport", lambda: None)(),
+            getattr(self, "filters_builder_content", None),
+        }
+        if watched in filter_drop_targets and event is not None:
+            if self._handle_filter_panel_drop_event(event):
+                return True
+
         if watched in {getattr(self, "table_view", None), getattr(getattr(self, "table_view", None), "viewport", lambda: None)()}:
             if event is not None and event.type() in {
                 QEvent.MouseButtonRelease,
@@ -4595,6 +1876,9 @@ class PivotTableWidget(QWidget):
             }:
                 self._schedule_selection_feedback_refresh()
         return super().eventFilter(watched, event)
+
+    def _handle_filter_panel_drop_event(self, event) -> bool:
+        return _pivot_handle_filter_panel_drop_event(self, event)
 
     def _schedule_selection_feedback_refresh(self):
         QTimer.singleShot(0, self._refresh_selection_feedback)
@@ -4609,7 +1893,7 @@ class PivotTableWidget(QWidget):
                 Qgis.Warning,
             )
             if hasattr(self, "selection_summary_label"):
-                self.selection_summary_label.setText("Nao foi possivel calcular a selecao atual.")
+                self.selection_summary_label.setText(_rt("Não foi possível calcular a seleção atual."))
 
     def _safe_sync_selection_to_map(self):
         try:
@@ -4770,7 +2054,7 @@ class PivotTableWidget(QWidget):
         }
 
     def _open_table_context_menu(self, pos):
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         copy_action = menu.addAction(_rt("Copiar seleção"))
         copy_headers_action = menu.addAction(_rt("Copiar seleção com cabeçalhos"))
         copy_stats_action = menu.addAction(_rt("Copiar estatísticas"))
@@ -4949,6 +2233,23 @@ class PivotTableWidget(QWidget):
             header_font.setPixelSize(int(TYPOGRAPHY.get("font_secondary_px", 12)))
             header_font.setWeight(QFont.Medium)
             self.table_view.horizontalHeader().setFont(header_font)
+            dark_mode = str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
+            table_base = QColor("#0B1020" if dark_mode else "#ffffff")
+            table_alternate = QColor("#0F172A" if dark_mode else "#fcfcfd")
+            table_text = QColor("#F8FAFC" if dark_mode else "#111827")
+            table_palette = self.table_view.palette()
+            table_palette.setColor(QPalette.Base, table_base)
+            table_palette.setColor(QPalette.AlternateBase, table_alternate)
+            table_palette.setColor(QPalette.Window, table_base)
+            table_palette.setColor(QPalette.Text, table_text)
+            table_palette.setColor(QPalette.WindowText, table_text)
+            self.table_view.setPalette(table_palette)
+            self.table_view.setAutoFillBackground(True)
+            viewport = self.table_view.viewport()
+            if viewport is not None:
+                viewport.setPalette(table_palette)
+                viewport.setAutoFillBackground(True)
+                viewport.setBackgroundRole(QPalette.Base)
             self.table_view.setAlternatingRowColors(True)
             self.table_view.verticalHeader().setDefaultSectionSize(30)
             self.table_view.horizontalHeader().setMinimumHeight(34)
@@ -4977,82 +2278,32 @@ class PivotTableWidget(QWidget):
             log_exception("falha opcional ignorada")
 
     def _set_last_active_area(self, area: str):
-        if area in {"row", "column", "value"}:
-            self._last_active_area = area
-            self._refresh_active_area_styles()
+        _pivot_set_last_active_area(self, area)
 
     def _refresh_active_area_styles(self):
-        active = self._last_active_area
-        for widget, title, area in (
-            (getattr(self, "row_fields_list", None), getattr(self, "row_area_title", None), "row"),
-            (getattr(self, "column_fields_list", None), getattr(self, "column_area_title", None), "column"),
-            (getattr(self, "value_fields_list", None), getattr(self, "value_area_title", None), "value"),
-            (getattr(self, "filter_fields_list", None), getattr(self, "filter_area_title", None), "filter"),
-        ):
-            if widget is None or title is None:
-                continue
-            widget.setProperty("activeArea", active == area)
-            title.setProperty("activeArea", active == area)
-            widget.style().unpolish(widget)
-            widget.style().polish(widget)
-            title.style().unpolish(title)
-            title.style().polish(title)
+        _pivot_refresh_active_area_styles(self)
 
     def _desired_fields_panel_width(self) -> int:
-        width = _TOOLS_FIELDS_DEFAULT_WIDTH
-        try:
-            metrics = QFontMetrics(self.fields_list.font())
-            widest_text = 0
-            for index in range(self.fields_list.count()):
-                item = self.fields_list.item(index)
-                if item is None or item.data(Qt.UserRole) == "__placeholder__":
-                    continue
-                widest_text = max(widest_text, metrics.horizontalAdvance(str(item.text() or "")))
-            icon_width = int(self.fields_list.iconSize().width() or 14)
-            width = max(width, widest_text + icon_width + 54)
-        except Exception:
-            log_exception("falha opcional ignorada")
-        for candidate in (
-            getattr(self, "fields_panel_header", None),
-            getattr(self, "fields_context_card", None),
-        ):
-            if candidate is None:
-                continue
-            try:
-                width = max(width, int(candidate.sizeHint().width() or 0))
-            except Exception:
-                log_exception("falha opcional ignorada")
-        return max(_TOOLS_FIELDS_MIN_WIDTH, min(_TOOLS_FIELDS_MAX_WIDTH, width))
+        return _pivot_desired_fields_panel_width(
+            self,
+            tools_fields_default_width=_TOOLS_FIELDS_DEFAULT_WIDTH,
+            tools_fields_min_width=_TOOLS_FIELDS_MIN_WIDTH,
+            tools_fields_max_width=_TOOLS_FIELDS_MAX_WIDTH,
+        )
 
     def _sync_fields_panel_width_to_content(self):
-        desired_width = self._desired_fields_panel_width()
-        self._tools_fields_width = desired_width
-        if getattr(self, "_tools_panels_hidden", False) or getattr(self, "_fields_panel_collapsed", False):
-            return
-        if not hasattr(self, "analytics_splitter"):
-            return
-        sizes = self.analytics_splitter.sizes()
-        if len(sizes) < 3:
-            return
-        total_width = sum(size for size in sizes if size > 0)
-        if total_width <= 0:
-            total_width = max(int(self.analytics_splitter.width() or 0), 1040)
-        builder_width = (
-            _TOOLS_PANEL_COLLAPSED_WIDTH
-            if getattr(self, "_filters_panel_collapsed", False)
-            else max(
-                _TOOLS_FILTERS_MIN_WIDTH,
-                int(getattr(self, "_tools_builder_width", _TOOLS_FILTERS_DEFAULT_WIDTH) or _TOOLS_FILTERS_DEFAULT_WIDTH),
-            )
+        _pivot_sync_fields_panel_width_to_content(
+            self,
+            tools_panel_collapsed_width=_TOOLS_PANEL_COLLAPSED_WIDTH,
+            tools_fields_default_width=_TOOLS_FIELDS_DEFAULT_WIDTH,
+            tools_fields_min_width=_TOOLS_FIELDS_MIN_WIDTH,
+            tools_fields_max_width=_TOOLS_FIELDS_MAX_WIDTH,
+            tools_filters_min_width=_TOOLS_FILTERS_MIN_WIDTH,
+            tools_filters_default_width=_TOOLS_FILTERS_DEFAULT_WIDTH,
         )
-        table_width = max(1, total_width - desired_width - builder_width)
-        self.analytics_splitter.setSizes([desired_width, builder_width, table_width])
 
     def _placeholder_item(self) -> QListWidgetItem:
-        item = QListWidgetItem(_rt("Nenhum campo"))
-        item.setData(Qt.UserRole, "__placeholder__")
-        item.setFlags(Qt.NoItemFlags)
-        return item
+        return _pivot_placeholder_item(_rt)
 
     def _refresh_area_placeholder(self, area: str):
         list_widget = self._area_list(area)
@@ -5098,53 +2349,6 @@ class PivotTableWidget(QWidget):
                 return matches[0]
         return None
 
-    def _build_attribute_field_spec(self, field_name: str, layer, df: pd.DataFrame) -> PivotFieldSpec:
-        data_type = "text"
-        display_name = field_name
-        if layer is not None:
-            field_index = layer.fields().indexFromName(field_name)
-            field = layer.fields()[field_index] if field_index >= 0 else None
-            if field is not None:
-                data_type = self._map_variant_to_data_type(field.type())
-                display_name = field.alias() or field.name()
-        elif field_name in df.columns:
-            if self._is_numeric_column(df[field_name]):
-                data_type = "numeric"
-        return PivotFieldSpec(
-            field_name=field_name,
-            display_name=display_name,
-            source_type="attribute",
-            data_type=data_type,
-        )
-
-    def _geometry_field_specs_for_layer(self, layer) -> List[PivotFieldSpec]:
-        specs = []
-        try:
-            geometry_type = layer.geometryType()
-        except Exception:
-            geometry_type = None
-        if geometry_type in (1, 2):
-            specs.append(
-                PivotFieldSpec(
-                    field_name="__geometry_length__",
-                    display_name="Comprimento geometrico",
-                    source_type="geometry",
-                    geometry_op="length",
-                    data_type="numeric",
-                )
-            )
-        if geometry_type == 2:
-            specs.append(
-                PivotFieldSpec(
-                    field_name="__geometry_area__",
-                    display_name="Area geometrica",
-                    source_type="geometry",
-                    geometry_op="area",
-                    data_type="numeric",
-                )
-            )
-        return specs
-
     def _register_field_spec(self, field_spec: PivotFieldSpec) -> str:
         key = f"{field_spec.source_type}:{field_spec.field_name}:{field_spec.geometry_op or ''}"
         self._field_specs_by_key[key] = field_spec
@@ -5162,143 +2366,37 @@ class PivotTableWidget(QWidget):
         return field_spec.field_name
 
     def _area_combo(self, area: str) -> QComboBox:
-        if area == "row":
-            return self.row_field_combo
-        if area == "column":
-            return self.column_field_combo
-        if area == "value":
-            return self.value_field_combo
-        return self.filter_field_combo
+        return _pivot_area_combo(self, area)
 
     def _area_list(self, area: str) -> QListWidget:
-        if area == "row":
-            return self.row_fields_list
-        if area == "column":
-            return self.column_fields_list
-        if area == "value":
-            return self.value_fields_list
-        return self.filter_fields_list
+        return _pivot_area_list(self, area)
 
     def _area_label(self, area: str) -> str:
-        if area == "row":
-            return _rt("Linhas")
-        if area == "column":
-            return _rt("Colunas")
-        if area == "value":
-            return _rt("Valores")
-        return "Filtros"
+        return _pivot_area_label(area, _rt)
 
     def _selected_area_specs(self, area: str) -> List[PivotFieldSpec]:
-        specs: List[PivotFieldSpec] = []
-        list_widget = self._area_list(area)
-        for index in range(list_widget.count()):
-            item = list_widget.item(index)
-            if item.data(Qt.UserRole) == "__placeholder__":
-                continue
-            spec = self._field_spec_from_key(item.data(Qt.UserRole))
-            if spec is not None:
-                specs.append(spec)
-        return specs
+        return _pivot_selected_area_specs(self, area)
 
     def _add_selected_field_to_area(self, area: str, auto_refresh: bool = True):
-        self._set_last_active_area(area)
-        combo = self._area_combo(area)
-        return self._add_field_to_area(
-            area,
-            self._field_spec_from_key(combo.currentData()),
-            auto_refresh=auto_refresh,
-        )
+        return _pivot_add_selected_field_to_area(self, area, auto_refresh)
 
     def _add_field_to_area(self, area: str, field_spec: Optional[PivotFieldSpec], auto_refresh: bool = True):
-        if field_spec is None:
-            return False
-        list_widget = self._area_list(area)
-        spec_key = self._register_field_spec(field_spec)
-        self._set_last_active_area(area)
-        if area in {"filter", "value"}:
-            list_widget.clear()
-        elif any(list_widget.item(index).data(Qt.UserRole) == spec_key for index in range(list_widget.count())):
-            self._show_inline_message(
-                f"O campo {field_spec.display_name} ja existe em {self._area_label(area)}.",
-                level="warning",
-            )
-            return False
-
-        for index in reversed(range(list_widget.count())):
-            if list_widget.item(index).data(Qt.UserRole) == "__placeholder__":
-                list_widget.takeItem(index)
-
-        item = QListWidgetItem(field_spec.display_name)
-        item.setData(Qt.UserRole, spec_key)
-        list_widget.addItem(item)
-        list_widget.setCurrentItem(item)
-        if area == "value":
-            combo_index = self.value_field_combo.findData(spec_key)
-            if combo_index != -1:
-                self.value_field_combo.blockSignals(True)
-                self.value_field_combo.setCurrentIndex(combo_index)
-                self.value_field_combo.blockSignals(False)
-        self._show_inline_message("", level="info")
-        self._sync_area_placeholder(area)
-        if auto_refresh:
-            self._maybe_refresh()
-        return True
+        return _pivot_add_field_to_area(self, area, field_spec, auto_refresh=auto_refresh)
 
     def _remove_selected_area_field(self, area: str):
-        list_widget = self._area_list(area)
-        row = list_widget.currentRow()
-        if row < 0:
-            return
-        if list_widget.item(row).data(Qt.UserRole) == "__placeholder__":
-            return
-        spec_key = list_widget.item(row).data(Qt.UserRole)
-        self._take_area_field_by_key(area, spec_key)
-        self._maybe_refresh()
+        _pivot_remove_selected_area_field(self, area)
 
     def _remove_area_field_by_key(self, area: str, spec_key: str):
-        if self._take_area_field_by_key(area, spec_key) is not None:
-            self._maybe_refresh()
+        _pivot_remove_area_field_by_key(self, area, spec_key)
 
     def _take_area_field_by_key(self, area: str, spec_key: str):
-        list_widget = self._area_list(area)
-        for row in range(list_widget.count()):
-            item = list_widget.item(row)
-            if item.data(Qt.UserRole) != spec_key:
-                continue
-            taken = list_widget.takeItem(row)
-            if area == "value":
-                self.value_field_combo.blockSignals(True)
-                self.value_field_combo.setCurrentIndex(0)
-                self.value_field_combo.blockSignals(False)
-            self._sync_area_placeholder(area)
-            return taken
-        return None
+        return _pivot_take_area_field_by_key(self, area, spec_key)
 
     def _move_selected_area_field(self, area: str, offset: int):
-        list_widget = self._area_list(area)
-        row = list_widget.currentRow()
-        if row < 0:
-            return
-        if list_widget.item(row).data(Qt.UserRole) == "__placeholder__":
-            return
-        new_row = row + offset
-        if new_row < 0 or new_row >= list_widget.count():
-            return
-        if list_widget.item(new_row).data(Qt.UserRole) == "__placeholder__":
-            return
-        item = list_widget.takeItem(row)
-        list_widget.insertItem(new_row, item)
-        list_widget.setCurrentRow(new_row)
-        self._refresh_area_item_widgets(area)
-        self._maybe_refresh()
+        _pivot_move_selected_area_field(self, area, offset)
 
     def _clear_area(self, area: str):
-        self._area_list(area).clear()
-        if area == "value":
-            self.value_field_combo.blockSignals(True)
-            self.value_field_combo.setCurrentIndex(0)
-            self.value_field_combo.blockSignals(False)
-        self._sync_area_placeholder(area)
+        _pivot_clear_area(self, area)
 
     def _ensure_default_row_area(self):
         if self.row_fields_list.count() > 0:
@@ -5427,72 +2525,16 @@ class PivotTableWidget(QWidget):
 
     # ------------------------------------------------------------------ Public API
     def get_visible_pivot_dataframe(self) -> pd.DataFrame:
-        """
-        Return a DataFrame representing the pivot table with any UI filters applied.
-
-        The returned frame is detached from the internal reference to avoid callers
-        mutating state unintentionally.
-        """
-        if self.pivot_df is None or self.pivot_df.empty:
-            return pd.DataFrame()
-
-        if self.table_model.columnCount() == 0:
-            return pd.DataFrame(columns=self.pivot_df.columns)
-
-        visible_rows: List[int] = []
-        for row in range(self.proxy_model.rowCount()):
-            proxy_index = self.proxy_model.index(row, 0)
-            if not proxy_index.isValid():
-                continue
-            source_index = self.proxy_model.mapToSource(proxy_index)
-            if not source_index.isValid():
-                continue
-            visible_rows.append(source_index.row())
-
-        if not visible_rows:
-            return pd.DataFrame(columns=self.pivot_df.columns)
-
-        return self.pivot_df.iloc[visible_rows].reset_index(drop=True)
+        return _pivot_get_visible_pivot_dataframe(self)
 
     def get_current_configuration(self) -> Dict[str, Any]:
-        """Expose the active pivot configuration (fields and aggregation)."""
-        value_spec = self._field_spec_from_key(self.value_field_combo.currentData())
-        row_specs = self._selected_area_specs("row")
-        column_specs = self._selected_area_specs("column")
-        filter_specs = self._selected_area_specs("filter")
-        row_fields = [spec.field_name for spec in row_specs]
-        column_fields = [spec.field_name for spec in column_specs]
-        filter_fields = [spec.field_name for spec in filter_specs]
-        return {
-            "aggregation": self.agg_combo.currentData(),
-            "aggregation_label": self.agg_combo.currentText(),
-            "value_field": value_spec.field_name if value_spec is not None else None,
-            "value_label": value_spec.display_name if value_spec is not None else self.value_field_combo.currentText(),
-            "row_field": row_fields[0] if row_fields else None,
-            "row_label": " / ".join(spec.display_name for spec in row_specs) if row_specs else self.row_field_combo.currentText(),
-            "row_fields": row_fields,
-            "row_labels": [spec.display_name for spec in row_specs],
-            "column_field": column_fields[0] if column_fields else None,
-            "column_label": " / ".join(spec.display_name for spec in column_specs) if column_specs else self.column_field_combo.currentText(),
-            "column_fields": column_fields,
-            "column_labels": [spec.display_name for spec in column_specs],
-            "filter_field": filter_fields[0] if filter_fields else None,
-            "filter_label": " / ".join(spec.display_name for spec in filter_specs) if filter_specs else self.filter_field_combo.currentText(),
-            "filter_fields": filter_fields,
-            "filter_labels": [spec.display_name for spec in filter_specs],
-            "only_selected": self.only_selected_check.isChecked(),
-            "include_nulls": self.include_nulls_check.isChecked(),
-        }
+        return _pivot_get_current_configuration(self)
 
     def get_summary_metadata(self) -> Dict[str, str]:
-        """Return a shallow copy of the last summary metadata provided."""
-        metadata = dict(self._current_metadata)
-        if self._current_pivot_result is not None:
-            metadata.update(dict(self._current_pivot_result.metadata or {}))
-        return metadata
+        return _pivot_get_summary_metadata(self)
 
     def get_current_pivot_result(self):
-        return self._current_pivot_result
+        return _pivot_get_current_pivot_result(self)
 
     def set_auto_update_checkbox(self, checkbox: QCheckBox):
         """
@@ -5534,7 +2576,7 @@ class PivotTableWidget(QWidget):
         button.setObjectName("summaryToolbarButton")
         button.setProperty("toolbarMode", "icon")
         button.setProperty("iconOnly", True)
-        button.setFixedSize(30, 30)
+        button.setFixedSize(28, 28)
         target_index = self.toolbar_strip_layout.indexOf(self.edit_mode_btn)
         insert_index = target_index if target_index != -1 else self.toolbar_strip_layout.count()
         self.toolbar_strip_layout.insertWidget(insert_index, button)
@@ -5597,13 +2639,6 @@ class PivotTableWidget(QWidget):
         self._apply_runtime_i18n()
 
     # ------------------------------------------------------------------ Helpers
-    def _detect_numeric_candidates(self, df: pd.DataFrame) -> List[str]:
-        result = []
-        for column in df.columns:
-            if self._is_numeric_column(df[column]):
-                result.append(column)
-        return result
-
     def _is_identifier_like_field(self, field_name: str) -> bool:
         normalized = (field_name or "").strip().lower()
         return normalized in {"fid", "id", "gid", "objectid", "object_id", "ogc_fid"}
@@ -5658,37 +2693,7 @@ class PivotTableWidget(QWidget):
         field_name: Any,
         fallback_candidates: Optional[List[Any]] = None,
     ) -> str:
-        if layer is None:
-            return ""
-        fields = list(layer.fields())
-        layer_field_names = [str(field.name()) for field in fields]
-        resolved = self._resolve_available_field_name(
-            field_name,
-            layer_field_names,
-            fallback_candidates=fallback_candidates,
-        )
-        if resolved:
-            return resolved
-
-        alias_map: Dict[str, str] = {}
-        for field in fields:
-            canonical_name = str(field.name())
-            alias = str(field.alias() or "").strip()
-            for candidate in (alias, canonical_name):
-                token = self._normalize_field_token(candidate)
-                if token and token not in alias_map:
-                    alias_map[token] = canonical_name
-
-        lookup_values: List[Any] = [field_name]
-        lookup_values.extend(list(fallback_candidates or []))
-        for lookup in lookup_values:
-            token = self._normalize_field_token(lookup)
-            if token and token in alias_map:
-                return alias_map[token]
-        return ""
-
-    def _qvariant_to_python(self, value: Any) -> Any:
-        return _pivot_coerce_python_value(value)
+        return _pivot_resolve_layer_field_name(layer, field_name, fallback_candidates=fallback_candidates)
 
     def _build_layer_dataframe_from_request(
         self,
@@ -5696,293 +2701,26 @@ class PivotTableWidget(QWidget):
         request: PivotRequest,
         extra_attribute_fields: Optional[List[str]] = None,
     ) -> pd.DataFrame:
-        if layer is None or request is None:
-            return pd.DataFrame()
-
-        attribute_fields: List[str] = []
-
-        def _add_attribute_field(name: Any):
-            field_name = str(name or "").strip()
-            if field_name and field_name not in attribute_fields:
-                attribute_fields.append(field_name)
-
-        for spec in list(request.row_fields or []) + list(request.column_fields or []):
-            if spec is not None and spec.source_type == "attribute":
-                _add_attribute_field(spec.field_name)
-        if request.value_field is not None and request.value_field.source_type == "attribute":
-            _add_attribute_field(request.value_field.field_name)
-        for extra in extra_attribute_fields or []:
-            _add_attribute_field(extra)
-
-        layer_field_names = [field.name() for field in list(layer.fields())]
-        valid_layer_fields = set(layer_field_names)
-        attribute_fields = [name for name in attribute_fields if name in valid_layer_fields]
-
-        geometry_value_name = ""
-        geometry_op = ""
-        if request.value_field is not None and request.value_field.source_type == "geometry":
-            geometry_value_name = str(request.value_field.field_name or "").strip()
-            geometry_op = str(request.value_field.geometry_op or "").strip().lower()
-
-        feature_request = QgsFeatureRequest()
-        if request.filter_expression:
-            feature_request.setFilterExpression(request.filter_expression)
-        if attribute_fields:
-            try:
-                feature_request.setSubsetOfAttributes(attribute_fields, layer.fields())
-            except Exception:
-                log_exception("falha opcional ignorada")
-        if not geometry_value_name:
-            try:
-                feature_request.setFlags(QgsFeatureRequest.NoGeometry)
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-        selected_ids = set()
-        if request.only_selected:
-            try:
-                selected_ids = set(layer.selectedFeatureIds())
-            except Exception:
-                selected_ids = set()
-
-        row_col_attribute_fields: List[str] = []
-        for spec in list(request.row_fields or []) + list(request.column_fields or []):
-            if spec is None or spec.source_type != "attribute":
-                continue
-            name = str(spec.field_name or "").strip()
-            if name and name not in row_col_attribute_fields:
-                row_col_attribute_fields.append(name)
-
-        records: List[Dict[str, Any]] = []
-        for feature in layer.getFeatures(feature_request):
-            if selected_ids and int(feature.id()) not in selected_ids:
-                continue
-
-            if not request.include_nulls and row_col_attribute_fields:
-                has_null_axis_value = False
-                for field_name in row_col_attribute_fields:
-                    try:
-                        raw_value = feature[field_name]
-                    except Exception:
-                        raw_value = None
-                    if self._qvariant_to_python(raw_value) is None:
-                        has_null_axis_value = True
-                        break
-                if has_null_axis_value:
-                    continue
-
-            record: Dict[str, Any] = {}
-            for field_name in attribute_fields:
-                try:
-                    raw_value = feature[field_name]
-                except Exception:
-                    raw_value = None
-                record[field_name] = self._qvariant_to_python(raw_value)
-
-            if geometry_value_name:
-                geometry_value = None
-                try:
-                    geometry = feature.geometry()
-                    if geometry is not None and not geometry.isEmpty():
-                        if geometry_op == "area":
-                            geometry_value = float(geometry.area())
-                        else:
-                            geometry_value = float(geometry.length())
-                except Exception:
-                    geometry_value = None
-                record[geometry_value_name] = geometry_value
-
-            records.append(record)
-
-        ordered_columns = list(attribute_fields)
-        if geometry_value_name and geometry_value_name not in ordered_columns:
-            ordered_columns.append(geometry_value_name)
-        if not ordered_columns:
-            return pd.DataFrame(records)
-        return pd.DataFrame(records, columns=ordered_columns)
+        return _pivot_build_layer_dataframe_from_request(
+            self,
+            layer,
+            request,
+            extra_attribute_fields=extra_attribute_fields,
+        )
 
     def _build_layer_dataframe_from_pivot_config(
         self,
         layer,
         pivot_config: Dict[str, Any],
     ) -> pd.DataFrame:
-        if layer is None or not isinstance(pivot_config, dict):
-            return pd.DataFrame()
-
-        row_requested = [str(value or "").strip() for value in (pivot_config.get("row_fields") or []) if str(value or "").strip()]
-        row_labels = [str(value or "").strip() for value in (pivot_config.get("row_labels") or [])]
-        row_fields: List[str] = []
-        for index, value in enumerate(row_requested):
-            fallback = row_labels[index] if index < len(row_labels) else ""
-            resolved = self._resolve_layer_field_name(layer, value, fallback_candidates=[fallback])
-            if resolved and resolved not in row_fields:
-                row_fields.append(resolved)
-
-        col_requested = [str(value or "").strip() for value in (pivot_config.get("column_fields") or []) if str(value or "").strip()]
-        col_labels = [str(value or "").strip() for value in (pivot_config.get("column_labels") or [])]
-        column_fields: List[str] = []
-        for index, value in enumerate(col_requested):
-            fallback = col_labels[index] if index < len(col_labels) else ""
-            resolved = self._resolve_layer_field_name(layer, value, fallback_candidates=[fallback])
-            if resolved and resolved not in column_fields:
-                column_fields.append(resolved)
-
-        filter_requested = [str(value or "").strip() for value in (pivot_config.get("filter_fields") or []) if str(value or "").strip()]
-        filter_labels = [str(value or "").strip() for value in (pivot_config.get("filter_labels") or [])]
-        filter_fields: List[str] = []
-        for index, value in enumerate(filter_requested):
-            fallback = filter_labels[index] if index < len(filter_labels) else ""
-            resolved = self._resolve_layer_field_name(layer, value, fallback_candidates=[fallback])
-            if resolved and resolved not in filter_fields:
-                filter_fields.append(resolved)
-
-        value_field_requested = str(pivot_config.get("value_field") or "").strip()
-        value_field_label = str(pivot_config.get("value_label") or "").strip()
-        resolved_value_field = self._resolve_layer_field_name(
+        return _pivot_build_layer_dataframe_from_pivot_config(
+            self,
             layer,
-            value_field_requested,
-            fallback_candidates=[value_field_label],
+            pivot_config,
         )
-        geometry_value_name = ""
-        geometry_token = self._normalize_field_token(value_field_requested or value_field_label)
-        if not resolved_value_field and geometry_token:
-            if "geometry_length" in geometry_token or "comprimento geometrico" in geometry_token:
-                geometry_value_name = "__geometry_length__"
-            elif "geometry_area" in geometry_token or "area geometrica" in geometry_token:
-                geometry_value_name = "__geometry_area__"
-
-        attribute_fields: List[str] = []
-        for name in row_fields + column_fields + filter_fields:
-            if name and name not in attribute_fields:
-                attribute_fields.append(name)
-        if resolved_value_field and resolved_value_field not in attribute_fields:
-            attribute_fields.append(resolved_value_field)
-
-        feature_request = QgsFeatureRequest()
-        filter_expression = str((self._current_metadata or {}).get("filter_expression") or "").strip()
-        if filter_expression:
-            feature_request.setFilterExpression(filter_expression)
-        if attribute_fields:
-            try:
-                feature_request.setSubsetOfAttributes(attribute_fields, layer.fields())
-            except Exception:
-                log_exception("falha opcional ignorada")
-        if not geometry_value_name:
-            try:
-                feature_request.setFlags(QgsFeatureRequest.NoGeometry)
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-        selected_ids = set()
-        if bool(pivot_config.get("only_selected")):
-            try:
-                selected_ids = set(layer.selectedFeatureIds())
-            except Exception:
-                selected_ids = set()
-
-        include_nulls = bool(pivot_config.get("include_nulls"))
-        null_gate_fields = row_fields + column_fields
-
-        records: List[Dict[str, Any]] = []
-        for feature in layer.getFeatures(feature_request):
-            if selected_ids and int(feature.id()) not in selected_ids:
-                continue
-
-            if not include_nulls and null_gate_fields:
-                has_null_axis_value = False
-                for field_name in null_gate_fields:
-                    try:
-                        raw_value = feature[field_name]
-                    except Exception:
-                        raw_value = None
-                    if self._qvariant_to_python(raw_value) is None:
-                        has_null_axis_value = True
-                        break
-                if has_null_axis_value:
-                    continue
-
-            record: Dict[str, Any] = {}
-            for field_name in attribute_fields:
-                try:
-                    raw_value = feature[field_name]
-                except Exception:
-                    raw_value = None
-                record[field_name] = self._qvariant_to_python(raw_value)
-
-            if geometry_value_name:
-                geometry_value = None
-                try:
-                    geometry = feature.geometry()
-                    if geometry is not None and not geometry.isEmpty():
-                        if geometry_value_name == "__geometry_area__":
-                            geometry_value = float(geometry.area())
-                        else:
-                            geometry_value = float(geometry.length())
-                except Exception:
-                    geometry_value = None
-                record[geometry_value_name] = geometry_value
-
-            records.append(record)
-
-        if not records:
-            return pd.DataFrame(columns=attribute_fields + ([geometry_value_name] if geometry_value_name else []))
-
-        ordered_columns = list(attribute_fields)
-        if geometry_value_name and geometry_value_name not in ordered_columns:
-            ordered_columns.append(geometry_value_name)
-        if not ordered_columns:
-            return pd.DataFrame(records)
-        return pd.DataFrame(records, columns=ordered_columns)
 
     def _build_export_layer_dataframe(self, pivot_config: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
-        extra_fields: List[str] = []
-        if isinstance(pivot_config, dict):
-            for key in ("row_fields", "column_fields", "filter_fields"):
-                for value in pivot_config.get(key) or []:
-                    field_name = str(value or "").strip()
-                    if field_name and field_name not in extra_fields:
-                        extra_fields.append(field_name)
-            value_field = str(pivot_config.get("value_field") or "").strip()
-            if value_field and value_field not in extra_fields:
-                extra_fields.append(value_field)
-            layer = self._resolve_current_layer()
-            if layer is not None:
-                layer_df_from_config = self._build_layer_dataframe_from_pivot_config(layer, pivot_config)
-                if not layer_df_from_config.empty:
-                    return layer_df_from_config
-
-        layer = self._resolve_current_layer()
-        request = self._current_pivot_request
-        if layer is not None and request is not None:
-            layer_df = self._build_layer_dataframe_from_request(
-                layer,
-                request,
-                extra_attribute_fields=extra_fields,
-            )
-            if not layer_df.empty:
-                return layer_df
-
-        if layer is not None:
-            try:
-                request = self._build_pivot_request(layer)
-                layer_df = self._build_layer_dataframe_from_request(
-                    layer,
-                    request,
-                    extra_attribute_fields=extra_fields,
-                )
-                if not layer_df.empty:
-                    return layer_df
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-        for candidate in (self.filtered_df, self.raw_df):
-            if isinstance(candidate, pd.DataFrame) and not candidate.empty:
-                return candidate.copy()
-        if isinstance(self.filtered_df, pd.DataFrame):
-            return self.filtered_df.copy()
-        if isinstance(self.raw_df, pd.DataFrame):
-            return self.raw_df.copy()
-        return pd.DataFrame()
+        return _pivot_build_export_layer_dataframe(self, pivot_config)
 
     def _export_to_excel_with_layer_data(
         self,
@@ -6029,295 +2767,16 @@ class PivotTableWidget(QWidget):
         layer_df: pd.DataFrame,
         pivot_config: Dict[str, Any],
     ) -> Tuple[bool, str]:
-        if layer_df is None or layer_df.empty:
-            return False, _rt("Sem dados da camada para gerar tabela dinâmica nativa.")
-
-        try:
-            import win32com.client as win32  # type: ignore
-        except Exception:
-            return (
-                False,
-                _rt("Tabela dinâmica nativa do Excel não criada (pywin32/Excel não disponível)."),
-            )
-
-        available_fields = [str(column) for column in list(layer_df.columns)]
-        if not available_fields:
-            return False, _rt("Sem colunas válidas para montar tabela dinâmica nativa.")
-
-        def _valid_fields(values: Optional[List[str]], labels: Optional[List[str]] = None) -> List[str]:
-            valid: List[str] = []
-            label_values = list(labels or [])
-            for index, value in enumerate(values or []):
-                fallback = label_values[index] if index < len(label_values) else ""
-                resolved = self._resolve_available_field_name(
-                    value,
-                    available_fields,
-                    fallback_candidates=[fallback],
-                )
-                if resolved and resolved not in valid:
-                    valid.append(resolved)
-            return valid
-
-        requested_row_fields = [str(value or "").strip() for value in (pivot_config.get("row_fields") or []) if str(value or "").strip()]
-        requested_column_fields = [str(value or "").strip() for value in (pivot_config.get("column_fields") or []) if str(value or "").strip()]
-        requested_filter_fields = [str(value or "").strip() for value in (pivot_config.get("filter_fields") or []) if str(value or "").strip()]
-
-        row_fields = _valid_fields(requested_row_fields, pivot_config.get("row_labels"))
-        column_fields = _valid_fields(requested_column_fields, pivot_config.get("column_labels"))
-        filter_fields = _valid_fields(requested_filter_fields, pivot_config.get("filter_labels"))
-
-        if requested_row_fields and not row_fields:
-            return False, _rt("Tabela dinâmica nativa não criada: campos de Linhas não foram mapeados na base exportada.")
-        if requested_column_fields and not column_fields:
-            return False, _rt("Tabela dinâmica nativa não criada: campos de Colunas não foram mapeados na base exportada.")
-        if requested_filter_fields and not filter_fields:
-            return False, _rt("Tabela dinâmica nativa não criada: campos de Filtros não foram mapeados na base exportada.")
-
-        value_field = self._resolve_available_field_name(
-            pivot_config.get("value_field"),
-            available_fields,
-            fallback_candidates=[pivot_config.get("value_label")],
+        return _pivot_try_create_native_excel_pivot(
+            file_path,
+            layer_df,
+            pivot_config,
+            translate=_rt,
+            resolve_available_field_name=self._resolve_available_field_name,
         )
-        if not value_field:
-            excluded = set(row_fields + column_fields + filter_fields)
-            candidates = [field for field in available_fields if field not in excluded]
-            if candidates:
-                value_field = candidates[0]
-            elif row_fields:
-                value_field = row_fields[0]
-            elif column_fields:
-                value_field = column_fields[0]
-            else:
-                value_field = available_fields[0]
-
-        if requested_row_fields and len(row_fields) < len(set(value.lower() for value in requested_row_fields)):
-            return False, _rt("Tabela dinâmica nativa não criada: parte dos campos de Linhas não foi reconhecida.")
-        if requested_column_fields and len(column_fields) < len(set(value.lower() for value in requested_column_fields)):
-            return False, _rt("Tabela dinâmica nativa não criada: parte dos campos de Colunas não foi reconhecida.")
-
-        if not value_field:
-            return False, _rt("Não foi possível determinar um campo de valor para a tabela dinâmica.")
-
-        aggregation = str(pivot_config.get("aggregation") or "count").lower()
-        agg_map = {
-            "count": -4112,    # xlCount
-            "sum": -4157,      # xlSum
-            "average": -4106,  # xlAverage
-            "min": -4139,      # xlMin
-            "max": -4136,      # xlMax
-            "stddev": -4155,   # xlStDev
-            "variance": -4164, # xlVar
-            "median": -4106,   # fallback: media
-            "unique": -4112,   # fallback: contagem
-        }
-        agg_function = agg_map.get(aggregation, -4112)
-        aggregation_label = str(pivot_config.get("aggregation_label") or aggregation.upper()).strip()
-        data_caption = (
-            f"{aggregation_label} de {value_field}"
-            if aggregation != "count"
-            else f"Contagem de {value_field}"
-        )
-
-        excel = None
-        workbook = None
-        try:
-            excel = win32.DispatchEx("Excel.Application")
-            excel.Visible = False
-            excel.DisplayAlerts = False
-            workbook = excel.Workbooks.Open(file_path)
-
-            ws_data = workbook.Worksheets("Dados_Camada")
-            used = ws_data.UsedRange
-            last_row = int(used.Rows.Count)
-            last_col = int(used.Columns.Count)
-            if last_row < 2 or last_col < 1:
-                return False, _rt("Dados insuficientes para montar a tabela dinâmica nativa.")
-
-            try:
-                ws_snapshot = workbook.Worksheets("Tabela_Dinamica")
-                try:
-                    workbook.Worksheets("Resumo_Pivot").Delete()
-                except Exception:
-                    log_exception("falha opcional ignorada")
-                ws_snapshot.Name = "Resumo_Pivot"
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-            try:
-                workbook.Worksheets("Tabela_Dinamica").Delete()
-            except Exception:
-                log_exception("falha opcional ignorada")
-
-            ws_pivot = workbook.Worksheets.Add()
-            ws_pivot.Name = "Tabela_Dinamica"
-
-            source_range = ws_data.Range(ws_data.Cells(1, 1), ws_data.Cells(last_row, last_col))
-            pivot_cache = workbook.PivotCaches().Create(SourceType=1, SourceData=source_range)
-            pivot_name = "PivotSummarizer"
-            pivot_cache.CreatePivotTable(
-                TableDestination="'Tabela_Dinamica'!R3C1",
-                TableName=pivot_name,
-            )
-            pivot_table = ws_pivot.PivotTables(pivot_name)
-
-            for position, field_name in enumerate(filter_fields, start=1):
-                field = pivot_table.PivotFields(field_name)
-                field.Orientation = 3  # xlPageField
-                field.Position = position
-
-            for position, field_name in enumerate(row_fields, start=1):
-                field = pivot_table.PivotFields(field_name)
-                field.Orientation = 1  # xlRowField
-                field.Position = position
-
-            for position, field_name in enumerate(column_fields, start=1):
-                field = pivot_table.PivotFields(field_name)
-                field.Orientation = 2  # xlColumnField
-                field.Position = position
-
-            value_pivot_field = pivot_table.PivotFields(value_field)
-            pivot_table.AddDataField(value_pivot_field, data_caption, agg_function)
-            pivot_table.RowGrand = True
-            pivot_table.ColumnGrand = True
-            ws_pivot.Columns.AutoFit()
-
-            workbook.Save()
-            return True, _rt("Tabela dinâmica nativa do Excel criada com campos interativos.")
-        except Exception as exc:
-            return False, _rt("Tabela dinâmica nativa do Excel não criada: {exc}", exc=exc)
-        finally:
-            if workbook is not None:
-                try:
-                    workbook.Close(SaveChanges=True)
-                except Exception:
-                    log_exception("falha opcional ignorada")
-            if excel is not None:
-                try:
-                    excel.Quit()
-                except Exception:
-                    log_exception("falha opcional ignorada")
 
     def _export_pivot_table(self):
-        if self.pivot_df is None or self.pivot_df.empty:
-            slim_message(self, _rt("Exportar tabela dinâmica"), _rt("Não há dados para exportar."))
-            return
-
-        path, selected_filter = QFileDialog.getSaveFileName(
-            self,
-            _rt("Exportar tabela dinâmica"),
-            "",
-            self.EXPORT_FILTERS,
-        )
-        if not path:
-            return
-
-        pivot_export_df = self._build_export_pivot_dataframe()
-
-        success_note = ""
-        try:
-            if "csv" in selected_filter.lower():
-                if not path.lower().endswith(".csv"):
-                    path += ".csv"
-                export_dataframe_to_csv(pivot_export_df, path, sep=";")
-            elif "xlsx" in selected_filter.lower():
-                if not path.lower().endswith(".xlsx"):
-                    path += ".xlsx"
-                pivot_config = self.get_current_configuration()
-                layer_export_df = self._build_export_layer_dataframe(pivot_config=pivot_config)
-                native_note = self._export_to_excel_with_layer_data(
-                    path,
-                    pivot_export_df,
-                    layer_export_df,
-                    pivot_config=pivot_config,
-                )
-                success_note = "\n" + _rt("Abas geradas: Tabela_Dinamica e Dados_Camada.")
-                if native_note:
-                    success_note += f"\n{native_note}"
-            else:
-                if not path.lower().endswith(".gpkg"):
-                    path += ".gpkg"
-                self._export_to_gpkg(path)
-        except Exception as exc:
-            slim_message(
-                self,
-                _rt("Exportar tabela dinâmica"),
-                _rt("Falha ao exportar a tabela dinâmica: {exc}", exc=exc),
-            )
-            return
-
-        slim_message(
-            self,
-            _rt("Exportar tabela dinâmica"),
-            _rt("Tabela dinâmica exportada para:\n{path}{success_note}", path=path, success_note=success_note),
-        )
+        _pivot_export_pivot_table(self)
 
     def _export_to_gpkg(self, path: str):
-        df = self.pivot_df
-        layer_name = self._current_metadata.get("layer_name") or "tabela_dinamica"
-        safe_name = "".join(
-            ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in layer_name
-        )
-
-        memory_layer = QgsVectorLayer("None", safe_name, "memory")
-        provider = memory_layer.dataProvider()
-
-        fields = QgsFields()
-        for column in df.columns:
-            variant_type = self._map_dtype_to_qvariant(df[column])
-            fields.append(QgsField(column, variant_type))
-        provider.addAttributes(fields)
-        memory_layer.updateFields()
-
-        features = []
-        for row in df.itertuples(index=False, name=None):
-            feature = QgsFeature()
-            feature.setFields(fields)
-            attrs = []
-            for value in row:
-                if isinstance(value, (float, np.floating)):
-                    attrs.append(float(value) if not pd.isna(value) else None)
-                elif isinstance(value, (int, np.integer)):
-                    attrs.append(int(value))
-                elif pd.isna(value):
-                    attrs.append(None)
-                else:
-                    attrs.append(value)
-            feature.setAttributes(attrs)
-            features.append(feature)
-        provider.addFeatures(features)
-        memory_layer.updateExtents()
-
-        options = QgsVectorFileWriter.SaveVectorOptions()
-        options.driverName = "GPKG"
-        options.layerName = safe_name
-
-        transform_context = QgsProject.instance().transformContext()
-        result = QgsVectorFileWriter.writeAsVectorFormatV3(
-            memory_layer,
-            path,
-            transform_context,
-            options,
-        )
-
-        if isinstance(result, tuple):
-            status = result[0]
-            message = result[1] if len(result) > 1 else ""
-        else:
-            status = result
-            message = ""
-
-        if status != QgsVectorFileWriter.NoError:
-            raise RuntimeError(message or "Falha ao escrever GeoPackage.")
-
-    def _map_dtype_to_qvariant(self, series: pd.Series) -> QVariant.Type:
-        if self._is_numeric_column(series):
-            if ptypes.is_integer_dtype(series):
-                return QVariant.LongLong
-            return QVariant.Double
-        if ptypes.is_datetime64_any_dtype(series):
-            return QVariant.DateTime
-        if ptypes.is_bool_dtype(series):
-            return QVariant.Bool
-        return QVariant.String
-
-
+        _pivot_export_to_gpkg(self, path)

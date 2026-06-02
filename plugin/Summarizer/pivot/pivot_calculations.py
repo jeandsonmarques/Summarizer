@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import re
@@ -146,3 +149,4 @@ __all__ = [
     "pandas_aggfunc_name",
     "resolve_available_field_name",
 ]
+

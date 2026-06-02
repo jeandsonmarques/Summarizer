@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from ..result_models import QueryResult
@@ -20,3 +23,4 @@ __all__ = [
     "build_result_export_bundle",
     "build_result_preview_model",
 ]
+

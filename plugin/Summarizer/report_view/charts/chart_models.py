@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,7 +11,7 @@ from typing import Dict, List
 class ChartVisualState:
     chart_type: str = "bar"
     palette: str = "purple"
-    font_scale: float = 0.82
+    font_scale: float = 0.88
     show_legend: bool = False
     show_values: bool = True
     show_percent: bool = False

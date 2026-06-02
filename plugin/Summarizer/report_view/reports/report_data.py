@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 EXAMPLE_QUERIES = (
@@ -94,4 +97,5 @@ PLUGIN_HELP_SUBJECT_TERMS = (
 PREVIEW_ROWS = 6
 MAX_TABLE_ROWS = 50
 REPORTS_FONT_SCALE = 1.0
+
 

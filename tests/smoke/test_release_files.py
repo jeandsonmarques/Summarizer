@@ -39,4 +39,3 @@ def test_release_zip_if_present_contains_expected_files():
             members = set(archive.namelist())
             assert required_members <= members
             assert all(not name.endswith((".pyc", ".pyo")) for name in members)
-

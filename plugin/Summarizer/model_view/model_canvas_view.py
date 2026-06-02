@@ -1,4 +1,7 @@
-﻿import math
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import math
 from typing import Optional
 
 from qgis.PyQt.QtCore import QPoint, QPointF, QRectF, Qt, pyqtSignal
@@ -7,6 +10,7 @@ from qgis.PyQt.QtWidgets import QGraphicsScene, QGraphicsView, QMenu
 
 
 from ..utils.logging_utils import log_exception
+from ..walker_dialogs import apply_walker_menu
 class ModelCanvasView(QGraphicsView):
     """QGraphicsView com pan/zoom suave e grade ao estilo Power BI."""
 
@@ -225,7 +229,7 @@ class ModelCanvasView(QGraphicsView):
         if isinstance(item, TableCardItem):
             super().contextMenuEvent(event)
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
 
         scene = self.scene()
         manager = getattr(scene, "manager", None) if scene is not None else None
@@ -278,3 +282,4 @@ class ModelCanvasView(QGraphicsView):
     @property
     def zoom_level(self) -> float:
         return float(self._zoom)
+

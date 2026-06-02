@@ -1,4 +1,4 @@
-﻿/* Power BI Desktop inspired style for Summarizer */
+/* Power BI Desktop inspired style for Summarizer */
 
 * {
     font-family: ${font_ui_stack};
@@ -605,8 +605,9 @@ QStatusBar {
     border: 1px solid transparent;
     border-radius: 6px;
     color: ${color_text_primary};
-    padding: 4px 8px;
-    min-height: 24px;
+    font-size: ${font_secondary_px}px;
+    padding: 3px 7px;
+    min-height: 22px;
 }
 
 #headerBar QToolButton:hover {
@@ -740,4 +741,3 @@ QToolTip[themeMode="dark"] {
     color: ${color_text_primary};
     border-color: ${color_border};
 }
-

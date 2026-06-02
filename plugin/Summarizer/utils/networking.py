@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import json
 import uuid
@@ -326,4 +329,5 @@ def _encode_multipart_body(
     chunks.append(b"\r\n")
     chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
     return b"".join(chunks)
+
 

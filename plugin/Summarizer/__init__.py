@@ -1,4 +1,7 @@
-﻿import os
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+import os
 import sys
 
 
@@ -54,3 +57,4 @@ def classFactory(iface):
     from .data_summarizer import Summarizer
 
     return Summarizer(iface)
+

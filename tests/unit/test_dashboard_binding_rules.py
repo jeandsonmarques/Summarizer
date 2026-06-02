@@ -25,8 +25,7 @@ def test_bar_slots_accept_category_value_legend_tooltip_and_filters():
         == "x_axis"
     )
     assert (
-        suggest_binding_slot("bar", "measure", DashboardChartBinding(chart_type="bar"))
-        == "values"
+        suggest_binding_slot("bar", "measure", DashboardChartBinding(chart_type="bar")) == "values"
     )
     assert is_binding_slot_compatible("bar", "x_axis", "dimension")
     assert is_binding_slot_compatible("bar", "values", "measure")
@@ -87,12 +86,10 @@ def test_extended_model_visual_types_have_builder_slots():
     assert binding_slot_names("kpi") == ["values", "tooltip", "filters"]
     assert binding_slot_names("gauge") == ["values", "tooltip", "filters"]
     assert (
-        suggest_binding_slot("kpi", "measure", DashboardChartBinding(chart_type="kpi"))
-        == "values"
+        suggest_binding_slot("kpi", "measure", DashboardChartBinding(chart_type="kpi")) == "values"
     )
     assert (
-        suggest_binding_slot("gauge", "dimension", DashboardChartBinding(chart_type="gauge"))
-        == ""
+        suggest_binding_slot("gauge", "dimension", DashboardChartBinding(chart_type="gauge")) == ""
     )
     assert (
         DashboardChartBinding(chart_type="kpi", measure_field="volume")

@@ -32,7 +32,9 @@ O ZIP final sera criado como:
 Summarizer/
   __init__.py
   metadata.txt
+  LICENSE
   README.md
+  TRADEMARKS.md
   CHANGELOG.md
   resources/
   i18n/

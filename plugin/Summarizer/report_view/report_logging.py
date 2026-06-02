@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 try:
     from ..utils.runtime_paths import runtime_state_file
 except ImportError:  # pragma: no cover - supports running report_view as a top-level package
@@ -25,3 +28,4 @@ def log_exception(context: object, exc=None):
 
 
 __all__ = ["LOG_CHANNEL", "LOG_FILE", "log_error", "log_exception", "log_info", "log_warning"]
+

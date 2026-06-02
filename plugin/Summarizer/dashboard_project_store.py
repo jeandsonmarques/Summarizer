@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import json
 import os
@@ -137,4 +140,5 @@ class DashboardProjectStore:
             self.settings.setValue(RECENTS_SETTINGS_KEY, json.dumps(items, ensure_ascii=False))
         except Exception:
             self.settings.setValue(RECENTS_SETTINGS_KEY, "[]")
+
 

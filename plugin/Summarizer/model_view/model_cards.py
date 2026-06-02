@@ -1,12 +1,62 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
-from qgis.PyQt.QtCore import QEasingCurve, QPoint, QRectF, Qt, QVariantAnimation, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPen
-from qgis.PyQt.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from qgis.PyQt.QtCore import QEasingCurve, QPoint, QPointF, QRectF, Qt, QVariantAnimation, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen
+from qgis.PyQt.QtWidgets import (
+    QDialog,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..utils.logging_utils import log_exception
 from ..utils.resources import svg_icon
 from .model_interactions import event_point
+
+
+class _ModelClockIcon(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ModelRecentsClockIcon")
+        self.setFixedSize(18, 18)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor("#6B7280"), 1.6)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        rect = QRectF(2.0, 2.0, 14.0, 14.0)
+        painter.drawEllipse(rect)
+        center = QPointF(9.0, 9.0)
+        painter.drawLine(center, QPointF(9.0, 5.2))
+        painter.drawLine(center, QPointF(12.0, 10.5))
+
+
+class _ModelElidedLabel(QLabel):
+    def __init__(self, text: str = "", parent=None):
+        super().__init__("", parent)
+        self._full_text = str(text or "")
+        self.setToolTip(self._full_text)
+        self.setText(self._full_text)
+
+    def setText(self, text: str):  # noqa: N802 - Qt override
+        self._full_text = str(text or "")
+        self.setToolTip(self._full_text)
+        metrics = self.fontMetrics()
+        width = max(24, self.width() or self.sizeHint().width() or 120)
+        super().setText(metrics.elidedText(self._full_text, Qt.ElideRight, width))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.setText(self._full_text)
 
 
 class _ModelCardAction(QFrame):
@@ -18,12 +68,16 @@ class _ModelCardAction(QFrame):
         self.setCursor(Qt.PointingHandCursor)
         self._description = str(description or "")
         self._icon_name = str(icon_name or "")
+        self._connected = False
+        if self._description:
+            self.setToolTip(self._description)
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setMinimumHeight(132)
+        self.setMinimumHeight(88)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(9)
 
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
@@ -31,10 +85,10 @@ class _ModelCardAction(QFrame):
 
         self.icon_chip = QLabel("", self)
         self.icon_chip.setObjectName("ModelActionCardIcon")
-        self.icon_chip.setFixedSize(34, 34)
+        self.icon_chip.setFixedSize(22, 22)
         icon = svg_icon(self._icon_name) if self._icon_name else QIcon()
         if not icon.isNull():
-            self.icon_chip.setPixmap(icon.pixmap(18, 18))
+            self.icon_chip.setPixmap(icon.pixmap(20, 20))
             self.icon_chip.setAlignment(Qt.AlignCenter)
         top_row.addWidget(self.icon_chip, 0)
         top_row.addStretch(1)
@@ -50,6 +104,56 @@ class _ModelCardAction(QFrame):
         self.description_label.setWordWrap(True)
         self.description_label.setVisible(False)
         layout.addWidget(self.description_label)
+        layout.addStretch(1)
+        self._apply_card_style()
+
+    def set_connected(self, connected: bool):
+        self._connected = bool(connected)
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self._connected:
+            return
+        rect = self.icon_chip.geometry()
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(QPen(QColor("#FFFFFF"), 1.4))
+        painter.setBrush(QColor("#22C55E"))
+        painter.drawEllipse(QRectF(rect.right() - 4.0, rect.bottom() - 4.0, 8.0, 8.0))
+
+    def _apply_card_style(self):
+        self.setStyleSheet(
+            """
+            QFrame#ModelActionCard {
+                background: #FFFFFF;
+                border: 1px solid #DDE3EA;
+                border-radius: 10px;
+            }
+            QFrame#ModelActionCard:hover {
+                background: #F7F7F7;
+                border-color: #D5DAE1;
+            }
+            QLabel#ModelActionCardIcon {
+                background: transparent;
+                border: none;
+            }
+            QLabel#ModelActionCardTitle {
+                background: transparent;
+                border: none;
+                color: #111827;
+                font-size: 16px;
+                font-weight: 400;
+            }
+            QLabel#ModelActionCardText {
+                background: transparent;
+                border: none;
+                color: #6B7280;
+                font-size: 13px;
+                font-weight: 400;
+            }
+            """
+        )
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -62,12 +166,39 @@ class _ModelCardAction(QFrame):
         super().mouseReleaseEvent(event)
 
     def enterEvent(self, event):
-        self.description_label.setVisible(True)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.description_label.setVisible(False)
         super().leaveEvent(event)
+
+
+class _ModelRecentFolderIcon(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ModelRecentCardIcon")
+        self.setFixedSize(48, 48)
+
+    def paintEvent(self, event):
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor("#4B5563"), 2.0)
+        pen.setJoinStyle(Qt.RoundJoin)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(self._folder_path())
+
+    def _folder_path(self):
+        path = QPainterPath()
+        path.moveTo(8, 18)
+        path.lineTo(18, 18)
+        path.lineTo(22, 22)
+        path.lineTo(40, 22)
+        path.lineTo(40, 36)
+        path.lineTo(8, 36)
+        path.closeSubpath()
+        return path
 
 
 class _ModelRecentCard(QFrame):
@@ -78,20 +209,88 @@ class _ModelRecentCard(QFrame):
         self.setObjectName("ModelRecentCard")
         self.setCursor(Qt.PointingHandCursor)
         self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setFixedSize(212, 238)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(8)
+        shadow.setOffset(0, 1)
+        shadow.setColor(QColor(15, 23, 42, 28))
+        self.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        title_label = QLabel(title, self)
+        preview = QFrame(self)
+        preview.setObjectName("ModelRecentCardPreview")
+        preview.setFixedHeight(126)
+        preview_layout = QVBoxLayout(preview)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(0)
+
+        icon_widget = _ModelRecentFolderIcon(preview)
+        preview_layout.addWidget(icon_widget, 1, Qt.AlignCenter)
+        layout.addWidget(preview)
+
+        content = QWidget(self)
+        content.setObjectName("ModelRecentCardContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(14, 14, 14, 12)
+        content_layout.setSpacing(6)
+
+        title_label = _ModelElidedLabel(title, content)
         title_label.setObjectName("ModelRecentCardTitle")
-        title_label.setWordWrap(True)
-        layout.addWidget(title_label)
+        content_layout.addWidget(title_label)
 
-        text_label = QLabel(description, self)
+        text_label = _ModelElidedLabel(description, content)
         text_label.setObjectName("ModelRecentCardText")
-        text_label.setWordWrap(True)
-        layout.addWidget(text_label)
+        content_layout.addWidget(text_label)
+        content_layout.addStretch(1)
+        layout.addWidget(content)
+        self._apply_card_style()
+
+    def _apply_card_style(self):
+        self.setStyleSheet(
+            """
+            QFrame#ModelRecentCard {
+                background: #FFFFFF;
+                border: 1px solid #DDE3EA;
+                border-radius: 10px;
+            }
+            QFrame#ModelRecentCard:hover {
+                background: #F7F7F7;
+                border-color: #D5DAE1;
+            }
+            QFrame#ModelRecentCardPreview {
+                background: #F5F5F5;
+                border: none;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+            }
+            QWidget#ModelRecentCardContent {
+                background: #FFFFFF;
+                border: none;
+            }
+            QLabel#ModelRecentCardIcon {
+                background: transparent;
+                border: none;
+            }
+            QLabel#ModelRecentCardTitle {
+                background: transparent;
+                border: none;
+                color: #111827;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLabel#ModelRecentCardText {
+                background: transparent;
+                border: none;
+                color: #6B7280;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            """
+        )
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:

@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from __future__ import annotations
 
 import copy
 import json
@@ -6,12 +9,11 @@ import os
 from typing import Optional
 
 from qgis.PyQt.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, QSettings, Qt, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QBrush, QIcon, QPainter, QPainterPath, QPen
+from qgis.PyQt.QtGui import QColor, QBrush, QFontMetrics, QIcon, QPainter, QPainterPath, QPen
 from qgis.PyQt.QtWidgets import (
     QAction,
     QActionGroup,
     QCheckBox,
-    QColorDialog,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -24,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit,
     QMenu,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -35,7 +38,6 @@ from .dashboard_models import (
     DashboardChartItem,
     ROLE_X_AXIS,
     binding_slot_definitions,
-    empty_binding_message,
     suggest_binding_slot,
     deserialize_chart_visual_state,
     serialize_chart_visual_state,
@@ -45,9 +47,18 @@ from .report_view.chart_factory import ReportChartWidget
 from .slim_dialogs import slim_get_text
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
+from .walker_dialogs import add_walker_close_button, apply_walker_buttons, apply_walker_dialog, apply_walker_menu, install_walker_modal_chrome
+from .walker_color_dialog import walker_get_color
 
 
 from .utils.logging_utils import log_exception
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except Exception:
+        return None
 
 
 def _is_dark_theme() -> bool:
@@ -374,8 +385,19 @@ class _DashboardVisualDropOverlay(QFrame):
         if payload is None:
             event.ignore()
             return
-        suggested = suggest_binding_slot(self._chart_type, str(payload.get("field_group") or "other"))
-        target_slot = suggested if suggested in self._slots else ROLE_X_AXIS
+        target_slot = ""
+        try:
+            point = event.pos() if hasattr(event, "pos") else event.position().toPoint()
+            target_widget = self.childAt(point)
+            while target_widget is not None and not isinstance(target_widget, _VisualDropSlot):
+                target_widget = target_widget.parentWidget()
+            if isinstance(target_widget, _VisualDropSlot):
+                target_slot = str(target_widget.slot_name or "").strip()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        if not target_slot:
+            suggested = suggest_binding_slot(self._chart_type, str(payload.get("field_group") or "other"))
+            target_slot = suggested if suggested in self._slots else ROLE_X_AXIS
         self.fieldDropped.emit(target_slot, payload)
         event.acceptProposedAction()
 
@@ -407,7 +429,7 @@ class _ColorButton(QPushButton):
         )
 
     def _pick_color(self):
-        color = QColorDialog.getColor(QColor(self._color), self, _rt("Escolher cor"))
+        color = walker_get_color(QColor(self._color), self, _rt("Escolher cor"))
         if color.isValid():
             self.set_color(color.name())
 
@@ -484,6 +506,7 @@ class VisualPropertiesDialog(QDialog):
         self._controls = {}
         self._palette_buttons = []
         self._build_ui()
+        install_walker_modal_chrome(self)
         self._apply_dialog_theme()
         self._load_state(self._state)
         harmonize_widget_fonts(self)
@@ -491,6 +514,7 @@ class VisualPropertiesDialog(QDialog):
 
     def _apply_dialog_theme(self):
         if not _is_dark_theme():
+            apply_walker_dialog(self)
             return
         self.setProperty("themeMode", "dark")
         self.setStyleSheet(
@@ -554,6 +578,15 @@ class VisualPropertiesDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(10)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        title = QLabel(_rt("Propriedades visuais"), self)
+        title.setObjectName("WalkerDialogTitle")
+        header.addWidget(title, 1)
+        add_walker_close_button(header, self)
+        root.addLayout(header)
 
         preset_row = QHBoxLayout()
         preset_row.addWidget(QLabel(_rt("Preset"), self), 0)
@@ -643,6 +676,7 @@ class VisualPropertiesDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Cancel, self)
         buttons.button(QDialogButtonBox.Apply).setText(_rt("Aplicar"))
         buttons.button(QDialogButtonBox.Cancel).setText(_rt("Cancelar"))
+        apply_walker_buttons(primary=[buttons.button(QDialogButtonBox.Apply)], secondary=[buttons.button(QDialogButtonBox.Cancel)])
         buttons.button(QDialogButtonBox.Apply).clicked.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
@@ -801,6 +835,7 @@ class DashboardItemWidget(QFrame):
         self._header_pressed = False
         self._binding = item.binding.normalized()
         self._external_filters = {}
+        self._external_highlights = {}
         self._zoom_scale = 1.0
         self._logical_chart_size = QSize()
 
@@ -833,11 +868,13 @@ class DashboardItemWidget(QFrame):
         self.title_label.setCursor(Qt.PointingHandCursor)
         self.title_label.setToolTip(_rt("Duplo clique para renomear"))
         self.title_label.setFont(ui_font())
+        self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         title_column.addWidget(self.title_label)
         self.subtitle_label = QLabel("", self.header)
         self.subtitle_label.setObjectName("ModelDashboardItemSubtitle")
         self.subtitle_label.setWordWrap(True)
         self.subtitle_label.setFont(ui_font())
+        self.subtitle_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         title_column.addWidget(self.subtitle_label)
         header_layout.addLayout(title_column, 1)
 
@@ -972,9 +1009,16 @@ class DashboardItemWidget(QFrame):
         self._external_filters = dict(filters or {})
         self.chart_widget.set_external_filters(self._external_filters)
 
-    def clear_local_selection(self):
+    def set_external_highlights(self, highlights):
+        self._external_highlights = dict(highlights or {})
         try:
-            self.chart_widget.clear_selection(emit_signal=False)
+            self.chart_widget.set_external_highlights(self._external_highlights)
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+    def clear_local_selection(self, *, clear_map: bool = False):
+        try:
+            self.chart_widget.clear_selection(emit_signal=False, clear_map=clear_map)
         except Exception:
             log_exception("falha opcional ignorada")
 
@@ -1025,12 +1069,19 @@ class DashboardItemWidget(QFrame):
         data.setdefault("measure_field", self._binding.measure_field)
         data.setdefault("aggregation", self._binding.aggregation)
         data.setdefault("source_name", self._binding.source_name)
+        data.setdefault("legend_field", self._binding.legend_field)
+        data.setdefault("x_field", self._binding.x_field)
+        data.setdefault("y_field", self._binding.y_field)
+        data.setdefault("size_field", self._binding.size_field)
+        data.setdefault("row_fields", list(self._binding.row_fields or []))
+        data.setdefault("column_fields", list(self._binding.column_fields or []))
+        data.setdefault("value_fields", list(self._binding.value_fields or []))
         values = self._flatten_values(data.get("values"))
         if not values:
             raw_value = data.get("raw_category") or data.get("display_label") or data.get("category")
             values = self._flatten_values(raw_value)
         data["values"] = values
-        data["feature_ids"] = [int(value) for value in list(data.get("feature_ids") or []) if value is not None]
+        data["feature_ids"] = [safe_id for value in list(data.get("feature_ids") or []) if value is not None and (safe_id := _safe_int(value)) is not None]
         return data
 
     def _flatten_values(self, value):
@@ -1056,8 +1107,7 @@ class DashboardItemWidget(QFrame):
         layout = self._item.layout.normalized()
         self._item.layout = layout
         self._binding = self._item.binding.normalized()
-        self.title_label.setText(self._item.display_title())
-        self.subtitle_label.setText(self._item.subtitle or "")
+        self._sync_header_texts()
         self._sync_chart_identity()
         self.chart_widget.set_payload(self._item.payload, empty_text="")
         self.chart_widget.chart_state = self._item.visual_state
@@ -1067,7 +1117,15 @@ class DashboardItemWidget(QFrame):
             log_exception("falha opcional ignorada")
         self._sync_accessibility_tooltip()
         self.chart_widget.set_external_filters(self._external_filters)
+        try:
+            self.chart_widget.set_external_highlights(self._external_highlights)
+        except Exception:
+            log_exception("falha opcional ignorada")
         self.chart_widget.set_embedded_mode(True)
+        try:
+            self.chart_widget.refresh_animation_configuration()
+        except Exception:
+            log_exception("falha opcional ignorada")
         self.chart_widget.clear_selection(emit_signal=False)
         self.chart_widget.update()
         self.footer_label.setText(f"{self._item.origin} | {layout.width}x{layout.height}")
@@ -1217,6 +1275,35 @@ class DashboardItemWidget(QFrame):
             self.card.setToolTip(alt_text)
         except Exception:
             log_exception("falha opcional ignorada")
+
+    def _sync_header_texts(self):
+        title_text = _rt(str(self._item.display_title() or ""))
+        subtitle_text = str(self._item.subtitle or "")
+        try:
+            metrics = QFontMetrics(self.title_label.font())
+            header_width = max(80, int(self.header.width() or self.width() or 0))
+            reserved = 12
+            for button in (self.model_edit_btn, self.personalize_btn, self.link_command_btn, self.remove_btn):
+                if button is not None and button.isVisible():
+                    reserved += int(button.width() or button.sizeHint().width() or 0)
+            header_layout = self.header.layout()
+            if header_layout is not None:
+                try:
+                    reserved += int(header_layout.spacing() or 0) * 4
+                    margins = header_layout.contentsMargins()
+                    reserved += int(margins.left() + margins.right())
+                except Exception:
+                    pass
+            available = max(80, header_width - reserved)
+            title_width = max(60, int(available * 0.64))
+            subtitle_width = max(40, available - title_width)
+            self.title_label.setText(metrics.elidedText(title_text, Qt.ElideRight, title_width))
+            self.subtitle_label.setText(metrics.elidedText(subtitle_text, Qt.ElideRight, subtitle_width))
+            self.title_label.setToolTip(title_text)
+            self.subtitle_label.setToolTip(subtitle_text)
+        except Exception:
+            self.title_label.setText(title_text)
+            self.subtitle_label.setText(subtitle_text)
 
     def set_highlight_mode(self, mode: str):
         normalized = str(mode or "idle").strip().lower() or "idle"
@@ -1395,7 +1482,7 @@ class DashboardItemWidget(QFrame):
     def _open_chart_model_menu(self):
         if not self._edit_mode:
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         type_group = QActionGroup(menu)
         type_group.setExclusive(True)
 
@@ -1430,7 +1517,7 @@ class DashboardItemWidget(QFrame):
     def _open_chart_personalize_menu(self):
         if not self._edit_mode:
             return
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         font_menu = menu.addMenu(_rt("Tamanho da fonte"))
         palette_menu = menu.addMenu(_rt("Paleta"))
         sort_menu = menu.addMenu(_rt("Ordenacao"))
@@ -1903,7 +1990,7 @@ class DashboardItemWidget(QFrame):
         if not accepted:
             return
         self._item.title = str(new_text or "").strip()
-        self.title_label.setText(self._item.display_title())
+        self._sync_header_texts()
         self.itemChanged.emit()
 
     def leaveEvent(self, event):
@@ -1917,6 +2004,7 @@ class DashboardItemWidget(QFrame):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._sync_logical_chart_render_size(allow_capture=True)
+        self._sync_header_texts()
         try:
             self._overlay.setGeometry(self.rect())
             self._overlay.raise_()

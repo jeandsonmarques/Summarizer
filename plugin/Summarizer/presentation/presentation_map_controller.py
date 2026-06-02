@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -14,7 +17,9 @@ except Exception:  # pragma: no cover - optional in pure-python tests
     QgsMapToolZoom = None
 
 from .presentation_window_manager import PresentationWindowManager
+from ..utils.i18n_runtime import tr_text as _rt
 from ..utils.logging_utils import log_exception
+from ..walker_dialogs import apply_walker_menu
 
 
 class PresentationMapController(QObject):
@@ -414,11 +419,11 @@ class PresentationMapController(QObject):
         canvas = self._presentation_canvas()
         if canvas is None:
             return
-        menu = QMenu(self.plugin_window)
-        menu.addAction("Sincronizar com mapa principal", self.sync_with_main_canvas)
-        menu.addAction("Atualizar", self.refresh)
-        menu.addAction("Extensao total", self._zoom_full_extent)
-        menu.addAction("Zoom na selecao", self._zoom_to_current_selection)
+        menu = apply_walker_menu(QMenu(self.plugin_window))
+        menu.addAction(_rt("Sincronizar com mapa principal"), self.sync_with_main_canvas)
+        menu.addAction(_rt("Atualizar"), self.refresh)
+        menu.addAction(_rt("Extensão total"), self._zoom_full_extent)
+        menu.addAction(_rt("Zoom na seleção"), self._zoom_to_current_selection)
         try:
             menu.exec_(self.plugin_window.cursor().pos())
         except Exception:
@@ -467,3 +472,4 @@ class PresentationMapController(QObject):
             self.stateChanged.emit(bool(active))
         except Exception:
             log_exception("falha ao notificar estado do modo apresentacao")
+

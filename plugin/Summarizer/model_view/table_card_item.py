@@ -1,4 +1,7 @@
-﻿from typing import Dict, List, Optional
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
+from typing import Dict, List, Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt
 from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
@@ -7,6 +10,7 @@ from qgis.core import QgsMessageLog
 
 from .field_item import FieldItem
 from ..utils.fonts import ui_font
+from ..walker_dialogs import apply_walker_menu
 
 
 from ..utils.logging_utils import log_exception
@@ -139,7 +143,6 @@ class TableCardItem(QGraphicsRectItem):
         self._virtual_header_rect = None
         self._virtual_title_height = 0
         if self._virtual_fields:
-            preview_title = self._preview_section_title()
             metrics = QFontMetrics(self.preview_title_font)
             self._virtual_title_height = metrics.height()
             self._virtual_header_rect = QRectF(self.padding, y, content_width, self._virtual_title_height)
@@ -243,7 +246,7 @@ class TableCardItem(QGraphicsRectItem):
             QgsMessageLog.logMessage(
                 f"Abrindo menu de exportacao para tabela {self.table_name}", "Summarizer Summarizer"
             )
-            menu = QMenu()
+            menu = apply_walker_menu(QMenu())
             export_action = menu.addAction("Exportar camada (preview herdado)")
             chosen = menu.exec_(event.screenPos())
             if chosen == export_action:

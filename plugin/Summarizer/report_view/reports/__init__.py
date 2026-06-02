@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from .report_builder import (
     build_reports_stylesheet,
     build_result_export_bundle,
@@ -43,3 +46,4 @@ __all__ = [
     "PLUGIN_HELP_INTENT_TERMS",
     "PLUGIN_HELP_SUBJECT_TERMS",
 ]
+

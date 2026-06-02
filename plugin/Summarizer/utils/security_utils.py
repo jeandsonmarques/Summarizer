@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -84,9 +87,35 @@ def secure_connection_payload(
     return data
 
 
+def reveal_connection_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
+    data = dict(payload or {})
+    if data.get("password") or not data.get("authcfg"):
+        return data
+    if QgsApplication is None or QgsAuthMethodConfig is None:
+        return data
+    auth_manager = QgsApplication.authManager()
+    if auth_manager is None:
+        return data
+    config = QgsAuthMethodConfig()
+    try:
+        if not auth_manager.loadAuthenticationConfig(str(data.get("authcfg") or ""), config, True):
+            return data
+    except Exception:
+        return data
+    password = config.config("password")
+    username = config.config("username")
+    if password:
+        data["password"] = password
+    if username and not data.get("user"):
+        data["user"] = username
+    return data
+
+
 __all__ = [
     "create_basic_authcfg",
     "mask_sensitive_mapping",
     "mask_sensitive_value",
+    "reveal_connection_payload",
     "secure_connection_payload",
 ]
+

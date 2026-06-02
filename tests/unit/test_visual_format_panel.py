@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 HAS_QGIS = True
@@ -18,6 +20,43 @@ def _qapp():
     if app is None:
         app = QApplication([])
     return app
+
+
+def test_visual_format_panel_does_not_reintroduce_tiny_font_styles():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "plugin"
+        / "Summarizer"
+        / "visual_format_panel.py"
+    ).read_text(encoding="utf-8")
+
+    assert "font-size: 8px" not in source
+    assert "font-size: 9px" not in source
+    assert "_PANEL_FONT_BODY_PX = 12" in source
+    assert "_apply_panel_font_scale" in source
+
+
+def test_visual_format_panel_empty_state_uses_top_guidance_card():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "plugin"
+        / "Summarizer"
+        / "visual_format_panel.py"
+    ).read_text(encoding="utf-8")
+
+    assert "VisualPanelEmptyCard" in source
+    assert "VisualPanelEmptyHost" in source
+    assert 'QLabel(_rt("Formatar visual")' not in source
+    assert "_PANEL_GUIDANCE_CARD = \"#F3F4F6\"" in source
+    assert "_PANEL_GUIDANCE_CARD_TEXT = \"#334155\"" in source
+    assert "#0F8B74" not in source
+    assert "VisualPanelEmptyCardClose" in source
+    assert "QFrame#VisualFormatPanel {\n                border: none;" in source
+    assert "_GuidanceCardNotch" not in source
+    assert "VisualPanelEmptyCardWrap" not in source
+    assert "empty_host_layout.addWidget(self.empty_card, 0, Qt.AlignTop)" in source
+    assert "root.addWidget(self.empty_host, 1)" in source
+    assert "_empty_card_dismissed" not in source
 
 
 def _dashboard_item(chart_type: str = "bar"):
@@ -83,10 +122,11 @@ def test_open_panel_without_selection_shows_empty_message():
     try:
         widget.show_visual_panel()
 
+        assert widget.visual_format_panel.empty_card.isHidden() is False
         assert widget.visual_format_panel.empty_label.isHidden() is False
         assert (
             widget.visual_format_panel.empty_label.text()
-            == "Selecione um visual para editar suas propriedades."
+            == "Selecione um visual para formatar suas propriedades."
         )
     finally:
         widget.deleteLater()
@@ -104,6 +144,7 @@ def test_selecting_item_with_panel_open_updates_panel():
 
         widget.dashboard_canvas.select_item(item.item_id)
 
+        assert widget.visual_format_panel.empty_card.isHidden() is True
         assert widget.visual_format_panel.empty_label.isHidden() is True
         assert "card" in widget.visual_format_panel.item_label.text()
         assert widget.visual_format_panel.card_group.isHidden() is False

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
@@ -29,7 +32,9 @@ from .model_relations_popup import ModelRelationsPopup
 
 
 from .utils.logging_utils import log_exception
+from .utils.i18n_runtime import tr_text as _rt
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .walker_dialogs import WalkerMessageBox as QMessageBox, WalkerModalDialog, apply_walker_buttons, apply_walker_combo
 
 
 def _is_dark_theme() -> bool:
@@ -764,7 +769,7 @@ class DashboardCanvas(QWidget):
         self.itemsChanged.emit()
 
     def clear_filters(self):
-        self.interaction_manager.clear_filters()
+        self.interaction_manager.clear_filters(clear_map=True)
 
     def active_filters(self) -> Dict[str, Dict[str, object]]:
         return self.interaction_manager.active_filters()
@@ -1422,83 +1427,38 @@ class DashboardCanvas(QWidget):
         options: List[Tuple[str, str]] = []
         title_counts: Dict[str, int] = {}
         for item in candidates:
-            base_title = str(item.display_title() or "Grafico").strip() or "Grafico"
+            base_title = _rt(str(item.display_title() or "Grafico").strip() or "Grafico")
             title_counts[base_title] = title_counts.get(base_title, 0) + 1
         title_indexes: Dict[str, int] = {}
         for item in candidates:
-            base_title = str(item.display_title() or "Grafico").strip() or "Grafico"
+            base_title = _rt(str(item.display_title() or "Grafico").strip() or "Grafico")
             title_indexes[base_title] = title_indexes.get(base_title, 0) + 1
             suffix = f" ({title_indexes[base_title]})" if title_counts.get(base_title, 0) > 1 else ""
             options.append((f"{base_title}{suffix}", item.item_id))
         if not options:
-            QMessageBox.information(self, "Relacao", "Nao ha outro grafico disponivel para relacionar.")
+            QMessageBox.information(self, _rt("Relacao"), _rt("Nao ha outro grafico disponivel para relacionar."))
             return ""
-        dialog = QDialog(self)
+        dialog = WalkerModalDialog(self, width=430)
         dialog.setObjectName("ModelRelationTargetDialog")
-        dialog.setWindowTitle("Nova relacao")
-        dialog.setFont(ui_font())
-        dialog._font_enforcer = attach_ui_font_enforcer(dialog)
-        dialog.setModal(True)
-        dialog.setMinimumWidth(430)
-        dialog.setStyleSheet(
-            """
-            QDialog#ModelRelationTargetDialog { background: #FFFFFF; }
-            QDialog#ModelRelationTargetDialog QLabel {
-                color: #1F2937; font-size: 12px;
-            }
-            QDialog#ModelRelationTargetDialog QComboBox {
-                min-height: 32px;
-                border: 1px solid #D1D5DB;
-                border-radius: 6px;
-                padding: 0 10px;
-                background: #FFFFFF;
-                color: #111827;
-            }
-            QDialog#ModelRelationTargetDialog QComboBox:focus {
-                border-color: #9CA3AF;
-            }
-            QDialog#ModelRelationTargetDialog QPushButton {
-                min-height: 30px;
-                min-width: 84px;
-                border-radius: 6px;
-                border: 1px solid #D1D5DB;
-                background: #FFFFFF;
-                color: #111827;
-                font-weight: 500;
-            }
-            QDialog#ModelRelationTargetDialog QPushButton:hover {
-                background: #F9FAFB;
-                border-color: #9CA3AF;
-            }
-            QDialog#ModelRelationTargetDialog QPushButton#PrimaryActionButton {
-                border-color: #D1D5DB;
-                background: #FFFFFF;
-                color: #111827;
-            }
-            QDialog#ModelRelationTargetDialog QPushButton#PrimaryActionButton:hover {
-                background: #F9FAFB;
-                border-color: #9CA3AF;
-            }
-            """
-        )
-
-        root = QVBoxLayout(dialog)
-        root.setContentsMargins(14, 12, 14, 12)
-        root.setSpacing(10)
+        dialog.setWindowTitle(_rt("Nova relacao"))
+        dialog.add_header(_rt("Nova relacao"))
+        root = dialog.panel_layout
 
         helper_label = QLabel(
-            f"Com qual grafico deseja relacionar '{source_item.display_title()}'?",
-            dialog,
+            _rt("Com qual grafico deseja relacionar '{title}'?", title=_rt(source_item.display_title())),
+            dialog.panel,
         )
         helper_label.setWordWrap(True)
+        helper_label.setProperty("walkerMuted", True)
         root.addWidget(helper_label)
 
-        combo = QComboBox(dialog)
-        combo.setFont(ui_font(8))
+        combo = QComboBox(dialog.panel)
+        combo.setFont(ui_font(10))
         for label, item_id in options:
             combo.addItem(label, item_id)
+        apply_walker_combo(combo)
         try:
-            combo.view().setFont(ui_font(8))
+            combo.view().setFont(ui_font(10))
         except Exception:
             log_exception("falha opcional ignorada")
         root.addWidget(combo)
@@ -1508,15 +1468,15 @@ class DashboardCanvas(QWidget):
         actions.setSpacing(8)
         actions.addStretch(1)
 
-        cancel_btn = QPushButton("Cancelar", dialog)
+        cancel_btn = QPushButton(_rt("Cancelar"), dialog.panel)
         cancel_btn.clicked.connect(dialog.reject)
         actions.addWidget(cancel_btn, 0)
 
-        ok_btn = QPushButton("OK", dialog)
-        ok_btn.setObjectName("PrimaryActionButton")
+        ok_btn = QPushButton(_rt("OK"), dialog.panel)
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(dialog.accept)
         actions.addWidget(ok_btn, 0)
+        apply_walker_buttons(primary=[ok_btn], secondary=[cancel_btn])
         root.addLayout(actions)
         harmonize_widget_fonts(dialog)
 

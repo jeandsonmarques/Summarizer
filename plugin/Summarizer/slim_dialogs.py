@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -10,7 +13,6 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -25,10 +27,19 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .utils.i18n_runtime import tr_text as _rt
 from .utils.window_theme import apply_windows_title_bar_theme
+from .walker_dialogs import (
+    WALKER_DIALOG_STYLE,
+    apply_walker_dialog,
+    center_dialog_on_parent,
+    add_walker_close_button,
+    show_walker_modal_overlay,
+    walker_dialog_flags,
+)
 
 from .utils.logging_utils import log_exception
-SLIM_DIALOG_STYLE = """
+SLIM_DIALOG_STYLE = WALKER_DIALOG_STYLE + """
 QDialog#SlimDialog {
     background-color: #FFFFFF;
 }
@@ -232,17 +243,19 @@ QScrollBar::handle:vertical:hover {
 
 SLIM_POPOVER_STYLE = """
 QDialog#SlimPopoverDialog {
-    background: transparent;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
 }
 QFrame#SlimPopoverPanel {
     background: #FFFFFF;
-    border: 1px solid rgba(15, 23, 42, 0.08);
-    border-radius: 18px;
+    border: none;
+    border-radius: 14px;
 }
 QLabel#SlimPopoverTitle {
     color: #0F172A;
-    font-size: 16px;
-    font-weight: 500;
+    font-size: 17px;
+    font-weight: 600;
 }
 QLabel#SlimPopoverSubtitle {
     color: #64748B;
@@ -259,7 +272,7 @@ QLabel#SlimDialogHint {
 }
 QLabel#SlimMessageBody {
     color: #0F172A;
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 400;
 }
 QFrame#SlimPopoverIconWrap {
@@ -411,9 +424,13 @@ class SlimDialogBase(QDialog):
         self._geometry_key = geometry_key
         self._settings = QSettings()
         self.setObjectName("SlimDialog")
+        self.setProperty("walkerDialog", True)
         self.setModal(True)
         self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setWindowFlags(walker_dialog_flags())
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self._walker_overlay = None
+        self._walker_header_added = False
 
         self.setFont(_build_dialog_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
@@ -422,23 +439,59 @@ class SlimDialogBase(QDialog):
     def _refresh_dialog_style(self):
         dark = _is_dark_theme()
         self.setProperty("themeMode", "dark" if dark else "light")
-        self.setStyleSheet(SLIM_DIALOG_STYLE + (SLIM_DIALOG_DARK_OVERLAY if dark else ""))
+        apply_walker_dialog(self)
+        if dark:
+            self.setStyleSheet(self.styleSheet() + SLIM_DIALOG_DARK_OVERLAY)
         apply_windows_title_bar_theme(self, dark)
 
     def showEvent(self, event):
         super().showEvent(event)
+        if self.objectName() != "WalkerDatabaseDialog":
+            self._hide_walker_overlay()
+            self._walker_overlay = show_walker_modal_overlay(self)
+            self._ensure_walker_header()
+            center_dialog_on_parent(self)
         self._refresh_dialog_style()
         harmonize_widget_fonts(self)
-        if not self._geometry_key:
-            return
-        data = self._settings.value(self._geometry_key)
-        if isinstance(data, QByteArray) and not data.isEmpty():
-            self.restoreGeometry(data)
+        if self._geometry_key:
+            data = self._settings.value(self._geometry_key)
+            if isinstance(data, QByteArray) and not data.isEmpty():
+                self.restoreGeometry(data)
+        if bool(self.property("forceCenterOnParent")) and self.objectName() != "WalkerDatabaseDialog":
+            center_dialog_on_parent(self)
 
     def closeEvent(self, event):
+        self._hide_walker_overlay()
         if self._geometry_key:
             self._settings.setValue(self._geometry_key, self.saveGeometry())
         super().closeEvent(event)
+
+    def hideEvent(self, event):
+        self._hide_walker_overlay()
+        super().hideEvent(event)
+
+    def _hide_walker_overlay(self):
+        overlay = getattr(self, "_walker_overlay", None)
+        if overlay is not None:
+            overlay.hide()
+            overlay.deleteLater()
+            self._walker_overlay = None
+
+    def _ensure_walker_header(self):
+        if self._walker_header_added:
+            return
+        layout = self.layout()
+        if not isinstance(layout, QVBoxLayout):
+            return
+        self._walker_header_added = True
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 6)
+        header.setSpacing(8)
+        title = QLabel(self.windowTitle() or "Summarizer", self)
+        title.setObjectName("WalkerDialogTitle")
+        header.addWidget(title, 1, Qt.AlignVCenter)
+        add_walker_close_button(header, self)
+        layout.insertLayout(0, header)
 
 
 class SlimPopoverDialog(QDialog):
@@ -449,29 +502,26 @@ class SlimPopoverDialog(QDialog):
         self._geometry_key = geometry_key
         self._settings = QSettings()
         self._did_restore_geometry = False
+        self._walker_overlay = None
         self.setObjectName("SlimPopoverDialog")
+        self.setProperty("walkerDialog", True)
         self.setModal(True)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setWindowFlags(walker_dialog_flags())
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setFont(_build_dialog_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
         self._refresh_dialog_style()
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 18, 18, 18)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
         self.panel = QFrame(self)
         self.panel.setObjectName("SlimPopoverPanel")
+        self.panel.setProperty("walkerPanel", True)
         self.panel.setAttribute(Qt.WA_StyledBackground, True)
         root.addWidget(self.panel)
-
-        shadow = QGraphicsDropShadowEffect(self.panel)
-        shadow.setBlurRadius(32)
-        shadow.setOffset(0, 8)
-        shadow.setColor(QColor(15, 23, 42, 28))
-        self.panel.setGraphicsEffect(shadow)
 
         self.panel_layout = QVBoxLayout(self.panel)
         self.panel_layout.setContentsMargins(18, 18, 18, 18)
@@ -480,11 +530,13 @@ class SlimPopoverDialog(QDialog):
     def _refresh_dialog_style(self):
         dark = _is_dark_theme()
         self.setProperty("themeMode", "dark" if dark else "light")
-        self.setStyleSheet(SLIM_POPOVER_STYLE + (SLIM_POPOVER_DARK_OVERLAY if dark else ""))
+        self.setStyleSheet(WALKER_DIALOG_STYLE + SLIM_POPOVER_STYLE + (SLIM_POPOVER_DARK_OVERLAY if dark else ""))
         apply_windows_title_bar_theme(self, dark)
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._hide_walker_overlay()
+        self._walker_overlay = show_walker_modal_overlay(self)
         self._refresh_dialog_style()
         harmonize_widget_fonts(self)
         if self._did_restore_geometry:
@@ -500,22 +552,24 @@ class SlimPopoverDialog(QDialog):
             self._center_on_parent()
 
     def closeEvent(self, event):
+        self._hide_walker_overlay()
         if self._geometry_key:
             self._settings.setValue(self._geometry_key, self.saveGeometry())
         super().closeEvent(event)
 
+    def hideEvent(self, event):
+        self._hide_walker_overlay()
+        super().hideEvent(event)
+
+    def _hide_walker_overlay(self):
+        overlay = getattr(self, "_walker_overlay", None)
+        if overlay is not None:
+            overlay.hide()
+            overlay.deleteLater()
+            self._walker_overlay = None
+
     def _center_on_parent(self):
-        parent = self.parentWidget()
-        if parent is None:
-            return
-        try:
-            parent_center = parent.mapToGlobal(parent.rect().center())
-            self.move(
-                int(parent_center.x() - (self.width() / 2)),
-                int(parent_center.y() - (self.height() / 2)),
-            )
-        except Exception:
-            log_exception("falha opcional ignorada")
+        center_dialog_on_parent(self)
 
 
 class SlimTextInputDialog(SlimPopoverDialog):
@@ -536,7 +590,11 @@ class SlimTextInputDialog(SlimPopoverDialog):
         geometry_key: str = "",
     ):
         super().__init__(parent, geometry_key=geometry_key)
-        self.setWindowTitle(title)
+        translated_title = _rt(title)
+        translated_text = _rt(text)
+        translated_helper = _rt(helper_text) if helper_text else ""
+        translated_accept = _rt(accept_label)
+        self.setWindowTitle(translated_title)
         width = max(360, int(preferred_width or 420))
         if icon is None or icon.isNull():
             width = max(width, 520)
@@ -564,12 +622,12 @@ class SlimTextInputDialog(SlimPopoverDialog):
         title_column.setContentsMargins(0, 0, 0, 0)
         title_column.setSpacing(2)
 
-        title_label = QLabel(title, self.panel)
+        title_label = QLabel(translated_title, self.panel)
         title_label.setObjectName("SlimPopoverTitle")
         title_column.addWidget(title_label)
 
-        if helper_text:
-            subtitle_label = QLabel(helper_text, self.panel)
+        if translated_helper:
+            subtitle_label = QLabel(translated_helper, self.panel)
             subtitle_label.setObjectName("SlimPopoverSubtitle")
             subtitle_label.setWordWrap(True)
             title_column.addWidget(subtitle_label)
@@ -577,14 +635,14 @@ class SlimTextInputDialog(SlimPopoverDialog):
         header.addLayout(title_column, 1)
         self.panel_layout.addLayout(header)
 
-        helper_label = QLabel(label_text, self.panel)
+        helper_label = QLabel(_rt(label_text), self.panel)
         helper_label.setObjectName("SlimDialogMessage")
         self.panel_layout.addWidget(helper_label)
 
         self.field = QLineEdit(self.panel)
         self.field.setObjectName("SlimDialogLineEdit")
         self.field.setText(text)
-        self.field.setPlaceholderText(placeholder)
+        self.field.setPlaceholderText(_rt(placeholder))
         self.panel_layout.addWidget(self.field)
 
         actions = QHBoxLayout()
@@ -592,11 +650,11 @@ class SlimTextInputDialog(SlimPopoverDialog):
         actions.setSpacing(8)
         actions.addStretch(1)
 
-        self.cancel_button = QPushButton(cancel_label, self.panel)
+        self.cancel_button = QPushButton(_rt(cancel_label), self.panel)
         self.cancel_button.setObjectName("SlimSecondaryButton")
         actions.addWidget(self.cancel_button, 0)
 
-        self.accept_button = QPushButton(accept_label, self.panel)
+        self.accept_button = QPushButton(_rt(accept_label), self.panel)
         self.accept_button.setObjectName("SlimPrimaryButton")
         self.accept_button.setDefault(True)
         actions.addWidget(self.accept_button, 0)
@@ -629,7 +687,10 @@ class SlimMessageDialog(SlimPopoverDialog):
         geometry_key: str = "",
     ):
         super().__init__(parent, geometry_key=geometry_key)
-        self.setWindowTitle(title)
+        translated_title = _rt(title)
+        translated_text = _rt(text)
+        translated_helper = _rt(helper_text) if helper_text else ""
+        self.setWindowTitle(translated_title)
         self.setMinimumWidth(420)
         self.setMaximumWidth(460)
 
@@ -654,12 +715,12 @@ class SlimMessageDialog(SlimPopoverDialog):
         title_column.setContentsMargins(0, 0, 0, 0)
         title_column.setSpacing(2)
 
-        title_label = QLabel(title, self.panel)
+        title_label = QLabel(translated_title, self.panel)
         title_label.setObjectName("SlimPopoverTitle")
         title_column.addWidget(title_label)
 
-        if helper_text:
-            subtitle_label = QLabel(helper_text, self.panel)
+        if translated_helper:
+            subtitle_label = QLabel(translated_helper, self.panel)
             subtitle_label.setObjectName("SlimPopoverSubtitle")
             subtitle_label.setWordWrap(True)
             title_column.addWidget(subtitle_label)
@@ -667,7 +728,7 @@ class SlimMessageDialog(SlimPopoverDialog):
         header.addLayout(title_column, 1)
         self.panel_layout.addLayout(header)
 
-        body_label = QLabel(text, self.panel)
+        body_label = QLabel(translated_text, self.panel)
         body_label.setObjectName("SlimMessageBody")
         body_label.setWordWrap(True)
         body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -678,7 +739,7 @@ class SlimMessageDialog(SlimPopoverDialog):
         actions.setSpacing(8)
         actions.addStretch(1)
 
-        self.accept_button = QPushButton(accept_label, self.panel)
+        self.accept_button = QPushButton(translated_accept, self.panel)
         self.accept_button.setObjectName("SlimPrimaryButton")
         self.accept_button.setDefault(True)
         actions.addWidget(self.accept_button, 0)
@@ -716,7 +777,10 @@ class SlimChoiceDialog(SlimPopoverDialog):
         geometry_key: str = "",
     ):
         super().__init__(parent, geometry_key=geometry_key)
-        self.setWindowTitle(title)
+        translated_title = _rt(title)
+        translated_text = _rt(text)
+        translated_helper = _rt(helper_text) if helper_text else ""
+        self.setWindowTitle(translated_title)
         self.setMinimumWidth(420)
         self.setMaximumWidth(520)
         self._result_button = QMessageBox.NoButton
@@ -744,12 +808,12 @@ class SlimChoiceDialog(SlimPopoverDialog):
         title_column.setContentsMargins(0, 0, 0, 0)
         title_column.setSpacing(2)
 
-        title_label = QLabel(title, self.panel)
+        title_label = QLabel(translated_title, self.panel)
         title_label.setObjectName("SlimPopoverTitle")
         title_column.addWidget(title_label)
 
-        if helper_text:
-            subtitle_label = QLabel(helper_text, self.panel)
+        if translated_helper:
+            subtitle_label = QLabel(translated_helper, self.panel)
             subtitle_label.setObjectName("SlimPopoverSubtitle")
             subtitle_label.setWordWrap(True)
             title_column.addWidget(subtitle_label)
@@ -762,7 +826,7 @@ class SlimChoiceDialog(SlimPopoverDialog):
         header.addWidget(close_btn, 0, Qt.AlignTop)
         self.panel_layout.addLayout(header)
 
-        body_label = QLabel(text, self.panel)
+        body_label = QLabel(translated_text, self.panel)
         body_label.setObjectName("SlimMessageBody")
         body_label.setWordWrap(True)
         body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -878,22 +942,22 @@ class SlimChecklistDialog(SlimDialogBase):
 
         self._labels: List[str] = list(items)
         checked_set = set(checked_items) if checked_items is not None else set(self._labels)
-        self._empty_selection_message = empty_selection_message
+        self._empty_selection_message = _rt(empty_selection_message)
 
-        self.setWindowTitle(title)
+        self.setWindowTitle(_rt(title))
         self.resize(460, 420)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(10)
 
-        self.header_label = QLabel(header_text or title)
+        self.header_label = QLabel(_rt(header_text or title))
         self.header_label.setProperty("sublabel", True)
         self.header_label.setAccessibleName("SlimDialogHeader")
         root.addWidget(self.header_label)
 
         self.search_field = QLineEdit(self)
-        self.search_field.setPlaceholderText(search_placeholder)
+        self.search_field.setPlaceholderText(_rt(search_placeholder))
         self.search_field.setAccessibleName("SlimDialogSearchField")
         self.search_field.setVisible(bool(enable_search))
         root.addWidget(self.search_field)
@@ -902,13 +966,13 @@ class SlimChecklistDialog(SlimDialogBase):
         quick_layout.setContentsMargins(0, 0, 0, 0)
         quick_layout.setSpacing(6)
 
-        self.select_all_btn = QPushButton(select_all_label)
-        self.select_all_btn.setToolTip("Marca todas as opcoes visiveis")
+        self.select_all_btn = QPushButton(_rt(select_all_label))
+        self.select_all_btn.setToolTip(_rt("Marca todas as opcoes visiveis"))
         self.select_all_btn.setAccessibleName("SlimDialogSelectAll")
         quick_layout.addWidget(self.select_all_btn, 0)
 
-        self.clear_all_btn = QPushButton(clear_all_label)
-        self.clear_all_btn.setToolTip("Desmarca todas as opcoes visiveis")
+        self.clear_all_btn = QPushButton(_rt(clear_all_label))
+        self.clear_all_btn.setToolTip(_rt("Desmarca todas as opcoes visiveis"))
         self.clear_all_btn.setAccessibleName("SlimDialogClearAll")
         quick_layout.addWidget(self.clear_all_btn, 0)
         quick_layout.addStretch(1)
@@ -1051,16 +1115,16 @@ def _build_form_dialog(
     geometry_key: str,
 ) -> Tuple[SlimDialogBase, QVBoxLayout, QDialogButtonBox]:
     dialog = SlimDialogBase(parent, geometry_key=geometry_key)
-    dialog.setWindowTitle(title)
+    dialog.setWindowTitle(_rt(title))
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(14, 14, 14, 14)
     layout.setSpacing(10)
 
     button_box = QDialogButtonBox(dialog)
-    ok_button = button_box.addButton("OK", QDialogButtonBox.AcceptRole)
+    ok_button = button_box.addButton(_rt("OK"), QDialogButtonBox.AcceptRole)
     ok_button.setObjectName("SlimPrimaryButton")
     ok_button.setDefault(True)
-    cancel_button = button_box.addButton("Cancelar", QDialogButtonBox.RejectRole)
+    cancel_button = button_box.addButton(_rt("Cancelar"), QDialogButtonBox.RejectRole)
     cancel_button.setObjectName("SlimSecondaryButton")
     layout.addWidget(button_box)
     return dialog, layout, button_box
@@ -1077,7 +1141,7 @@ def slim_get_item(
 ) -> Tuple[str, bool]:
     dialog, layout, buttons = _build_form_dialog(parent, title, geometry_key)
 
-    helper_label = QLabel(label_text)
+    helper_label = QLabel(_rt(label_text))
     helper_label.setProperty("sublabel", True)
     helper_label.setAccessibleName("SlimDialogMessage")
     layout.insertWidget(0, helper_label)
@@ -1191,7 +1255,7 @@ def slim_get_int(
 ) -> Tuple[int, bool]:
     dialog, layout, buttons = _build_form_dialog(parent, title, geometry_key)
 
-    helper_label = QLabel(label_text)
+    helper_label = QLabel(_rt(label_text))
     helper_label.setProperty("sublabel", True)
     helper_label.setAccessibleName("SlimDialogMessage")
     layout.insertWidget(0, helper_label)
@@ -1216,5 +1280,6 @@ def slim_get_int(
 
     accepted = dialog.exec_() == QDialog.Accepted and result["accepted"]
     return result["value"], accepted
+
 
 

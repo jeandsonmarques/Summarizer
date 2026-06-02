@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import json
@@ -14,6 +17,7 @@ try:
         QHBoxLayout,
         QLabel,
         QLineEdit,
+        QButtonGroup,
         QScrollArea,
         QSizePolicy,
         QSpinBox,
@@ -25,6 +29,7 @@ except Exception:
     QPoint = QSize = Qt = QMimeData = QDrag = None
     pyqtSignal = None
     QComboBox = QFormLayout = QFrame = QHBoxLayout = QLabel = QLineEdit = QScrollArea = QSizePolicy = QSpinBox = QToolButton = QVBoxLayout = QWidget = object
+    QButtonGroup = object
 
 from ..dashboard_models import (
     FieldBindingItem,
@@ -73,12 +78,22 @@ except Exception:
         return None
 
 try:
+    from ..walker_tooltips import set_walker_tooltip
+except Exception:
+
+    def set_walker_tooltip(widget, text: str):
+        try:
+            widget.setToolTip(text)
+        except Exception:
+            return None
+
+try:
     from .model_data_panel import MODEL_FIELD_MIME
 except Exception:
     MODEL_FIELD_MIME = "application/x-summarizer-model-field"
 
 try:
-    from .model_theme import _force_model_white_background, _model_builder_trash_icon, _model_tinted_svg_icon
+    from .model_theme import _force_model_white_background, _model_builder_trash_icon, _model_panel_chevron_icon, _model_tinted_svg_icon
 except Exception:
 
     def _force_model_white_background(_widget):
@@ -87,8 +102,16 @@ except Exception:
     def _model_builder_trash_icon():
         return None
 
+    def _model_panel_chevron_icon(_direction: str = "right", _size: int = 20):
+        return None
+
     def _model_tinted_svg_icon(_name: str, _size: int = 18, _color: str = ""):
         return None
+
+
+_BUILDER_GUIDANCE_CARD = "#F3F4F6"
+_BUILDER_GUIDANCE_CARD_HOVER = "#E5E7EB"
+_BUILDER_GUIDANCE_CARD_TEXT = "#334155"
 
 
 @dataclass
@@ -427,6 +450,132 @@ else:
         pass
 
 
+def create_chart_button(
+    parent: QWidget,
+    label_text: str,
+    chart_type: str,
+    icon_name: str,
+    tooltip_text: str,
+    on_visual_selected: Callable[[str], None],
+    *,
+    group=None,
+    button_size: int = 24,
+    icon_size: int = 15,
+    overflow_extra: bool = False,
+):
+    button = QToolButton(parent)
+    button.setObjectName("ModelVisualTypeButton")
+    button.setProperty("modelIconName", icon_name)
+    button.setProperty("modelIconSize", icon_size)
+    button.setProperty("visualType", chart_type)
+    button.setProperty("overflowExtra", bool(overflow_extra))
+    button.setCheckable(True)
+    button.setText("")
+    normal_icon = _model_tinted_svg_icon(icon_name, icon_size)
+    checked_icon = _model_tinted_svg_icon(icon_name, icon_size)
+    button._model_icon_normal = normal_icon
+    button._model_icon_checked = checked_icon
+    if normal_icon is not None:
+        button.setIcon(normal_icon)
+    set_walker_tooltip(button, label_text)
+    button.setStatusTip("")
+    button.setWhatsThis("")
+    button.setAccessibleName(label_text)
+    button.setAccessibleDescription(tooltip_text)
+    button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    button.setAutoRaise(True)
+    button.setFixedSize(button_size, button_size)
+    button.setIconSize(QSize(icon_size, icon_size))
+    if group is not None:
+        try:
+            group.addButton(button)
+        except Exception:
+            log_exception("falha opcional ignorada")
+    button.toggled.connect(
+        lambda checked, b=button: b.setIcon(
+            getattr(b, "_model_icon_checked", None)
+            if checked
+            else getattr(b, "_model_icon_normal", None)
+        )
+    )
+    button.clicked.connect(lambda checked=False, value=chart_type: on_visual_selected(value))
+    return button
+
+
+def create_overflow_toggle_button(parent: QWidget, *, button_size: int = 24):
+    button = QToolButton(parent)
+    button.setObjectName("ModelVisualOverflowButton")
+    button.setText("")
+    button.setArrowType(Qt.NoArrow)
+    icon = _model_panel_chevron_icon("right", 14)
+    if icon is not None:
+        button.setIcon(icon)
+    button.setIconSize(QSize(14, 14))
+    button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    button.setAutoRaise(False)
+    button.setFixedSize(max(22, button_size - 6), button_size)
+    set_walker_tooltip(button, _rt("Mais gr\u00e1ficos"))
+    button.setStatusTip("")
+    button.setWhatsThis("")
+    button.setAccessibleName(_rt("Mais gr\u00e1ficos"))
+    button.clicked.connect(lambda checked=False, host=parent: toggle_chart_overflow(host))
+    return button
+
+
+def refresh_chart_toolbar_order(parent: QWidget):
+    layout = parent.layout() if parent is not None else None
+    overflow_button = getattr(parent, "_model_visual_overflow_button", None)
+    if layout is None or overflow_button is None:
+        return
+    try:
+        layout.removeWidget(overflow_button)
+        layout.addWidget(overflow_button, 0)
+    except Exception:
+        log_exception("falha opcional ignorada")
+
+
+def set_chart_overflow_expanded(parent: QWidget, expanded: bool):
+    expanded = bool(expanded)
+    try:
+        parent._model_visual_overflow_expanded = expanded
+    except Exception:
+        log_exception("falha opcional ignorada")
+    extra_buttons = list(getattr(parent, "_model_visual_overflow_extra_buttons", []) or [])
+    for button in extra_buttons:
+        try:
+            button.setVisible(expanded)
+        except Exception:
+            log_exception("falha opcional ignorada")
+    overflow_button = getattr(parent, "_model_visual_overflow_button", None)
+    if overflow_button is not None:
+        try:
+            overflow_button.setArrowType(Qt.NoArrow)
+            icon = _model_panel_chevron_icon("left" if expanded else "right", 14)
+            if icon is not None:
+                overflow_button.setIcon(icon)
+            overflow_button.setIconSize(QSize(14, 14))
+            set_walker_tooltip(overflow_button, _rt("Recolher gr\u00e1ficos") if expanded else _rt("Mais gr\u00e1ficos"))
+            overflow_button.setAccessibleName(_rt("Recolher gr\u00e1ficos") if expanded else _rt("Mais gr\u00e1ficos"))
+            overflow_button.setProperty("expanded", expanded)
+            overflow_button.style().unpolish(overflow_button)
+            overflow_button.style().polish(overflow_button)
+        except Exception:
+            log_exception("falha opcional ignorada")
+    refresh_chart_toolbar_order(parent)
+    for widget in (parent, getattr(parent, "parentWidget", lambda: None)()):
+        if widget is None:
+            continue
+        try:
+            widget.updateGeometry()
+            widget.update()
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+
+def toggle_chart_overflow(parent: QWidget):
+    set_chart_overflow_expanded(parent, not bool(getattr(parent, "_model_visual_overflow_expanded", False)))
+
+
 def build_visual_type_buttons(
     parent: QWidget,
     layout,
@@ -435,31 +584,74 @@ def build_visual_type_buttons(
     *,
     button_size: int = 24,
     icon_size: int = 15,
+    fixed_chart_types: Optional[Iterable[str]] = None,
+    overflow_enabled: bool = False,
 ) -> Dict[str, object]:
     buttons = {}
-    for label_text, chart_type, icon_name, tooltip_text in visual_specs:
-        button = QToolButton(parent)
-        button.setObjectName("ModelVisualTypeButton")
-        button.setProperty("modelIconName", icon_name)
-        button.setProperty("modelIconSize", icon_size)
-        button.setProperty("visualType", chart_type)
-        button.setCheckable(True)
-        button.setText("")
-        icon = _model_tinted_svg_icon(icon_name, icon_size)
-        if icon is not None:
-            button.setIcon(icon)
-        button.setToolTip(label_text)
-        button.setStatusTip("")
-        button.setWhatsThis("")
-        button.setAccessibleName(label_text)
-        button.setAccessibleDescription(tooltip_text)
-        button.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        button.setAutoRaise(True)
-        button.setFixedSize(button_size, button_size)
-        button.setIconSize(QSize(icon_size, icon_size))
-        button.clicked.connect(lambda checked=False, value=chart_type: on_visual_selected(value))
+    group = QButtonGroup(parent)
+    try:
+        group.setExclusive(True)
+    except Exception:
+        log_exception("falha opcional ignorada")
+    try:
+        parent._model_visual_button_group = group
+    except Exception:
+        log_exception("falha opcional ignorada")
+    specs = list(visual_specs or [])
+    fixed_types = [normalize_chart_type(value) for value in list(fixed_chart_types or []) if str(value or "").strip()]
+    fixed_type_set = set(fixed_types)
+    if fixed_types:
+        specs_by_type = {normalize_chart_type(chart_type): spec for spec in specs for chart_type in [spec[1]]}
+        visible_specs = [specs_by_type[chart_type] for chart_type in fixed_types if chart_type in specs_by_type]
+        overflow_specs = [spec for spec in specs if normalize_chart_type(spec[1]) not in fixed_type_set]
+    else:
+        visible_specs = specs
+        overflow_specs = []
+    primary_buttons = []
+    for label_text, chart_type, icon_name, tooltip_text in visible_specs:
+        button = create_chart_button(
+            parent,
+            label_text,
+            chart_type,
+            icon_name,
+            tooltip_text,
+            on_visual_selected,
+            group=group,
+            button_size=button_size,
+            icon_size=icon_size,
+        )
         buttons[chart_type] = button
+        primary_buttons.append(button)
         layout.addWidget(button, 0)
+    try:
+        parent._model_visual_overflow_primary_buttons = primary_buttons
+    except Exception:
+        log_exception("falha opcional ignorada")
+    if overflow_enabled and overflow_specs:
+        extra_buttons = []
+        for label_text, chart_type, icon_name, tooltip_text in overflow_specs:
+            button = create_chart_button(
+                parent,
+                label_text,
+                chart_type,
+                icon_name,
+                tooltip_text,
+                on_visual_selected,
+                group=group,
+                button_size=button_size,
+                icon_size=icon_size,
+                overflow_extra=True,
+            )
+            button.setVisible(False)
+            buttons[chart_type] = button
+            extra_buttons.append(button)
+            layout.addWidget(button, 0)
+        parent._model_visual_overflow_extra_buttons = extra_buttons
+        overflow_button = create_overflow_toggle_button(parent, button_size=button_size)
+        parent._model_visual_overflow_button = overflow_button
+        parent._model_visual_overflow_expanded = False
+        layout.addWidget(overflow_button, 0)
+        set_chart_overflow_expanded(parent, False)
     return buttons
 
 
@@ -521,28 +713,78 @@ def build_model_builder_panel(
 
     builder_empty_label = QFrame(panel)
     builder_empty_label.setObjectName("ModelBuilderEmptyState")
-    _force_model_white_background(builder_empty_label)
     builder_empty_label.setFrameShape(QFrame.NoFrame)
     builder_empty_label.setStyleSheet(
         """
-        QFrame#ModelBuilderEmptyState,
-        QFrame#ModelBuilderEmptyState QWidget,
-        QFrame#ModelBuilderEmptyState QLabel {
-            background: #FFFFFF;
-            background-color: #FFFFFF;
+        QFrame#ModelBuilderEmptyState {
+            background: transparent;
+            background-color: transparent;
             border: none;
+        }
+        QFrame#ModelBuilderEmptyStateCard {
+            background: #F3F4F6;
+            background-color: #F3F4F6;
+            border: none;
+            border-radius: 0px;
+        }
+        QFrame#ModelBuilderEmptyStateCard QLabel {
+            background: transparent;
+            color: #334155;
+            border: none;
+        }
+        QLabel#ModelBuilderEmptyStateLabel {
+            color: #334155;
+            font-size: 12px;
+            font-weight: 400;
+        }
+        QToolButton#ModelBuilderEmptyStateClose {
+            background: transparent;
+            border: none;
+            color: #334155;
+            padding: 0px;
+            font-size: 18px;
+            font-weight: 300;
+        }
+        QToolButton#ModelBuilderEmptyStateClose:hover {
+            background: #E5E7EB;
+            border-radius: 0px;
         }
         """
     )
-    empty_layout = QVBoxLayout(builder_empty_label)
-    empty_layout.setContentsMargins(8, 6, 8, 6)
+    empty_layout = QHBoxLayout(builder_empty_label)
+    empty_layout.setContentsMargins(0, 0, 0, 0)
     empty_layout.setSpacing(0)
-    empty_text = QLabel(_rt("Selecione um visual para configurar os campos e as opções."), builder_empty_label)
+    empty_card = QFrame(builder_empty_label)
+    empty_card.setObjectName("ModelBuilderEmptyStateCard")
+    empty_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    empty_card.setStyleSheet(
+        f"QFrame#ModelBuilderEmptyStateCard {{ background: {_BUILDER_GUIDANCE_CARD}; background-color: {_BUILDER_GUIDANCE_CARD}; border: none; border-radius: 0px; }}"
+        f"QFrame#ModelBuilderEmptyStateCard QLabel {{ background: transparent; background-color: transparent; color: {_BUILDER_GUIDANCE_CARD_TEXT}; border: none; }}"
+        f"QFrame#ModelBuilderEmptyStateCard QToolButton {{ background: transparent; background-color: transparent; border: none; color: {_BUILDER_GUIDANCE_CARD_TEXT}; }}"
+    )
+    empty_card_layout = QHBoxLayout(empty_card)
+    empty_card_layout.setContentsMargins(8, 6, 4, 6)
+    empty_card_layout.setSpacing(0)
+    empty_layout.setAlignment(Qt.AlignTop)
+    empty_text = QLabel(_rt("Selecione um visual para adicionar dados aos campos."), empty_card)
     empty_text.setObjectName("ModelBuilderEmptyStateLabel")
-    empty_text.setFont(ui_font(8))
-    empty_text.setStyleSheet("QLabel#ModelBuilderEmptyStateLabel { color: #64748B; font-size: 8pt; font-weight: 400; background: #FFFFFF; }")
+    empty_text.setFont(ui_font(9))
+    empty_text.setToolTip(_rt("Selecione um visual para adicionar dados aos campos."))
     empty_text.setWordWrap(True)
-    empty_layout.addWidget(empty_text)
+    empty_text.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+    empty_card_layout.addWidget(empty_text, 1)
+    empty_close = QToolButton(empty_card)
+    empty_close.setObjectName("ModelBuilderEmptyStateClose")
+    empty_close.setText("×")
+    empty_close.setCursor(Qt.PointingHandCursor)
+    empty_close.setFixedSize(22, 22)
+    empty_close.clicked.connect(builder_empty_label.hide)
+    empty_close.setStyleSheet(
+        f"QToolButton#ModelBuilderEmptyStateClose {{ background: transparent; background-color: transparent; border: none; color: {_BUILDER_GUIDANCE_CARD_TEXT}; padding: 0px; font-size: 18px; font-weight: 300; }}"
+        f"QToolButton#ModelBuilderEmptyStateClose:hover {{ background: {_BUILDER_GUIDANCE_CARD_HOVER}; border-radius: 0px; }}"
+    )
+    empty_card_layout.addWidget(empty_close, 0, Qt.AlignTop)
+    empty_layout.addWidget(empty_card, 1)
     host_layout.addWidget(builder_empty_label, 0)
 
     builder_construct_card = QFrame(panel)
@@ -684,8 +926,13 @@ __all__ = [
     "build_visual_type_buttons",
     "builder_has_selection",
     "chart_type_label",
+    "create_chart_button",
+    "create_overflow_toggle_button",
     "is_valid_binding_slot",
+    "refresh_chart_toolbar_order",
     "selected_builder_chart_type_from_buttons",
+    "set_chart_overflow_expanded",
+    "toggle_chart_overflow",
     "visual_type_labels",
     "visual_type_specs",
 ]

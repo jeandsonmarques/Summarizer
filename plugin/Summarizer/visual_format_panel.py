@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from __future__ import annotations
 
 import copy
@@ -6,7 +9,6 @@ from typing import Optional
 from qgis.PyQt.QtCore import QEasingCurve, QPropertyAnimation, QRectF, QSettings, Qt, pyqtProperty, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter, QPalette, QPen
 from qgis.PyQt.QtWidgets import (
-    QColorDialog,
     QComboBox,
     QFrame,
     QFormLayout,
@@ -19,6 +21,7 @@ from qgis.PyQt.QtWidgets import (
     QSizePolicy,
     QAbstractSpinBox,
     QSpinBox,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -26,11 +29,9 @@ from qgis.PyQt.QtWidgets import (
 from .dashboard_item_widget import VisualPropertiesDialog
 from .report_view.charts import ChartVisualState
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
-
-
-def _rt(text: str) -> str:
-    return str(text or "")
-
+from .utils.i18n_runtime import tr_text as _rt
+from .walker_color_dialog import walker_get_color
+from .walker_dialogs import apply_walker_combo
 
 def _is_dark_theme() -> bool:
     try:
@@ -67,6 +68,16 @@ def _panel_color(name: str) -> str:
         "checked_border": "#38BDF8",
     }
     return (dark if _is_dark_theme() else light).get(name, light["surface"])
+
+
+_PANEL_FONT_BODY_PX = 12
+_PANEL_FONT_HELPER_PX = 11
+_PANEL_FONT_TITLE_PX = 13
+_PANEL_FONT_SECTION_PX = 12
+_PANEL_FONT_ARROW_PX = 13
+_PANEL_GUIDANCE_CARD = "#F3F4F6"
+_PANEL_GUIDANCE_CARD_HOVER = "#E5E7EB"
+_PANEL_GUIDANCE_CARD_TEXT = "#334155"
 
 
 def _force_panel_white_background(widget: QWidget):
@@ -120,7 +131,7 @@ class _ColorButton(QPushButton):
         )
 
     def _pick_color(self):
-        color = QColorDialog.getColor(QColor(self._color), self, _rt("Escolher cor"))
+        color = walker_get_color(QColor(self._color), self, _rt("Escolher cor"))
         if color.isValid():
             self.set_color(color.name())
 
@@ -442,7 +453,7 @@ class VisualFormatPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VisualFormatPanel")
-        self.setFont(ui_font())
+        self.setFont(self._panel_font(_PANEL_FONT_BODY_PX))
         self._font_enforcer = attach_ui_font_enforcer(self)
         _force_panel_white_background(self)
         self.setMinimumWidth(240)
@@ -459,7 +470,36 @@ class VisualFormatPanel(QFrame):
         self._active_view = "visual"
         self._build_ui()
         harmonize_widget_fonts(self)
+        self._apply_panel_font_scale()
         self.clear_selection()
+
+    def _panel_font(self, pixel_size: int, weight: Optional[int] = None):
+        font = ui_font()
+        font.setPixelSize(int(pixel_size))
+        if weight is not None:
+            font.setWeight(weight)
+        return font
+
+    def _apply_panel_font_scale(self):
+        for widget in [self] + list(self.findChildren(QWidget)):
+            try:
+                object_name = str(widget.objectName() or "")
+                if object_name in {"VisualPanelTitle", "VisualPanelEmptyCardTitle"}:
+                    widget.setFont(self._panel_font(_PANEL_FONT_TITLE_PX))
+                elif object_name == "VisualPanelSubtitle":
+                    widget.setFont(self._panel_font(_PANEL_FONT_TITLE_PX))
+                elif object_name == "VisualPanelSectionTitle":
+                    widget.setFont(self._panel_font(_PANEL_FONT_SECTION_PX))
+                elif object_name == "VisualPanelSectionArrow":
+                    widget.setFont(self._panel_font(_PANEL_FONT_ARROW_PX))
+                elif object_name == "VisualPanelEmpty":
+                    widget.setFont(self._panel_font(_PANEL_FONT_BODY_PX))
+                elif isinstance(widget, (QLineEdit, QComboBox, QSpinBox, QPushButton)):
+                    widget.setFont(self._panel_font(_PANEL_FONT_HELPER_PX))
+                elif isinstance(widget, QLabel):
+                    widget.setFont(self._panel_font(_PANEL_FONT_HELPER_PX))
+            except Exception:
+                continue
 
     def _refresh_widget_palette(self):
         widgets = [self]
@@ -482,6 +522,7 @@ class VisualFormatPanel(QFrame):
 
     def _apply_panel_styles(self):
         self._refresh_widget_palette()
+        self._apply_panel_font_scale()
         scroll_style = """
             QScrollArea#VisualPanelScroll {
                 background: __SURFACE__;
@@ -520,8 +561,8 @@ class VisualFormatPanel(QFrame):
                 color: __TEXT__;
             }
             QFrame#VisualFormatPanel {
-                border: 1px solid __BORDER__;
-                border-radius: 6px;
+                border: none;
+                border-radius: 0px;
             }
             QLabel#VisualPanelTitle,
             QLabel#VisualPanelSectionTitle {
@@ -531,14 +572,28 @@ class VisualFormatPanel(QFrame):
                 border: none;
                 font-weight: 400;
             }
-            QLabel,
-            QLabel#VisualPanelSubtitle,
-            QLabel#VisualPanelEmpty,
-            QLabel#VisualPanelSectionArrow {
+            QFrame#VisualFormatPanel QLabel {
                 color: __MUTED__;
                 background: transparent;
                 background-color: transparent;
                 border: none;
+                font-size: 11px;
+            }
+            QFrame#VisualFormatPanel QLabel#VisualPanelTitle,
+            QFrame#VisualFormatPanel QLabel#VisualPanelSubtitle {
+                color: __TEXT__;
+                font-size: 13px;
+            }
+            QFrame#VisualFormatPanel QLabel#VisualPanelEmpty {
+                font-size: 12px;
+            }
+            QFrame#VisualFormatPanel QLabel#VisualPanelSectionTitle {
+                color: __MUTED__;
+                font-size: 12px;
+            }
+            QFrame#VisualFormatPanel QLabel#VisualPanelSectionArrow {
+                color: __MUTED__;
+                font-size: 13px;
             }
             QFrame#VisualPanelSectionHeader QLabel,
             QFrame#VisualPanelSectionHeader QWidget {
@@ -546,16 +601,16 @@ class VisualFormatPanel(QFrame):
                 background-color: transparent;
                 border: none;
             }
-            QLineEdit,
-            QComboBox,
-            QSpinBox#VisualPanelSpin {
+            QFrame#VisualFormatPanel QLineEdit,
+            QFrame#VisualFormatPanel QComboBox,
+            QFrame#VisualFormatPanel QSpinBox#VisualPanelSpin {
                 border: 1px solid __BORDER__;
                 border-radius: 4px;
                 background: __SURFACE_2__;
                 color: __TEXT__;
-                padding: 2px 6px;
-                min-height: 18px;
-                font-size: 8px;
+                padding: 3px 7px;
+                min-height: 22px;
+                font-size: 11px;
                 selection-background-color: __CHECKED__;
                 selection-color: __TEXT__;
             }
@@ -566,15 +621,16 @@ class VisualFormatPanel(QFrame):
                 selection-background-color: __CHECKED__;
                 selection-color: __TEXT__;
             }
-            QPushButton,
-            QPushButton#VisualPanelTabButton,
-            QPushButton#VisualPanelPresetButton {
+            QFrame#VisualFormatPanel QPushButton,
+            QFrame#VisualFormatPanel QPushButton#VisualPanelTabButton,
+            QFrame#VisualFormatPanel QPushButton#VisualPanelPresetButton {
                 border: 1px solid __BORDER__;
                 border-radius: 4px;
                 background: __SURFACE__;
                 color: __TEXT__;
-                padding: 2px 6px;
-                min-height: 18px;
+                padding: 3px 8px;
+                min-height: 22px;
+                font-size: 11px;
                 font-weight: 400;
             }
             QPushButton:hover,
@@ -597,13 +653,45 @@ class VisualFormatPanel(QFrame):
             QFrame#VisualPanelSectionHeader {
                 border: none;
                 border-radius: 5px;
-                min-height: 29px;
-                max-height: 29px;
+                min-height: 32px;
+                max-height: 32px;
             }
             QFrame#VisualPanelSectionContent {
                 border: none;
                 border-radius: 0px;
                 background: __SURFACE__;
+            }
+            QFrame#VisualPanelEmptyCard {
+                background: __GUIDANCE_CARD__;
+                border: none;
+                border-radius: 0px;
+            }
+            QFrame#VisualPanelEmptyCard QLabel {
+                background: transparent;
+                color: __GUIDANCE_CARD_TEXT__;
+                border: none;
+            }
+            QLabel#VisualPanelEmptyCardTitle {
+                color: __GUIDANCE_CARD_TEXT__;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLabel#VisualPanelEmpty {
+                color: __GUIDANCE_CARD_TEXT__;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QToolButton#VisualPanelEmptyCardClose {
+                background: transparent;
+                border: none;
+                color: __GUIDANCE_CARD_TEXT__;
+                padding: 0px;
+                font-size: 18px;
+                font-weight: 300;
+            }
+            QToolButton#VisualPanelEmptyCardClose:hover {
+                background: __GUIDANCE_CARD_HOVER__;
+                border-radius: 0px;
             }
         """
         panel_style = (
@@ -617,15 +705,23 @@ class VisualFormatPanel(QFrame):
             .replace("__BORDER__", _panel_color("border"))
             .replace("__MUTED__", _panel_color("muted"))
             .replace("__TEXT__", _panel_color("text"))
+            .replace("__GUIDANCE_CARD_HOVER__", _PANEL_GUIDANCE_CARD_HOVER)
+            .replace("__GUIDANCE_CARD_TEXT__", _PANEL_GUIDANCE_CARD_TEXT)
+            .replace("__GUIDANCE_CARD__", _PANEL_GUIDANCE_CARD)
         )
         self.setStyleSheet(panel_style)
 
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 8)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(6)
 
-        header = QHBoxLayout()
+        self.header_host = QWidget(self)
+        self.header_host.setObjectName("VisualPanelHeaderHost")
+        self.header_host.setStyleSheet(
+            "QWidget#VisualPanelHeaderHost { background: transparent; background-color: transparent; border: none; }"
+        )
+        header = QHBoxLayout(self.header_host)
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(8)
         title_column = QVBoxLayout()
@@ -633,24 +729,63 @@ class VisualFormatPanel(QFrame):
         title_column.setSpacing(1)
         self.title_label = QLabel("", self)
         self.title_label.setObjectName("VisualPanelTitle")
-        self.title_label.setFont(ui_font())
+        self.title_label.setFont(self._panel_font(_PANEL_FONT_TITLE_PX))
         self.title_label.hide()
         self.item_label = QLabel("", self)
         self.item_label.setObjectName("VisualPanelSubtitle")
-        self.item_label.setFont(ui_font())
+        self.item_label.setFont(self._panel_font(_PANEL_FONT_TITLE_PX))
         self.item_label.setWordWrap(True)
         title_column.addWidget(self.item_label)
         header.addLayout(title_column, 1)
 
-        root.addLayout(header)
+        root.addWidget(self.header_host, 0)
 
+        self.empty_host = QWidget(self)
+        self.empty_host.setObjectName("VisualPanelEmptyHost")
+        self.empty_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.empty_host.setStyleSheet(
+            "QWidget#VisualPanelEmptyHost { background: transparent; background-color: transparent; border: none; }"
+        )
+        empty_host_layout = QVBoxLayout(self.empty_host)
+        empty_host_layout.setContentsMargins(0, 0, 0, 0)
+        empty_host_layout.setSpacing(0)
+
+        self.empty_card = QFrame(self.empty_host)
+        self.empty_card.setObjectName("VisualPanelEmptyCard")
+        self.empty_card.setFrameShape(QFrame.NoFrame)
+        self.empty_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.empty_card.setStyleSheet(
+            f"QFrame#VisualPanelEmptyCard {{ background: {_PANEL_GUIDANCE_CARD}; background-color: {_PANEL_GUIDANCE_CARD}; border: none; border-radius: 0px; }}"
+            f"QFrame#VisualPanelEmptyCard QLabel {{ background: transparent; background-color: transparent; color: {_PANEL_GUIDANCE_CARD_TEXT}; border: none; }}"
+            f"QFrame#VisualPanelEmptyCard QToolButton {{ background: transparent; background-color: transparent; border: none; color: {_PANEL_GUIDANCE_CARD_TEXT}; }}"
+        )
+        empty_shell = QHBoxLayout(self.empty_card)
+        empty_shell.setContentsMargins(8, 6, 4, 6)
+        empty_shell.setSpacing(0)
         self.empty_label = QLabel(
-            _rt("Selecione um visual para editar suas propriedades."),
-            self,
+            _rt("Selecione um visual para formatar suas propriedades."),
+            self.empty_card,
         )
         self.empty_label.setObjectName("VisualPanelEmpty")
+        self.empty_label.setToolTip(_rt("Selecione um visual para formatar suas propriedades."))
         self.empty_label.setWordWrap(True)
-        root.addWidget(self.empty_label)
+        self.empty_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.empty_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        empty_shell.addWidget(self.empty_label, 1)
+        self.empty_card_close = QToolButton(self.empty_card)
+        self.empty_card_close.setObjectName("VisualPanelEmptyCardClose")
+        self.empty_card_close.setText("×")
+        self.empty_card_close.setCursor(Qt.PointingHandCursor)
+        self.empty_card_close.setFixedSize(22, 22)
+        self.empty_card_close.clicked.connect(self._dismiss_empty_card)
+        self.empty_card_close.setStyleSheet(
+            f"QToolButton#VisualPanelEmptyCardClose {{ background: transparent; background-color: transparent; border: none; color: {_PANEL_GUIDANCE_CARD_TEXT}; padding: 0px; font-size: 18px; font-weight: 300; }}"
+            f"QToolButton#VisualPanelEmptyCardClose:hover {{ background: {_PANEL_GUIDANCE_CARD_HOVER}; border-radius: 0px; }}"
+        )
+        empty_shell.addWidget(self.empty_card_close, 0, Qt.AlignTop)
+        empty_host_layout.addWidget(self.empty_card, 0, Qt.AlignTop)
+        empty_host_layout.addStretch(1)
+        root.addWidget(self.empty_host, 1)
 
         self.scroll = QScrollArea(self)
         self.scroll.setObjectName("VisualPanelScroll")
@@ -679,8 +814,8 @@ class VisualFormatPanel(QFrame):
         panel_style = """
             QFrame#VisualFormatPanel {
                 background: __SURFACE__;
-                border: 1px solid __BORDER__;
-                border-radius: 6px;
+                border: none;
+                border-radius: 0px;
             }
             QFrame#VisualFormatPanel QWidget,
             QFrame#VisualFormatPanel QFrame,
@@ -700,13 +835,13 @@ class VisualFormatPanel(QFrame):
             }
             QLabel#VisualPanelTitle {
                 color: __TEXT__;
-                font-size: 9px;
+                font-size: 13px;
                 font-weight: 400;
             }
             QLabel#VisualPanelSubtitle,
             QLabel#VisualPanelEmpty {
                 color: __MUTED__;
-                font-size: 8px;
+                font-size: 12px;
             }
             QPushButton#VisualPanelTabButton {
                 border: 1px solid __BORDER__;
@@ -724,7 +859,7 @@ class VisualFormatPanel(QFrame):
             }
             QLabel {
                 color: __MUTED__;
-                font-size: 8px;
+                font-size: 11px;
                 font-weight: 400;
             }
             QFrame#VisualPanelSectionHeader QLabel,
@@ -744,8 +879,8 @@ class VisualFormatPanel(QFrame):
                 border-radius: 5px;
                 background: transparent;
                 background-color: transparent;
-                min-height: 29px;
-                max-height: 29px;
+                min-height: 32px;
+                max-height: 32px;
             }
             QFrame#VisualPanelSectionHeader[expanded="true"] {
                 border-bottom-left-radius: 0px;
@@ -757,7 +892,7 @@ class VisualFormatPanel(QFrame):
                 background: transparent;
                 background-color: transparent;
                 border: none;
-                font-size: 9px;
+                font-size: 13px;
                 font-weight: 400;
                 min-width: 14px;
                 max-width: 14px;
@@ -769,7 +904,7 @@ class VisualFormatPanel(QFrame):
                 background: transparent;
                 background-color: transparent;
                 border: none;
-                font-size: 8px;
+                font-size: 12px;
                 font-weight: 400;
             }
             QFrame#VisualPanelSectionContent {
@@ -787,9 +922,9 @@ class VisualFormatPanel(QFrame):
                 border-radius: 4px;
                 background: __SURFACE_2__;
                 color: __TEXT__;
-                padding: 2px 6px;
-                min-height: 18px;
-                font-size: 8px;
+                padding: 3px 7px;
+                min-height: 22px;
+                font-size: 11px;
                 selection-background-color: __CHECKED__;
                 selection-color: __TEXT__;
             }
@@ -814,8 +949,9 @@ class VisualFormatPanel(QFrame):
                 border-radius: 4px;
                 background: __SURFACE__;
                 color: __TEXT__;
-                padding: 2px 6px;
-                min-height: 18px;
+                padding: 3px 8px;
+                min-height: 22px;
+                font-size: 11px;
                 font-weight: 400;
             }
             QPushButton:hover {
@@ -831,9 +967,9 @@ class VisualFormatPanel(QFrame):
                 background: __SURFACE__;
                 color: __TEXT__;
                 padding: 3px 8px;
-                min-height: 18px;
-                max-height: 20px;
-                font-size: 8px;
+                min-height: 22px;
+                max-height: 24px;
+                font-size: 11px;
                 font-weight: 400;
             }
             QPushButton#VisualPanelPresetButton:hover {
@@ -848,6 +984,38 @@ class VisualFormatPanel(QFrame):
                 border-color: __BORDER__;
                 color: __DISABLED__;
             }
+            QFrame#VisualPanelEmptyCard {
+                background: __GUIDANCE_CARD__;
+                border: none;
+                border-radius: 0px;
+            }
+            QFrame#VisualPanelEmptyCard QLabel {
+                background: transparent;
+                color: __GUIDANCE_CARD_TEXT__;
+                border: none;
+            }
+            QLabel#VisualPanelEmptyCardTitle {
+                color: __GUIDANCE_CARD_TEXT__;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLabel#VisualPanelEmpty {
+                color: __GUIDANCE_CARD_TEXT__;
+                font-size: 12px;
+                font-weight: 400;
+            }
+            QToolButton#VisualPanelEmptyCardClose {
+                background: transparent;
+                border: none;
+                color: __GUIDANCE_CARD_TEXT__;
+                padding: 0px;
+                font-size: 18px;
+                font-weight: 300;
+            }
+            QToolButton#VisualPanelEmptyCardClose:hover {
+                background: __GUIDANCE_CARD_HOVER__;
+                border-radius: 0px;
+            }
             """
         panel_style = (
             panel_style.replace("__SURFACE_HOVER__", _panel_color("surface_hover"))
@@ -860,6 +1028,9 @@ class VisualFormatPanel(QFrame):
             .replace("__BORDER__", _panel_color("border"))
             .replace("__MUTED__", _panel_color("muted"))
             .replace("__TEXT__", _panel_color("text"))
+            .replace("__GUIDANCE_CARD_HOVER__", _PANEL_GUIDANCE_CARD_HOVER)
+            .replace("__GUIDANCE_CARD_TEXT__", _PANEL_GUIDANCE_CARD_TEXT)
+            .replace("__GUIDANCE_CARD__", _PANEL_GUIDANCE_CARD)
         )
         self.setStyleSheet(panel_style)
         preset_button_style = """
@@ -868,10 +1039,10 @@ class VisualFormatPanel(QFrame):
                 border-radius: 4px;
                 background: __SURFACE__;
                 color: __TEXT__;
-                padding: 2px 6px;
-                min-height: 18px;
-                max-height: 20px;
-                font-size: 8px;
+                padding: 3px 8px;
+                min-height: 22px;
+                max-height: 24px;
+                font-size: 11px;
                 font-weight: 400;
             }
             QPushButton#VisualPanelPresetButton:hover {
@@ -1002,7 +1173,7 @@ class VisualFormatPanel(QFrame):
         combo = QComboBox(parent)
         for label, value in list(items or []):
             combo.addItem(_rt(label), value)
-        return combo
+        return apply_walker_combo(combo)
 
     def _build_properties_section(self):
         group = self._create_section("properties", "Propriedades", view="general", expanded=True)
@@ -1215,6 +1386,7 @@ class VisualFormatPanel(QFrame):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(5)
         self.preset_combo = QComboBox(group)
+        apply_walker_combo(self.preset_combo)
         self._refresh_preset_combo()
         self.apply_preset_btn = QPushButton(_rt("Aplicar preset"), group)
         self.save_preset_btn = QPushButton(_rt("Salvar estilo como preset"), group)
@@ -1228,7 +1400,7 @@ class VisualFormatPanel(QFrame):
                 padding: 3px 8px;
                 min-height: 22px;
                 max-height: 24px;
-                font-size: 9px;
+                font-size: 11px;
                 font-weight: 400;
             }
             QPushButton#VisualPanelPresetButton:hover {
@@ -1264,11 +1436,13 @@ class VisualFormatPanel(QFrame):
         value_align_combo.addItem(_rt("Esquerda"), "left")
         value_align_combo.addItem(_rt("Centro"), "center")
         value_align_combo.addItem(_rt("Direita"), "right")
+        apply_walker_combo(value_align_combo)
         self._controls["value_align"] = value_align_combo
         self._controls["card_density"] = QComboBox(self.card_group)
         self._controls["card_density"].addItem(_rt("Normal"), "normal")
         self._controls["card_density"].addItem(_rt("Compacto"), "compact")
         self._controls["card_density"].addItem(_rt("Expandido"), "expanded")
+        apply_walker_combo(self._controls["card_density"])
         form.addRow(_rt("Cor do valor"), self._controls["value_color"])
         form.addRow(_rt("Tam. valor"), self._controls["value_size"])
         form.addRow(_rt("Alinhamento"), value_align_combo)
@@ -1340,8 +1514,15 @@ class VisualFormatPanel(QFrame):
     def clear_selection(self):
         self._current_item_widget = None
         self.item_label.setText("")
+        self.item_label.hide()
+        self.header_host.hide()
+        self.empty_host.show()
+        self.empty_card.show()
         self.empty_label.show()
         self.scroll.hide()
+
+    def _dismiss_empty_card(self):
+        self.empty_card.hide()
 
     def refresh_from_item(self):
         item_widget = self._current_item_widget
@@ -1352,10 +1533,14 @@ class VisualFormatPanel(QFrame):
         chart_type = str(getattr(state, "chart_type", "") or getattr(item_widget.item.payload, "chart_type", "bar"))
         title = ""
         try:
-            title = item_widget.item.display_title()
+            title = _rt(item_widget.item.display_title())
         except Exception:
             title = str(getattr(getattr(item_widget, "item", None), "title", "") or "")
         self.item_label.setText(f"{title or _rt('Visual')} - {chart_type}")
+        self.item_label.show()
+        self.header_host.show()
+        self.empty_host.hide()
+        self.empty_card.hide()
         self.empty_label.hide()
         self.scroll.show()
         self._load_state(state)
@@ -1427,7 +1612,7 @@ class VisualFormatPanel(QFrame):
             self._controls["legend_label_override"].setText(str(getattr(state, "legend_label_override", "") or ""))
             self._set_combo_value(self._controls["sort_mode"], getattr(state, "sort_mode", "default") or "default")
             self._set_combo_value(self._controls["bar_corner_style"], getattr(state, "bar_corner_style", "square") or "square")
-            self._set_combo_value(self._controls["font_scale"], str(getattr(state, "font_scale", 0.82) or 0.82))
+            self._set_combo_value(self._controls["font_scale"], str(getattr(state, "font_scale", 1.0) or 1.0))
             self._controls["bar_width_percent"].setValue(int(getattr(state, "bar_width_percent", 62) or 62))
             self._controls["line_width"].setValue(int(getattr(state, "line_width", 2) or 2))
             self._controls["show_markers"].set_checked_state(bool(getattr(state, "show_markers", True)), animated=False)
@@ -1496,9 +1681,9 @@ class VisualFormatPanel(QFrame):
         state.sort_mode = str(self._controls["sort_mode"].currentData() or "default")
         state.bar_corner_style = str(self._controls["bar_corner_style"].currentData() or "square")
         try:
-            state.font_scale = float(self._controls["font_scale"].currentData() or 0.82)
+            state.font_scale = float(self._controls["font_scale"].currentData() or 1.0)
         except Exception:
-            state.font_scale = 0.82
+            state.font_scale = 1.0
         state.bar_width_percent = int(self._controls["bar_width_percent"].value())
         state.line_width = int(self._controls["line_width"].value())
         state.show_markers = bool(self._controls["show_markers"].isChecked())

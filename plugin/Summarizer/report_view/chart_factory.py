@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 import math
 from typing import Any, Dict, List, Optional
 
@@ -7,9 +10,9 @@ from qgis.PyQt.QtWidgets import (
     QAction,
     QActionGroup,
     QApplication,
-    QColorDialog,
     QFileDialog,
     QMenu,
+    QScrollBar,
     QWidget,
 )
 from qgis.core import QgsExpression, QgsFeatureRequest, QgsMessageLog, QgsProject, QgsVectorLayer, Qgis
@@ -19,6 +22,8 @@ from ..slim_dialogs import slim_get_text
 from ..utils.i18n_runtime import tr_text as _rt
 from ..utils.fonts import harmonize_font_family
 from ..utils.logging_utils import log_exception
+from ..walker_dialogs import apply_walker_menu
+from ..walker_color_dialog import walker_get_color
 from .charts import ChartDataProfile, ChartVisualState
 from .charts.chart_animation import chart_popup_icon
 from .charts.chart_utils import extract_chart_payload_rows, value_scale_bounds, value_scale_ratio
@@ -30,6 +35,13 @@ def _is_dark_theme() -> bool:
         return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
     except Exception:
         return False
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        return int(value)
+    except Exception:
+        return None
 
 class ChartFactory:
     MAX_RENDER_ITEMS = 160
@@ -173,7 +185,7 @@ class ReportChartWidget(QWidget):
 
     ANIMATION_DURATIONS_MS: Dict[str, int] = {
         "hover": 185,
-        "selection": 200,
+        "selection": 700,
         "filter": 300,
         "data": 320,
         "entry": 360,
@@ -204,7 +216,7 @@ class ReportChartWidget(QWidget):
         self._fixed_render_size = QSize()
         self._base_font = harmonize_font_family(QFont(self.font()))
         self._ensure_base_font_scalable()
-        self._font_scale = 0.82
+        self._font_scale = 1.0
         self.chart_state = ChartVisualState()
         self._interactive_regions: List[Dict[str, object]] = []
         self._active_category_keys: List[str] = []
@@ -213,6 +225,7 @@ class ReportChartWidget(QWidget):
         self._chart_context: Dict[str, Any] = {}
         self._chart_identity: Dict[str, Any] = {}
         self._external_filters: Dict[str, Dict[str, Any]] = {}
+        self._external_highlights: Dict[str, Dict[str, Any]] = {}
         self._animation_enabled_override: Optional[bool] = None
         self.animation_enabled = self.GLOBAL_ANIMATION_PROFILE != "off"
         self._animation_intensity = self.GLOBAL_ANIMATION_PROFILE
@@ -220,6 +233,7 @@ class ReportChartWidget(QWidget):
         self.previous_visual_snapshot: Dict[str, Any] = {}
         self.current_visual_snapshot: Dict[str, Any] = {}
         self._animation_reason = "data"
+        self._interaction_animation_reason = "hover"
         self._transition_change_level = 1.0
         self._transition_crossfade_strength = 0.16
         self._previous_frame_snapshot: Optional[QPixmap] = None
@@ -230,9 +244,53 @@ class ReportChartWidget(QWidget):
         self._interaction_target_map: Dict[str, float] = {}
         self._item_color_cache: Dict[str, QColor] = {}
         self._hovered_category_key: str = ""
+        self._suppress_next_release_activation = False
+        self._map_selection_from_chart_interaction = False
         self._external_filters_signature = ""
+        self._external_highlights_signature = ""
         self._last_rerender_signature = ""
         self._last_render_error_key = ""
+        self._matrix_scrollbar = QScrollBar(Qt.Vertical, self)
+        self._matrix_scrollbar.setObjectName("summarizerMatrixScrollBar")
+        self._matrix_scrollbar.setAttribute(Qt.WA_StyledBackground, True)
+        self._matrix_scrollbar.setVisible(False)
+        self._matrix_scrollbar.setFixedWidth(14)
+        self._matrix_scrollbar.setSingleStep(1)
+        self._matrix_scrollbar.setPageStep(1)
+        self._matrix_scrollbar.valueChanged.connect(self._on_matrix_scrollbar_value_changed)
+        self._matrix_scrollbar.setStyleSheet(
+            """
+            QScrollBar:vertical {
+                background: rgba(241, 245, 249, 235);
+                width: 14px;
+                margin: 0px;
+                border: 1px solid rgba(148, 163, 184, 120);
+                border-radius: 6px;
+            }
+            QScrollBar::groove:vertical {
+                background: rgba(226, 232, 240, 220);
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(90, 63, 230, 188);
+                min-height: 28px;
+                border-radius: 5px;
+                border: 1px solid rgba(67, 56, 202, 120);
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(90, 63, 230, 225);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+                background: none;
+            }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: transparent;
+            }
+            """
+        )
         self._transition_animation = QVariantAnimation(self)
         self._transition_animation.setStartValue(0.0)
         self._transition_animation.setEndValue(1.0)
@@ -323,9 +381,9 @@ class ReportChartWidget(QWidget):
 
     def _apply_font_scale_to_widget(self):
         try:
-            self._font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
+            self._font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
         except Exception:
-            self._font_scale = 0.82
+            self._font_scale = 1.0
         self.setFont(self._resolved_scaled_font())
 
     def _resolved_scaled_font(self, extra_scale: float = 1.0) -> QFont:
@@ -343,7 +401,7 @@ class ReportChartWidget(QWidget):
         self.update()
 
     def _effective_font_scale(self) -> float:
-        raw_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
+        raw_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
         # Make the visible response a little stronger so the user can feel the change
         # without turning the charts into oversized UI.
         adjusted = 1.0 + (raw_scale - 1.0) * 1.85
@@ -568,6 +626,7 @@ class ReportChartWidget(QWidget):
                 "selected": str(self._selected_category_key or ""),
                 "filtered": str(self._filtered_category_key or ""),
                 "external": str(self._external_filters_signature or ""),
+                "highlight": str(self._external_highlights_signature or ""),
             }
         )
 
@@ -587,24 +646,31 @@ class ReportChartWidget(QWidget):
             log_exception("falha opcional ignorada")
 
     def _draw_fallback_state(self, painter: QPainter, rect: QRectF, title: str, detail: str = ""):
-        painter.save()
-        panel = rect.adjusted(8, 8, -8, -8)
-        dark_mode = _is_dark_theme()
-        painter.setPen(QPen(QColor("#334155" if dark_mode else "#E5E7EB"), 1))
-        painter.setBrush(QColor("#111827" if dark_mode else "#FFFFFF"))
-        painter.drawRoundedRect(panel, 10, 10)
-        painter.setPen(QPen(QColor("#F8FAFC" if dark_mode else "#374151")))
-        title_font = harmonize_font_family(QFont(self.font()))
-        title_font.setBold(True)
-        painter.setFont(title_font)
-        painter.drawText(panel.adjusted(14, 12, -14, -20), Qt.AlignLeft | Qt.AlignTop, str(title or "Visual indisponivel"))
-        if detail:
-            detail_font = harmonize_font_family(QFont(self.font()))
-            detail_font.setBold(False)
-            painter.setFont(detail_font)
-            painter.setPen(QPen(QColor("#CBD5E1" if dark_mode else "#6B7280")))
-            painter.drawText(panel.adjusted(14, 34, -14, -10), Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, str(detail))
-        painter.restore()
+        try:
+            painter.save()
+            panel = rect.adjusted(8, 8, -8, -8)
+            dark_mode = _is_dark_theme()
+            painter.setPen(QPen(QColor("#334155" if dark_mode else "#E5E7EB"), 1))
+            painter.setBrush(QColor("#111827" if dark_mode else "#FFFFFF"))
+            painter.drawRoundedRect(panel, 10, 10)
+            painter.setPen(QPen(QColor("#F8FAFC" if dark_mode else "#374151")))
+            title_font = harmonize_font_family(QFont(self.font()))
+            title_font.setBold(True)
+            painter.setFont(title_font)
+            painter.drawText(panel.adjusted(14, 12, -14, -20), Qt.AlignLeft | Qt.AlignTop, str(title or "Visual indisponivel"))
+            if detail:
+                detail_font = harmonize_font_family(QFont(self.font()))
+                detail_font.setBold(False)
+                painter.setFont(detail_font)
+                painter.setPen(QPen(QColor("#CBD5E1" if dark_mode else "#6B7280")))
+                painter.drawText(panel.adjusted(14, 34, -14, -10), Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, str(detail))
+        except Exception:
+            log_exception("falha opcional ignorada ao desenhar fallback do grafico")
+        finally:
+            try:
+                painter.restore()
+            except Exception:
+                log_exception("falha opcional ignorada ao restaurar painter do fallback")
 
     def _label_stride(self, count: int, max_labels: Optional[int] = None) -> int:
         max_visible = max(1, int(max_labels or self.MAX_LABELS))
@@ -632,7 +698,8 @@ class ReportChartWidget(QWidget):
                 base = base * (0.86 + 0.34 * change)
             elif key in {"entry", "type"}:
                 base = base * (0.92 + 0.16 * max(0.25, change))
-        return int(max(90.0, min(520.0, base)))
+        max_duration = 900.0 if key == "selection" else 520.0
+        return int(max(90.0, min(max_duration, base)))
 
     def _animation_easing_curve(self, reason: str) -> QEasingCurve:
         key = str(reason or "data").strip().lower()
@@ -848,10 +915,13 @@ class ReportChartWidget(QWidget):
                 level = max(level, 0.24)
             if key in selected_keys:
                 level = max(level, 0.82)
+            if bool(item.get("externally_highlighted")):
+                level = max(level, 0.78)
             targets[key] = level
         return targets
 
     def _start_interaction_animation(self, reason: str = "hover"):
+        self._interaction_animation_reason = str(reason or "hover").strip().lower()
         targets = self._compute_interaction_target_levels()
         all_keys = set(self._interaction_levels.keys()) | set(targets.keys())
         has_changes = any(
@@ -868,8 +938,11 @@ class ReportChartWidget(QWidget):
         self._interaction_start_levels = dict(self._interaction_levels)
         self._interaction_target_map = dict(targets)
         self._interaction_animation.stop()
-        self._interaction_animation.setDuration(self._animation_duration_ms(reason))
-        self._interaction_animation.setEasingCurve(QEasingCurve(QEasingCurve.OutCubic))
+        self._interaction_animation.setDuration(self._animation_duration_ms(self._interaction_animation_reason))
+        easing = QEasingCurve.OutCubic
+        if self._interaction_animation_reason == "filter":
+            easing = QEasingCurve.OutQuart
+        self._interaction_animation.setEasingCurve(QEasingCurve(easing))
         self._interaction_animation.start()
 
     def _on_interaction_progress_changed(self, value):
@@ -878,6 +951,8 @@ class ReportChartWidget(QWidget):
         except Exception:
             progress = 1.0
         t = self._clamp01(progress)
+        if self._interaction_animation_reason in {"selection", "filter"}:
+            t = min(1.0, t + (math.sin(math.pi * t) * 0.035))
         keys = set(self._interaction_start_levels.keys()) | set(self._interaction_target_map.keys())
         levels: Dict[str, float] = {}
         for key in keys:
@@ -895,11 +970,72 @@ class ReportChartWidget(QWidget):
             for key, value in dict(self._interaction_target_map).items()
             if float(value) > 0.005
         }
+        self._interaction_animation_reason = "hover"
         self.update()
 
     def _item_interaction_level(self, item: Dict[str, object]) -> float:
         key = str(item.get("key") or "")
         return float(self._interaction_levels.get(key, 0.0))
+
+    def _item_is_interaction_focus(self, item: Dict[str, object]) -> bool:
+        item_key = str(item.get("key") or "")
+        if item_key and item_key in self._selected_category_keys():
+            return True
+        if bool(item.get("externally_highlighted")):
+            return True
+        if item_key and self._item_interaction_level(item) >= 0.45:
+            return True
+        highlight_data = self._resolve_external_highlight()
+        return bool(highlight_data and self._item_matches_highlight_context(item, highlight_data))
+
+    def _has_interaction_context(self, item: Optional[Dict[str, object]] = None) -> bool:
+        if self._selected_category_keys():
+            return True
+        if item is not None and bool(item.get("external_highlight_active")):
+            return True
+        return bool(self._resolve_external_highlight())
+
+    def _item_growth_factor(self, item: Dict[str, object], *, minimum: float = 0.14, maximum: float = 1.0) -> float:
+        if not self._item_is_interaction_focus(item):
+            return 1.0
+        key = str(item.get("key") or "")
+        if key:
+            start_level = float(self._interaction_start_levels.get(key, self._item_interaction_level(item)))
+            target_level = float(self._interaction_target_map.get(key, self._item_interaction_level(item)))
+            if target_level < start_level:
+                return 1.0
+        level = self._clamp01(self._item_interaction_level(item) / 0.78)
+        return minimum + ((maximum - minimum) * level)
+
+    def _grow_vertical_rect_from_axis(self, rect: QRectF, axis_y: float, item: Dict[str, object]) -> QRectF:
+        factor = self._item_growth_factor(item)
+        if factor >= 0.999:
+            return rect
+        grown = QRectF(rect)
+        height = max(0.0, rect.height() * factor)
+        if rect.center().y() <= axis_y:
+            grown.setTop(rect.bottom() - height)
+        else:
+            grown.setBottom(rect.top() + height)
+        return grown
+
+    def _grow_horizontal_rect_from_axis(self, rect: QRectF, axis_x: float, item: Dict[str, object]) -> QRectF:
+        factor = self._item_growth_factor(item)
+        if factor >= 0.999:
+            return rect
+        grown = QRectF(rect)
+        width = max(0.0, rect.width() * factor)
+        if rect.center().x() >= axis_x:
+            grown.setRight(rect.left() + width)
+        else:
+            grown.setLeft(rect.right() - width)
+        return grown
+
+    def _selected_category_keys(self) -> set[str]:
+        selected_keys = {str(key) for key in list(self._active_category_keys or []) if str(key).strip()}
+        if self._selected_category_key:
+            selected_keys.add(str(self._selected_category_key))
+        return selected_keys
 
     def _payload_animation_progress(self, payload: Optional[Dict[str, object]] = None) -> float:
         if isinstance(payload, dict):
@@ -933,9 +1069,28 @@ class ReportChartWidget(QWidget):
     def _item_interaction_style(self, base_color: QColor, item: Dict[str, object]):
         level = self._item_interaction_level(item)
         fill = QColor(base_color)
+        item_key = str(item.get("key") or "")
+        has_selection = self._has_interaction_context(item)
+        is_selected = self._item_is_interaction_focus(item)
+        is_hovered = bool(item_key and item_key == self._hovered_category_key)
+        is_dimmed = bool(has_selection and not is_selected and (item_key or bool(item.get("external_highlight_active"))))
+        if is_dimmed:
+            dim_alpha = 190 if is_hovered else 176
+            dim_target = self._visual_color("background_color", "#111827" if _is_dark_theme() else "#FFFFFF")
+            fill = self._blend_color(fill, dim_target, 0.26 if is_hovered else 0.32)
+            fill.setAlpha(min(fill.alpha(), dim_alpha))
+        elif is_selected:
+            fill = self._blend_color(fill, QColor("#0F172A" if not _is_dark_theme() else "#F8FAFC"), 0.06)
         border_mix = 0.08 if level <= 0.0 else 0.18 + (0.22 * level)
+        if is_dimmed:
+            border_mix = 0.07 if not is_hovered else 0.11
         border = self._blend_color(fill, QColor("#0F172A"), border_mix)
+        if is_dimmed:
+            border.setAlpha(min(border.alpha(), 150 if is_hovered else 132))
         border_width = 0.0 if level < 0.04 else (0.9 + level * 0.85)
+        if is_selected:
+            border = self._blend_color(fill, QColor("#020617" if not _is_dark_theme() else "#F8FAFC"), 0.42)
+            border_width = max(border_width, 1.8)
         return fill, border, border_width, level
 
     def set_payload(self, payload: Optional[ChartPayload], empty_text: Optional[str] = None):
@@ -952,6 +1107,16 @@ class ReportChartWidget(QWidget):
         self._filtered_category_key = ""
         self._hovered_category_key = ""
         self._interaction_levels = {}
+        if getattr(self, "_matrix_scrollbar", None) is not None:
+            try:
+                self._matrix_scrollbar.blockSignals(True)
+                self._matrix_scrollbar.setValue(0)
+            finally:
+                try:
+                    self._matrix_scrollbar.blockSignals(False)
+                except Exception:
+                    pass
+            self._layout_matrix_scrollbar()
         transition = "entry"
         if previous_payload is not None and payload is not None:
             next_type = self._normalize_chart_type(getattr(payload, "chart_type", "bar"))
@@ -977,12 +1142,25 @@ class ReportChartWidget(QWidget):
         self._start_interaction_animation("selection")
         self._rerender_chart(transition="selection")
 
-    def clear_selection(self, *, emit_signal: bool = False):
-        if not (self._selected_category_key or self._active_category_keys or self._filtered_category_key):
+    def clear_selection(self, *, emit_signal: bool = False, clear_map: bool = False):
+        has_feedback = bool(
+            self._selected_category_key
+            or self._active_category_keys
+            or self._filtered_category_key
+            or self._hovered_category_key
+        )
+        if not has_feedback:
+            if clear_map:
+                self._clear_selection_layer()
+            if emit_signal:
+                self.selectionChanged.emit(None)
             return
         self._selected_category_key = ""
         self._active_category_keys = []
         self._filtered_category_key = ""
+        self._hovered_category_key = ""
+        if clear_map:
+            self._clear_selection_layer()
         if emit_signal:
             self.selectionChanged.emit(None)
         self._start_interaction_animation("selection")
@@ -1007,6 +1185,13 @@ class ReportChartWidget(QWidget):
         semantic_field_key: Optional[str] = None,
         semantic_field_aliases: Optional[List[str]] = None,
         measure_field: Optional[str] = None,
+        legend_field: Optional[str] = None,
+        x_field: Optional[str] = None,
+        y_field: Optional[str] = None,
+        size_field: Optional[str] = None,
+        row_fields: Optional[List[str]] = None,
+        column_fields: Optional[List[str]] = None,
+        value_fields: Optional[List[str]] = None,
         aggregation: Optional[str] = None,
         base_filters: Optional[List[Dict[str, Any]]] = None,
     ):
@@ -1023,6 +1208,20 @@ class ReportChartWidget(QWidget):
             payload["semantic_field_aliases"] = list(semantic_field_aliases or [])
         if measure_field is not None:
             payload["measure_field"] = measure_field
+        if legend_field is not None:
+            payload["legend_field"] = legend_field
+        if x_field is not None:
+            payload["x_field"] = x_field
+        if y_field is not None:
+            payload["y_field"] = y_field
+        if size_field is not None:
+            payload["size_field"] = size_field
+        if row_fields is not None:
+            payload["row_fields"] = list(row_fields or [])
+        if column_fields is not None:
+            payload["column_fields"] = list(column_fields or [])
+        if value_fields is not None:
+            payload["value_fields"] = list(value_fields or [])
         if aggregation is not None:
             payload["aggregation"] = aggregation
         if base_filters is not None:
@@ -1034,6 +1233,13 @@ class ReportChartWidget(QWidget):
             "semantic_field_key": str(payload.get("semantic_field_key") or "").strip(),
             "semantic_field_aliases": [str(item).strip() for item in list(payload.get("semantic_field_aliases") or []) if str(item).strip()],
             "measure_field": str(payload.get("measure_field") or "").strip(),
+            "legend_field": str(payload.get("legend_field") or "").strip(),
+            "x_field": str(payload.get("x_field") or "").strip(),
+            "y_field": str(payload.get("y_field") or "").strip(),
+            "size_field": str(payload.get("size_field") or "").strip(),
+            "row_fields": [str(item).strip() for item in list(payload.get("row_fields") or []) if str(item).strip()],
+            "column_fields": [str(item).strip() for item in list(payload.get("column_fields") or []) if str(item).strip()],
+            "value_fields": [str(item).strip() for item in list(payload.get("value_fields") or []) if str(item).strip()],
             "aggregation": str(payload.get("aggregation") or "").strip(),
             "base_filters": [dict(item or {}) for item in list(payload.get("base_filters") or [])],
         }
@@ -1051,6 +1257,21 @@ class ReportChartWidget(QWidget):
         self._external_filters = normalized_filters
         self._last_rerender_signature = ""
         self._rerender_chart(transition="filter")
+
+    def set_external_highlights(self, highlights: Optional[Dict[str, Dict[str, Any]]] = None):
+        normalized_highlights = {
+            str(source_id or "").strip(): dict(highlight_data or {})
+            for source_id, highlight_data in dict(highlights or {}).items()
+            if str(source_id or "").strip()
+        }
+        next_signature = self._make_signature(normalized_highlights)
+        if next_signature == self._external_highlights_signature:
+            return
+        self._external_highlights_signature = next_signature
+        self._external_highlights = normalized_highlights
+        self._last_rerender_signature = ""
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="selection")
 
     def build_model_snapshot(self) -> Dict[str, Any]:
         payload = self._payload
@@ -1185,7 +1406,7 @@ class ReportChartWidget(QWidget):
     def _default_visual_state(self, payload: Optional[ChartPayload]) -> ChartVisualState:
         chart_type = self._normalize_chart_type(getattr(payload, "chart_type", "bar"))
         state = ChartVisualState(chart_type=chart_type, palette=self._preferred_palette_for_chart_type(chart_type))
-        state.font_scale = 0.82
+        state.font_scale = 1.0
         state.bar_corner_style = "square"
         if chart_type in {"pie", "donut"}:
             state.show_legend = True
@@ -1259,7 +1480,7 @@ class ReportChartWidget(QWidget):
         if self._payload is None or not self._payload.categories:
             return
 
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         type_menu = menu.addMenu(_rt("Mudar tipo de gráfico"))
         personalize_menu = menu.addMenu(_rt("Personalizar gráfico"))
         font_menu = personalize_menu.addMenu(_rt("Tamanho da fonte"))
@@ -1414,16 +1635,16 @@ class ReportChartWidget(QWidget):
         supports["donut"] = self._supports_pie_family(profile)
         supports["line"] = self._supports_line_family(profile)
         supports["area"] = self._supports_area_family(profile)
-        supports["scatter"] = profile.count >= 2 and profile.unique_category_count >= 2
+        supports["scatter"] = profile.count >= 1
         supports["combo"] = profile.count >= 2 and profile.unique_category_count >= 2
         supports["column_clustered"] = profile.count >= 1
         supports["column_stacked"] = profile.count >= 1
         supports["bar100_stacked"] = profile.count >= 1 and profile.has_positive
-        supports["treemap"] = profile.count >= 2 and profile.has_positive
+        supports["treemap"] = profile.count >= 1 and profile.has_positive
         supports["gauge"] = profile.count >= 1
         supports["kpi"] = profile.count >= 1
         supports["waterfall"] = profile.count >= 1
-        supports["funnel"] = profile.count >= 2 and profile.has_positive
+        supports["funnel"] = profile.count >= 1 and profile.has_positive
         supports["matrix"] = profile.count >= 1
         supports["slicer"] = profile.count >= 1
         supports["card"] = profile.count >= 1
@@ -1437,22 +1658,22 @@ class ReportChartWidget(QWidget):
 
     def _supports_pie_family(self, profile: ChartDataProfile) -> bool:
         return (
-            profile.count >= 2
+            profile.count >= 1
             and not profile.has_negative
-            and profile.positive_count >= 2
+            and profile.positive_count >= 1
         )
 
     def _supports_line_family(self, profile: ChartDataProfile) -> bool:
         return (
-            2 <= profile.count <= 24
-            and profile.unique_category_count >= 2
+            1 <= profile.count <= 24
+            and profile.unique_category_count >= 1
             and (profile.sequential_hint or profile.count <= 12)
         )
 
     def _supports_area_family(self, profile: ChartDataProfile) -> bool:
         return (
-            2 <= profile.count <= 18
-            and profile.unique_category_count >= 2
+            1 <= profile.count <= 18
+            and profile.unique_category_count >= 1
             and not profile.has_negative
             and profile.has_positive
             and (profile.sequential_hint or profile.count <= 10)
@@ -1552,7 +1773,7 @@ class ReportChartWidget(QWidget):
     def _ensure_visual_state_compatibility(self):
         if self.chart_state.chart_type not in self.TYPE_LABELS:
             self.chart_state.chart_type = self._fallback_chart_type()
-        self.chart_state.font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 0.82))
+        self.chart_state.font_scale = self._normalize_font_scale(getattr(self.chart_state, "font_scale", 1.0))
 
         if not self._supports_percentage():
             self.chart_state.show_percent = False
@@ -1674,7 +1895,7 @@ class ReportChartWidget(QWidget):
     def _pick_visual_color(self, attr: str, fallback: str):
         self._ensure_visual_state_compatibility()
         current = self._visual_color(attr, fallback)
-        chosen = QColorDialog.getColor(current, self, _rt("Escolher cor"))
+        chosen = walker_get_color(current, self, _rt("Escolher cor"))
         if not chosen.isValid():
             return
         setattr(self.chart_state, attr, chosen.name().upper())
@@ -1748,10 +1969,12 @@ class ReportChartWidget(QWidget):
         self.update()
 
     def _display_title(self, title: str) -> str:
-        return (self.chart_state.title_override or "").strip() or str(title or "")
+        title_override = (self.chart_state.title_override or "").strip()
+        return _rt(title_override) if title_override else _rt(str(title or ""))
 
     def _display_series_legend_label(self, value_label: str) -> str:
-        return (self.chart_state.legend_label_override or "").strip() or str(value_label or "")
+        legend_override = (self.chart_state.legend_label_override or "").strip()
+        return _rt(legend_override) if legend_override else _rt(str(value_label or ""))
 
     def _display_legend_item_label(self, category: str) -> str:
         key = self._clean_label_text(category)
@@ -1833,6 +2056,11 @@ class ReportChartWidget(QWidget):
             return False
         item_tokens = set(self._filter_match_tokens(item.get("raw_category")))
         item_tokens.update(self._filter_match_tokens(item.get("category")))
+        item_tokens.update(self._filter_match_tokens(item.get("display_label")))
+        item_tokens.update(self._filter_match_tokens(item.get("current_text")))
+        item_tokens.update(self._filter_match_tokens(item.get("series_label")))
+        item_tokens.update(self._filter_match_tokens(item.get("legend_label")))
+        item_tokens.update(self._filter_match_tokens(item.get("key")))
         for token in item_tokens:
             if token in selected:
                 return True
@@ -1891,17 +2119,17 @@ class ReportChartWidget(QWidget):
             unique.append(source_key)
         return unique
 
-    def _resolve_external_filter(self) -> Dict[str, Any]:
-        if not self._external_filters:
+    def _resolve_external_interaction(self, interactions: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        if not interactions:
             return {}
         current_keys = set(self._current_chart_keys())
         if not current_keys:
             return {}
         direct_key = self._current_filter_key()
-        direct = self._external_filters.get(direct_key)
+        direct = interactions.get(direct_key)
         if direct:
             return dict(direct)
-        for filter_data in self._external_filters.values():
+        for filter_data in interactions.values():
             filter_keys = {
                 str(filter_data.get("semantic_field_key") or "").strip().lower(),
                 str(filter_data.get("field_key") or "").strip().lower(),
@@ -1918,13 +2146,88 @@ class ReportChartWidget(QWidget):
                 return dict(filter_data)
         return {}
 
-    def _selection_context_for_item(self, item: Dict[str, object]) -> Dict[str, object]:
-        values = self._flatten_values(item.get("feature_ids"))
+    def _resolve_external_filter(self) -> Dict[str, Any]:
+        return self._resolve_external_interaction(self._external_filters)
+
+    def _resolve_external_highlight(self) -> Dict[str, Any]:
+        return self._resolve_external_interaction(self._external_highlights)
+
+    def _apply_external_highlight_state(self, pairs: List[Dict[str, object]], highlight_data: Dict[str, Any]) -> None:
+        if not pairs or not highlight_data:
+            return
+        selected_feature_ids = {
+            safe_id
+            for fid in list(highlight_data.get("feature_ids") or [])
+            if fid is not None and (safe_id := _safe_int(fid)) is not None
+        }
+        selected_series_label = str(highlight_data.get("series_label") or "").strip().lower()
+        selected_values = set(self._flatten_values(highlight_data.get("values")))
+        has_highlight_markers = bool(selected_feature_ids or selected_values or selected_series_label)
+        if not has_highlight_markers:
+            return
+        source_label = str(highlight_data.get("source_name") or highlight_data.get("source_id") or "")
+        for item in pairs:
+            highlighted = False
+            if selected_feature_ids:
+                item_feature_ids = {
+                    safe_id
+                    for fid in list(item.get("feature_ids") or [])
+                    if fid is not None and (safe_id := _safe_int(fid)) is not None
+                }
+                highlighted = bool(item_feature_ids.intersection(selected_feature_ids))
+            if not highlighted and selected_series_label:
+                item_series_label = str(item.get("series_label") or item.get("legend_label") or "").strip().lower()
+                if item_series_label:
+                    highlighted = item_series_label == selected_series_label
+            if not highlighted and selected_values:
+                highlighted = self._matches_selected_values(item, selected_values)
+            item["external_highlight_active"] = True
+            item["externally_highlighted"] = bool(highlighted)
+            item["highlight_source"] = source_label
+            item["highlight_level"] = 1.0 if highlighted else 0.0
+
+    def _item_matches_highlight_context(self, item: Dict[str, object], highlight_data: Dict[str, Any]) -> bool:
+        if not item or not highlight_data:
+            return False
+        selected_feature_ids = {
+            safe_id
+            for fid in list(highlight_data.get("feature_ids") or [])
+            if fid is not None and (safe_id := _safe_int(fid)) is not None
+        }
+        selected_series_label = str(highlight_data.get("series_label") or "").strip().lower()
+        selected_values = set(self._flatten_values(highlight_data.get("values")))
+        if selected_feature_ids:
+            item_feature_ids = {
+                safe_id
+                for fid in list(item.get("feature_ids") or [])
+                if fid is not None and (safe_id := _safe_int(fid)) is not None
+            }
+            if item_feature_ids.intersection(selected_feature_ids):
+                return True
+        if selected_series_label:
+            item_series_label = str(item.get("series_label") or item.get("legend_label") or "").strip().lower()
+            if item_series_label and item_series_label == selected_series_label:
+                return True
+        if selected_values and self._matches_selected_values(item, selected_values):
+            return True
+        return False
+
+    def _selection_context_for_item(self, item: Dict[str, object], interaction_action: str = "highlight") -> Dict[str, object]:
+        interaction_values = self._interaction_text_values(
+            item.get("raw_category"),
+            item.get("category"),
+            item.get("display_label"),
+            item.get("current_text"),
+            item.get("series_label"),
+            item.get("legend_label"),
+            item.get("key"),
+        )
         raw_value = item.get("raw_category")
         if raw_value in (None, ""):
             raw_value = item.get("category")
         if raw_value in (None, ""):
             raw_value = item.get("key")
+        selection_key = str(item.get("key") or self._category_key(raw_value)).strip()
         return {
             "chart_id": self._current_chart_id(),
             "source_id": self._current_source_id(),
@@ -1941,11 +2244,28 @@ class ReportChartWidget(QWidget):
                 or getattr(self._payload, "category_field", "")
                 or ""
             ).strip(),
-            "values": self._flatten_values(raw_value),
-            "feature_ids": [int(fid) for fid in values if fid is not None],
+            "values": interaction_values,
+            "feature_ids": [safe_id for fid in list(item.get("feature_ids") or []) if fid is not None and (safe_id := _safe_int(fid)) is not None],
+            "key": selection_key,
+            "current_text": str(
+                item.get("current_text")
+                or item.get("display_label")
+                or item.get("category")
+                or ""
+            ),
             "display_label": str(item.get("display_label") or item.get("category") or ""),
             "raw_category": item.get("raw_category"),
             "category": str(item.get("category") or ""),
+            "series_label": str(item.get("series_label") or ""),
+            "legend_label": str(item.get("legend_label") or ""),
+            "legend_field": str(self._chart_identity.get("legend_field") or ""),
+            "x_field": str(self._chart_identity.get("x_field") or ""),
+            "y_field": str(self._chart_identity.get("y_field") or ""),
+            "size_field": str(self._chart_identity.get("size_field") or ""),
+            "row_fields": list(self._chart_identity.get("row_fields") or []),
+            "column_fields": list(self._chart_identity.get("column_fields") or []),
+            "value_fields": list(self._chart_identity.get("value_fields") or []),
+            "interaction_action": str(interaction_action or "highlight").strip().lower() or "highlight",
         }
 
     def _emit_selection_for_item(self, item: Dict[str, object]):
@@ -2028,6 +2348,7 @@ class ReportChartWidget(QWidget):
             self._transition_animation.stop()
             self.animation_progress = 1.0
             self._previous_frame_snapshot = None
+        self._layout_matrix_scrollbar()
         super().resizeEvent(event)
 
     def mousePressEvent(self, event):
@@ -2044,6 +2365,13 @@ class ReportChartWidget(QWidget):
 
     def mouseReleaseEvent(self, event):
         if getattr(event, "button", lambda: None)() == Qt.LeftButton:
+            if self._suppress_next_release_activation:
+                self._suppress_next_release_activation = False
+                try:
+                    event.accept()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+                return
             target = self._interactive_target_at(self._event_point(event))
             if target is not None and str(target.get("target_type") or "") == "data_point":
                 self._activate_category_target(target, zoom=False)
@@ -2065,7 +2393,8 @@ class ReportChartWidget(QWidget):
         if getattr(event, "button", lambda: None)() == Qt.LeftButton:
             target = self._interactive_target_at(self._event_point(event))
             if target is not None and str(target.get("target_type") or "") == "data_point":
-                self._activate_category_target(target, zoom=True)
+                self._isolate_category_target(target, zoom=True)
+                self._suppress_next_release_activation = True
                 try:
                     event.accept()
                 except Exception:
@@ -2079,6 +2408,108 @@ class ReportChartWidget(QWidget):
             self._start_interaction_animation("hover")
         self.unsetCursor()
         super().leaveEvent(event)
+
+    def wheelEvent(self, event):
+        scrollbar = getattr(self, "_matrix_scrollbar", None)
+        if (
+            scrollbar is not None
+            and self._normalize_chart_type(self.chart_state.chart_type) == "matrix"
+            and scrollbar.isVisible()
+        ):
+            try:
+                delta = event.angleDelta().y()
+            except Exception:
+                delta = 0
+            if delta:
+                step = scrollbar.singleStep() or 1
+                direction = -1 if delta < 0 else 1
+                scrollbar.setValue(max(scrollbar.minimum(), min(scrollbar.maximum(), scrollbar.value() - (direction * step))))
+                try:
+                    event.accept()
+                except Exception:
+                    log_exception("falha opcional ignorada")
+                return
+        super().wheelEvent(event)
+
+    def _matrix_scrollbar_width(self) -> int:
+        if getattr(self, "_matrix_scrollbar", None) is None:
+            return 0
+        try:
+            return max(8, int(self._matrix_scrollbar.sizeHint().width() or 10))
+        except Exception:
+            return 10
+
+    def _layout_matrix_scrollbar(self):
+        scrollbar = getattr(self, "_matrix_scrollbar", None)
+        if scrollbar is None:
+            return
+        chart_type = self._normalize_chart_type(self.chart_state.chart_type)
+        should_show = bool(chart_type == "matrix" and self._payload is not None and not bool(getattr(self._payload, "empty", False)))
+        if not should_show:
+            scrollbar.hide()
+            return
+        width = self._matrix_scrollbar_width()
+        rect = self.rect().adjusted(12, 44, -12, -18)
+        if rect.width() <= 0 or rect.height() <= 0:
+            scrollbar.hide()
+            return
+        scrollbar_height = max(42, rect.height())
+        geometry = QRect(
+            max(0, int(rect.right()) - width + 1),
+            max(0, int(rect.top())),
+            width,
+            scrollbar_height,
+        )
+        if scrollbar.geometry() != geometry:
+            scrollbar.setGeometry(geometry)
+        scrollbar.raise_()
+        scrollbar.show()
+
+    def _sync_matrix_scrollbar(self, scrollbar_rect: QRectF, visible_rows: int, total_rows: int) -> int:
+        scrollbar = getattr(self, "_matrix_scrollbar", None)
+        if scrollbar is None:
+            return 0
+        chart_type = self._normalize_chart_type(self.chart_state.chart_type)
+        if chart_type != "matrix" or total_rows <= visible_rows or scrollbar_rect.width() <= 0 or scrollbar_rect.height() <= 0:
+            try:
+                scrollbar.blockSignals(True)
+                scrollbar.setValue(0)
+            finally:
+                try:
+                    scrollbar.blockSignals(False)
+                except Exception:
+                    pass
+            scrollbar.hide()
+            return 0
+
+        geometry = QRect(
+            max(0, int(scrollbar_rect.left())),
+            max(0, int(scrollbar_rect.top())),
+            max(8, int(scrollbar_rect.width())),
+            max(24, int(scrollbar_rect.height())),
+        )
+        if scrollbar.geometry() != geometry:
+            scrollbar.setGeometry(geometry)
+        if not scrollbar.isVisible():
+            scrollbar.show()
+        max_offset = max(0, int(total_rows - visible_rows))
+        if scrollbar.maximum() != max_offset:
+            scrollbar.setRange(0, max_offset)
+        page_step = max(1, int(visible_rows))
+        if scrollbar.pageStep() != page_step:
+            scrollbar.setPageStep(page_step)
+        if scrollbar.singleStep() != 1:
+            scrollbar.setSingleStep(1)
+        value = max(0, min(int(scrollbar.value()), max_offset))
+        if scrollbar.value() != value:
+            scrollbar.setValue(value)
+        scrollbar.raise_()
+        return value
+
+    def _on_matrix_scrollbar_value_changed(self, _value: int):
+        if self._normalize_chart_type(self.chart_state.chart_type) != "matrix":
+            return
+        self.update()
 
     def _ask_for_text(
         self,
@@ -2161,6 +2592,68 @@ class ReportChartWidget(QWidget):
             return " / ".join(parts)
         return self._clean_label_text(raw_category)
 
+    def _interaction_text_values(self, *values: Any) -> List[str]:
+        flattened: List[str] = []
+
+        def _append(text: Any):
+            cleaned = self._clean_label_text(text)
+            if not cleaned:
+                return
+            candidates = [cleaned]
+            if " / " in cleaned:
+                candidates.extend([part.strip() for part in cleaned.split(" / ") if part.strip()])
+            elif "/" in cleaned:
+                candidates.extend([part.strip() for part in cleaned.split("/", 1) if part.strip()])
+            for candidate in candidates:
+                if candidate and candidate not in flattened:
+                    flattened.append(candidate)
+
+        def _walk(value: Any):
+            if value is None:
+                return
+            if isinstance(value, (list, tuple, set)):
+                for item in value:
+                    _walk(item)
+                return
+            _append(value)
+
+        for value in values:
+            _walk(value)
+        return flattened
+
+    def _series_item_payload(
+        self,
+        row_label: Any,
+        series_label: Any,
+        value: float,
+        *,
+        feature_ids: Optional[List[int]] = None,
+        display_label: Optional[str] = None,
+        x_value: Optional[float] = None,
+        size_value: Optional[float] = None,
+    ) -> Dict[str, object]:
+        row_text = self._clean_label_text(row_label)
+        series_text = self._clean_label_text(series_label)
+        raw_category: Any = (row_text, series_text) if series_text else row_text
+        label = str(display_label or (f"{row_text} / {series_text}" if series_text else row_text) or "")
+        item = {
+            "category": label,
+            "display_label": label,
+            "current_text": label,
+            "raw_category": raw_category,
+            "key": self._category_key(raw_category),
+            "value": float(value),
+            "feature_ids": [safe_id for fid in list(feature_ids or []) if fid is not None and (safe_id := _safe_int(fid)) is not None],
+            "series_label": series_text,
+            "legend_label": series_text,
+            "row_label": row_text,
+        }
+        if x_value is not None:
+            item["x_value"] = float(x_value)
+        if size_value is not None:
+            item["size_value"] = float(size_value)
+        return item
+
     def _render_payload_items(self) -> List[Dict[str, object]]:
         if self._payload is None or not self._payload.categories:
             return []
@@ -2182,13 +2675,16 @@ class ReportChartWidget(QWidget):
             items.append(
                 {
                     "category": category_text,
+                    "display_label": category_text,
+                    "current_text": category_text,
                     "value": numeric_value,
                     "raw_category": raw_category,
                     "key": self._category_key(raw_category),
-                    "feature_ids": [int(fid) for fid in list(feature_ids or []) if fid is not None],
+                    "feature_ids": [safe_id for fid in list(feature_ids or []) if fid is not None and (safe_id := _safe_int(fid)) is not None],
                     "x_value": float(x_values[index]) if index < len(x_values) else float(index),
                     "size_value": float(size_values[index]) if index < len(size_values) else 1.0,
                     "series_label": str(series_labels[index]) if index < len(series_labels) else "",
+                    "legend_label": str(series_labels[index]) if index < len(series_labels) else "",
                 }
             )
         return items
@@ -2200,6 +2696,22 @@ class ReportChartWidget(QWidget):
             if str(item.get("key") or "") == category_key:
                 return dict(item)
         return None
+
+    def _selection_item_for_target(self, target: Dict[str, object]) -> Dict[str, object]:
+        category_key = str(target.get("key") or "").strip()
+        selection_item: Dict[str, object] = {}
+        if category_key:
+            selection_item = dict(self._selection_payload_from_key(category_key) or {})
+        if not selection_item:
+            selection_item = dict(target or {})
+        else:
+            for key, value in dict(target or {}).items():
+                if value in (None, ""):
+                    continue
+                selection_item[key] = value
+        if category_key:
+            selection_item["key"] = category_key
+        return selection_item
 
     def _selection_layer(self) -> Optional[QgsVectorLayer]:
         layer_id = getattr(self._payload, "selection_layer_id", None)
@@ -2215,7 +2727,7 @@ class ReportChartWidget(QWidget):
         return bool(key) and (key == self._selected_category_key or key in self._active_category_keys)
 
     def _supports_map_selection(self, target: Dict[str, object]) -> bool:
-        feature_ids = [int(fid) for fid in list(target.get("feature_ids") or []) if fid is not None]
+        feature_ids = [safe_id for fid in list(target.get("feature_ids") or []) if fid is not None and (safe_id := _safe_int(fid)) is not None]
         if feature_ids:
             return self._selection_layer() is not None
         layer = self._selection_layer()
@@ -2233,7 +2745,11 @@ class ReportChartWidget(QWidget):
         target: Dict[str, object],
         layer: Optional[QgsVectorLayer] = None,
     ) -> List[int]:
-        explicit_ids = sorted({int(fid) for fid in list(target.get("feature_ids") or []) if fid is not None})
+        explicit_ids = sorted({
+            safe_id
+            for fid in list(target.get("feature_ids") or [])
+            if fid is not None and (safe_id := _safe_int(fid)) is not None
+        })
         if explicit_ids:
             return explicit_ids
 
@@ -2309,7 +2825,7 @@ class ReportChartWidget(QWidget):
             )
             return False
 
-        selected_ids = sorted(set(int(fid) for fid in feature_ids))
+        selected_ids = sorted({safe_id for fid in feature_ids if (safe_id := _safe_int(fid)) is not None})
         if additive:
             try:
                 selected_ids = sorted(set(layer.selectedFeatureIds()) | set(selected_ids))
@@ -2320,6 +2836,7 @@ class ReportChartWidget(QWidget):
         except Exception:
             self._push_feedback(_rt("Não foi possível atualizar a seleção no mapa."), level="warning")
             return False
+        self._map_selection_from_chart_interaction = True
 
         try:
             if hasattr(iface, "setActiveLayer"):
@@ -2380,15 +2897,48 @@ class ReportChartWidget(QWidget):
             return
         self._selected_category_key = category_key
         self._active_category_keys = [category_key]
-        # Keep click behavior consistent with bars/other visuals:
-        # selecting a point isolates that category inside the chart.
-        self._filtered_category_key = category_key
-        selection_item = self._selection_payload_from_key(category_key) or dict(target)
+        # A simple click should highlight the category without isolating the
+        # origin chart; explicit filter actions still use _filter_chart_to_category.
+        self._filtered_category_key = ""
+        selection_item = self._selection_item_for_target(target)
         if isinstance(selection_item, dict):
-            self.selectionChanged.emit(self._selection_context_for_item(selection_item))
+            self.selectionChanged.emit(self._selection_context_for_item(selection_item, interaction_action="highlight"))
         else:
             self.selectionChanged.emit(selection_item)
         self._apply_category_selection(target, zoom=zoom)
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="selection")
+
+    def _isolate_category_target(self, target: Dict[str, object], zoom: bool = False):
+        category_key = str(target.get("key") or "")
+        if not category_key:
+            self._clear_chart_selection_feedback(emit_signal=True)
+            return
+        self._selected_category_key = category_key
+        self._active_category_keys = [category_key]
+        self._filtered_category_key = category_key
+        selection_item = self._selection_item_for_target(target)
+        if isinstance(selection_item, dict):
+            self.selectionChanged.emit(self._selection_context_for_item(selection_item, interaction_action="isolate"))
+        else:
+            self.selectionChanged.emit(selection_item)
+        self._apply_category_selection(target, zoom=zoom)
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="filter")
+
+    def _filter_related_charts_to_category(self, target: Dict[str, object]):
+        category_key = str(target.get("key") or "")
+        if not category_key:
+            self._clear_chart_selection_feedback(emit_signal=True)
+            return
+        self._selected_category_key = category_key
+        self._active_category_keys = [category_key]
+        self._filtered_category_key = ""
+        selection_item = self._selection_item_for_target(target)
+        if isinstance(selection_item, dict):
+            self.selectionChanged.emit(self._selection_context_for_item(selection_item, interaction_action="filter"))
+        else:
+            self.selectionChanged.emit(selection_item)
         self._start_interaction_animation("selection")
         self._rerender_chart(transition="selection")
 
@@ -2399,9 +2949,9 @@ class ReportChartWidget(QWidget):
         self._filtered_category_key = category_key
         self._selected_category_key = category_key
         self._active_category_keys = [category_key]
-        selection_item = self._selection_payload_from_key(category_key) or dict(target)
+        selection_item = self._selection_item_for_target(target)
         if isinstance(selection_item, dict):
-            self.selectionChanged.emit(self._selection_context_for_item(selection_item))
+            self.selectionChanged.emit(self._selection_context_for_item(selection_item, interaction_action="filter"))
         else:
             self.selectionChanged.emit(selection_item)
         self._start_interaction_animation("selection")
@@ -2414,6 +2964,17 @@ class ReportChartWidget(QWidget):
         self._start_interaction_animation("selection")
         self._rerender_chart(transition="filter")
 
+    def _clear_selection_layer(self):
+        if not self._map_selection_from_chart_interaction:
+            return
+        try:
+            layer = self._selection_layer()
+            if layer is not None:
+                layer.removeSelection()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self._map_selection_from_chart_interaction = False
+
     def _clear_chart_selection_feedback(self, emit_signal: bool = False):
         if not (self._selected_category_key or self._active_category_keys or self._filtered_category_key or self._hovered_category_key):
             if emit_signal:
@@ -2423,16 +2984,27 @@ class ReportChartWidget(QWidget):
         self._active_category_keys = []
         self._filtered_category_key = ""
         self._hovered_category_key = ""
-        try:
-            layer = self._selection_layer()
-            if layer is not None:
-                layer.removeSelection()
-        except Exception:
-            log_exception("falha opcional ignorada")
+        self._clear_selection_layer()
         if emit_signal:
             self.selectionChanged.emit(None)
         self._start_interaction_animation("selection")
         self._rerender_chart(transition="selection")
+
+    def _clear_chart_selection_only(self, emit_signal: bool = False):
+        if not (self._selected_category_key or self._active_category_keys or self._hovered_category_key):
+            if emit_signal:
+                self.selectionChanged.emit(None)
+            return
+        self._selected_category_key = ""
+        self._active_category_keys = []
+        self._hovered_category_key = ""
+        if emit_signal:
+            self.selectionChanged.emit(None)
+        self._start_interaction_animation("selection")
+        self._rerender_chart(transition="selection")
+
+    def _select_category_on_map(self, target: Dict[str, object], zoom: bool = False):
+        self._apply_category_selection(target, zoom=zoom)
 
     def _copy_category_value(self, target: Dict[str, object]):
         try:
@@ -2450,36 +3022,50 @@ class ReportChartWidget(QWidget):
         clipboard.setText(f"{category_text}: {value_text}".strip(": "))
 
     def _build_category_context_menu(self, global_pos, target: Dict[str, object]):
-        menu = QMenu(self)
+        menu = apply_walker_menu(QMenu(self))
         can_select = self._supports_map_selection(target)
+
+        highlight_action = QAction(_rt("Destacar categoria"), menu)
+        highlight_action.triggered.connect(lambda checked=False: self._activate_category_target(target, zoom=False))
+        menu.addAction(highlight_action)
+
+        filter_action = QAction(_rt("Filtrar por esta categoria"), menu)
+        filter_action.triggered.connect(lambda checked=False: self._filter_related_charts_to_category(target))
+        menu.addAction(filter_action)
+
+        isolate_action = QAction(_rt("Isolar somente esta categoria"), menu)
+        isolate_action.triggered.connect(lambda checked=False: self._isolate_category_target(target, zoom=False))
+        menu.addAction(isolate_action)
+
+        menu.addSeparator()
 
         select_action = QAction(_rt("Selecionar no mapa"), menu)
         select_action.setEnabled(can_select)
-        select_action.triggered.connect(lambda checked=False: self._activate_category_target(target, zoom=False))
+        select_action.triggered.connect(lambda checked=False: self._select_category_on_map(target, zoom=False))
         menu.addAction(select_action)
 
         zoom_action = QAction(_rt("Zoom na seleção"), menu)
         zoom_action.setEnabled(can_select)
-        zoom_action.triggered.connect(lambda checked=False: self._activate_category_target(target, zoom=True))
+        zoom_action.triggered.connect(lambda checked=False: self._select_category_on_map(target, zoom=True))
         menu.addAction(zoom_action)
 
-        filter_action = QAction(_rt("Filtrar por esta categoria"), menu)
-        filter_action.triggered.connect(lambda checked=False: self._filter_chart_to_category(target))
-        menu.addAction(filter_action)
+        menu.addSeparator()
 
         copy_action = QAction(_rt("Copiar categoria/valor"), menu)
         copy_action.triggered.connect(lambda checked=False: self._copy_category_value(target))
         menu.addAction(copy_action)
 
+        menu.addSeparator()
+
+        if self._active_category_keys or self._selected_category_key:
+            clear_selection_action = QAction(_rt("Limpar seleção"), menu)
+            clear_selection_action.triggered.connect(lambda checked=False: self._clear_chart_selection_only(emit_signal=True))
+            menu.addAction(clear_selection_action)
+
         if self._filtered_category_key:
             clear_filter_action = QAction(_rt("Limpar filtro do gráfico"), menu)
             clear_filter_action.triggered.connect(self._clear_chart_filter)
             menu.addAction(clear_filter_action)
-
-        if self._active_category_keys or self._selected_category_key:
-            clear_selection_action = QAction(_rt("Limpar destaque do gráfico"), menu)
-            clear_selection_action.triggered.connect(lambda checked=False: self._clear_chart_selection_feedback(emit_signal=True))
-            menu.addAction(clear_selection_action)
 
         menu.exec_(global_pos)
 
@@ -2509,7 +3095,7 @@ class ReportChartWidget(QWidget):
                     "value": numeric_value,
                     "raw_category": raw_category,
                     "key": category_key,
-                    "feature_ids": [int(fid) for fid in list(feature_ids or []) if fid is not None],
+                    "feature_ids": [safe_id for fid in list(feature_ids or []) if fid is not None and (safe_id := _safe_int(fid)) is not None],
                     "x_value": float(x_values[index]) if index < len(x_values) else float(index),
                     "size_value": float(size_values[index]) if index < len(size_values) else 1.0,
                     "series_label": str(series_labels[index]) if index < len(series_labels) else "",
@@ -2520,15 +3106,19 @@ class ReportChartWidget(QWidget):
         external_filter = self._resolve_external_filter()
         if external_filter:
             selected_feature_ids = {
-                int(fid)
+                safe_id
                 for fid in list(external_filter.get("feature_ids") or [])
-                if fid is not None
+                if fid is not None and (safe_id := _safe_int(fid)) is not None
             }
             selected_values = set(self._flatten_values(external_filter.get("values")))
             if selected_feature_ids:
                 filtered_pairs = []
                 for item in pairs:
-                    item_feature_ids = {int(fid) for fid in list(item.get("feature_ids") or []) if fid is not None}
+                    item_feature_ids = {
+                        safe_id
+                        for fid in list(item.get("feature_ids") or [])
+                        if fid is not None and (safe_id := _safe_int(fid)) is not None
+                    }
                     if item_feature_ids.intersection(selected_feature_ids):
                         filtered_pairs.append(item)
                 if filtered_pairs:
@@ -2550,6 +3140,10 @@ class ReportChartWidget(QWidget):
         if self._filtered_category_key:
             filtered_pairs = [item for item in pairs if str(item.get("key") or "") == self._filtered_category_key]
             pairs = filtered_pairs
+
+        external_highlight = self._resolve_external_highlight()
+        if external_highlight:
+            self._apply_external_highlight_state(pairs, external_highlight)
 
         if self.chart_state.sort_mode == "asc":
             pairs = sorted(pairs, key=lambda item: float(item["value"]))
@@ -2581,11 +3175,11 @@ class ReportChartWidget(QWidget):
         }
         color_rank_total = max(1, len(color_rank_by_key))
 
-        chart_type = self.chart_state.chart_type
-        if not self._supported_chart_types().get(chart_type, False):
-            chart_type = self._default_visual_state(self._payload).chart_type
-            if not self._supported_chart_types().get(chart_type, False):
-                chart_type = "bar"
+        chart_type = self._normalize_chart_type(self.chart_state.chart_type)
+        if chart_type not in self.TYPE_LABELS:
+            chart_type = self._normalize_chart_type(getattr(self._payload, "chart_type", "bar"))
+        if chart_type not in self.TYPE_LABELS:
+            chart_type = "bar"
 
         return {
             "title": self._display_title(self._payload.title),
@@ -2598,6 +3192,7 @@ class ReportChartWidget(QWidget):
             "truncated": bool(self._payload.truncated or dense_truncated),
             "empty": len(pairs) == 0,
             "has_external_filter": bool(external_filter),
+            "has_external_highlight": bool(external_highlight),
             "total": positive_total,
             "items": pairs,
             "color_rank_by_key": color_rank_by_key,
@@ -2619,10 +3214,10 @@ class ReportChartWidget(QWidget):
         if remainder_value <= 0.0:
             return visible_pairs
         other_feature_ids = sorted({
-            int(fid)
+            safe_id
             for item in remainder
             for fid in list(item.get("feature_ids") or [])
-            if fid is not None
+            if fid is not None and (safe_id := _safe_int(fid)) is not None
         })
         aggregated = {
             "category": "Outros",
@@ -2710,6 +3305,13 @@ class ReportChartWidget(QWidget):
                 self._draw_chart_border(painter, chart_rect)
             self._last_render_error_key = ""
         except Exception as exc:
+            log_exception(
+                _rt(
+                    "Falha ao desenhar grafico ({chart_type})",
+                    chart_type=render_payload.get("chart_type", _rt("desconhecido")),
+                ),
+                exc,
+            )
             self._log_render_issue(
                 _rt(
                     "Falha ao desenhar grafico ({chart_type})",
@@ -2717,12 +3319,13 @@ class ReportChartWidget(QWidget):
                 ),
                 exc,
             )
-            self._draw_fallback_state(
-                painter,
-                chart_rect,
-                _rt("Falha ao renderizar visual"),
-                _rt("Tente trocar o tipo do grafico ou ajustar os filtros."),
+            self.setToolTip(
+                _rt(
+                    "Falha ao renderizar visual: {detail}",
+                    detail=f"{type(exc).__name__}: {str(exc)[:180]}",
+                )
             )
+            return
         finally:
             self._paint_context = {}
             self._active_render_payload = None
@@ -3073,24 +3676,33 @@ class ReportChartWidget(QWidget):
         values = list(payload.get("values") or [])
         category = self._clean_label_text(categories[index] if index < len(categories) else "")
         value = values[index] if index < len(values) else 0.0
+        series_labels = list(payload.get("series_labels") or [])
+        series_label = str(series_labels[index]) if index < len(series_labels) else ""
         return {
             "category": category,
+            "display_label": category,
+            "current_text": category,
             "value": float(value),
             "raw_category": category,
             "key": self._category_key(category),
             "feature_ids": [],
+            "series_label": series_label,
+            "legend_label": series_label,
         }
 
     def _register_data_point_region(self, rect: QRectF, item: Dict[str, object]):
+        current_text = str(item.get("current_text") or item.get("display_label") or item.get("category") or "")
         self._register_interactive_region(
             rect,
             "data_point",
             str(item.get("key") or ""),
-            str(item.get("category") or ""),
+            current_text,
             raw_category=item.get("raw_category"),
-            display_label=str(item.get("category") or ""),
+            display_label=str(item.get("display_label") or item.get("category") or ""),
             numeric_value=float(item.get("value") or 0.0),
             feature_ids=list(item.get("feature_ids") or []),
+            series_label=str(item.get("series_label") or ""),
+            legend_label=str(item.get("legend_label") or ""),
         )
 
     def _draw_grid_lines(self, painter: QPainter, chart_rect: QRectF, vertical: bool = False):
@@ -3214,6 +3826,7 @@ class ReportChartWidget(QWidget):
                 self._resolve_item_color(item, index),
                 item,
             )
+            bar_rect = self._grow_horizontal_rect_from_axis(bar_rect, zero_x, item)
             if border_width > 0.0:
                 painter.setPen(QPen(border_color, border_width))
             else:
@@ -3304,6 +3917,7 @@ class ReportChartWidget(QWidget):
                 self._resolve_item_color(item, index),
                 item,
             )
+            bar_rect = self._grow_vertical_rect_from_axis(bar_rect, zero_y, item)
             if border_width > 0.0:
                 painter.setPen(QPen(border_color, border_width))
             else:
@@ -3457,9 +4071,6 @@ class ReportChartWidget(QWidget):
         categories = payload["categories"]
         progress = self._payload_animation_progress(payload)
         reason = self._payload_animation_reason(payload)
-        if len(values) < 2:
-            self._draw_horizontal_bar_chart(painter, rect, payload)
-            return
 
         colors = self._palette_colors(len(values), "area" if area_fill else "line")
         main_color = colors[0]
@@ -3484,7 +4095,7 @@ class ReportChartWidget(QWidget):
         steps = max(1, len(values) - 1)
         points = []
         for index, value in enumerate(values):
-            x = chart_rect.left() + (chart_rect.width() * index / steps)
+            x = chart_rect.center().x() if len(values) == 1 else chart_rect.left() + (chart_rect.width() * index / steps)
             y = chart_rect.bottom() - chart_rect.height() * value_scale_ratio(value, min_value, max_value)
             points.append(QPointF(x, y))
 
@@ -3518,7 +4129,7 @@ class ReportChartWidget(QWidget):
             radius = self._marker_radius_value(level, progress)
             if point.x() > reveal_x + radius:
                 continue
-            if show_markers:
+            if show_markers or len(points) == 1:
                 if border_width > 0.0:
                     painter.setPen(QPen(border_color, border_width))
                 else:
@@ -3909,6 +4520,7 @@ class ReportChartWidget(QWidget):
 
     def _draw_matrix_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         rows, series, matrix = self._series_matrix(payload)
+        payload_items = list(payload.get("items") or [])
         progress = self._payload_animation_progress(payload)
         reason = self._payload_animation_reason(payload)
         if not rows:
@@ -3922,13 +4534,21 @@ class ReportChartWidget(QWidget):
         show_total = composite and len(headers) > 1
         if show_total:
             headers = headers + ["Total"]
+        source_headers = list(series or [""])
+        if not source_headers:
+            source_headers = [""]
+        display_headers = [str(label or payload.get("value_label") or "Valor").strip() or "Valor" for label in source_headers]
 
         frame = self._chart_surface(rect, 6, 4, 6, 6)
         painter.save()
         if reason in {"entry", "type"}:
             painter.setOpacity(0.58 + 0.42 * progress)
-        self._draw_surface_card(painter, frame, 12)
-        painter.setClipRect(frame.adjusted(3, 3, -3, -3))
+        if bool(getattr(self.chart_state, "show_background", True)):
+            painter.fillRect(frame, self._surface_fill_color("#FFFFFF"))
+        painter.setPen(QPen(QColor("#D7DCE3" if not _is_dark_theme() else "#334155"), 1.0))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(frame)
+        painter.setClipRect(frame.adjusted(1, 1, -1, -1))
 
         if _is_dark_theme():
             palette = {
@@ -3969,48 +4589,95 @@ class ReportChartWidget(QWidget):
         total_font.setBold(True)
         metrics = QFontMetrics(font)
 
+        row_feature_ids: Dict[str, set[int]] = {}
+        cell_feature_ids: Dict[tuple[str, str], set[int]] = {}
+        row_related_keys: set[str] = set()
+        cell_related_keys: set[tuple[str, str]] = set()
+        selected_keys = self._selected_category_keys()
+        highlight_data = self._resolve_external_highlight()
+        for index, raw_item in enumerate(payload_items):
+            item = self._payload_item(payload, index)
+            parts = self._category_parts(item)
+            row_label = parts[0] if parts else str(item.get("category") or f"Item {index + 1}")
+            series_label = parts[1] if len(parts) > 1 else ""
+            feature_ids = {safe_id for fid in list(item.get("feature_ids") or []) if fid is not None and (safe_id := _safe_int(fid)) is not None}
+            row_feature_ids.setdefault(row_label, set()).update(feature_ids)
+            cell_feature_ids.setdefault((row_label, series_label), set()).update(feature_ids)
+            if self._item_matches_highlight_context(item, highlight_data) or (str(item.get("key") or "") in selected_keys):
+                row_related_keys.add(row_label)
+                cell_related_keys.add((row_label, series_label))
+
+        row_totals: Dict[str, float] = {}
+        column_totals: Dict[str, float] = {header: 0.0 for header in source_headers}
+        total_feature_ids: set[int] = set()
+        for row_label in rows:
+            row_total = 0.0
+            for header in source_headers:
+                value = float(matrix.get(row_label, {}).get(header, 0.0))
+                row_total += value
+                column_totals[header] = column_totals.get(header, 0.0) + value
+                total_feature_ids.update(cell_feature_ids.get((row_label, header), set()))
+            row_totals[row_label] = row_total
+            total_feature_ids.update(row_feature_ids.get(row_label, set()))
+
         row_header_width = min(
             max(142.0, max((metrics.horizontalAdvance(str(row)) for row in rows), default=124) + 28),
             frame.width() * 0.36,
         )
         header_h = max(28.0, float(self._scaled_size(27, minimum=24)))
-        available_h = max(64.0, frame.height() - header_h - 18.0)
-        row_h = max(24.0, min(36.0, available_h / max(1, len(rows))))
+        row_h = max(24.0, min(30.0, float(self._scaled_size(26, minimum=24))))
+        total_row_h = row_h
+        body_top = frame.top() + header_h + 8.0
+        body_bottom = frame.bottom() - total_row_h - 2.0
+        available_body_h = max(0.0, body_bottom - body_top)
+        visible_row_count = max(1, int(available_body_h // row_h) if available_body_h > 0 else 1)
+        scrollbar_width = self._matrix_scrollbar_width()
+        scrollbar_needed = len(rows) > visible_row_count
+        table_frame = QRectF(frame)
+        if scrollbar_needed:
+            table_frame.setRight(table_frame.right() - (scrollbar_width + 4))
         column_count = max(1, len(headers))
-        cell_width = max(74.0, (frame.width() - row_header_width - 20.0) / column_count)
+        cell_width = max(74.0, (table_frame.width() - row_header_width - 20.0) / column_count)
 
-        top_band = QRectF(frame.left() + 10, frame.top() + 8, frame.width() - 20, 2)
+        top_band = QRectF(table_frame.left() + 10, frame.top() + 8, max(0.0, table_frame.width() - 20), 2)
         painter.fillRect(top_band, palette["band"])
 
         painter.setFont(header_font)
         painter.setPen(QPen(palette["header_text"]))
         painter.drawText(
-            QRectF(frame.left() + 10, frame.top() + 12, row_header_width - 16, header_h - 6),
+            QRectF(table_frame.left() + 10, frame.top() + 12, row_header_width - 16, header_h - 6),
             Qt.AlignLeft | Qt.AlignVCenter,
             str(payload.get("value_label") or "Matrix"),
         )
 
         for col_index, header in enumerate(headers):
-            x = frame.left() + row_header_width + 10 + col_index * cell_width
+            x = table_frame.left() + row_header_width + 10 + col_index * cell_width
             header_rect = QRectF(x, frame.top() + 8, cell_width - 2, header_h)
             is_total_header = header == "Total"
             header_fill = palette["total_fill_alt"] if is_total_header else (palette["header_fill_alt"] if col_index % 2 == 0 else palette["header_fill"])
             painter.setPen(QPen(palette["border"], 0.9))
             painter.setBrush(header_fill)
-            painter.drawRoundedRect(header_rect, 4, 4)
+            painter.drawRect(header_rect)
             painter.setPen(QPen(palette["total_header_text"] if is_total_header else palette["header_text"]))
             painter.setFont(header_font if is_total_header else font)
             painter.drawText(header_rect.adjusted(8, 0, -8, 0), Qt.AlignLeft | Qt.AlignVCenter, header)
 
-        row_count = max(1, len(rows))
-        for row_index, row_label in enumerate(rows):
-            staged = self._staggered_progress(progress, row_index, row_count, reason)
+        row_offset = 0
+        if scrollbar_needed:
+            scrollbar_rect = QRectF(table_frame.right() + 2, body_top, scrollbar_width, max(24.0, available_body_h))
+            row_offset = self._sync_matrix_scrollbar(scrollbar_rect, visible_row_count, len(rows))
+        else:
+            self._sync_matrix_scrollbar(QRectF(), visible_row_count, len(rows))
+
+        display_rows = rows[row_offset : row_offset + visible_row_count]
+        display_row_count = max(1, len(display_rows))
+        selection_active = bool(self._selected_category_key or self._active_category_keys or self._filtered_category_key or highlight_data)
+        for local_row_index, row_label in enumerate(display_rows):
+            staged = self._staggered_progress(progress, row_offset + local_row_index, display_row_count, reason)
             if reason in {"entry", "type"} and staged <= 0.01:
                 continue
-            row_opacity = (0.84 + 0.16 * staged) if reason in {"entry", "type"} else 1.0
-            painter.setOpacity(row_opacity)
-            y = frame.top() + header_h + 8 + row_index * row_h
-            if y > frame.bottom() - row_h:
+            y = body_top + local_row_index * row_h
+            if y > body_bottom - row_h:
                 break
 
             row_item = {
@@ -4018,14 +4685,23 @@ class ReportChartWidget(QWidget):
                 "raw_category": row_label,
                 "key": self._category_key(row_label),
                 "value": 0.0,
-                "feature_ids": [],
+                "feature_ids": sorted(row_feature_ids.get(row_label, set())),
             }
-            base_row_fill = palette["row_fill_alt"] if row_index % 2 else palette["row_fill"]
+            row_related = row_label in row_related_keys or str(row_item.get("key") or "") in selected_keys
+            row_opacity = (0.84 + 0.16 * staged) if reason in {"entry", "type"} else 1.0
+            if selection_active:
+                row_opacity = max(0.65, min(1.0, 1.0 if row_related else 0.76))
+            painter.setOpacity(row_opacity)
+            base_row_fill = palette["row_fill_alt"] if (row_offset + local_row_index) % 2 else palette["row_fill"]
             row_fill, row_border, row_border_w, _ = self._item_interaction_style(QColor(base_row_fill), row_item)
-            row_rect = QRectF(frame.left() + 10, y, row_header_width - 12, row_h)
+            if selection_active and row_related:
+                row_fill = self._blend_color(row_fill, QColor("#C4B5FD" if _is_dark_theme() else "#DDD6FE"), 0.18)
+                row_border = self._blend_color(row_border, QColor("#6D28D9" if _is_dark_theme() else "#7C3AED"), 0.22)
+                row_border_w = max(row_border_w, 1.15)
+            row_rect = QRectF(table_frame.left() + 10, y, row_header_width - 12, row_h)
             painter.setPen(QPen(row_border, max(0.8, row_border_w)))
             painter.setBrush(row_fill)
-            painter.drawRoundedRect(row_rect, 4, 4)
+            painter.drawRect(row_rect)
             painter.setFont(font)
             painter.setPen(QPen(palette["value_text"]))
             painter.drawText(
@@ -4041,21 +4717,36 @@ class ReportChartWidget(QWidget):
                         value = sum(float(matrix.get(row_label, {}).get(series_label, 0.0)) for series_label in series)
                     else:
                         value = float(matrix.get(row_label, {}).get(header, 0.0))
+                    cell_key = (row_label, header)
                     cell_item = {
                         "category": f"{row_label} / {header}",
+                        "display_label": f"{row_label} / {header}",
+                        "current_text": f"{row_label} / {header}",
                         "raw_category": (row_label, header),
                         "key": self._category_key((row_label, header)),
                         "value": value,
-                        "feature_ids": [],
+                        "feature_ids": sorted(cell_feature_ids.get(cell_key, set())),
+                        "series_label": str(header if header != "Total" else ""),
+                        "legend_label": str(header if header != "Total" else ""),
                     }
-                    base_fill = palette["total_fill"] if (show_total and header == "Total") else (palette["row_fill_alt"] if row_index % 2 else palette["row_fill"])
+                    base_fill = palette["total_fill"] if (show_total and header == "Total") else (palette["row_fill_alt"] if (row_offset + local_row_index) % 2 else palette["row_fill"])
                     cell_fill, cell_border, cell_border_w, _ = self._item_interaction_style(QColor(base_fill), cell_item)
-                    cell_rect = QRectF(frame.left() + 10 + row_header_width + col_index * cell_width, y, cell_width, row_h)
+                    cell_related = (row_label, header) in cell_related_keys or str(cell_item.get("key") or "") in selected_keys
+                    if selection_active:
+                        cell_opacity = 1.0 if cell_related else 0.74
+                        painter.setOpacity(max(0.65, min(1.0, cell_opacity if reason not in {"entry", "type"} else row_opacity * cell_opacity)))
+                    if selection_active and cell_related:
+                        cell_fill = self._blend_color(cell_fill, QColor("#C4B5FD" if _is_dark_theme() else "#E9D5FF"), 0.18)
+                        cell_border = self._blend_color(cell_border, QColor("#6D28D9" if _is_dark_theme() else "#8B5CF6"), 0.22)
+                        cell_border_w = max(cell_border_w, 1.1)
+                    cell_rect = QRectF(table_frame.left() + 10 + row_header_width + col_index * cell_width, y, cell_width, row_h)
                     painter.setPen(QPen(cell_border, max(0.75, cell_border_w * 0.85)))
                     painter.setBrush(cell_fill)
-                    painter.drawRoundedRect(cell_rect, 4, 4)
+                    painter.drawRect(cell_rect)
                     painter.setFont(total_font if (show_total and header == "Total") else font)
                     text_opacity = 0.92 + 0.08 * progress if reason in {"data", "filter"} else 1.0
+                    if selection_active:
+                        text_opacity = 1.0 if cell_related or row_related else 0.86
                     painter.setOpacity(row_opacity * text_opacity)
                     painter.setPen(QPen(palette["value_text"] if (show_total and header == "Total") else palette["value_accent"]))
                     painter.drawText(
@@ -4067,30 +4758,146 @@ class ReportChartWidget(QWidget):
                     self._register_data_point_region(cell_rect, cell_item)
             else:
                 value = float(matrix.get(row_label, {}).get("", 0.0))
+                row_total = row_totals.get(row_label, value)
+                body_width = max(148.0, table_frame.width() - row_header_width - 20.0)
+                data_width = min(max(74.0, body_width * 0.56), max(74.0, body_width - 74.0))
+                total_width = max(74.0, body_width - data_width)
+                data_cell_rect = QRectF(table_frame.left() + 10 + row_header_width, y, data_width, row_h)
+                total_cell_rect = QRectF(data_cell_rect.right(), y, total_width, row_h)
+
                 cell_item = {
                     "category": row_label,
+                    "display_label": row_label,
+                    "current_text": row_label,
                     "raw_category": row_label,
                     "key": self._category_key(row_label),
                     "value": value,
-                    "feature_ids": [],
+                    "feature_ids": sorted(row_feature_ids.get(row_label, set())),
                 }
-                base_fill = palette["row_fill_alt"] if row_index % 2 else palette["row_fill"]
+                total_item = {
+                    "category": "Total",
+                    "display_label": "Total",
+                    "current_text": "Total",
+                    "raw_category": "Total",
+                    "key": self._category_key("Total"),
+                    "value": row_total,
+                    "feature_ids": sorted(row_feature_ids.get(row_label, set())),
+                }
+                base_fill = palette["row_fill_alt"] if (row_offset + local_row_index) % 2 else palette["row_fill"]
                 cell_fill, cell_border, cell_border_w, _ = self._item_interaction_style(QColor(base_fill), cell_item)
-                cell_rect = QRectF(frame.left() + 10 + row_header_width, y, frame.width() - row_header_width - 20, row_h)
+                total_fill, total_border, total_border_w, _ = self._item_interaction_style(QColor(palette["total_fill"]), total_item)
+                cell_related = row_label in row_related_keys or str(cell_item.get("key") or "") in selected_keys
+                if selection_active:
+                    painter.setOpacity(1.0 if cell_related else 0.76)
+                    if cell_related:
+                        cell_fill = self._blend_color(cell_fill, QColor("#C4B5FD" if _is_dark_theme() else "#E9D5FF"), 0.18)
+                        cell_border = self._blend_color(cell_border, QColor("#6D28D9" if _is_dark_theme() else "#8B5CF6"), 0.22)
+                        cell_border_w = max(cell_border_w, 1.1)
                 painter.setPen(QPen(cell_border, max(0.75, cell_border_w * 0.85)))
                 painter.setBrush(cell_fill)
-                painter.drawRoundedRect(cell_rect, 4, 4)
+                painter.drawRect(data_cell_rect)
                 painter.setFont(font)
                 text_opacity = 0.92 + 0.08 * progress if reason in {"data", "filter"} else 1.0
+                if selection_active:
+                    text_opacity = 1.0 if cell_related else 0.86
                 painter.setOpacity(row_opacity * text_opacity)
                 painter.setPen(QPen(palette["value_text"]))
                 painter.drawText(
-                    cell_rect.adjusted(8, 0, -8, 0),
+                    data_cell_rect.adjusted(8, 0, -8, 0),
                     Qt.AlignVCenter | Qt.AlignRight,
                     self._format_value(value) if not math.isclose(value, 0.0, rel_tol=0.0, abs_tol=1e-9) else "",
                 )
                 painter.setOpacity(row_opacity)
-                self._register_data_point_region(cell_rect, cell_item)
+                self._register_data_point_region(data_cell_rect, cell_item)
+
+                painter.setOpacity(1.0 if row_label in row_related_keys else 0.92)
+                painter.setPen(QPen(total_border, max(0.8, total_border_w * 0.88)))
+                painter.setBrush(total_fill)
+                painter.drawRect(total_cell_rect)
+                painter.setFont(total_font)
+                painter.setPen(QPen(palette["total_header_text"]))
+                painter.drawText(
+                    total_cell_rect.adjusted(8, 0, -8, 0),
+                    Qt.AlignVCenter | Qt.AlignRight,
+                    self._format_value(row_total) if not math.isclose(row_total, 0.0, rel_tol=0.0, abs_tol=1e-9) else "",
+                )
+                painter.setOpacity(row_opacity)
+                self._register_data_point_region(total_cell_rect, total_item)
+
+        total_row_y = frame.bottom() - total_row_h - 2.0
+        grand_total = sum(row_totals.values()) if row_totals else 0.0
+        body_width = max(148.0, table_frame.width() - row_header_width - 20.0)
+        data_width = min(max(74.0, body_width * 0.56), max(74.0, body_width - 74.0))
+        total_width = max(74.0, body_width - data_width)
+        total_row_rect = QRectF(table_frame.left() + 10, total_row_y, row_header_width - 12, total_row_h)
+        painter.setOpacity(1.0)
+        painter.setPen(QPen(palette["border"], 1.0))
+        painter.setBrush(QColor(palette["total_fill_alt"]))
+        painter.drawRect(total_row_rect)
+        painter.setFont(total_font)
+        painter.setPen(QPen(palette["total_header_text"]))
+        painter.drawText(total_row_rect.adjusted(8, 0, -8, 0), Qt.AlignVCenter | Qt.AlignLeft, "Total")
+        self._register_data_point_region(
+            total_row_rect,
+            {
+                "category": "Total",
+                "raw_category": "Total",
+                "key": self._category_key("Total"),
+                "value": grand_total,
+                "feature_ids": sorted(total_feature_ids),
+            },
+        )
+
+        for col_index, header_key in enumerate(source_headers):
+            x = table_frame.left() + 10 + row_header_width + col_index * data_width
+            cell_rect = QRectF(x, total_row_y, data_width, total_row_h)
+            header_value = column_totals.get(header_key, 0.0)
+            painter.setPen(QPen(palette["border"], 0.85))
+            painter.setBrush(QColor(palette["total_fill"]))
+            painter.drawRect(cell_rect)
+            painter.setFont(total_font)
+            painter.setPen(QPen(palette["total_header_text"]))
+            painter.drawText(
+                cell_rect.adjusted(8, 0, -8, 0),
+                Qt.AlignVCenter | Qt.AlignRight,
+                self._format_value(header_value) if not math.isclose(header_value, 0.0, rel_tol=0.0, abs_tol=1e-9) else "",
+            )
+            self._register_data_point_region(
+                cell_rect,
+                {
+                    "category": f"Total / {display_headers[col_index]}",
+                    "display_label": f"Total / {display_headers[col_index]}",
+                    "current_text": f"Total / {display_headers[col_index]}",
+                    "raw_category": ("Total", header_key),
+                    "key": self._category_key(("Total", header_key)),
+                    "value": header_value,
+                    "feature_ids": sorted(total_feature_ids),
+                },
+            )
+
+        total_sum_rect = QRectF(table_frame.left() + 10 + row_header_width + len(source_headers) * data_width, total_row_y, total_width, total_row_h)
+        painter.setPen(QPen(palette["border"], 0.95))
+        painter.setBrush(QColor(palette["total_fill"]))
+        painter.drawRect(total_sum_rect)
+        painter.setFont(total_font)
+        painter.setPen(QPen(palette["total_header_text"]))
+        painter.drawText(
+            total_sum_rect.adjusted(8, 0, -8, 0),
+            Qt.AlignVCenter | Qt.AlignRight,
+            self._format_value(grand_total) if not math.isclose(grand_total, 0.0, rel_tol=0.0, abs_tol=1e-9) else "",
+        )
+        self._register_data_point_region(
+            total_sum_rect,
+            {
+                "category": "Total / Total",
+                "display_label": "Total / Total",
+                "current_text": "Total / Total",
+                "raw_category": ("Total", "Total"),
+                "key": self._category_key(("Total", "Total")),
+                "value": grand_total,
+                "feature_ids": sorted(total_feature_ids),
+            },
+        )
 
         painter.setOpacity(1.0)
         painter.restore()
@@ -4173,17 +4980,13 @@ class ReportChartWidget(QWidget):
                 x = group_start + series_index * (bar_width + bar_gap)
                 y = chart_rect.bottom() - height
                 bar_rect = QRectF(x, y, bar_width, height)
+                item = self._series_item_payload(row_label, series_label, value)
                 color = QColor(colors[series_index % len(colors)])
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(color)
+                fill_color, border_color, border_width, level = self._item_interaction_style(color, item)
+                bar_rect = self._grow_vertical_rect_from_axis(bar_rect, chart_rect.bottom(), item)
+                painter.setPen(QPen(border_color, max(0.85, border_width)))
+                painter.setBrush(fill_color)
                 painter.drawRoundedRect(bar_rect, 4, 4)
-                item = {
-                    "category": f"{row_label} / {series_label}" if series_label else row_label,
-                    "raw_category": (row_label, series_label) if series_label else row_label,
-                    "key": self._category_key((row_label, series_label)),
-                    "value": value,
-                    "feature_ids": [],
-                }
                 self._register_data_point_region(bar_rect.adjusted(-2, -2, 2, 2), item)
                 annotation = self._format_value(value) if self.chart_state.show_values and value else ""
                 if annotation:
@@ -4226,21 +5029,17 @@ class ReportChartWidget(QWidget):
                 painter.drawText(QRectF(rect.left(), y - 2, 140, bar_height + 4), Qt.AlignVCenter | Qt.AlignLeft, metrics.elidedText(row_label, Qt.ElideRight, 132))
                 available_width = chart_rect.width()
                 cursor = x
-                total_value = row_total if normalize else max(1.0, max_value := max([row_total, *values, 1.0]))
+                total_value = row_total if normalize else max([row_total, *values, 1.0])
                 for series_index, series_label in enumerate(series):
                     value = max(0.0, values[series_index])
                     width = available_width * (value / row_total if normalize else value / total_value)
                     segment = QRectF(cursor, y, width, bar_height)
-                    painter.setPen(Qt.NoPen)
-                    painter.setBrush(colors[series_index % len(colors)])
+                    item = self._series_item_payload(row_label, series_label, value)
+                    fill_color, border_color, border_width, _level = self._item_interaction_style(colors[series_index % len(colors)], item)
+                    segment = self._grow_horizontal_rect_from_axis(segment, cursor, item)
+                    painter.setPen(QPen(border_color, max(0.7, border_width * 0.82)))
+                    painter.setBrush(fill_color)
                     painter.drawRoundedRect(segment, 4, 4)
-                    item = {
-                        "category": f"{row_label} / {series_label}" if series_label else row_label,
-                        "raw_category": (row_label, series_label) if series_label else row_label,
-                        "key": self._category_key((row_label, series_label)),
-                        "value": value,
-                        "feature_ids": [],
-                    }
                     self._register_data_point_region(segment.adjusted(-2, -2, 2, 2), item)
                     cursor += width
                 label_rect = QRectF(chart_rect.right() + 4, y - 2, 72, bar_height + 4)
@@ -4264,16 +5063,12 @@ class ReportChartWidget(QWidget):
                     height = chart_rect.height() * ((value / row_total) if normalize else (value / max_total))
                     y = bottom - height
                     segment = QRectF(x, y, bar_width, height)
-                    painter.setPen(Qt.NoPen)
-                    painter.setBrush(colors[series_index % len(colors)])
+                    item = self._series_item_payload(row_label, series_label, value)
+                    fill_color, border_color, border_width, _level = self._item_interaction_style(colors[series_index % len(colors)], item)
+                    segment = self._grow_vertical_rect_from_axis(segment, bottom, item)
+                    painter.setPen(QPen(border_color, max(0.7, border_width * 0.82)))
+                    painter.setBrush(fill_color)
                     painter.drawRoundedRect(segment, 4, 4)
-                    item = {
-                        "category": f"{row_label} / {series_label}" if series_label else row_label,
-                        "raw_category": (row_label, series_label) if series_label else row_label,
-                        "key": self._category_key((row_label, series_label)),
-                        "value": value,
-                        "feature_ids": [],
-                    }
                     self._register_data_point_region(segment.adjusted(-2, -2, 2, 2), item)
                     bottom = y
                 painter.setPen(QPen(QColor("#1F2937")))
@@ -4330,6 +5125,7 @@ class ReportChartWidget(QWidget):
             item = self._payload_item(payload, index)
             base_fill = bar_color if index % 2 == 0 else bar_color.lighter(120)
             fill, border, border_width, level = self._item_interaction_style(base_fill, item)
+            bar_rect = self._grow_vertical_rect_from_axis(bar_rect, zero_y, item)
             if border_width > 0.0:
                 painter.setPen(QPen(border, border_width))
             else:
@@ -4395,9 +5191,6 @@ class ReportChartWidget(QWidget):
         y_values = [float(item.get("value") or values[index] or 0.0) for index, item in enumerate(items)]
         progress = self._payload_animation_progress(payload)
         reason = self._payload_animation_reason(payload)
-        if len(values) < 2:
-            self._draw_card_view(painter, rect, payload)
-            return
 
         frame = self._chart_surface(rect, 6, 6, 6, 6)
         chart_rect = frame.adjusted(24, 24, -20, -34)
@@ -4483,7 +5276,6 @@ class ReportChartWidget(QWidget):
         values = [max(0.0, float(item.get("value") or 0.0)) for item in items]
         total = sum(values) or 1.0
         frame = self._chart_surface(rect, 6, 4, 6, 6)
-        colors = self._palette_colors(len(items), "purple")
         font = harmonize_font_family(QFont(self.font()))
         font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
         metrics = QFontMetrics(font)
@@ -4603,18 +5395,19 @@ class ReportChartWidget(QWidget):
             left = chart_rect.left() + slot_width * index + (slot_width - bar_width) / 2
             top_y = chart_rect.bottom() - (max(start, visible_end) - minimum) * scale
             bottom_y = chart_rect.bottom() - (min(start, visible_end) - minimum) * scale
+            start_y = chart_rect.bottom() - (start - minimum) * scale
             bar_rect = QRectF(left, min(top_y, bottom_y), bar_width, max(7.0, abs(bottom_y - top_y)))
 
             is_total_bar = index == len(values) - 1
             base = total_base if is_total_bar else (positive_base if value >= 0 else negative_base)
             fill, border, border_width, _ = self._item_interaction_style(base, item)
+            bar_rect = self._grow_vertical_rect_from_axis(bar_rect, start_y, item)
             if value < 0 and not is_total_bar:
                 fill = fill.darker(108)
             painter.setPen(QPen(border, max(0.9, border_width)))
             painter.setBrush(fill)
             painter.drawRoundedRect(bar_rect, 5, 5)
 
-            start_y = chart_rect.bottom() - (start - minimum) * scale
             if previous_x is not None and previous_y is not None:
                 painter.setPen(QPen(QColor("#94A3B8"), 1.0, Qt.DotLine))
                 painter.drawLine(QPointF(previous_x, previous_y), QPointF(left + bar_width / 2, start_y))
@@ -4684,7 +5477,6 @@ class ReportChartWidget(QWidget):
         step_h = max(28.0, inner.height() / max(1, len(items)))
         top_width = inner.width() * 0.94
         bottom_width = inner.width() * 0.30
-        colors = self._palette_colors(len(items), "purple")
         font = harmonize_font_family(QFont(self.font()))
         font.setPointSize(self._scaled_size(font.pointSize() - 1, minimum=6))
         metrics = QFontMetrics(font)
@@ -4787,5 +5579,3 @@ class ReportChartWidget(QWidget):
         else:
             text = f"{display_numeric:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return f"{getattr(self.chart_state, 'number_prefix', '') or ''}{text}{unit_suffix}{getattr(self.chart_state, 'number_suffix', '') or ''}"
-
-

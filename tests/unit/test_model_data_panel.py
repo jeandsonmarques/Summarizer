@@ -1,4 +1,5 @@
 from plugin.Summarizer.model_view.model_data_panel import (
+    desired_data_panel_width,
     field_catalog_for_layer,
     field_group_for_def,
     field_is_date_like,
@@ -104,3 +105,60 @@ def test_resolve_layer_field_name_accepts_exact_and_case_insensitive_matches():
     assert resolve_layer_field_name(layer, "Valor") == "Valor"
     assert resolve_layer_field_name(layer, "municipio") == "Municipio"
     assert resolve_layer_field_name(layer, "missing") == ""
+
+
+def test_desired_data_panel_width_follows_fields_not_layer_name(monkeypatch):
+    import plugin.Summarizer.model_view.model_data_panel as model_data_panel
+
+    class FakeMetrics:
+        def __init__(self, _font):
+            pass
+
+        def horizontalAdvance(self, text):
+            return len(str(text)) * 10
+
+    class FakeIconSize:
+        def width(self):
+            return 14
+
+    class FakeItem:
+        def __init__(self, text):
+            self._text = text
+
+        def text(self):
+            return self._text
+
+        def data(self, _role):
+            return ""
+
+    class FakeFieldsList:
+        def __init__(self):
+            self._items = [FakeItem("Empreiteira"), FakeItem("Responsavel")]
+
+        def font(self):
+            return object()
+
+        def count(self):
+            return len(self._items)
+
+        def item(self, index):
+            return self._items[index]
+
+        def iconSize(self):
+            return FakeIconSize()
+
+    class FakeLayerCombo:
+        def currentText(self):
+            return "Acomp. de Execucao-ADS-24-0090-REDE-PROJETO-R2"
+
+    monkeypatch.setattr(model_data_panel, "QFontMetrics", FakeMetrics)
+
+    width = desired_data_panel_width(
+        FakeFieldsList(),
+        FakeLayerCombo(),
+        minimum_width=120,
+        maximum_width=320,
+        default_width=148,
+    )
+
+    assert width == 172

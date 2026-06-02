@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jeandson Marques
+
 from typing import Any, Optional
 
 from ..report_logging import log_warning
@@ -42,3 +45,4 @@ class PivotFormatter:
             else:
                 parts.append(str(value))
         return " / ".join(parts)
+
