@@ -16,4 +16,3 @@ __all__ = [
     "filter_empty_matches",
     "is_meaningful_value",
 ]
-

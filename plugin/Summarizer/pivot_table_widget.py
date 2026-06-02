@@ -151,6 +151,7 @@ from .report_view.pivot import (
 
 from .utils.logging_utils import log_exception
 
+
 class _PivotFilterProxy(QSortFilterProxyModel):
     """Proxy that supports global search plus per-column filters."""
 
@@ -1476,6 +1477,7 @@ class PivotTableWidget(QWidget):
             self._open_spreadsheet_source_menu()
         elif key == "postgres":
             self._open_postgres_source()
+
     def _open_map_layer_source(self):
         self._entry_layer_selection_active = True
         self._set_content_mode(False)

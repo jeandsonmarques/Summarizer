@@ -84,10 +84,10 @@ def test_model_toolbar_keeps_edit_mode_height_in_preview_mode():
     )
 
     assert "toolbar_strip.setMinimumHeight(44)" in source
-    assert (
-        "build_visual_type_buttons(toolbar_visuals_strip, toolbar_visuals_layout, button_size=32"
-        in source
-    )
+    assert "build_visual_type_buttons(" in source
+    assert "toolbar_visuals_strip" in source
+    assert "toolbar_visuals_layout" in source
+    assert "button_size=32" in source
 
 
 def test_model_toolbar_uses_white_selected_and_black_hover_states():

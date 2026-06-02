@@ -528,11 +528,10 @@ def sync_fields_panel_width_to_content(
         else max(
             tools_filters_min_width,
             int(
-                getattr(self, "_tools_builder_width", tools_filters_default_width)
-                or tools_filters_default_width
+                getattr(self, "_tools_builder_width", tools_filters_default_width) or
+                tools_filters_default_width
             ),
         )
     )
     table_width = max(1, total_width - desired_width - builder_width)
     self.analytics_splitter.setSizes([desired_width, builder_width, table_width])
-

@@ -39,5 +39,3 @@ class ReportExportBundle:
     rows: List[Dict[str, Any]] = field(default_factory=list)
     helper_text: str = ""
     value_label: str = ""
-
-

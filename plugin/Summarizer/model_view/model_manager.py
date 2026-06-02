@@ -14,7 +14,6 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QLineEdit,
     QGridLayout,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -341,10 +340,10 @@ class ModelManager:
         for item in self.relationships.values():
             data = item.metadata or {}
             if (
-                data.get("source_table") == source
-                and data.get("target_table") == target
-                and data.get("source_field") == metadata.get("source_field")
-                and data.get("target_field") == metadata.get("target_field")
+                data.get("source_table") == source and
+                data.get("target_table") == target and
+                data.get("source_field") == metadata.get("source_field") and
+                data.get("target_field") == metadata.get("target_field")
             ):
                 self._save_state()
                 try:
@@ -1834,5 +1833,3 @@ class ModelManager:
 
     def _on_zoom_changed(self, value: float):
         self._save_state()
-
-

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QObject, pyqtSignal
@@ -472,4 +472,3 @@ class PresentationMapController(QObject):
             self.stateChanged.emit(bool(active))
         except Exception:
             log_exception("falha ao notificar estado do modo apresentacao")
-

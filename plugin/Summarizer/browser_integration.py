@@ -7,7 +7,7 @@ import json
 from typing import Dict, Iterable, List, Optional
 
 from qgis.PyQt.QtCore import QObject, QSettings, pyqtSignal
-from qgis.PyQt.QtWidgets import QAction, QMessageBox, QWidget, QDialog
+from qgis.PyQt.QtWidgets import QAction, QWidget, QDialog
 
 from qgis.core import (
     Qgis,
@@ -458,10 +458,7 @@ def unregister_browser_provider(provider: Optional[SummarizerBrowserProvider]) -
 
 
 USAGE_NOTES = """
-Notes:
-  - This module registers the Summarizer Browser node and keeps saved/runtime connections synced.
-  - The plugin host should call register_browser_provider() on initGui() and unregister_browser_provider() on unload().
+Notes: -
+  This module registers the Summarizer Browser node and keeps saved/runtime connections synced. -
+  The plugin host should call register_browser_provider() on initGui() and unregister_browser_provider() on unload().
 """
-
-
-

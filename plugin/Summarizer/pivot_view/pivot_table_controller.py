@@ -37,9 +37,9 @@ def compute_dataframe_pivot(widget: Any) -> None:
         return
 
     if (
-        metric is not None
-        and agg_func not in {"count", "min", "max", "unique"}
-        and metric not in self.numeric_candidates
+        metric is not None and
+        agg_func not in {"count", "min", "max", "unique"} and
+        metric not in self.numeric_candidates
     ):
         try:
             df[metric] = pd.to_numeric(df[metric], errors="coerce")
@@ -79,9 +79,9 @@ def compute_dataframe_pivot(widget: Any) -> None:
         else:
             values = None if metric is None else metric
             if (
-                values is not None
-                and agg_func not in {"count", "min", "max", "unique"}
-                and values not in self.numeric_candidates
+                values is not None and
+                agg_func not in {"count", "min", "max", "unique"} and
+                values not in self.numeric_candidates
             ):
                 try:
                     working[values] = pd.to_numeric(working[values], errors="coerce")
@@ -156,4 +156,3 @@ def compute_layer_backed_pivot(
         self._current_pivot_result = None
         self.pivot_df = pd.DataFrame()
         self.status_label.setText(translate("Falha ao calcular a pivot: {exc}", exc=exc))
-

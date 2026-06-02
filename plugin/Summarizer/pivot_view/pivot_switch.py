@@ -14,8 +14,8 @@ def _is_dark_theme() -> bool:
     return (
         str(QSettings().value("Summarizer/uiTheme", "light") or "light")
         .strip()
-        .lower()
-        == "dark"
+        .lower() ==
+        "dark"
     )
 
 
@@ -178,4 +178,3 @@ class PivotSwitch(QWidget):
         painter.setBrush(QColor("#F8FAFC" if _is_dark_theme() else "#FFFFFF"))
         painter.drawEllipse(knob_rect)
         painter.end()
-

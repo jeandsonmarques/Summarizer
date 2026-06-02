@@ -18,7 +18,7 @@ def native_excel_aggregation_code(aggregation: str) -> int:
         "min": -4139,      # xlMin
         "max": -4136,      # xlMax
         "stddev": -4155,   # xlStDev
-        "variance": -4164, # xlVar
+        "variance": -4164,  # xlVar
         "median": -4106,   # fallback: media
         "unique": -4112,   # fallback: contagem
     }
@@ -287,4 +287,3 @@ def try_create_native_excel_pivot_with_controller(
         pivot_config,
         translate=translate,
     )
-

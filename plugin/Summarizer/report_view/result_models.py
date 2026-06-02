@@ -384,4 +384,3 @@ class QueryResult:
     total_value: float = 0.0
     chart_payload: Optional[ChartPayload] = None
     message: str = ""
-

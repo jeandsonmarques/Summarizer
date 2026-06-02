@@ -44,4 +44,3 @@ __all__ = [
     "format_percent_display",
     "format_selection_number",
 ]
-

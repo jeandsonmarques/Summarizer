@@ -73,7 +73,10 @@ def _dark_default(value: str, mapping: dict) -> str:
         return value
     return mapping.get(str(value or "").strip().upper(), value)
 
+
 _MODEL_FIELD_MIME = "application/x-summarizer-model-field"
+
+
 def _icon_from_resource(name: str) -> QIcon:
     base_dir = os.path.dirname(__file__)
     candidate_name = str(name or "").strip()

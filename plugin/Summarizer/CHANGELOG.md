@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.2] - 2026-06-02
+
+- Cleaned Python code style issues reported by the QGIS Plugin Repository validation.
+- Fixed Flake8 W503, W391, E302, and F811 findings where applicable.
+- Kept the release focused on local QGIS summaries, charts, dashboards, model, connections, visualizations, and exports.
+
 ## [0.5.1] - 2026-06-02
 
 - Fixed the plugin icon displayed by the QGIS Plugin Manager by shipping `icon.png` at the plugin root.

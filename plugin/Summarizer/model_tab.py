@@ -16,7 +16,6 @@ from qgis.PyQt.QtWidgets import (
     QFrame,
     QLabel,
     QMenu,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QShortcut,
@@ -94,7 +93,6 @@ from .model_view.model_toolbar import (
 from .model_view.model_theme import (
     _force_model_white_background,
     _is_dark_theme,
-    _model_panel_fields_icon,
     _model_panel_chevron_icon,
     _model_theme_color,
     _model_tinted_svg_icon,
@@ -2293,9 +2291,9 @@ class ModelTab(QWidget):
         if button is None:
             return
         checked = bool(
-            getattr(self, "data_panel", None) is not None
-            and self.data_panel.isVisible()
-            and not getattr(self, "_data_panel_collapsed", False)
+            getattr(self, "data_panel", None) is not None and
+            self.data_panel.isVisible() and
+            not getattr(self, "_data_panel_collapsed", False)
         )
         button.blockSignals(True)
         try:
@@ -2598,8 +2596,8 @@ class ModelTab(QWidget):
         if item is not None:
             binding = item.binding.normalized() if item.binding is not None else None
             selected_type = normalize_chart_type(
-                (binding.chart_type if binding is not None else "")
-                or getattr(item.visual_state, "chart_type", "")
+                (binding.chart_type if binding is not None else "") or
+                getattr(item.visual_state, "chart_type", "")
             )
             if selected_type:
                 return selected_type
@@ -3084,7 +3082,7 @@ class ModelTab(QWidget):
             return
         self._history_undo.append(self._history_current)
         if len(self._history_undo) > self._history_limit:
-            self._history_undo = self._history_undo[-self._history_limit :]
+            self._history_undo = self._history_undo[-self._history_limit:]
         self._history_current = current_snapshot
         self._history_redo.clear()
         self._update_undo_redo_buttons()
@@ -4247,8 +4245,8 @@ class ModelTab(QWidget):
                 target_visual = _MODEL_SIDE_PANEL_COLLAPSED_WIDTH
             elif visual_visible:
                 preferred_visual = int(
-                    getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH)
-                    or _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
+                    getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH) or
+                    _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
                 )
                 target_visual = int(
                     min(max(preferred_visual, _MODEL_VISUAL_SIDE_PANEL_MIN_WIDTH), _MODEL_VISUAL_SIDE_PANEL_MAX_WIDTH)
@@ -4259,8 +4257,8 @@ class ModelTab(QWidget):
                 target_database = _MODEL_SIDE_PANEL_COLLAPSED_WIDTH
             elif database_visible:
                 preferred_database = int(
-                    getattr(self, "_database_panel_width", _MODEL_DATABASE_PANEL_DEFAULT_WIDTH)
-                    or _MODEL_DATABASE_PANEL_DEFAULT_WIDTH
+                    getattr(self, "_database_panel_width", _MODEL_DATABASE_PANEL_DEFAULT_WIDTH) or
+                    _MODEL_DATABASE_PANEL_DEFAULT_WIDTH
                 )
                 target_database = int(
                     min(
@@ -4279,13 +4277,13 @@ class ModelTab(QWidget):
                 target_data = 0
             if visual_visible and not getattr(self, "_visual_side_collapsed", False) and sizes[1] < 180:
                 target_visual = int(
-                    getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH)
-                    or _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
+                    getattr(self, "_visual_side_width", _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH) or
+                    _MODEL_VISUAL_SIDE_PANEL_DEFAULT_WIDTH
                 )
             if database_visible and not getattr(self, "_database_panel_collapsed", False) and sizes[2] < _MODEL_DATABASE_PANEL_MIN_WIDTH:
                 target_database = int(
-                    getattr(self, "_database_panel_width", _MODEL_DATABASE_PANEL_DEFAULT_WIDTH)
-                    or _MODEL_DATABASE_PANEL_DEFAULT_WIDTH
+                    getattr(self, "_database_panel_width", _MODEL_DATABASE_PANEL_DEFAULT_WIDTH) or
+                    _MODEL_DATABASE_PANEL_DEFAULT_WIDTH
                 )
             if data_visible and not getattr(self, "_data_panel_collapsed", False) and sizes[3] < 120:
                 target_data = int(getattr(self, "_data_panel_width", _MODEL_DATA_PANEL_DEFAULT_WIDTH) or _MODEL_DATA_PANEL_DEFAULT_WIDTH)
@@ -4415,6 +4413,7 @@ class ModelTab(QWidget):
         active_canvas = self._active_canvas()
         if hasattr(active_canvas, "set_zoom"):
             active_canvas.set_zoom(zoom_value)
+
     def _sync_zoom_controls(self, percent: int):
         self._syncing_zoom_controls = True
         try:
@@ -4650,8 +4649,8 @@ class ModelTab(QWidget):
             1,
             min(
                 4,
-                (available + _MODEL_RECENT_CARD_GAP)
-                // (_MODEL_RECENT_CARD_WIDTH + _MODEL_RECENT_CARD_GAP),
+                (available + _MODEL_RECENT_CARD_GAP) //
+                (_MODEL_RECENT_CARD_WIDTH + _MODEL_RECENT_CARD_GAP),
             ),
         )
 

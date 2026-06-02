@@ -852,10 +852,10 @@ class DatabaseExplorerPanel(QWidget):
             objects = [
                 obj
                 for obj in group.objects
-                if schema_matches
-                or needle in str(obj.name or "").lower()
-                or needle in str(obj.object_type or "").lower()
-                or needle in str(obj.comment or "").lower()
+                if schema_matches or
+                needle in str(obj.name or "").lower() or
+                needle in str(obj.object_type or "").lower() or
+                needle in str(obj.comment or "").lower()
             ]
             if objects:
                 filtered.append(DatabaseGroup(name=group.name, objects=objects))
@@ -907,8 +907,8 @@ class DatabaseExplorerPanel(QWidget):
         for card in self._cards:
             for row in card.object_rows():
                 if (
-                    row.database_object.schema == database_object.schema
-                    and row.database_object.name == database_object.name
+                    row.database_object.schema == database_object.schema and
+                    row.database_object.name == database_object.name
                 ):
                     row.set_loading(True)
                     row.repaint()
@@ -1026,8 +1026,8 @@ class DatabaseExplorerPanel(QWidget):
     def _connection_key(self, connection_meta: Dict) -> str:
         meta = connection_meta or {}
         return str(
-            meta.get("fingerprint")
-            or "|".join(
+            meta.get("fingerprint") or
+            "|".join(
                 str(meta.get(key) or "")
                 for key in ("driver", "source_driver", "host", "service", "port", "database", "name", "username")
             )

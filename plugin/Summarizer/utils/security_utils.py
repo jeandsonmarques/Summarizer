@@ -118,4 +118,3 @@ __all__ = [
     "reveal_connection_payload",
     "secure_connection_payload",
 ]
-

@@ -1623,6 +1623,3 @@ def apply_widget_translations(root: QWidget, locale_code: str = ""):
                 continue
     except Exception:
         log_exception("falha opcional ignorada")
-
-
-

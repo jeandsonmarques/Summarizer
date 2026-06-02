@@ -60,4 +60,3 @@ def runtime_state_file(filename: str, app_name: str = APP_NAME) -> Path:
 
 
 __all__ = ["APP_NAME", "runtime_state_dir", "runtime_state_file"]
-

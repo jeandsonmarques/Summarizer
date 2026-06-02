@@ -22,6 +22,8 @@ def _is_dark_theme() -> bool:
         return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
     except Exception:
         return False
+
+
 @dataclass
 class VisualDefinition:
     tipo: str  # "colunas", "barra", "linha"
@@ -452,4 +454,3 @@ class SummarizerVisualWidget(QWidget):
             self.renderer.render(painter, rect, self.definition, self.theme)
         painter.end()
         return image
-

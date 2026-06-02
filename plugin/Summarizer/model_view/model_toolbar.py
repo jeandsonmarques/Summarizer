@@ -13,9 +13,9 @@ def toolbar_visuals_should_be_visible(
     visual_panel_open: bool,
 ) -> bool:
     return bool(
-        has_project
-        and edit_enabled
-        and (create_chart_checked or builder_panel_open or visual_panel_open)
+        has_project and
+        edit_enabled and
+        (create_chart_checked or builder_panel_open or visual_panel_open)
     )
 
 

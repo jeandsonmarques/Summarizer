@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from qgis.PyQt.QtCore import QByteArray, QSettings, Qt
-from qgis.PyQt.QtGui import QColor, QFont, QIcon
+from qgis.PyQt.QtGui import QFont, QIcon
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -38,7 +38,6 @@ from .walker_dialogs import (
     walker_dialog_flags,
 )
 
-from .utils.logging_utils import log_exception
 SLIM_DIALOG_STYLE = WALKER_DIALOG_STYLE + """
 QDialog#SlimDialog {
     background-color: #FFFFFF;
@@ -641,7 +640,7 @@ class SlimTextInputDialog(SlimPopoverDialog):
 
         self.field = QLineEdit(self.panel)
         self.field.setObjectName("SlimDialogLineEdit")
-        self.field.setText(text)
+        self.field.setText(translated_text)
         self.field.setPlaceholderText(_rt(placeholder))
         self.panel_layout.addWidget(self.field)
 
@@ -654,7 +653,7 @@ class SlimTextInputDialog(SlimPopoverDialog):
         self.cancel_button.setObjectName("SlimSecondaryButton")
         actions.addWidget(self.cancel_button, 0)
 
-        self.accept_button = QPushButton(_rt(accept_label), self.panel)
+        self.accept_button = QPushButton(translated_accept, self.panel)
         self.accept_button.setObjectName("SlimPrimaryButton")
         self.accept_button.setDefault(True)
         actions.addWidget(self.accept_button, 0)
@@ -690,6 +689,7 @@ class SlimMessageDialog(SlimPopoverDialog):
         translated_title = _rt(title)
         translated_text = _rt(text)
         translated_helper = _rt(helper_text) if helper_text else ""
+        translated_accept = _rt(accept_label)
         self.setWindowTitle(translated_title)
         self.setMinimumWidth(420)
         self.setMaximumWidth(460)
@@ -1280,6 +1280,3 @@ def slim_get_int(
 
     accepted = dialog.exec_() == QDialog.Accepted and result["accepted"]
     return result["value"], accepted
-
-
-

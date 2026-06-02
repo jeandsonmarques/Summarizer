@@ -59,4 +59,3 @@ class PivotBucket:
     values: List[Any] = field(default_factory=list)
     unique_values: set = field(default_factory=set)
     feature_ids: List[int] = field(default_factory=list)
-

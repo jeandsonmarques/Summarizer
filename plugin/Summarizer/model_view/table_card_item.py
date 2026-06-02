@@ -14,6 +14,8 @@ from ..walker_dialogs import apply_walker_menu
 
 
 from ..utils.logging_utils import log_exception
+
+
 class TableCardItem(QGraphicsRectItem):
     """Table card for the model diagram."""
 
@@ -267,4 +269,3 @@ class TableCardItem(QGraphicsRectItem):
             self.pos() + QPointF(self.padding, self.header_height + self.padding),
             self.rect().size(),
         )
-

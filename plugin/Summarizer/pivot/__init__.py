@@ -37,4 +37,3 @@ __all__ = [
     "resolve_available_field_name",
     "token_matches_query",
 ]
-

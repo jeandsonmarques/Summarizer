@@ -230,9 +230,9 @@ def create_layer_from_dataframe(
                 crs_authid = ""
 
         if (
-            "__target_feature_id" in df.columns
-            and geometry_layer is not None
-            and geometry_layer.isValid()
+            "__target_feature_id" in df.columns and
+            geometry_layer is not None and
+            geometry_layer.isValid()
         ):
             geometry_lookup = build_geometry_lookup(
                 geometry_layer,
@@ -378,4 +378,3 @@ def create_memory_table_from_dataframe(
         return add_layer_to_project_fn(layer)
     except Exception:
         return None
-

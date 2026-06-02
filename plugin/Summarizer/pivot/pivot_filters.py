@@ -21,4 +21,3 @@ def filter_field_rows(field_names: Sequence[str], query: str) -> List[Tuple[str,
 
 
 __all__ = ["filter_field_rows", "token_matches_query"]
-

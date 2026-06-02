@@ -796,29 +796,29 @@ class DashboardChartBinding:
         config = dict(source_meta.get("config") or {})
         binding = dict(payload.get("binding") or {})
         source_id = (
-            binding.get("source_id")
-            or metadata.get("layer_id")
-            or chart_payload.get("selection_layer_id")
-            or source_meta.get("source_id")
-            or ""
+            binding.get("source_id") or
+            metadata.get("layer_id") or
+            chart_payload.get("selection_layer_id") or
+            source_meta.get("source_id") or
+            ""
         )
         dimension_field = (
-            binding.get("dimension_field")
-            or config.get("semantic_field_key")
-            or config.get("row_label")
-            or config.get("row_field")
-            or _first_text(config.get("row_fields"))
-            or chart_payload.get("category_field")
-            or ""
+            binding.get("dimension_field") or
+            config.get("semantic_field_key") or
+            config.get("row_label") or
+            config.get("row_field") or
+            _first_text(config.get("row_fields")) or
+            chart_payload.get("category_field") or
+            ""
         )
         semantic_field_key = (
-            binding.get("semantic_field_key")
-            or config.get("semantic_field_key")
-            or config.get("row_field")
-            or _first_text(config.get("row_fields"))
-            or chart_payload.get("category_field")
-            or dimension_field
-            or ""
+            binding.get("semantic_field_key") or
+            config.get("semantic_field_key") or
+            config.get("row_field") or
+            _first_text(config.get("row_fields")) or
+            chart_payload.get("category_field") or
+            dimension_field or
+            ""
         )
         semantic_field_aliases = _unique_normalized_texts(
             [
@@ -835,10 +835,10 @@ class DashboardChartBinding:
             ]
         )
         measure_field = (
-            binding.get("measure_field")
-            or config.get("value_label")
-            or chart_payload.get("value_label")
-            or ""
+            binding.get("measure_field") or
+            config.get("value_label") or
+            chart_payload.get("value_label") or
+            ""
         )
         x_field = str(binding.get("x_field") or config.get("x_field") or "").strip()
         y_field = str(binding.get("y_field") or config.get("y_field") or "").strip()
@@ -848,16 +848,16 @@ class DashboardChartBinding:
         value_fields = _unique_normalized_texts(binding.get("value_fields") or config.get("value_fields") or [])
         value_aggregations = dict(binding.get("value_aggregations") or config.get("value_aggregations") or {})
         chart_type = (
-            binding.get("chart_type")
-            or chart_payload.get("chart_type")
-            or config.get("chart_type")
-            or ""
+            binding.get("chart_type") or
+            chart_payload.get("chart_type") or
+            config.get("chart_type") or
+            ""
         )
         aggregation = (
-            binding.get("aggregation")
-            or config.get("aggregation")
-            or chart_payload.get("chart_type")
-            or ""
+            binding.get("aggregation") or
+            config.get("aggregation") or
+            chart_payload.get("chart_type") or
+            ""
         )
         legend_field = str(binding.get("legend_field") or config.get("legend_field") or "").strip()
         filter_fields = _unique_normalized_texts(binding.get("filter_fields") or config.get("filter_fields") or [])
@@ -866,10 +866,10 @@ class DashboardChartBinding:
         title_override = str(binding.get("title_override") or payload.get("title") or chart_payload.get("title") or "").strip()
         base_filters = list(binding.get("base_filters") or payload.get("filters") or [])
         source_name = (
-            binding.get("source_name")
-            or metadata.get("layer_name")
-            or source_meta.get("layer_name")
-            or ""
+            binding.get("source_name") or
+            metadata.get("layer_name") or
+            source_meta.get("layer_name") or
+            ""
         )
         return cls(
             chart_id=str(chart_id or binding.get("chart_id") or payload.get("chart_id") or payload.get("item_id") or "").strip(),
@@ -1199,18 +1199,18 @@ class DashboardChartRelation:
             source_chart_id=str(payload.get("source_chart_id") or payload.get("source_id") or "").strip(),
             target_chart_id=str(payload.get("target_chart_id") or payload.get("target_id") or "").strip(),
             source_id=str(
-                payload.get("source_id_value")
-                or payload.get("source_data_id")
-                or payload.get("source_binding_id")
-                or payload.get("source_id")
-                or ""
+                payload.get("source_id_value") or
+                payload.get("source_data_id") or
+                payload.get("source_binding_id") or
+                payload.get("source_id") or
+                ""
             ),
             target_id=str(
-                payload.get("target_id_value")
-                or payload.get("target_data_id")
-                or payload.get("target_binding_id")
-                or payload.get("target_id")
-                or ""
+                payload.get("target_id_value") or
+                payload.get("target_data_id") or
+                payload.get("target_binding_id") or
+                payload.get("target_id") or
+                ""
             ),
             source_field=str(payload.get("source_field") or payload.get("field_origin") or "").strip(),
             target_field=str(payload.get("target_field") or payload.get("field_target") or "").strip(),
@@ -1419,13 +1419,13 @@ class DashboardProject:
         for relation in list(self.chart_relations or []):
             normalized = relation.normalized()
             if (
-                not normalized.source_chart_id
-                or not normalized.target_chart_id
-                or normalized.source_chart_id == normalized.target_chart_id
-                or normalized.source_chart_id not in valid_ids
-                or normalized.target_chart_id not in valid_ids
-                or not normalized.source_field
-                or not normalized.target_field
+                not normalized.source_chart_id or
+                not normalized.target_chart_id or
+                normalized.source_chart_id == normalized.target_chart_id or
+                normalized.source_chart_id not in valid_ids or
+                normalized.target_chart_id not in valid_ids or
+                not normalized.source_field or
+                not normalized.target_field
             ):
                 continue
             relation_key = normalized.duplicate_key()
@@ -1441,12 +1441,12 @@ class DashboardProject:
         for link in list(self.visual_links or []):
             normalized = link.normalized()
             if (
-                not normalized.source_chart_id
-                or not normalized.target_chart_id
-                or normalized.source_chart_id == normalized.target_chart_id
-                or normalized.source_chart_id not in valid_ids
-                or normalized.target_chart_id not in valid_ids
-                or not normalized.relation_id
+                not normalized.source_chart_id or
+                not normalized.target_chart_id or
+                normalized.source_chart_id == normalized.target_chart_id or
+                normalized.source_chart_id not in valid_ids or
+                normalized.target_chart_id not in valid_ids or
+                not normalized.relation_id
             ):
                 continue
             if normalized.relation_id not in relation_ids:

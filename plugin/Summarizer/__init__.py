@@ -15,11 +15,11 @@ def _is_shadowing_vendor_path(path):
 
     normalized = _normalized_path(path)
     return (
-        os.path.sep + "plugins" + os.path.sep in normalized
-        and "vendor_py" in normalized
-        and (
-            os.path.isdir(os.path.join(path, "numpy"))
-            or os.path.isdir(os.path.join(path, "pandas"))
+        os.path.sep + "plugins" + os.path.sep in normalized and
+        "vendor_py" in normalized and
+        (
+            os.path.isdir(os.path.join(path, "numpy")) or
+            os.path.isdir(os.path.join(path, "pandas"))
         )
     )
 
@@ -57,4 +57,3 @@ def classFactory(iface):
     from .data_summarizer import Summarizer
 
     return Summarizer(iface)
-

@@ -174,4 +174,3 @@ class SummaryExportController:
             self.set_export_path(base + format_info["extension"])
         except Exception as exc:
             QMessageBox.critical(self.host, _rt("Erro"), _rt("Erro na exportação: {exc}", exc=exc))
-

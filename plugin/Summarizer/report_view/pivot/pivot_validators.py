@@ -140,4 +140,3 @@ class PivotValidator:
         if variant_type == QVariant.Bool:
             return "bool"
         return "text"
-

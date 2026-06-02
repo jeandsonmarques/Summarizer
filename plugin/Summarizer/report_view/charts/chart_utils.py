@@ -148,8 +148,8 @@ def clean_label_text(value: Any) -> str:
             if parts:
                 return " / ".join(parts)
     if (
-        (text.startswith("'") and text.endswith("'"))
-        or (text.startswith('"') and text.endswith('"'))
+        (text.startswith("'") and text.endswith("'")) or
+        (text.startswith('"') and text.endswith('"'))
     ):
         text = text[1:-1].strip()
     return text
@@ -326,4 +326,3 @@ __all__ = [
     "value_scale_bounds",
     "value_scale_ratio",
 ]
-

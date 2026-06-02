@@ -53,4 +53,3 @@ class PivotSelectionBridge:
                 seen.add(feature_id)
                 merged.append(int(feature_id))
         return merged
-

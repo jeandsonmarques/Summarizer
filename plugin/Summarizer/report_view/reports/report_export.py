@@ -33,4 +33,3 @@ def build_result_export_bundle(result: QueryResult) -> ReportExportBundle:
         helper_text=build_result_helper_text(result),
         value_label=result.value_label,
     )
-
