@@ -18,4 +18,3 @@ icon=resources/icon.png
 experimental=True
 deprecated=False
 hasProcessingProvider=False
-plugin_dependencies=
