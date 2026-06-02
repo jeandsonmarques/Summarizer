@@ -4,7 +4,7 @@ This folder contains the distributable QGIS plugin package used for publication.
 
 ## Package scope
 
-This v0.5.0 package includes the plugin code, metadata, and resources required for QGIS to load and run the extension locally.
+This v0.5.1 package includes the plugin code, metadata, and resources required for QGIS to load and run the extension locally.
 
 ## Distribution rules
 

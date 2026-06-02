@@ -24,10 +24,7 @@ def _qapp():
 
 def test_visual_format_panel_does_not_reintroduce_tiny_font_styles():
     source = (
-        Path(__file__).resolve().parents[2]
-        / "plugin"
-        / "Summarizer"
-        / "visual_format_panel.py"
+        Path(__file__).resolve().parents[2] / "plugin" / "Summarizer" / "visual_format_panel.py"
     ).read_text(encoding="utf-8")
 
     assert "font-size: 8px" not in source
@@ -38,17 +35,14 @@ def test_visual_format_panel_does_not_reintroduce_tiny_font_styles():
 
 def test_visual_format_panel_empty_state_uses_top_guidance_card():
     source = (
-        Path(__file__).resolve().parents[2]
-        / "plugin"
-        / "Summarizer"
-        / "visual_format_panel.py"
+        Path(__file__).resolve().parents[2] / "plugin" / "Summarizer" / "visual_format_panel.py"
     ).read_text(encoding="utf-8")
 
     assert "VisualPanelEmptyCard" in source
     assert "VisualPanelEmptyHost" in source
     assert 'QLabel(_rt("Formatar visual")' not in source
-    assert "_PANEL_GUIDANCE_CARD = \"#F3F4F6\"" in source
-    assert "_PANEL_GUIDANCE_CARD_TEXT = \"#334155\"" in source
+    assert '_PANEL_GUIDANCE_CARD = "#F3F4F6"' in source
+    assert '_PANEL_GUIDANCE_CARD_TEXT = "#334155"' in source
     assert "#0F8B74" not in source
     assert "VisualPanelEmptyCardClose" in source
     assert "QFrame#VisualFormatPanel {\n                border: none;" in source

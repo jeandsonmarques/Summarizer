@@ -121,6 +121,7 @@ function Test-ZipStructure {
             "$PluginFolderName/TRADEMARKS.md",
             "$PluginFolderName/README.md",
             "$PluginFolderName/CHANGELOG.md",
+            "$PluginFolderName/icon.png",
             "$PluginFolderName/resources/icon.png",
             "$PluginFolderName/resources/",
             "$PluginFolderName/i18n/",
@@ -242,6 +243,7 @@ $stagePluginRoot = Join-Path $stageRoot $pluginFolderName
 $zipPath = Join-Path $releaseDir "Summarizer-qgis-release.zip"
 
 Assert-FileExists -Path (Join-Path $sourcePlugin "metadata.txt") -Message "metadata.txt not found in $sourcePlugin."
+Assert-FileExists -Path (Join-Path $sourcePlugin "icon.png") -Message "icon.png not found in plugin root."
 Assert-FileExists -Path (Join-Path $sourcePlugin "resources\icon.png") -Message "icon.png not found in $sourcePlugin\resources."
 
 $metadataText = Get-Content -LiteralPath (Join-Path $sourcePlugin "metadata.txt") -Raw

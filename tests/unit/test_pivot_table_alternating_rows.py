@@ -4,9 +4,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_pivot_theme_has_explicit_alternate_row_rule():
-    theme_source = (
-        ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_theme.py"
-    ).read_text(encoding="utf-8")
+    theme_source = (ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_theme.py").read_text(
+        encoding="utf-8"
+    )
     light_alternate_rule = (
         "QTableView::item:alternate {\n"
         "            background: #fcfcfd;\n"
@@ -30,19 +30,21 @@ def test_pivot_theme_has_explicit_alternate_row_rule():
 
 
 def test_pivot_table_widget_applies_alternate_palette():
-    widget_source = (
-        ROOT / "plugin" / "Summarizer" / "pivot_table_widget.py"
-    ).read_text(encoding="utf-8")
+    widget_source = (ROOT / "plugin" / "Summarizer" / "pivot_table_widget.py").read_text(
+        encoding="utf-8"
+    )
     assert "QPalette.AlternateBase" in widget_source
     assert "setAlternatingRowColors(True)" in widget_source
     assert "item.setBackground(alternate_row_color)" not in widget_source
 
 
 def test_pivot_table_widget_uses_stable_cell_delegate_for_zebra_rows():
-    widget_source = (
-        ROOT / "plugin" / "Summarizer" / "pivot_table_widget.py"
-    ).read_text(encoding="utf-8")
+    widget_source = (ROOT / "plugin" / "Summarizer" / "pivot_table_widget.py").read_text(
+        encoding="utf-8"
+    )
     assert "class _PivotTableCellDelegate(QStyledItemDelegate)" in widget_source
     assert "HORIZONTAL_PADDING = 9" in widget_source
-    assert "opt.text = \"\"" in widget_source
-    assert "self.table_view.setItemDelegate(_PivotTableCellDelegate(self.table_view))" in widget_source
+    assert 'opt.text = ""' in widget_source
+    assert (
+        "self.table_view.setItemDelegate(_PivotTableCellDelegate(self.table_view))" in widget_source
+    )

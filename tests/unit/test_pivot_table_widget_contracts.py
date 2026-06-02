@@ -183,4 +183,3 @@ def test_configuration_round_trip_by_metadata_key(widget):
     assert config["row_fields"] == ["Categoria"]
     assert config["value_field"] == "Valor"
     assert config["aggregation"] == "sum"
-

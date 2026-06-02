@@ -16,6 +16,7 @@ def test_release_files_have_minimum_package_surface():
         plugin_root / "__init__.py",
         plugin_root / "metadata.txt",
         plugin_root / "README.md",
+        plugin_root / "icon.png",
         plugin_root / "resources" / "icon.png",
     ]
     for path in required_files:
@@ -32,6 +33,7 @@ def test_release_zip_if_present_contains_expected_files():
         "Summarizer/__init__.py",
         "Summarizer/metadata.txt",
         "Summarizer/README.md",
+        "Summarizer/icon.png",
     }
 
     for zip_path in zip_candidates:

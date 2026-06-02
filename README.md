@@ -1,6 +1,6 @@
 # Summarizer
 
-Summarizer v0.5.0 is an experimental QGIS plugin release for summarizing layers and generating charts, dashboards, and reports from geospatial data.
+Summarizer v0.5.1 is an experimental QGIS plugin release for summarizing layers and generating charts, dashboards, and reports from geospatial data.
 
 It is designed for analysts who need to inspect QGIS project data, build visual summaries, organize dashboard views, and export structured results without leaving QGIS.
 

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -8,10 +7,13 @@ def test_dashboard_default_canvas_builds_only_one_chart_item():
     source = (ROOT / "plugin" / "Summarizer" / "dashboard_widget.py").read_text(encoding="utf-8")
 
     assert "updated_items: List[DashboardChartItem] = [chart_item]" in source
-    assert "updated_items: List[DashboardChartItem] = [total_item, chart_item, table_item]" not in source
-    assert "item_id=\"dashboard-chart\"" in source
-    assert "item_id=\"dashboard-total\"" not in source
-    assert "item_id=\"dashboard-table\"" not in source
+    assert (
+        "updated_items: List[DashboardChartItem] = [total_item, chart_item, table_item]"
+        not in source
+    )
+    assert 'item_id="dashboard-chart"' in source
+    assert 'item_id="dashboard-total"' not in source
+    assert 'item_id="dashboard-table"' not in source
 
 
 def test_dashboard_open_path_does_not_touch_removed_primary_secondary_charts():

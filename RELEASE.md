@@ -63,7 +63,7 @@ Summarizer/
 ## O que o script faz
 
 1. valida `metadata.txt`;
-2. valida o `icon.png` referenciado no metadata;
+2. valida o `icon.png` na raiz do plugin, referenciado no metadata;
 3. roda `compileall` em `plugin/Summarizer`;
 4. limpa caches e artefatos gerados;
 5. monta o staging fora do repositorio;
@@ -73,8 +73,8 @@ Summarizer/
 
 ## Icones
 
-O `metadata.txt` aponta para `resources/icon.png`, que e o icone principal usado pelo QGIS na instalacao e publicacao do plugin.
-O arquivo SVG auxiliar pode permanecer como recurso local, mas o pacote oficial usa o PNG no metadata.
+O `metadata.txt` aponta para `icon.png` na raiz do plugin, que e o icone principal usado pelo QGIS na instalacao e publicacao do plugin.
+O arquivo SVG auxiliar pode permanecer como recurso local, mas o pacote oficial usa o PNG da raiz no metadata.
 
 ## Checklist rapido
 

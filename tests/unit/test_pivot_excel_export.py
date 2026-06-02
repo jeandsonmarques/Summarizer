@@ -207,4 +207,3 @@ def test_try_create_native_excel_pivot_success_uses_expected_excel_structure(mon
     assert success is True
     assert message == "Tabela dinâmica nativa do Excel criada com campos interativos."
     assert ("Open", "saida.xlsx") in calls
-
