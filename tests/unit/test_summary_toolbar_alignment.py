@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -8,12 +7,12 @@ def test_summary_toolbar_uses_model_position_and_size_tokens():
     pivot_source = (ROOT / "plugin" / "Summarizer" / "pivot_table_widget.py").read_text(
         encoding="utf-8"
     )
-    toolbar_source = (
-        ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_toolbar.py"
-    ).read_text(encoding="utf-8")
-    theme_source = (
-        ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_theme.py"
-    ).read_text(encoding="utf-8")
+    toolbar_source = (ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_toolbar.py").read_text(
+        encoding="utf-8"
+    )
+    theme_source = (ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_theme.py").read_text(
+        encoding="utf-8"
+    )
     model_header_source = (
         ROOT / "plugin" / "Summarizer" / "model_view" / "model_header.py"
     ).read_text(encoding="utf-8")
@@ -30,12 +29,12 @@ def test_summary_toolbar_uses_model_position_and_size_tokens():
 
 
 def test_summary_undo_redo_icons_match_model_icons_after_theme_refresh():
-    toolbar_source = (
-        ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_toolbar.py"
-    ).read_text(encoding="utf-8")
-    theme_source = (
-        ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_theme.py"
-    ).read_text(encoding="utf-8")
+    toolbar_source = (ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_toolbar.py").read_text(
+        encoding="utf-8"
+    )
+    theme_source = (ROOT / "plugin" / "Summarizer" / "pivot_view" / "pivot_theme.py").read_text(
+        encoding="utf-8"
+    )
     model_header_source = (
         ROOT / "plugin" / "Summarizer" / "model_view" / "model_header.py"
     ).read_text(encoding="utf-8")
