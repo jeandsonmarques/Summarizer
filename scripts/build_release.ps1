@@ -82,7 +82,13 @@ function Test-ZipStructure {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
-        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+        $rawEntryNames = @($archive.Entries | ForEach-Object { $_.FullName })
+        $backslashEntry = $rawEntryNames | Where-Object { $_ -match '\\' } | Select-Object -First 1
+        if ($backslashEntry) {
+            throw "ZIP entry uses a backslash separator: '$backslashEntry'."
+        }
+
+        $entryNames = @($rawEntryNames | ForEach-Object { $_.Replace('\', '/') })
         $topLevel = @(
             $entryNames |
                 Where-Object { $_ -and $_ -notlike "*/" } |
@@ -151,7 +157,13 @@ function Test-ZipPublicClean {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
-        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+        $rawEntryNames = @($archive.Entries | ForEach-Object { $_.FullName })
+        $backslashEntry = $rawEntryNames | Where-Object { $_ -match '\\' } | Select-Object -First 1
+        if ($backslashEntry) {
+            throw "ZIP entry uses a backslash separator: '$backslashEntry'."
+        }
+
+        $entryNames = @($rawEntryNames | ForEach-Object { $_.Replace('\', '/') })
         $forbiddenPathPatterns = @(
             '(?i)openai',
             '(?i)langchain',
@@ -230,6 +242,45 @@ function Test-ZipPublicClean {
     }
 }
 
+function New-ReleaseZip {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceDirectory,
+        [Parameter(Mandatory = $true)]
+        [string]$ZipPath,
+        [Parameter(Mandatory = $true)]
+        [string]$RootFolderName
+    )
+
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $sourceRoot = [System.IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\', '/')
+    $zipStream = [System.IO.File]::Open($ZipPath, [System.IO.FileMode]::Create)
+    $archive = [System.IO.Compression.ZipArchive]::new(
+        $zipStream,
+        [System.IO.Compression.ZipArchiveMode]::Create
+    )
+
+    try {
+        $files = Get-ChildItem -LiteralPath $sourceRoot -Recurse -Force -File
+        foreach ($file in $files) {
+            $relativePath = $file.FullName.Substring($sourceRoot.Length).TrimStart('\', '/')
+            $entryName = "$RootFolderName/$($relativePath.Replace('\', '/'))"
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $file.FullName,
+                $entryName,
+                [System.IO.Compression.CompressionLevel]::Optimal
+            ) | Out-Null
+        }
+    }
+    finally {
+        $archive.Dispose()
+        $zipStream.Dispose()
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sourcePlugin = Join-Path $repoRoot "plugin\Summarizer"
 $pluginFolderName = Split-Path $sourcePlugin -Leaf
@@ -283,7 +334,7 @@ try {
     Get-ChildItem -LiteralPath $sourcePlugin -Force | Copy-Item -Destination $stagePluginRoot -Recurse -Force
     Remove-GeneratedArtifacts -Root $stageRoot
 
-    Compress-Archive -LiteralPath $stagePluginRoot -DestinationPath $zipPath -CompressionLevel Optimal -Force
+    New-ReleaseZip -SourceDirectory $stagePluginRoot -ZipPath $zipPath -RootFolderName $pluginFolderName
     Test-ZipStructure -ZipPath $zipPath -PluginFolderName $pluginFolderName
     Test-ZipPublicClean -ZipPath $zipPath
 
