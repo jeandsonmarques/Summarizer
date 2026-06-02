@@ -548,7 +548,7 @@ _FALLBACK = {
             "What happens:\n"
             "1. The visible consulta history is cleared.\n"
             "2. The focused layers are removed.\n"
-            "3. The current conversation memory is restarted.\n"
+            "3. The current analysis context is restarted.\n"
             "4. On the next data question, the consulta asks you to select layers again.\n"
             "Tip: Clear does not delete your QGIS layers; it only restarts the consulta context."
         ),
