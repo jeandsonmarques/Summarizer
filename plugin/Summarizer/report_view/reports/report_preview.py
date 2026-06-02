@@ -74,4 +74,3 @@ def build_result_preview_model(
         value_label=result.value_label,
         show_percent=bool(result.show_percent),
     )
-

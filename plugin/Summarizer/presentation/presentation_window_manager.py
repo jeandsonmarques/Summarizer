@@ -414,4 +414,3 @@ class PresentationWindowManager(QObject):
 
     def _clear_state(self):
         self._saved_plugin_state = None
-

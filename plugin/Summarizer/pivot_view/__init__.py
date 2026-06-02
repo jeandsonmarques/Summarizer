@@ -224,4 +224,3 @@ __all__ = [
     "update_undo_redo_buttons",
     "undo_last_action",
 ]
-

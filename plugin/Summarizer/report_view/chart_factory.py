@@ -43,6 +43,7 @@ def _safe_int(value: Any) -> Optional[int]:
     except Exception:
         return None
 
+
 class ChartFactory:
     MAX_RENDER_ITEMS = 160
 
@@ -518,9 +519,9 @@ class ReportChartWidget(QWidget):
 
     def _animations_active(self) -> bool:
         return bool(
-            self.animation_enabled
-            and self.GLOBAL_ANIMATION_ENABLED
-            and self._animation_intensity_multiplier() > 0.0
+            self.animation_enabled and
+            self.GLOBAL_ANIMATION_ENABLED and
+            self._animation_intensity_multiplier() > 0.0
         )
 
     def _clamp01(self, value: float) -> float:
@@ -812,8 +813,8 @@ class ReportChartWidget(QWidget):
             self._animation_reason,
         )
         self._transition_crossfade_strength = (
-            0.10
-            + 0.14 * self._transition_change_level
+            0.10 +
+            0.14 * self._transition_change_level
         ) * max(0.5, self._animation_intensity_multiplier())
         if self._should_use_frame_blend(self._animation_reason, self._transition_change_level):
             self._previous_frame_snapshot = self._capture_frame_snapshot()
@@ -1144,10 +1145,10 @@ class ReportChartWidget(QWidget):
 
     def clear_selection(self, *, emit_signal: bool = False, clear_map: bool = False):
         has_feedback = bool(
-            self._selected_category_key
-            or self._active_category_keys
-            or self._filtered_category_key
-            or self._hovered_category_key
+            self._selected_category_key or
+            self._active_category_keys or
+            self._filtered_category_key or
+            self._hovered_category_key
         )
         if not has_feedback:
             if clear_map:
@@ -1282,30 +1283,30 @@ class ReportChartWidget(QWidget):
         config = dict(source_meta.get("config") or {})
         chart_id = str(self._chart_identity.get("chart_id") or self._chart_context.get("chart_id") or "").strip()
         source_id = str(
-            self._chart_identity.get("source_id")
-            or metadata.get("layer_id")
-            or payload.selection_layer_id
-            or source_meta.get("source_id")
-            or ""
+            self._chart_identity.get("source_id") or
+            metadata.get("layer_id") or
+            payload.selection_layer_id or
+            source_meta.get("source_id") or
+            ""
         ).strip()
         dimension_field = str(
-            self._chart_identity.get("dimension_field")
-            or config.get("row_label")
-            or config.get("row_field")
-            or payload.category_field
-            or ""
+            self._chart_identity.get("dimension_field") or
+            config.get("row_label") or
+            config.get("row_field") or
+            payload.category_field or
+            ""
         ).strip()
         measure_field = str(
-            self._chart_identity.get("measure_field")
-            or config.get("value_label")
-            or payload.value_label
-            or ""
+            self._chart_identity.get("measure_field") or
+            config.get("value_label") or
+            payload.value_label or
+            ""
         ).strip()
         aggregation = str(
-            self._chart_identity.get("aggregation")
-            or config.get("aggregation")
-            or payload.chart_type
-            or ""
+            self._chart_identity.get("aggregation") or
+            config.get("aggregation") or
+            payload.chart_type or
+            ""
         ).strip()
         base_filters = [dict(item or {}) for item in list(self._chart_identity.get("base_filters") or self._chart_context.get("filters") or [])]
         return {
@@ -1393,10 +1394,10 @@ class ReportChartWidget(QWidget):
                 "alt_text": str(getattr(self.chart_state, "alt_text", "") or ""),
             },
             "title": str(
-                self._chart_context.get("title")
-                or self.chart_state.title_override
-                or payload.title
-                or "Grafico"
+                self._chart_context.get("title") or
+                self.chart_state.title_override or
+                payload.title or
+                "Grafico"
             ),
             "subtitle": str(self._chart_context.get("subtitle") or ""),
             "filters": list(self._chart_context.get("filters") or []),
@@ -1658,25 +1659,25 @@ class ReportChartWidget(QWidget):
 
     def _supports_pie_family(self, profile: ChartDataProfile) -> bool:
         return (
-            profile.count >= 1
-            and not profile.has_negative
-            and profile.positive_count >= 1
+            profile.count >= 1 and
+            not profile.has_negative and
+            profile.positive_count >= 1
         )
 
     def _supports_line_family(self, profile: ChartDataProfile) -> bool:
         return (
-            1 <= profile.count <= 24
-            and profile.unique_category_count >= 1
-            and (profile.sequential_hint or profile.count <= 12)
+            1 <= profile.count <= 24 and
+            profile.unique_category_count >= 1 and
+            (profile.sequential_hint or profile.count <= 12)
         )
 
     def _supports_area_family(self, profile: ChartDataProfile) -> bool:
         return (
-            1 <= profile.count <= 18
-            and profile.unique_category_count >= 1
-            and not profile.has_negative
-            and profile.has_positive
-            and (profile.sequential_hint or profile.count <= 10)
+            1 <= profile.count <= 18 and
+            profile.unique_category_count >= 1 and
+            not profile.has_negative and
+            profile.has_positive and
+            (profile.sequential_hint or profile.count <= 10)
         )
 
     def _chart_data_profile(self) -> ChartDataProfile:
@@ -2071,24 +2072,24 @@ class ReportChartWidget(QWidget):
 
     def _current_source_id(self) -> str:
         return str(
-            self._chart_identity.get("source_id")
-            or getattr(self._payload, "selection_layer_id", "")
-            or ""
+            self._chart_identity.get("source_id") or
+            getattr(self._payload, "selection_layer_id", "") or
+            ""
         ).strip()
 
     def _current_filter_key(self) -> str:
         field_name = str(
-            self._chart_identity.get("semantic_field_key")
-            or self._chart_identity.get("dimension_field")
-            or getattr(self._payload, "category_field", "")
-            or ""
+            self._chart_identity.get("semantic_field_key") or
+            self._chart_identity.get("dimension_field") or
+            getattr(self._payload, "category_field", "") or
+            ""
         ).strip()
         if field_name:
             return field_name.lower()
         field_name = str(
-            self._chart_identity.get("dimension_field")
-            or getattr(self._payload, "category_field", "")
-            or ""
+            self._chart_identity.get("dimension_field") or
+            getattr(self._payload, "category_field", "") or
+            ""
         ).strip()
         if field_name:
             return field_name.lower()
@@ -2233,25 +2234,25 @@ class ReportChartWidget(QWidget):
             "source_id": self._current_source_id(),
             "field_key": self._current_filter_key(),
             "semantic_field_key": str(
-                self._chart_identity.get("semantic_field_key")
-                or self._chart_identity.get("dimension_field")
-                or getattr(self._payload, "category_field", "")
-                or ""
+                self._chart_identity.get("semantic_field_key") or
+                self._chart_identity.get("dimension_field") or
+                getattr(self._payload, "category_field", "") or
+                ""
             ).strip(),
             "semantic_field_aliases": list(self._chart_identity.get("semantic_field_aliases") or []),
             "field": str(
-                self._chart_identity.get("dimension_field")
-                or getattr(self._payload, "category_field", "")
-                or ""
+                self._chart_identity.get("dimension_field") or
+                getattr(self._payload, "category_field", "") or
+                ""
             ).strip(),
             "values": interaction_values,
             "feature_ids": [safe_id for fid in list(item.get("feature_ids") or []) if fid is not None and (safe_id := _safe_int(fid)) is not None],
             "key": selection_key,
             "current_text": str(
-                item.get("current_text")
-                or item.get("display_label")
-                or item.get("category")
-                or ""
+                item.get("current_text") or
+                item.get("display_label") or
+                item.get("category") or
+                ""
             ),
             "display_label": str(item.get("display_label") or item.get("category") or ""),
             "raw_category": item.get("raw_category"),
@@ -2306,12 +2307,12 @@ class ReportChartWidget(QWidget):
                 return QPointF()
         fixed_size = QSize(self._fixed_render_size)
         if (
-            fixed_size.isValid()
-            and fixed_size.width() > 0
-            and fixed_size.height() > 0
-            and self.width() > 0
-            and self.height() > 0
-            and (fixed_size.width() != self.width() or fixed_size.height() != self.height())
+            fixed_size.isValid() and
+            fixed_size.width() > 0 and
+            fixed_size.height() > 0 and
+            self.width() > 0 and
+            self.height() > 0 and
+            (fixed_size.width() != self.width() or fixed_size.height() != self.height())
         ):
             return QPointF(
                 point.x() * float(fixed_size.width()) / float(self.width()),
@@ -2412,9 +2413,9 @@ class ReportChartWidget(QWidget):
     def wheelEvent(self, event):
         scrollbar = getattr(self, "_matrix_scrollbar", None)
         if (
-            scrollbar is not None
-            and self._normalize_chart_type(self.chart_state.chart_type) == "matrix"
-            and scrollbar.isVisible()
+            scrollbar is not None and
+            self._normalize_chart_type(self.chart_state.chart_type) == "matrix" and
+            scrollbar.isVisible()
         ):
             try:
                 delta = event.angleDelta().y()
@@ -3233,12 +3234,12 @@ class ReportChartWidget(QWidget):
     def paintEvent(self, event):
         fixed_size = QSize(self._fixed_render_size)
         if (
-            fixed_size.isValid()
-            and fixed_size.width() > 0
-            and fixed_size.height() > 0
-            and self.width() > 0
-            and self.height() > 0
-            and (fixed_size.width() != self.width() or fixed_size.height() != self.height())
+            fixed_size.isValid() and
+            fixed_size.width() > 0 and
+            fixed_size.height() > 0 and
+            self.width() > 0 and
+            self.height() > 0 and
+            (fixed_size.width() != self.width() or fixed_size.height() != self.height())
         ):
             painter = QPainter(self)
             painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
@@ -3609,10 +3610,10 @@ class ReportChartWidget(QWidget):
 
     def _item_cache_key(self, item: Dict[str, object], index: int) -> str:
         return str(
-            item.get("key")
-            or item.get("raw_category")
-            or item.get("category")
-            or f"item_{index}"
+            item.get("key") or
+            item.get("raw_category") or
+            item.get("category") or
+            f"item_{index}"
         ).strip()
 
     def _resolve_item_color(self, item: Dict[str, object], index: int) -> QColor:
@@ -3967,10 +3968,10 @@ class ReportChartWidget(QWidget):
 
         colors = self._palette_colors(len(values), "donut" if donut else "pie")
         show_legend = bool(
-            self.chart_state.show_legend
-            and rect.width() >= 300
-            and rect.height() >= 180
-            and len(values) <= self.MAX_PIE_SLICES
+            self.chart_state.show_legend and
+            rect.width() >= 300 and
+            rect.height() >= 180 and
+            len(values) <= self.MAX_PIE_SLICES
         )
         if show_legend:
             diameter = min(rect.width() * 0.42, rect.height() * 0.75)
@@ -4359,7 +4360,6 @@ class ReportChartWidget(QWidget):
         painter.setOpacity(1.0)
         painter.restore()
 
-
     def _draw_kpi_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = [float(value or 0.0) for value in list(payload.get("values") or [])]
         current = values[0] if values else float(payload.get("total") or 0.0)
@@ -4517,7 +4517,6 @@ class ReportChartWidget(QWidget):
         painter.setOpacity(1.0)
         painter.restore()
 
-
     def _draw_matrix_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         rows, series, matrix = self._series_matrix(payload)
         payload_items = list(payload.get("items") or [])
@@ -4669,7 +4668,7 @@ class ReportChartWidget(QWidget):
         else:
             self._sync_matrix_scrollbar(QRectF(), visible_row_count, len(rows))
 
-        display_rows = rows[row_offset : row_offset + visible_row_count]
+        display_rows = rows[row_offset:row_offset + visible_row_count]
         display_row_count = max(1, len(display_rows))
         selection_active = bool(self._selected_category_key or self._active_category_keys or self._filtered_category_key or highlight_data)
         for local_row_index, row_label in enumerate(display_rows):
@@ -5259,7 +5258,6 @@ class ReportChartWidget(QWidget):
         painter.setOpacity(1.0)
         painter.restore()
 
-
     def _draw_treemap_view(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         raw_items = [dict(item or {}) for item in list(payload.get("items") or [])]
         progress = self._payload_animation_progress(payload)
@@ -5339,7 +5337,6 @@ class ReportChartWidget(QWidget):
             self._register_data_point_region(draw_tile, item)
 
         painter.restore()
-
 
     def _draw_waterfall_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         values = [float(value or 0.0) for value in list(payload.get("values") or [])]
@@ -5448,7 +5445,6 @@ class ReportChartWidget(QWidget):
             f"Total {self._format_value(total_value)}",
         )
         painter.restore()
-
 
     def _draw_funnel_chart(self, painter: QPainter, rect: QRectF, payload: Dict[str, object]):
         raw_items = [dict(item or {}) for item in list(payload.get("items") or [])]

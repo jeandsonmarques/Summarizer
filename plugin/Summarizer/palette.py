@@ -94,4 +94,3 @@ def palette_context(theme_mode: str = "light"):
     mode = str(theme_mode or "light").strip().lower()
     colors = DARK_COLORS if mode == "dark" else COLORS
     return ChainMap({}, colors, TYPOGRAPHY, MISC)
-

@@ -333,4 +333,3 @@ def open_table_settings_dialog(
 
     apply_btn.clicked.connect(_apply)
     dialog.exec_()
-

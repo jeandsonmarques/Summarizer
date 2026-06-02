@@ -11,6 +11,8 @@ from qgis.PyQt.QtWidgets import QGraphicsScene, QGraphicsView, QMenu
 
 from ..utils.logging_utils import log_exception
 from ..walker_dialogs import apply_walker_menu
+
+
 class ModelCanvasView(QGraphicsView):
     """QGraphicsView with smooth pan/zoom and a modern analytics grid."""
 
@@ -30,9 +32,9 @@ class ModelCanvasView(QGraphicsView):
         self._legend_widget = None
 
         self.setRenderHints(
-            QPainter.Antialiasing
-            | QPainter.TextAntialiasing
-            | QPainter.SmoothPixmapTransform
+            QPainter.Antialiasing |
+            QPainter.TextAntialiasing |
+            QPainter.SmoothPixmapTransform
         )
         self.setDragMode(self.RubberBandDrag)
         self.setViewportUpdateMode(self.SmartViewportUpdate)
@@ -282,4 +284,3 @@ class ModelCanvasView(QGraphicsView):
     @property
     def zoom_level(self) -> float:
         return float(self._zoom)
-

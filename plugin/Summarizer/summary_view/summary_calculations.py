@@ -220,4 +220,3 @@ def calculate_advanced_summary(
             "rows": [dict(row) for row in raw_rows],
         },
     }
-

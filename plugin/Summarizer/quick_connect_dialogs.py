@@ -11,7 +11,6 @@ from qgis.PyQt.QtWidgets import (
     QGridLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -127,6 +126,3 @@ class PostgresQuickConnectDialog(SlimDialogBase):
 
 
 __all__ = ["PostgresQuickConnectDialog"]
-
-
-

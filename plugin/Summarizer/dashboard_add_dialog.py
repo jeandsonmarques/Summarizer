@@ -24,6 +24,8 @@ from .walker_dialogs import WALKER_DIALOG_STYLE, add_walker_close_button, apply_
 
 
 from .utils.logging_utils import log_exception
+
+
 class DashboardAddDialog(QDialog):
     def __init__(
         self,
@@ -235,4 +237,3 @@ class DashboardAddDialog(QDialog):
             _apply_i18n_widgets(self)
         except Exception:
             log_exception("falha opcional ignorada")
-

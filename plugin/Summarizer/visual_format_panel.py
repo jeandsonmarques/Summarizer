@@ -33,6 +33,7 @@ from .utils.i18n_runtime import tr_text as _rt
 from .walker_color_dialog import walker_get_color
 from .walker_dialogs import apply_walker_combo
 
+
 def _is_dark_theme() -> bool:
     try:
         return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"

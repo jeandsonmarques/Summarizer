@@ -290,5 +290,3 @@ class Ui_SummarizerDialog(object):
         self.verticalLayout.addWidget(self.central_frame, 1)
 
         self.stackedWidget.setCurrentWidget(self.pageResultados)
-
-

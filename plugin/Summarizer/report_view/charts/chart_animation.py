@@ -64,4 +64,3 @@ __all__ = [
     "blend_color",
     "chart_popup_icon",
 ]
-

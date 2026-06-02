@@ -87,11 +87,11 @@ class ModelInteractionManager(QObject):
         for relation in list(relations or []):
             item = relation.normalized()
             if (
-                not item.source_chart_id
-                or not item.target_chart_id
-                or item.source_chart_id == item.target_chart_id
-                or not item.source_field
-                or not item.target_field
+                not item.source_chart_id or
+                not item.target_chart_id or
+                item.source_chart_id == item.target_chart_id or
+                not item.source_field or
+                not item.target_field
             ):
                 continue
             key = item.duplicate_key()
@@ -233,11 +233,11 @@ class ModelInteractionManager(QObject):
                 continue
         field = str(normalized.get("field") or binding.dimension_field or "").strip()
         semantic_field_key = self._semantic_key(
-            normalized.get("semantic_field_key")
-            or binding.semantic_field_key
-            or field
-            or binding.dimension_field
-            or binding.source_id
+            normalized.get("semantic_field_key") or
+            binding.semantic_field_key or
+            field or
+            binding.dimension_field or
+            binding.source_id
         )
         semantic_field_aliases = self._unique_keys(
             [
@@ -280,13 +280,13 @@ class ModelInteractionManager(QObject):
 
     def _selection_equals(self, left: Dict[str, Any], right: Dict[str, Any]) -> bool:
         return (
-            str(left.get("filter_key") or "") == str(right.get("filter_key") or "")
-            and [str(value) for value in list(left.get("values") or [])] == [str(value) for value in list(right.get("values") or [])]
-            and sorted({safe_id for value in list(left.get("feature_ids") or []) if (safe_id := _safe_int(value)) is not None}) == sorted(
+            str(left.get("filter_key") or "") == str(right.get("filter_key") or "") and
+            [str(value) for value in list(left.get("values") or [])] == [str(value) for value in list(right.get("values") or [])] and
+            sorted({safe_id for value in list(left.get("feature_ids") or []) if (safe_id := _safe_int(value)) is not None}) == sorted(
                 {safe_id for value in list(right.get("feature_ids") or []) if (safe_id := _safe_int(value)) is not None}
-            )
-            and str(left.get("semantic_field_key") or "") == str(right.get("semantic_field_key") or "")
-            and str(left.get("series_label") or "") == str(right.get("series_label") or "")
+            ) and
+            str(left.get("semantic_field_key") or "") == str(right.get("semantic_field_key") or "") and
+            str(left.get("series_label") or "") == str(right.get("series_label") or "")
         )
 
     def _interactions_for_widget(self, active_interactions: Dict[str, Dict[str, Any]], chart_id: str) -> tuple[Dict[str, Dict[str, Any]], bool]:
@@ -442,11 +442,11 @@ class ModelInteractionManager(QObject):
     def _selection_filter_key(self, payload: Dict[str, Any], binding: Optional[DashboardChartBinding]) -> str:
         chart_id = str(payload.get("chart_id") or (binding.chart_id if binding is not None else "") or "").strip()
         field_key = self._semantic_key(
-            payload.get("semantic_field_key")
-            or payload.get("field_key")
-            or payload.get("field")
-            or (binding.semantic_field_key if binding else "")
-            or (binding.dimension_field if binding else "")
+            payload.get("semantic_field_key") or
+            payload.get("field_key") or
+            payload.get("field") or
+            (binding.semantic_field_key if binding else "") or
+            (binding.dimension_field if binding else "")
         )
         if field_key:
             return f"{chart_id}::{field_key}" if chart_id else field_key
@@ -501,8 +501,8 @@ class ModelInteractionManager(QObject):
         for relation in self._chart_relations:
             normalized = relation.normalized()
             if (
-                (normalized.source_chart_id == left and normalized.target_chart_id == right)
-                or (normalized.source_chart_id == right and normalized.target_chart_id == left)
+                (normalized.source_chart_id == left and normalized.target_chart_id == right) or
+                (normalized.source_chart_id == right and normalized.target_chart_id == left)
             ):
                 return True
         return False
@@ -519,9 +519,9 @@ class ModelInteractionManager(QObject):
         if normalized.interaction_mode != "filter":
             return None
         if (
-            normalized.source_chart_id == origin_chart_id
-            and normalized.target_chart_id == target_chart_id
-            and normalized.direction in {"both", "origem_para_destino"}
+            normalized.source_chart_id == origin_chart_id and
+            normalized.target_chart_id == target_chart_id and
+            normalized.direction in {"both", "origem_para_destino"}
         ):
             return {
                 "source_field": normalized.source_field,
@@ -533,9 +533,9 @@ class ModelInteractionManager(QObject):
                 "active": normalized.active,
             }
         if (
-            normalized.source_chart_id == target_chart_id
-            and normalized.target_chart_id == origin_chart_id
-            and normalized.direction in {"both", "destino_para_origem"}
+            normalized.source_chart_id == target_chart_id and
+            normalized.target_chart_id == origin_chart_id and
+            normalized.direction in {"both", "destino_para_origem"}
         ):
             return {
                 "source_field": normalized.target_field,

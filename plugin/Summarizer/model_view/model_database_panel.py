@@ -101,7 +101,6 @@ if pyqtSignal is not None:
                 )
             self.finished.emit(snapshot)
 
-
     class ModelDatabasePanel(QFrame):
         objectActivated = pyqtSignal(object)
         toggleRequested = pyqtSignal()

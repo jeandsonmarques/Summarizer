@@ -346,4 +346,3 @@ class SidebarController(QObject):
         self._indicator_animation.setStartValue(start_rect)
         self._indicator_animation.setEndValue(target_rect)
         self._indicator_animation.start()
-

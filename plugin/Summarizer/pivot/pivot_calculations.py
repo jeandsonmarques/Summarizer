@@ -149,4 +149,3 @@ __all__ = [
     "pandas_aggfunc_name",
     "resolve_available_field_name",
 ]
-

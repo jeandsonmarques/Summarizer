@@ -38,9 +38,9 @@ from qgis.PyQt.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QMenu,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -221,7 +221,7 @@ class Summarizer:
             for filename in os.listdir(directory):
                 if not filename.startswith("Summarizer_") or not filename.endswith(".qm"):
                     continue
-                locale = filename[len("Summarizer_") : -3].strip()
+                locale = filename[len("Summarizer_"):-3].strip()
                 if not locale:
                     continue
                 locales[locale] = os.path.join(directory, filename)
@@ -287,7 +287,7 @@ class Summarizer:
             if loaded:
                 QCoreApplication.installTranslator(translator)
                 self.translator = translator
-                locale_name = os.path.basename(path)[len("Summarizer_") : -3]
+                locale_name = os.path.basename(path)[len("Summarizer_"):-3]
                 self._active_locale = locale_name
                 break
 
@@ -624,12 +624,12 @@ class SummarizerDialog(QDialog):
         try:
             flags = self.windowFlags()
             flags |= (
-                Qt.Window
-                | Qt.WindowTitleHint
-                | Qt.WindowSystemMenuHint
-                | Qt.WindowMinimizeButtonHint
-                | Qt.WindowMaximizeButtonHint
-                | Qt.WindowCloseButtonHint
+                Qt.Window |
+                Qt.WindowTitleHint |
+                Qt.WindowSystemMenuHint |
+                Qt.WindowMinimizeButtonHint |
+                Qt.WindowMaximizeButtonHint |
+                Qt.WindowCloseButtonHint
             )
             self.setWindowFlags(flags)
         except Exception:
@@ -1245,9 +1245,9 @@ class SummarizerDialog(QDialog):
                 ]
                 saved.insert(0, active_connection)
             preferred_driver = str(
-                active_connection.get("source_driver")
-                or active_connection.get("driver")
-                or "PostgreSQL"
+                active_connection.get("source_driver") or
+                active_connection.get("driver") or
+                "PostgreSQL"
             )
             dialog = DatabaseImportDialog(self.dlg, saved, preferred_driver=preferred_driver)
             dialog.raise_()
@@ -1597,9 +1597,9 @@ class SummarizerDialog(QDialog):
         descriptor: Dict,
     ) -> Optional[QgsVectorLayer]:
         base_name = (
-            descriptor.get("display_name")
-            or os.path.basename(source_path)
-            or "Camada externa"
+            descriptor.get("display_name") or
+            os.path.basename(source_path) or
+            "Camada externa"
         ).strip()
         if not base_name:
             base_name = "Camada externa"
@@ -2381,8 +2381,8 @@ class SummarizerDialog(QDialog):
 
         try:
             summary_data = self.calculate_advanced_summary(
-            layer, field_name, group_field, filter_field, filter_value
-        )
+                layer, field_name, group_field, filter_field, filter_value
+            )
             self.current_summary_data = summary_data
             self.display_advanced_summary(summary_data)
             self.update_charts_preview(summary_data)
@@ -2946,8 +2946,8 @@ class GetDataDialog(QDialog):
         layout.addLayout(header)
 
         info = QLabel(
-            _rt_runtime("Escolha a fonte de dados disponível para importar.")
-            + _rt_runtime(
+            _rt_runtime("Escolha a fonte de dados disponível para importar.") +
+            _rt_runtime(
                 "As tabelas selecionadas serão adicionadas ao modelo sem abrir "
                 "camadas no mapa."
             )

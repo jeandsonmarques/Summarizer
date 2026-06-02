@@ -16,7 +16,6 @@ from qgis.PyQt.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QMenu,
     QPushButton,
     QScrollArea,
@@ -41,6 +40,7 @@ from .utils.i18n_runtime import tr_text as _rt
 from .utils.logging_utils import log_exception
 from .walker_dialogs import WalkerMessageBox as QMessageBox, apply_walker_menu
 from .visual_format_panel import VisualFormatPanel
+
 
 def _icon_from_resource(name: str) -> QIcon:
     path = os.path.abspath(
@@ -441,21 +441,21 @@ class DashboardWidget(QWidget):
         row_fields = [str(field) for field in list(self.current_config.get("row_fields") or []) if str(field).strip()]
         column_fields = [str(field) for field in list(self.current_config.get("column_fields") or []) if str(field).strip()]
         semantic_field = (
-            self.current_config.get("row_label")
-            or self.current_config.get("row_field")
-            or self.current_config.get("column_label")
-            or self.current_config.get("column_field")
-            or (row_fields[0] if row_fields else "")
-            or (column_fields[0] if column_fields else "")
-            or "Categoria"
+            self.current_config.get("row_label") or
+            self.current_config.get("row_field") or
+            self.current_config.get("column_label") or
+            self.current_config.get("column_field") or
+            (row_fields[0] if row_fields else "") or
+            (column_fields[0] if column_fields else "") or
+            "Categoria"
         )
         return DashboardChartBinding(
             chart_id=str(item_id or "").strip(),
             source_id=str(self.current_metadata.get("layer_id") or "").strip(),
             dimension_field=str(semantic_field or "").strip(),
             semantic_field_key=str(
-                self.current_config.get("row_field")
-                or (row_fields[0] if row_fields else semantic_field)
+                self.current_config.get("row_field") or
+                (row_fields[0] if row_fields else semantic_field)
             ).strip(),
             semantic_field_aliases=[semantic_field, *row_fields, *column_fields],
             measure_field=str(self.current_config.get("value_label") or self.current_config.get("aggregation") or "Valor"),
@@ -1243,17 +1243,17 @@ class DashboardWidget(QWidget):
 
         display_df = chart_df.head(limit).copy()
         value_label = (
-            self.current_config.get("aggregation_label")
-            or self.current_config.get("value_label")
-            or self.current_config.get("aggregation")
-            or "Valor"
+            self.current_config.get("aggregation_label") or
+            self.current_config.get("value_label") or
+            self.current_config.get("aggregation") or
+            "Valor"
         )
         category_field = (
-            self.current_config.get("row_label")
-            or self.current_config.get("row_field")
-            or self.current_config.get("column_label")
-            or self.current_config.get("column_field")
-            or "Categoria"
+            self.current_config.get("row_label") or
+            self.current_config.get("row_field") or
+            self.current_config.get("column_label") or
+            self.current_config.get("column_field") or
+            "Categoria"
         )
 
         return ChartPayload.build(
@@ -1541,9 +1541,9 @@ class DashboardWidget(QWidget):
 
     def _update_table(self):
         if (
-            not self.details_table.isVisible()
-            and not self.table_hint_label.isVisible()
-            and not self.table_filter_label.isVisible()
+            not self.details_table.isVisible() and
+            not self.table_hint_label.isVisible() and
+            not self.table_filter_label.isVisible()
         ):
             self.details_table.clear()
             self.details_table.setRowCount(0)
@@ -1630,9 +1630,9 @@ class DashboardWidget(QWidget):
         self.active_category_label = ", ".join(
             [
                 str(
-                    self._category_filters.get(item, {}).get("display_label")
-                    or self._category_filters.get(item, {}).get("category")
-                    or item
+                    self._category_filters.get(item, {}).get("display_label") or
+                    self._category_filters.get(item, {}).get("category") or
+                    item
                 )
                 for item in keys
             ]

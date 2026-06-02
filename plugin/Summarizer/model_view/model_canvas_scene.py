@@ -11,6 +11,8 @@ from .field_item import FieldItem
 
 
 from ..utils.logging_utils import log_exception
+
+
 class ModelCanvasScene(QGraphicsScene):
     """Gerencia itens do diagrama: tabelas, campos e relacionamentos."""
 
@@ -119,4 +121,3 @@ class ModelCanvasScene(QGraphicsScene):
             event.accept()
             return
         super().mouseReleaseEvent(event)
-

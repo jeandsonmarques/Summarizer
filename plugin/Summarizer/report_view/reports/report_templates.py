@@ -46,6 +46,7 @@ def _is_dark_theme() -> bool:
     except Exception:
         return False
 
+
 REPORTS_STYLE_TEMPLATE = Template(
     """
     QWidget#reportsRoot,
@@ -435,4 +436,3 @@ def build_reports_style_context() -> ReportStyleContext:
 
 def build_reports_stylesheet() -> str:
     return REPORTS_STYLE_TEMPLATE.safe_substitute(build_reports_style_context().to_dict())
-

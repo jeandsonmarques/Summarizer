@@ -13,7 +13,6 @@ from qgis.PyQt.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -866,13 +865,13 @@ class DashboardCanvas(QWidget):
         for relation in list(chart_relations or []):
             normalized = relation.normalized()
             if (
-                not normalized.source_chart_id
-                or not normalized.target_chart_id
-                or normalized.source_chart_id == normalized.target_chart_id
-                or normalized.source_chart_id not in valid_ids
-                or normalized.target_chart_id not in valid_ids
-                or not normalized.source_field
-                or not normalized.target_field
+                not normalized.source_chart_id or
+                not normalized.target_chart_id or
+                normalized.source_chart_id == normalized.target_chart_id or
+                normalized.source_chart_id not in valid_ids or
+                normalized.target_chart_id not in valid_ids or
+                not normalized.source_field or
+                not normalized.target_field
             ):
                 continue
             duplicate_key = normalized.duplicate_key()
@@ -888,12 +887,12 @@ class DashboardCanvas(QWidget):
         for link in list(visual_links or []):
             normalized = link.normalized()
             if (
-                not normalized.source_chart_id
-                or not normalized.target_chart_id
-                or normalized.source_chart_id == normalized.target_chart_id
-                or normalized.source_chart_id not in valid_ids
-                or normalized.target_chart_id not in valid_ids
-                or not normalized.relation_id
+                not normalized.source_chart_id or
+                not normalized.target_chart_id or
+                normalized.source_chart_id == normalized.target_chart_id or
+                normalized.source_chart_id not in valid_ids or
+                normalized.target_chart_id not in valid_ids or
+                not normalized.relation_id
             ):
                 continue
             if normalized.relation_id not in relation_ids:
@@ -937,9 +936,9 @@ class DashboardCanvas(QWidget):
             relation.normalized()
             for relation in self._chart_relations
             if (
-                relation.source_chart_id in valid_ids
-                and relation.target_chart_id in valid_ids
-                and relation.source_chart_id != relation.target_chart_id
+                relation.source_chart_id in valid_ids and
+                relation.target_chart_id in valid_ids and
+                relation.source_chart_id != relation.target_chart_id
             )
         ]
         relation_ids = {relation.relation_id for relation in self._chart_relations}
@@ -947,11 +946,11 @@ class DashboardCanvas(QWidget):
             link.normalized()
             for link in self._visual_links
             if (
-                link.source_chart_id in valid_ids
-                and link.target_chart_id in valid_ids
-                and link.source_chart_id != link.target_chart_id
-                and bool(link.relation_id)
-                and link.relation_id in relation_ids
+                link.source_chart_id in valid_ids and
+                link.target_chart_id in valid_ids and
+                link.source_chart_id != link.target_chart_id and
+                bool(link.relation_id) and
+                link.relation_id in relation_ids
             )
         ]
         self._ensure_visual_links_for_relations()
@@ -1581,11 +1580,11 @@ class DashboardCanvas(QWidget):
     def _save_relation(self, relation: DashboardChartRelation, *, source_anchor: str, target_anchor: str):
         normalized = relation.normalized()
         if (
-            not normalized.source_chart_id
-            or not normalized.target_chart_id
-            or normalized.source_chart_id == normalized.target_chart_id
-            or not normalized.source_field
-            or not normalized.target_field
+            not normalized.source_chart_id or
+            not normalized.target_chart_id or
+            normalized.source_chart_id == normalized.target_chart_id or
+            not normalized.source_field or
+            not normalized.target_field
         ):
             return
 

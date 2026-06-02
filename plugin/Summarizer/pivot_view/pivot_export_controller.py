@@ -104,4 +104,3 @@ class PivotExportController:
 
 def export_pivot_table(widget):
     PivotExportController(widget).export_pivot_table()
-

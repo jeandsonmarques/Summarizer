@@ -31,4 +31,3 @@ class PivotExportSpec:
     row_fields: List[str] = field(default_factory=list)
     column_fields: List[str] = field(default_factory=list)
     filter_fields: List[str] = field(default_factory=list)
-

@@ -94,4 +94,3 @@ class PivotExportService:
             rows.append(total_row)
 
         return rows
-

@@ -143,9 +143,9 @@ def populate_table(
             else:
                 item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             if (
-                self._current_pivot_result is not None
-                and row_index < len(self._display_row_keys)
-                and column_index >= self._pivot_data_column_offset
+                self._current_pivot_result is not None and
+                row_index < len(self._display_row_keys) and
+                column_index >= self._pivot_data_column_offset
             ):
                 pivot_column_index = column_index - self._pivot_data_column_offset
                 feature_ids = feature_ids_for_cell(
@@ -174,4 +174,3 @@ def populate_table(
         "Summarizer",
         qgis_info,
     )
-

@@ -38,4 +38,3 @@ def svg_icon(filename: str) -> QIcon:
 
 
 __all__ = ["svg_icon", "svg_path"]
-

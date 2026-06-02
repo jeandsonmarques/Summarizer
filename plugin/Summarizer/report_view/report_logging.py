@@ -28,4 +28,3 @@ def log_exception(context: object, exc=None):
 
 
 __all__ = ["LOG_CHANNEL", "LOG_FILE", "log_error", "log_exception", "log_info", "log_warning"]
-

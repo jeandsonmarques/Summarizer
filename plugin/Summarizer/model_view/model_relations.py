@@ -79,4 +79,3 @@ def ensure_field_selections(
     if persist and update_callback is not None:
         update_callback(metadata.get("id"), metadata)
     return metadata
-

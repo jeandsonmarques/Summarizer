@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from qgis.PyQt.QtCore import QEvent, QObject, Qt, QTimer
-from qgis.PyQt.QtGui import QColor, QIcon
+from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QComboBox,

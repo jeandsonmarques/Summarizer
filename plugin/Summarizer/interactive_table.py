@@ -130,5 +130,3 @@ class InteractiveTable(QWidget):
     def _refresh_status(self):
         vis = self.proxy.rowCount()
         self.status.setText(f"Mostrando {vis}/{self._rowcount}")
-
-

@@ -38,7 +38,6 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QShortcut,
@@ -70,6 +69,7 @@ def _is_dark_theme() -> bool:
         return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
     except Exception:
         return False
+
 
 try:  # pragma: no cover - handles platforms without QtSql
     from qgis.PyQt.QtSql import QSqlDatabase, QSqlQuery
@@ -365,8 +365,8 @@ class ConnectorCard(QFrame):
                 font-weight: 400;
                 color: {colors["color_text_secondary"]};
             }}
-            """
-            % ui_font_stack()
+            """ %
+            ui_font_stack()
         )
 
         self._apply_icon()
@@ -655,8 +655,8 @@ class IntegrationPanel(QWidget):
                 background: #D1D5DB;
                 color: #FFFFFF;
             }
-            """
-            % (ui_font_stack(), ui_font_stack())
+            """ %
+            (ui_font_stack(), ui_font_stack())
         )
         style = (
             style.replace("__ITEM_BG__", item_bg)
@@ -748,8 +748,8 @@ class IntegrationPanel(QWidget):
                 background: __CLEAR_DISABLED_BG__;
                 color: __CLEAR_DISABLED_FG__;
             }
-            """
-            % (ui_font_stack(), ui_font_stack())
+            """ %
+            (ui_font_stack(), ui_font_stack())
         )
         panel_bg = "#1F2937" if _is_dark_theme() else colors["color_surface"]
         panel_border = "rgba(148, 163, 184, 0.22)" if _is_dark_theme() else colors["color_border"]
@@ -1098,8 +1098,8 @@ class IntegrationPanel(QWidget):
         else:
             return
         conn_name = self._normalize_connection_name(
-            connection.get("name")
-            or f"{connection.get('database', 'Summarizer')}_{connection.get('user', '').strip() or 'user'}"
+            connection.get("name") or
+            f"{connection.get('database', 'Summarizer')}_{connection.get('user', '').strip() or 'user'}"
         )
         base = f"{prefix}/{conn_name}"
         secure_connection = secure_connection_payload(connection, name=conn_name)
@@ -1262,8 +1262,8 @@ class IntegrationPanel(QWidget):
                 self._save_connections()
                 self._mirror_connection_in_browser(connection_meta)
             fingerprint = (
-                (connection_meta or {}).get("fingerprint")
-                or (session_connection or {}).get("fingerprint")
+                (connection_meta or {}).get("fingerprint") or
+                (session_connection or {}).get("fingerprint")
             )
 
     def _handle_sql_database(self):
