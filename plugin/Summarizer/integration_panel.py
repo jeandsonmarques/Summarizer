@@ -844,9 +844,9 @@ class IntegrationPanel(QWidget):
                 accent="#E8EEFF",
                 icon_text="SQL",
                 handler=self._handle_sqlserver_database,
-                description="Conector para ambientes Microsoft SQL Server.",
+                description="Conector para ambientes SQL Server.",
                 icon_path=os.path.join(_ICON_DIR, "source_sqlserver.svg"),
-                keywords="sql server mssql servidor banco microsoft",
+                keywords="sql server mssql servidor banco",
             )
         )
         register(
@@ -2817,17 +2817,17 @@ class DatabaseImportDialog(SlimDialogBase):
             return {}
         if not schema:
             schema = "public"
-        safe_schema = schema.replace("'", "''")
-        safe_name = name.replace("'", "''")
         query = QSqlQuery(db)
-        sql = (
+        query.prepare(
             "SELECT f_geometry_column, srid, type "
             "FROM public.geometry_columns "
-            f"WHERE f_table_schema = '{safe_schema}' "
-            f"AND f_table_name = '{safe_name}' "
+            "WHERE f_table_schema = ? "
+            "AND f_table_name = ? "
             "LIMIT 1"
         )
-        if not query.exec_(sql):
+        query.addBindValue(schema)
+        query.addBindValue(name)
+        if not query.exec_():
             return {}
         if not query.next():
             return {}

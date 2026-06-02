@@ -1,10 +1,10 @@
 # Changelog
 
-## [0.5.0-beta.3] - 2026-05-18
+## [0.5.0] - 2026-06-02
 
-- Prepared the public QGIS release around the stable plugin core.
-- Removed experimental features from the public package.
+- Prepared the first experimental public release for the QGIS plugin repository.
 - Kept the focus on layer summaries, charts, dashboards, model, connections, visualizations, and exports.
+- Packaged the release for local QGIS workflows and report-ready analytical outputs.
 
 ## [0.5.0-beta.2] - 2026-05-04
 

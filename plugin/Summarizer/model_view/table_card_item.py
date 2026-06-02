@@ -15,7 +15,7 @@ from ..walker_dialogs import apply_walker_menu
 
 from ..utils.logging_utils import log_exception
 class TableCardItem(QGraphicsRectItem):
-    """Card de tabela inspirado no diagrama de modelo do Power BI."""
+    """Table card for the model diagram."""
 
     def __init__(
         self,
