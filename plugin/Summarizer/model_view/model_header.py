@@ -170,7 +170,11 @@ def build_model_header(
     toolbar_visuals_layout = QHBoxLayout(toolbar_visuals_strip)
     toolbar_visuals_layout.setContentsMargins(4, 0, 4, 0)
     toolbar_visuals_layout.setSpacing(1)
-    build_visual_type_buttons(toolbar_visuals_strip, toolbar_visuals_layout, button_size=32, icon_size=20)
+    build_visual_type_buttons(toolbar_visuals_strip, toolbar_visuals_layout, button_size=32,
+        icon_size=20,
+        fixed_chart_types=("pie", "barh", "line", "area", "card"),
+        overflow_enabled=True,
+    )
     toolbar_visuals_strip.setVisible(False)
     toolbar_layout.addWidget(toolbar_visuals_strip, 0)
 

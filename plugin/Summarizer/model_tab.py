@@ -59,6 +59,7 @@ from .model_view.model_builder_panel import (
     builder_has_selection,
     chart_type_label,
     selected_builder_chart_type_from_buttons,
+    set_chart_overflow_expanded,
     visual_type_specs,
 )
 from .model_view.model_cards import _ModelCardAction, _ModelClockIcon, _ModelRecentCard
@@ -89,7 +90,6 @@ from .model_view.model_project_controller import (
 )
 from .model_view.model_toolbar import (
     toolbar_visuals_should_be_visible,
-    toolbar_visuals_visible_count,
 )
 from .model_view.model_theme import (
     _force_model_white_background,
@@ -553,6 +553,28 @@ class ModelTab(QWidget):
             QFrame#ModelToolbarVisualTypes {
                 background: transparent;
                 border: none;
+            }
+            QToolButton#ModelVisualOverflowButton {
+                min-width: 24px;
+                max-width: 24px;
+                min-height: 30px;
+                max-height: 30px;
+                border: 1px solid #D1D5DB;
+                border-radius: 5px;
+                background: #FFFFFF;
+                color: #475569;
+                padding: 0px;
+            }
+            QToolButton#ModelVisualOverflowButton:hover {
+                background: #F8FAFC;
+                border-color: #CBD5E1;
+                color: #111827;
+            }
+            QToolButton#ModelVisualOverflowButton:pressed,
+            QToolButton#ModelVisualOverflowButton:checked {
+                background: #F1F5F9;
+                border-color: #CBD5E1;
+                color: #111827;
             }
             QWidget#ModelModeSwitchWrap {
                 background: transparent;
@@ -1457,7 +1479,16 @@ class ModelTab(QWidget):
                 log_exception("falha opcional ignorada")
         self._sync_database_toolbar_button()
 
-    def _build_visual_type_buttons(self, parent: QWidget, layout, *, button_size: int = 24, icon_size: int = 15):
+    def _build_visual_type_buttons(
+        self,
+        parent: QWidget,
+        layout,
+        *,
+        button_size: int = 24,
+        icon_size: int = 15,
+        fixed_chart_types=None,
+        overflow_enabled: bool = False,
+    ):
         self.builder_visual_buttons = build_visual_type_buttons(
             parent,
             layout,
@@ -1465,6 +1496,8 @@ class ModelTab(QWidget):
             self._select_visual_type_from_builder,
             button_size=button_size,
             icon_size=icon_size,
+            fixed_chart_types=fixed_chart_types,
+            overflow_enabled=overflow_enabled,
         )
 
     def _apply_visual_side_panel_styles(self):
@@ -2861,7 +2894,7 @@ class ModelTab(QWidget):
         visual_types_visible = bool(visual_strip is not None and visual_strip.isVisible())
         for separator, visible in (
             (getattr(self, "visual_types_leading_separator", None), visual_types_visible),
-            (getattr(self, "visual_types_trailing_separator", None), visual_types_visible),
+            (getattr(self, "visual_types_trailing_separator", None), False),
         ):
             if separator is not None:
                 separator.setVisible(bool(visible))
@@ -2879,9 +2912,26 @@ class ModelTab(QWidget):
             if item is None:
                 continue
             widget = item.widget()
-            if isinstance(widget, QToolButton):
+            if isinstance(widget, QToolButton) and str(widget.property("visualType") or "").strip():
                 buttons.append(widget)
         return buttons
+
+    def _toolbar_visual_controls(self) -> List[QToolButton]:
+        visual_strip = getattr(self, "toolbar_visuals_strip", None)
+        if visual_strip is None:
+            return []
+        layout = visual_strip.layout()
+        if layout is None:
+            return []
+        controls: List[QToolButton] = []
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            if item is None:
+                continue
+            widget = item.widget()
+            if isinstance(widget, QToolButton):
+                controls.append(widget)
+        return controls
 
     def _sync_toolbar_visuals_strip_visibility(self):
         visual_strip = getattr(self, "toolbar_visuals_strip", None)
@@ -2896,8 +2946,12 @@ class ModelTab(QWidget):
             builder_panel_open=bool(getattr(self, "_builder_panel_open", False)),
             visual_panel_open=bool(getattr(self, "_visual_panel_open", False)),
         )
-        buttons = self._toolbar_visual_type_buttons()
+        buttons = self._toolbar_visual_controls()
         if not base_visible or not buttons:
+            try:
+                set_chart_overflow_expanded(visual_strip, False)
+            except Exception:
+                log_exception("falha opcional ignorada")
             for button in buttons:
                 button.setVisible(False)
             visual_strip.setVisible(False)
@@ -2910,46 +2964,14 @@ class ModelTab(QWidget):
                         log_exception("falha opcional ignorada")
             return
 
-        toolbar_strip = getattr(self, "toolbar_strip", None)
-        toolbar_layout = toolbar_strip.layout() if toolbar_strip is not None else None
-        total_width = int(toolbar_strip.width() or self.contentsRect().width() or self.width() or 0)
-        if total_width <= 0:
-            retries = int(getattr(self, "_toolbar_visuals_sync_retries", 0) or 0)
-            if retries < 3:
-                self._toolbar_visuals_sync_retries = retries + 1
-                try:
-                    QTimer.singleShot(50, self._sync_toolbar_visuals_strip_visibility)
-                except Exception:
-                    log_exception("falha opcional ignorada")
-            return
         self._toolbar_visuals_sync_retries = 0
-        reserved_width = 0
-        reserved_spacing = 0
-        if toolbar_layout is not None:
-            for index in range(toolbar_layout.count()):
-                item = toolbar_layout.itemAt(index)
-                if item is None:
-                    continue
-                widget = item.widget()
-                if widget is None or widget is visual_strip:
-                    continue
-                if not widget.isVisible():
-                    continue
-                reserved_width += int(widget.sizeHint().width() or widget.width() or 0)
-            reserved_spacing = max(0, int(toolbar_layout.spacing() or 0)) * max(0, toolbar_layout.count() - 1)
-        available_width = max(0, total_width - reserved_width - reserved_spacing)
-        button_widths = [int(button.sizeHint().width() or button.width() or 0) for button in buttons]
-        visible_count = toolbar_visuals_visible_count(
-            available_width,
-            button_widths,
-            spacing=max(0, int(visual_strip.layout().spacing() if visual_strip.layout() is not None else 1)),
-            padding=max(0, int(visual_strip.layout().contentsMargins().left() if visual_strip.layout() is not None else 0)),
-        )
-        for index, button in enumerate(buttons):
-            button.setVisible(index < visible_count)
-        visual_strip.setVisible(visible_count > 0)
+        for button in buttons:
+            if not bool(button.property("overflowExtra")):
+                button.setVisible(True)
+        set_chart_overflow_expanded(visual_strip, bool(getattr(visual_strip, "_model_visual_overflow_expanded", False)))
+        visual_strip.setVisible(True)
         self._sync_toolbar_separator_visibility()
-        for widget in (visual_strip, toolbar_strip, self):
+        for widget in (visual_strip, getattr(self, "toolbar_strip", None), self):
             if widget is not None:
                 try:
                     widget.updateGeometry()

@@ -71,12 +71,23 @@ class _StatusDot(QWidget):
 class _ClickableLabel(QLabel):
     clicked = pyqtSignal()
 
-    def mousePressEvent(self, event):  # noqa: D401 - Qt override
+    def mouseReleaseEvent(self, event):  # noqa: D401 - Qt override
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
             event.accept()
             return
-        super().mousePressEvent(event)
+        super().mouseReleaseEvent(event)
+
+
+class _ClickableFrame(QFrame):
+    clicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, event):  # noqa: D401 - Qt override
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class _ObjectRow(QFrame):
@@ -376,6 +387,7 @@ class DatabaseExplorerPanel(QWidget):
         self._worker_thread: Optional[QThread] = None
         self._worker: Optional[_MetadataLoadWorker] = None
         self._cards: List[_SchemaCard] = []
+        self._connection_edit_handler = None
         self._loading_rows: List[_ObjectRow] = []
         self._activating_object_keys = set()
         self._loaded_object_keys = set()
@@ -444,6 +456,9 @@ class DatabaseExplorerPanel(QWidget):
     def has_connection(self) -> bool:
         return bool(self._connection_meta)
 
+    def set_connection_edit_handler(self, handler):
+        self._connection_edit_handler = handler if callable(handler) else None
+
     def _build_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
@@ -458,8 +473,10 @@ class DatabaseExplorerPanel(QWidget):
         toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.setSpacing(8)
 
-        header = QFrame(self.toolbar_frame)
+        header = _ClickableFrame(self.toolbar_frame)
         header.setObjectName("DatabaseExplorerHeader")
+        header.setCursor(Qt.PointingHandCursor)
+        header.clicked.connect(self._request_connection_edit)
         header.setMinimumHeight(44)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(8, 5, 8, 5)
@@ -473,14 +490,18 @@ class DatabaseExplorerPanel(QWidget):
         header_layout.addWidget(self.status_label, 0, Qt.AlignVCenter)
         header_layout.addWidget(self._toolbar_separator(header), 0)
 
-        self.database_label = QLabel("", header)
+        self.database_label = QPushButton("", header)
         self.database_label.setObjectName("DatabaseExplorerDatabase")
-        self.database_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.database_label.setCursor(Qt.PointingHandCursor)
+        self.database_label.setFlat(True)
+        self.database_label.setToolTip(_rt("Editar conexÃ£o"))
+        self.database_label.clicked.connect(self._request_connection_edit)
         header_layout.addWidget(self.database_label, 0, Qt.AlignVCenter)
 
-        self.driver_label = _ClickableLabel("", header)
+        self.driver_label = QPushButton("", header)
         self.driver_label.setObjectName("DatabaseExplorerDriver")
         self.driver_label.setCursor(Qt.PointingHandCursor)
+        self.driver_label.setFlat(True)
         self.driver_label.setToolTip(_rt("Editar conexão"))
         self.driver_label.clicked.connect(self._request_connection_edit)
         header_layout.addWidget(self.driver_label, 0, Qt.AlignVCenter)
@@ -573,20 +594,30 @@ class DatabaseExplorerPanel(QWidget):
                 padding-left: 4px;
                 padding-right: 6px;
             }
-            QLabel#DatabaseExplorerDatabase {
+            QPushButton#DatabaseExplorerDatabase {
                 color: #111827;
                 font-size: 13px;
                 font-weight: 700;
-                padding-left: 6px;
-                padding-right: 6px;
+                background: transparent;
+                border: none;
+                padding: 0 6px;
+                text-align: left;
             }
-            QLabel#DatabaseExplorerDriver {
+            QPushButton#DatabaseExplorerDatabase:hover {
+                color: #4F46E5;
+            }
+            QPushButton#DatabaseExplorerDriver {
                 background: #EEF2FF;
                 color: #3730A3;
                 border-radius: 8px;
                 padding: 4px 9px;
                 font-size: 11px;
                 font-weight: 700;
+                border: none;
+                text-align: center;
+            }
+            QPushButton#DatabaseExplorerDriver:hover {
+                background: #E0E7FF;
             }
             QLineEdit#DatabaseExplorerSearch {
                 min-height: 28px;
@@ -949,7 +980,11 @@ class DatabaseExplorerPanel(QWidget):
     def _request_connection_edit(self):
         if not self._connection_meta:
             return
-        self.connectionEditRequested.emit(dict(self._connection_meta))
+        meta = dict(self._connection_meta)
+        if callable(self._connection_edit_handler):
+            QTimer.singleShot(0, lambda: self._connection_edit_handler(dict(meta)))
+            return
+        self.connectionEditRequested.emit(meta)
 
     def _set_loading_state(self):
         self._set_header(self._connection_meta, "loading")

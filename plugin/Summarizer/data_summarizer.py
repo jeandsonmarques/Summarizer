@@ -1208,6 +1208,8 @@ class SummarizerDialog(QDialog):
             self._clear_layout_widgets(layout)
             panel = DatabaseExplorerPanel(parent=self.ui.pageDatabaseExplorer)
             panel.tableActivated.connect(self._handle_database_object_activated)
+            if hasattr(panel, "set_connection_edit_handler"):
+                panel.set_connection_edit_handler(self._open_database_connection_dialog)
             panel.connectionEditRequested.connect(self._open_database_connection_dialog)
             panel.statusChanged.connect(self._update_database_sidebar_status)
             layout.addWidget(panel)
@@ -1248,6 +1250,8 @@ class SummarizerDialog(QDialog):
                 or "PostgreSQL"
             )
             dialog = DatabaseImportDialog(self.dlg, saved, preferred_driver=preferred_driver)
+            dialog.raise_()
+            dialog.activateWindow()
             result = dialog.exec_()
             if result != QDialog.Accepted:
                 self._refresh_database_sidebar_state()
@@ -1267,8 +1271,16 @@ class SummarizerDialog(QDialog):
                 saved.insert(0, updated_connection)
                 connection_registry.replace_saved_connections(saved, persist=True)
             self._refresh_database_sidebar_state()
-        except Exception:
+        except Exception as exc:
             log_exception("falha opcional ignorada")
+            try:
+                QMessageBox.warning(
+                    self.dlg,
+                    "PostgreSQL",
+                    _rt_runtime("Não foi possível abrir o popup de conexão: {exc}", exc=exc),
+                )
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def _database_dialog_connection_meta(self, connection_meta: Dict) -> Dict:
         meta = dict(connection_meta or {})

@@ -93,13 +93,16 @@ except Exception:
     MODEL_FIELD_MIME = "application/x-summarizer-model-field"
 
 try:
-    from .model_theme import _force_model_white_background, _model_builder_trash_icon, _model_tinted_svg_icon
+    from .model_theme import _force_model_white_background, _model_builder_trash_icon, _model_panel_chevron_icon, _model_tinted_svg_icon
 except Exception:
 
     def _force_model_white_background(_widget):
         return None
 
     def _model_builder_trash_icon():
+        return None
+
+    def _model_panel_chevron_icon(_direction: str = "right", _size: int = 20):
         return None
 
     def _model_tinted_svg_icon(_name: str, _size: int = 18, _color: str = ""):
@@ -447,6 +450,132 @@ else:
         pass
 
 
+def create_chart_button(
+    parent: QWidget,
+    label_text: str,
+    chart_type: str,
+    icon_name: str,
+    tooltip_text: str,
+    on_visual_selected: Callable[[str], None],
+    *,
+    group=None,
+    button_size: int = 24,
+    icon_size: int = 15,
+    overflow_extra: bool = False,
+):
+    button = QToolButton(parent)
+    button.setObjectName("ModelVisualTypeButton")
+    button.setProperty("modelIconName", icon_name)
+    button.setProperty("modelIconSize", icon_size)
+    button.setProperty("visualType", chart_type)
+    button.setProperty("overflowExtra", bool(overflow_extra))
+    button.setCheckable(True)
+    button.setText("")
+    normal_icon = _model_tinted_svg_icon(icon_name, icon_size)
+    checked_icon = _model_tinted_svg_icon(icon_name, icon_size)
+    button._model_icon_normal = normal_icon
+    button._model_icon_checked = checked_icon
+    if normal_icon is not None:
+        button.setIcon(normal_icon)
+    set_walker_tooltip(button, label_text)
+    button.setStatusTip("")
+    button.setWhatsThis("")
+    button.setAccessibleName(label_text)
+    button.setAccessibleDescription(tooltip_text)
+    button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    button.setAutoRaise(True)
+    button.setFixedSize(button_size, button_size)
+    button.setIconSize(QSize(icon_size, icon_size))
+    if group is not None:
+        try:
+            group.addButton(button)
+        except Exception:
+            log_exception("falha opcional ignorada")
+    button.toggled.connect(
+        lambda checked, b=button: b.setIcon(
+            getattr(b, "_model_icon_checked", None)
+            if checked
+            else getattr(b, "_model_icon_normal", None)
+        )
+    )
+    button.clicked.connect(lambda checked=False, value=chart_type: on_visual_selected(value))
+    return button
+
+
+def create_overflow_toggle_button(parent: QWidget, *, button_size: int = 24):
+    button = QToolButton(parent)
+    button.setObjectName("ModelVisualOverflowButton")
+    button.setText("")
+    button.setArrowType(Qt.NoArrow)
+    icon = _model_panel_chevron_icon("right", 14)
+    if icon is not None:
+        button.setIcon(icon)
+    button.setIconSize(QSize(14, 14))
+    button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    button.setAutoRaise(False)
+    button.setFixedSize(max(22, button_size - 6), button_size)
+    set_walker_tooltip(button, _rt("Mais gr\u00e1ficos"))
+    button.setStatusTip("")
+    button.setWhatsThis("")
+    button.setAccessibleName(_rt("Mais gr\u00e1ficos"))
+    button.clicked.connect(lambda checked=False, host=parent: toggle_chart_overflow(host))
+    return button
+
+
+def refresh_chart_toolbar_order(parent: QWidget):
+    layout = parent.layout() if parent is not None else None
+    overflow_button = getattr(parent, "_model_visual_overflow_button", None)
+    if layout is None or overflow_button is None:
+        return
+    try:
+        layout.removeWidget(overflow_button)
+        layout.addWidget(overflow_button, 0)
+    except Exception:
+        log_exception("falha opcional ignorada")
+
+
+def set_chart_overflow_expanded(parent: QWidget, expanded: bool):
+    expanded = bool(expanded)
+    try:
+        parent._model_visual_overflow_expanded = expanded
+    except Exception:
+        log_exception("falha opcional ignorada")
+    extra_buttons = list(getattr(parent, "_model_visual_overflow_extra_buttons", []) or [])
+    for button in extra_buttons:
+        try:
+            button.setVisible(expanded)
+        except Exception:
+            log_exception("falha opcional ignorada")
+    overflow_button = getattr(parent, "_model_visual_overflow_button", None)
+    if overflow_button is not None:
+        try:
+            overflow_button.setArrowType(Qt.NoArrow)
+            icon = _model_panel_chevron_icon("left" if expanded else "right", 14)
+            if icon is not None:
+                overflow_button.setIcon(icon)
+            overflow_button.setIconSize(QSize(14, 14))
+            set_walker_tooltip(overflow_button, _rt("Recolher gr\u00e1ficos") if expanded else _rt("Mais gr\u00e1ficos"))
+            overflow_button.setAccessibleName(_rt("Recolher gr\u00e1ficos") if expanded else _rt("Mais gr\u00e1ficos"))
+            overflow_button.setProperty("expanded", expanded)
+            overflow_button.style().unpolish(overflow_button)
+            overflow_button.style().polish(overflow_button)
+        except Exception:
+            log_exception("falha opcional ignorada")
+    refresh_chart_toolbar_order(parent)
+    for widget in (parent, getattr(parent, "parentWidget", lambda: None)()):
+        if widget is None:
+            continue
+        try:
+            widget.updateGeometry()
+            widget.update()
+        except Exception:
+            log_exception("falha opcional ignorada")
+
+
+def toggle_chart_overflow(parent: QWidget):
+    set_chart_overflow_expanded(parent, not bool(getattr(parent, "_model_visual_overflow_expanded", False)))
+
+
 def build_visual_type_buttons(
     parent: QWidget,
     layout,
@@ -455,6 +584,8 @@ def build_visual_type_buttons(
     *,
     button_size: int = 24,
     icon_size: int = 15,
+    fixed_chart_types: Optional[Iterable[str]] = None,
+    overflow_enabled: bool = False,
 ) -> Dict[str, object]:
     buttons = {}
     group = QButtonGroup(parent)
@@ -466,43 +597,61 @@ def build_visual_type_buttons(
         parent._model_visual_button_group = group
     except Exception:
         log_exception("falha opcional ignorada")
-    for label_text, chart_type, icon_name, tooltip_text in visual_specs:
-        button = QToolButton(parent)
-        button.setObjectName("ModelVisualTypeButton")
-        button.setProperty("modelIconName", icon_name)
-        button.setProperty("modelIconSize", icon_size)
-        button.setProperty("visualType", chart_type)
-        button.setCheckable(True)
-        button.setText("")
-        normal_icon = _model_tinted_svg_icon(icon_name, icon_size)
-        checked_icon = _model_tinted_svg_icon(icon_name, icon_size)
-        button._model_icon_normal = normal_icon
-        button._model_icon_checked = checked_icon
-        if normal_icon is not None:
-            button.setIcon(normal_icon)
-        set_walker_tooltip(button, label_text)
-        button.setStatusTip("")
-        button.setWhatsThis("")
-        button.setAccessibleName(label_text)
-        button.setAccessibleDescription(tooltip_text)
-        button.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        button.setAutoRaise(True)
-        button.setFixedSize(button_size, button_size)
-        button.setIconSize(QSize(icon_size, icon_size))
-        try:
-            group.addButton(button)
-        except Exception:
-            log_exception("falha opcional ignorada")
-        button.toggled.connect(
-            lambda checked, b=button: b.setIcon(
-                getattr(b, "_model_icon_checked", None)
-                if checked
-                else getattr(b, "_model_icon_normal", None)
-            )
+    specs = list(visual_specs or [])
+    fixed_types = [normalize_chart_type(value) for value in list(fixed_chart_types or []) if str(value or "").strip()]
+    fixed_type_set = set(fixed_types)
+    if fixed_types:
+        specs_by_type = {normalize_chart_type(chart_type): spec for spec in specs for chart_type in [spec[1]]}
+        visible_specs = [specs_by_type[chart_type] for chart_type in fixed_types if chart_type in specs_by_type]
+        overflow_specs = [spec for spec in specs if normalize_chart_type(spec[1]) not in fixed_type_set]
+    else:
+        visible_specs = specs
+        overflow_specs = []
+    primary_buttons = []
+    for label_text, chart_type, icon_name, tooltip_text in visible_specs:
+        button = create_chart_button(
+            parent,
+            label_text,
+            chart_type,
+            icon_name,
+            tooltip_text,
+            on_visual_selected,
+            group=group,
+            button_size=button_size,
+            icon_size=icon_size,
         )
-        button.clicked.connect(lambda checked=False, value=chart_type: on_visual_selected(value))
         buttons[chart_type] = button
+        primary_buttons.append(button)
         layout.addWidget(button, 0)
+    try:
+        parent._model_visual_overflow_primary_buttons = primary_buttons
+    except Exception:
+        log_exception("falha opcional ignorada")
+    if overflow_enabled and overflow_specs:
+        extra_buttons = []
+        for label_text, chart_type, icon_name, tooltip_text in overflow_specs:
+            button = create_chart_button(
+                parent,
+                label_text,
+                chart_type,
+                icon_name,
+                tooltip_text,
+                on_visual_selected,
+                group=group,
+                button_size=button_size,
+                icon_size=icon_size,
+                overflow_extra=True,
+            )
+            button.setVisible(False)
+            buttons[chart_type] = button
+            extra_buttons.append(button)
+            layout.addWidget(button, 0)
+        parent._model_visual_overflow_extra_buttons = extra_buttons
+        overflow_button = create_overflow_toggle_button(parent, button_size=button_size)
+        parent._model_visual_overflow_button = overflow_button
+        parent._model_visual_overflow_expanded = False
+        layout.addWidget(overflow_button, 0)
+        set_chart_overflow_expanded(parent, False)
     return buttons
 
 
@@ -777,8 +926,13 @@ __all__ = [
     "build_visual_type_buttons",
     "builder_has_selection",
     "chart_type_label",
+    "create_chart_button",
+    "create_overflow_toggle_button",
     "is_valid_binding_slot",
+    "refresh_chart_toolbar_order",
     "selected_builder_chart_type_from_buttons",
+    "set_chart_overflow_expanded",
+    "toggle_chart_overflow",
     "visual_type_labels",
     "visual_type_specs",
 ]
