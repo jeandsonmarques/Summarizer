@@ -137,7 +137,7 @@ def test_legacy_binding_fields_migrate_to_visual_roles():
     assert [item.field for item in binding.bindings["tooltip"]] == ["NOTES"]
 
 
-def test_powerbi_binding_round_trip_with_multiple_axis_and_measures():
+def test_dashboard_binding_round_trip_with_multiple_axis_and_measures():
     binding = DashboardChartBinding(
         chart_type="bar",
         bindings={

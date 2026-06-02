@@ -324,7 +324,7 @@ class Summarizer:
             )
 
     def initGui(self):
-        plugin_icon = svg_icon("PowerPages.svg")
+        plugin_icon = svg_icon("AppLogo.svg")
         self.action = QAction(
             plugin_icon,
             self.tr("Summarizer"),
@@ -479,7 +479,7 @@ class SummarizerDialog(QDialog):
         self.external_df = None
         self.external_last_path_key = "Summarizer/external/lastPath"
 
-        self.setWindowIcon(svg_icon("PowerPages.svg"))
+        self.setWindowIcon(svg_icon("AppLogo.svg"))
 
         context = palette_context()
         base_font = QFont(context.get("font_family", "Inter"))
@@ -1783,7 +1783,7 @@ class SummarizerDialog(QDialog):
 
             geom_query = QSqlQuery(db)
             if geom_query.prepare(
-                "SELECT "
+                "SELECT "  # nosec B608
                 "  NULLIF(Find_SRID(:schema, :table_name, :geometry_column), 0), "
                 "  UPPER(GeometryType(("
                 "    SELECT {geom} "
@@ -2047,7 +2047,7 @@ class SummarizerDialog(QDialog):
         query = QSqlQuery(db)
         table_ref = f"{self._pg_quote_identifier(styles_schema)}.layer_styles"
         if not query.prepare(
-            "SELECT styleqml "
+            "SELECT styleqml "  # nosec B608
             f"FROM {table_ref} "
             "WHERE f_table_schema = :schema "
             "  AND f_table_name = :table_name "

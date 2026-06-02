@@ -16,7 +16,7 @@ def test_release_files_have_minimum_package_surface():
         plugin_root / "__init__.py",
         plugin_root / "metadata.txt",
         plugin_root / "README.md",
-        plugin_root / "resources" / "icon.svg",
+        plugin_root / "resources" / "icon.png",
     ]
     for path in required_files:
         assert path.exists(), f"Missing required release file: {path}"

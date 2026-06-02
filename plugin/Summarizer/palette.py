@@ -4,7 +4,7 @@
 """
 Centralized color and typography definitions for the Summarizer plugin.
 
-The palette closely follows Power BI / Excel styling guidelines so the rest
+The palette follows modern analytics styling guidelines so the rest
 of the codebase can import consistent tokens instead of hardcoding values.
 """
 
