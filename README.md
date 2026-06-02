@@ -21,9 +21,9 @@ It is designed for analysts who need to inspect QGIS project data, build visual 
 
 1. Open **Plugins > Manage and Install Plugins...** in QGIS.
 2. Select **Install from ZIP**.
-3. Choose the release package archive.
+3. Choose `Summarizer-qgis-release.zip`, generated with `scripts/build_release.ps1`.
 
-For QGIS publication, the final ZIP must contain only the `Summarizer/` folder at the archive root.
+For QGIS publication, the final ZIP must contain only the `Summarizer/` folder at the archive root. Do not upload GitHub's automatic Source Code ZIP as the QGIS plugin package.
 
 ## Support
 

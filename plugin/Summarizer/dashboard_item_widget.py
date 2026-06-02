@@ -857,7 +857,7 @@ class DashboardItemWidget(QFrame):
         self.personalize_btn.setObjectName("ModelDashboardHeaderIconButton")
         self.personalize_btn.setCursor(Qt.PointingHandCursor)
         self.personalize_btn.setToolTip(_rt("Personalizar visual do grafico"))
-        personalize_icon = _icon_from_resource("walker_chart_brush.svg")
+        personalize_icon = _icon_from_resource("summarizer_chart_brush.svg")
         self.personalize_btn.setIcon(personalize_icon)
         self.personalize_btn.setIconSize(QSize(16, 16))
         if personalize_icon.isNull():

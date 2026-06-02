@@ -1,4 +1,4 @@
-from functools import partial
+﻿from functools import partial
 import json
 import re
 import unicodedata
@@ -490,7 +490,7 @@ class _PivotDropListWidget(QListWidget):
         up_action = menu.addAction(_rt("Mover para cima"))
         down_action = menu.addAction(_rt("Mover para baixo"))
         menu.addSeparator()
-        clear_action = menu.addAction(_rt("Limpar área"))
+        clear_action = menu.addAction(_rt("Limpar Ã¡rea"))
         action = menu.exec_(event.globalPos())
         if action == remove_action and self._owner is not None:
             self._owner._remove_selected_area_field(self._area_name)
@@ -907,7 +907,7 @@ class PivotTableWidget(QWidget):
         welcome_layout.setContentsMargins(0, 0, 0, 0)
         welcome_layout.setSpacing(12)
 
-        self.initial_state_title = QLabel("Adicionar dados ao seu relatório")
+        self.initial_state_title = QLabel("Adicionar dados ao seu relatÃ³rio")
         self.initial_state_title.setObjectName("summaryWelcomeTitle")
         self.initial_state_title.setMinimumWidth(600)
         self.initial_state_title.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -919,7 +919,7 @@ class PivotTableWidget(QWidget):
         welcome_layout.addWidget(self.initial_state_title, 0, Qt.AlignLeft)
 
         self.initial_state_text = QLabel(
-            "Escolha uma fonte para começar. Os dados carregados serão exibidos no painel Resumo."
+            "Escolha uma fonte para comeÃ§ar. Os dados carregados serÃ£o exibidos no painel Resumo."
         )
         self.initial_state_text.setObjectName("summaryWelcomeText")
         self.initial_state_text.setMinimumWidth(600)
@@ -946,7 +946,7 @@ class PivotTableWidget(QWidget):
         self.source_card_group.setExclusive(True)
         self.source_cards: Dict[str, _SummarySourceCard] = {}
         source_specs = (
-            ("map", "Camada do mapa", "source_map", "Abrir a camada do mapa e iniciar a edição do Resumo."),
+            ("map", "Camada do mapa", "source_map", "Abrir a camada do mapa e iniciar a ediÃ§Ã£o do Resumo."),
         )
         for key, title, icon_key, tooltip_text in source_specs:
             card = _SummarySourceCard(
@@ -1003,12 +1003,12 @@ class PivotTableWidget(QWidget):
             button.setAutoDefault(False)
             button.setDefault(False)
 
-        self._configure_toolbar_icon_button(self.undo_btn, "Walker-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
-        self._configure_toolbar_icon_button(self.redo_btn, "Walker-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
+        self._configure_toolbar_icon_button(self.undo_btn, "Summarizer-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
+        self._configure_toolbar_icon_button(self.redo_btn, "Summarizer-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
         self._configure_toolbar_icon_button(self.import_sheet_btn, "Excel-Workbook.svg", _rt("Importar planilha"))
-        self._configure_toolbar_icon_button(self.export_btn, "Walker-Image.svg", _rt("Exportar"))
-        self._configure_toolbar_icon_button(self.edit_mode_btn, "Walker-Edit.svg", _rt("Mostrar ou ocultar camada e filtros"))
-        self._configure_toolbar_icon_button(self.settings_btn, "Walker-Settings.svg", _rt("Personalizar tabela"))
+        self._configure_toolbar_icon_button(self.export_btn, "Summarizer-Image.svg", _rt("Exportar"))
+        self._configure_toolbar_icon_button(self.edit_mode_btn, "Summarizer-Edit.svg", _rt("Mostrar ou ocultar camada e filtros"))
+        self._configure_toolbar_icon_button(self.settings_btn, "Summarizer-Settings.svg", _rt("Personalizar tabela"))
         mono_icon_colors = {
             QIcon.Normal: _INK_COLOR,
             QIcon.Active: _INK_COLOR,
@@ -1327,14 +1327,14 @@ class PivotTableWidget(QWidget):
         empty_layout = QVBoxLayout(self.empty_state_frame)
         empty_layout.setContentsMargins(24, 20, 24, 20)
         empty_layout.setSpacing(6)
-        self.empty_state_title = QLabel(_rt("Adicione campos em Linhas ou Colunas para começar"))
+        self.empty_state_title = QLabel(_rt("Adicione campos em Linhas ou Colunas para comeÃ§ar"))
         self.empty_state_title.setObjectName("summaryEmptyTitle")
         empty_title_font = ui_font()
         empty_title_font.setPixelSize(body_text_px)
         empty_title_font.setWeight(QFont.Medium)
         self.empty_state_title.setFont(empty_title_font)
         empty_layout.addWidget(self.empty_state_title)
-        self.empty_state_text = QLabel(_rt("Nenhum resultado para a configuração atual."))
+        self.empty_state_text = QLabel(_rt("Nenhum resultado para a configuraÃ§Ã£o atual."))
         self.empty_state_text.setObjectName("summaryEmptyText")
         self.empty_state_text.setWordWrap(True)
         self.empty_state_text.setFont(helper_text_font)
@@ -1537,7 +1537,7 @@ class PivotTableWidget(QWidget):
         self.value_area_title.setObjectName("summaryAxisTitle")
         self.value_area_title.setFont(section_title_font)
         value_layout.addWidget(self.value_area_title)
-        operation_label = QLabel(_rt("Operação"))
+        operation_label = QLabel(_rt("OperaÃ§Ã£o"))
         operation_label.setObjectName("summaryFieldLabel")
         operation_label.setFont(helper_text_font)
         value_layout.addWidget(operation_label)
@@ -1554,7 +1554,7 @@ class PivotTableWidget(QWidget):
         value_layout.addWidget(self.value_fields_list)
         self.filters_builder_layout.addWidget(self.value_area_card)
 
-        self.advanced_group = QGroupBox("Avançado")
+        self.advanced_group = QGroupBox("AvanÃ§ado")
         self.advanced_group.setObjectName("summaryAdvancedGroup")
         self.advanced_group.setProperty("filterSectionCard", True)
         self.advanced_group.setAttribute(Qt.WA_StyledBackground, True)
@@ -1863,11 +1863,11 @@ class PivotTableWidget(QWidget):
             panel.setProperty("collapsed", collapsed)
             if header_btn is not None:
                 header_btn.setArrowType(Qt.NoArrow)
-                header_btn.setText("‹")
+                header_btn.setText("â€¹")
                 header_btn.setToolTip(f"Recolher {title}")
             if rail_btn is not None:
                 rail_btn.setArrowType(Qt.NoArrow)
-                rail_btn.setText("›")
+                rail_btn.setText("â€º")
                 rail_btn.setToolTip(f"Expandir {title}")
             try:
                 panel.style().unpolish(panel)
@@ -2272,7 +2272,7 @@ class PivotTableWidget(QWidget):
         alternating_check.setChecked(bool(getattr(self, "_table_alternating_rows", True)))
         grid.addWidget(alternating_check, 1, 0, 1, 2)
 
-        compact_check = QCheckBox(_rt("Cabeçalho compacto"), dialog)
+        compact_check = QCheckBox(_rt("CabeÃ§alho compacto"), dialog)
         compact_check.setObjectName("SummarySettingsCheck")
         compact_check.setFont(body_text_font)
         compact_check.setChecked(bool(getattr(self, "_table_header_compact", True)))
@@ -2541,7 +2541,7 @@ class PivotTableWidget(QWidget):
 
         if self._external_auto_checkbox is not None:
             self._external_auto_checkbox.setText(_rt("Auto"))
-            self._external_auto_checkbox.setToolTip(_rt("Atualização automática"))
+            self._external_auto_checkbox.setToolTip(_rt("AtualizaÃ§Ã£o automÃ¡tica"))
 
         if hasattr(self, "fields_panel_icon"):
             self.fields_panel_icon.setPixmap(panel_field_icon.pixmap(14, 14))
@@ -2683,7 +2683,7 @@ class PivotTableWidget(QWidget):
     def _open_spreadsheet_source_menu(self):
         panel = self._integration_panel()
         if panel is None:
-            slim_message(self, _rt("Resumo"), _rt("O painel de integração ainda não está disponível."))
+            slim_message(self, _rt("Resumo"), _rt("O painel de integraÃ§Ã£o ainda nÃ£o estÃ¡ disponÃ­vel."))
             return
         menu = QMenu(self)
         excel_action = menu.addAction(_rt("Importar Excel (.xlsx / .xls)"))
@@ -2704,7 +2704,7 @@ class PivotTableWidget(QWidget):
     def _open_postgres_source(self):
         panel = self._integration_panel()
         if panel is None or not hasattr(panel, "_handle_sql_database"):
-            slim_message(self, _rt("Resumo"), _rt("O fluxo de PostgreSQL não está disponível no momento."))
+            slim_message(self, _rt("Resumo"), _rt("O fluxo de PostgreSQL nÃ£o estÃ¡ disponÃ­vel no momento."))
             return
         panel._handle_sql_database()
 
@@ -2712,8 +2712,8 @@ class PivotTableWidget(QWidget):
         self._entry_layer_selection_active = False
         self._clear_source_card_selection()
         self.show_empty_message(
-            _rt("Adicionar dados ao seu relatório"),
-            _rt("Escolha uma fonte para começar. Os dados carregados serão exibidos no painel Resumo."),
+            _rt("Adicionar dados ao seu relatÃ³rio"),
+            _rt("Escolha uma fonte para comeÃ§ar. Os dados carregados serÃ£o exibidos no painel Resumo."),
         )
         self._set_content_mode(True)
         self.table_stack.setCurrentWidget(self.empty_state_frame)
@@ -3984,7 +3984,7 @@ class PivotTableWidget(QWidget):
             self.value_area_title.setText(
                 _rt("Valores")
                 if metric_label == _rt("Contagem de registros")
-                else _rt("Valores · {metric_label}", metric_label=metric_label)
+                else _rt("Valores Â· {metric_label}", metric_label=metric_label)
             )
 
     def _populate_field_panel(self, df: pd.DataFrame):
@@ -4309,10 +4309,10 @@ class PivotTableWidget(QWidget):
             self.table_view.setModel(self.proxy_model)
             has_structure = bool(self._selected_area_specs("row") or self._selected_area_specs("column"))
             if has_structure:
-                self.empty_state_title.setText(_rt("Nenhum resultado para a configuração atual"))
-                self.empty_state_text.setText(_rt("Ajuste os agrupamentos ou a operação para continuar a análise."))
+                self.empty_state_title.setText(_rt("Nenhum resultado para a configuraÃ§Ã£o atual"))
+                self.empty_state_text.setText(_rt("Ajuste os agrupamentos ou a operaÃ§Ã£o para continuar a anÃ¡lise."))
             else:
-                self.empty_state_title.setText(_rt("Adicione campos em Linhas ou Colunas para começar"))
+                self.empty_state_title.setText(_rt("Adicione campos em Linhas ou Colunas para comeÃ§ar"))
                 self.empty_state_text.setText(
                     _rt("Escolha os agrupamentos no painel Campos da Tabela Dinamica para montar a tabela dinamica.")
                 )
@@ -4683,17 +4683,17 @@ class PivotTableWidget(QWidget):
             return
         selection_model = self.table_view.selectionModel()
         if selection_model is None:
-            self.selection_summary_label.setText(_rt("Selecione células para ver soma e contagem."))
+            self.selection_summary_label.setText(_rt("Selecione cÃ©lulas para ver soma e contagem."))
             return
 
         indexes = list(selection_model.selectedIndexes() or [])
         if not indexes:
-            self.selection_summary_label.setText(_rt("Selecione células para ver soma e contagem."))
+            self.selection_summary_label.setText(_rt("Selecione cÃ©lulas para ver soma e contagem."))
             return
 
         stats = self._collect_selection_statistics(indexes)
         if stats["selected_count"] == 0:
-            self.selection_summary_label.setText(_rt("Selecione células para ver soma e contagem."))
+            self.selection_summary_label.setText(_rt("Selecione cÃ©lulas para ver soma e contagem."))
             return
 
         parts = [
@@ -4771,9 +4771,9 @@ class PivotTableWidget(QWidget):
 
     def _open_table_context_menu(self, pos):
         menu = QMenu(self)
-        copy_action = menu.addAction(_rt("Copiar seleção"))
-        copy_headers_action = menu.addAction(_rt("Copiar seleção com cabeçalhos"))
-        copy_stats_action = menu.addAction(_rt("Copiar estatísticas"))
+        copy_action = menu.addAction(_rt("Copiar seleÃ§Ã£o"))
+        copy_headers_action = menu.addAction(_rt("Copiar seleÃ§Ã£o com cabeÃ§alhos"))
+        copy_stats_action = menu.addAction(_rt("Copiar estatÃ­sticas"))
         selected = self.table_view.selectionModel()
         if selected is None or not selected.selectedIndexes():
             copy_action.setEnabled(False)
@@ -4823,7 +4823,7 @@ class PivotTableWidget(QWidget):
         QApplication.clipboard().setText("\n".join(lines))
         if hasattr(self, "selection_summary_label"):
             self.selection_summary_label.setText(
-                _rt("Seleção copiada para a área de transferência.")
+                _rt("SeleÃ§Ã£o copiada para a Ã¡rea de transferÃªncia.")
             )
 
     def _copy_selection_statistics_to_clipboard(self):
@@ -4853,7 +4853,7 @@ class PivotTableWidget(QWidget):
         QApplication.clipboard().setText(" | ".join(lines))
         if hasattr(self, "selection_summary_label"):
             self.selection_summary_label.setText(
-                _rt("Estatísticas da seleção copiadas.")
+                _rt("EstatÃ­sticas da seleÃ§Ã£o copiadas.")
             )
 
     def _format_selection_number(self, value: float) -> str:
@@ -5556,7 +5556,7 @@ class PivotTableWidget(QWidget):
         self._current_pivot_result = None
         self.meta_label.setText("")
         self.status_label.setText("")
-        self.selection_summary_label.setText(_rt("Selecione células para ver soma e contagem."))
+        self.selection_summary_label.setText(_rt("Selecione cÃ©lulas para ver soma e contagem."))
         self.empty_state_title.setText(title)
         self.empty_state_text.setText(text)
         self.fields_list.clear()
@@ -6030,19 +6030,19 @@ class PivotTableWidget(QWidget):
         pivot_config: Dict[str, Any],
     ) -> Tuple[bool, str]:
         if layer_df is None or layer_df.empty:
-            return False, _rt("Sem dados da camada para gerar tabela dinâmica nativa.")
+            return False, _rt("Sem dados da camada para gerar tabela dinÃ¢mica nativa.")
 
         try:
             import win32com.client as win32  # type: ignore
         except Exception:
             return (
                 False,
-                _rt("Tabela dinâmica nativa do Excel não criada (pywin32/Excel não disponível)."),
+                _rt("Tabela dinÃ¢mica nativa do Excel nÃ£o criada (pywin32/Excel nÃ£o disponÃ­vel)."),
             )
 
         available_fields = [str(column) for column in list(layer_df.columns)]
         if not available_fields:
-            return False, _rt("Sem colunas válidas para montar tabela dinâmica nativa.")
+            return False, _rt("Sem colunas vÃ¡lidas para montar tabela dinÃ¢mica nativa.")
 
         def _valid_fields(values: Optional[List[str]], labels: Optional[List[str]] = None) -> List[str]:
             valid: List[str] = []
@@ -6067,11 +6067,11 @@ class PivotTableWidget(QWidget):
         filter_fields = _valid_fields(requested_filter_fields, pivot_config.get("filter_labels"))
 
         if requested_row_fields and not row_fields:
-            return False, _rt("Tabela dinâmica nativa não criada: campos de Linhas não foram mapeados na base exportada.")
+            return False, _rt("Tabela dinÃ¢mica nativa nÃ£o criada: campos de Linhas nÃ£o foram mapeados na base exportada.")
         if requested_column_fields and not column_fields:
-            return False, _rt("Tabela dinâmica nativa não criada: campos de Colunas não foram mapeados na base exportada.")
+            return False, _rt("Tabela dinÃ¢mica nativa nÃ£o criada: campos de Colunas nÃ£o foram mapeados na base exportada.")
         if requested_filter_fields and not filter_fields:
-            return False, _rt("Tabela dinâmica nativa não criada: campos de Filtros não foram mapeados na base exportada.")
+            return False, _rt("Tabela dinÃ¢mica nativa nÃ£o criada: campos de Filtros nÃ£o foram mapeados na base exportada.")
 
         value_field = self._resolve_available_field_name(
             pivot_config.get("value_field"),
@@ -6091,12 +6091,12 @@ class PivotTableWidget(QWidget):
                 value_field = available_fields[0]
 
         if requested_row_fields and len(row_fields) < len(set(value.lower() for value in requested_row_fields)):
-            return False, _rt("Tabela dinâmica nativa não criada: parte dos campos de Linhas não foi reconhecida.")
+            return False, _rt("Tabela dinÃ¢mica nativa nÃ£o criada: parte dos campos de Linhas nÃ£o foi reconhecida.")
         if requested_column_fields and len(column_fields) < len(set(value.lower() for value in requested_column_fields)):
-            return False, _rt("Tabela dinâmica nativa não criada: parte dos campos de Colunas não foi reconhecida.")
+            return False, _rt("Tabela dinÃ¢mica nativa nÃ£o criada: parte dos campos de Colunas nÃ£o foi reconhecida.")
 
         if not value_field:
-            return False, _rt("Não foi possível determinar um campo de valor para a tabela dinâmica.")
+            return False, _rt("NÃ£o foi possÃ­vel determinar um campo de valor para a tabela dinÃ¢mica.")
 
         aggregation = str(pivot_config.get("aggregation") or "count").lower()
         agg_map = {
@@ -6131,7 +6131,7 @@ class PivotTableWidget(QWidget):
             last_row = int(used.Rows.Count)
             last_col = int(used.Columns.Count)
             if last_row < 2 or last_col < 1:
-                return False, _rt("Dados insuficientes para montar a tabela dinâmica nativa.")
+                return False, _rt("Dados insuficientes para montar a tabela dinÃ¢mica nativa.")
 
             try:
                 ws_snapshot = workbook.Worksheets("Tabela_Dinamica")
@@ -6182,9 +6182,9 @@ class PivotTableWidget(QWidget):
             ws_pivot.Columns.AutoFit()
 
             workbook.Save()
-            return True, _rt("Tabela dinâmica nativa do Excel criada com campos interativos.")
+            return True, _rt("Tabela dinÃ¢mica nativa do Excel criada com campos interativos.")
         except Exception as exc:
-            return False, _rt("Tabela dinâmica nativa do Excel não criada: {exc}", exc=exc)
+            return False, _rt("Tabela dinÃ¢mica nativa do Excel nÃ£o criada: {exc}", exc=exc)
         finally:
             if workbook is not None:
                 try:
@@ -6199,12 +6199,12 @@ class PivotTableWidget(QWidget):
 
     def _export_pivot_table(self):
         if self.pivot_df is None or self.pivot_df.empty:
-            slim_message(self, _rt("Exportar tabela dinâmica"), _rt("Não há dados para exportar."))
+            slim_message(self, _rt("Exportar tabela dinÃ¢mica"), _rt("NÃ£o hÃ¡ dados para exportar."))
             return
 
         path, selected_filter = QFileDialog.getSaveFileName(
             self,
-            _rt("Exportar tabela dinâmica"),
+            _rt("Exportar tabela dinÃ¢mica"),
             "",
             self.EXPORT_FILTERS,
         )
@@ -6240,15 +6240,15 @@ class PivotTableWidget(QWidget):
         except Exception as exc:
             slim_message(
                 self,
-                _rt("Exportar tabela dinâmica"),
-                _rt("Falha ao exportar a tabela dinâmica: {exc}", exc=exc),
+                _rt("Exportar tabela dinÃ¢mica"),
+                _rt("Falha ao exportar a tabela dinÃ¢mica: {exc}", exc=exc),
             )
             return
 
         slim_message(
             self,
-            _rt("Exportar tabela dinâmica"),
-            _rt("Tabela dinâmica exportada para:\n{path}{success_note}", path=path, success_note=success_note),
+            _rt("Exportar tabela dinÃ¢mica"),
+            _rt("Tabela dinÃ¢mica exportada para:\n{path}{success_note}", path=path, success_note=success_note),
         )
 
     def _export_to_gpkg(self, path: str):
@@ -6319,5 +6319,3 @@ class PivotTableWidget(QWidget):
         if ptypes.is_bool_dtype(series):
             return QVariant.Bool
         return QVariant.String
-
-

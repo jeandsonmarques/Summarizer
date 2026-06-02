@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Dict, Optional
 import re
@@ -226,7 +226,7 @@ if QDialog is not object:
             super().accept()
 
         def _build_ui(self):
-            self.setObjectName("WalkerCanvasStyleDialog")
+            self.setObjectName("SummarizerCanvasStyleDialog")
             self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
             self.setModal(True)
             self.resize(560, 392)
@@ -234,37 +234,37 @@ if QDialog is not object:
             self._font_enforcer = attach_ui_font_enforcer(self)
             self.setStyleSheet(
                 """
-                QDialog#WalkerCanvasStyleDialog {
+                QDialog#SummarizerCanvasStyleDialog {
                     background: #FFFFFF;
                     border: 1px solid #D1D5DB;
                     border-radius: 10px;
                 }
-                QFrame#WalkerDialogCard {
+                QFrame#SummarizerDialogCard {
                     background: #FFFFFF;
                     border: 1px solid #E5E7EB;
                     border-radius: 8px;
                 }
-                QFrame#WalkerDialogDragHandle {
+                QFrame#SummarizerDialogDragHandle {
                     background: transparent;
                     border: none;
                 }
-                QLabel#WalkerDialogTitle {
+                QLabel#SummarizerDialogTitle {
                     color: #111827;
                     font-size: 14px;
                     font-weight: 500;
                 }
-                QLabel#WalkerDialogSubtitle {
+                QLabel#SummarizerDialogSubtitle {
                     color: #6B7280;
                     font-size: 11px;
                 }
-                QLabel#WalkerFieldLabel {
+                QLabel#SummarizerFieldLabel {
                     color: #111827;
                     font-size: 12px;
                     font-weight: 400;
                 }
-                QLineEdit#WalkerDialogInput,
-                QComboBox#WalkerDialogInput,
-                QSpinBox#WalkerDialogInput {
+                QLineEdit#SummarizerDialogInput,
+                QComboBox#SummarizerDialogInput,
+                QSpinBox#SummarizerDialogInput {
                     min-height: 30px;
                     padding: 0 9px;
                     color: #111827;
@@ -272,58 +272,58 @@ if QDialog is not object:
                     border: 1px solid #D1D5DB;
                     border-radius: 8px;
                 }
-                QLineEdit#WalkerDialogInput:focus,
-                QComboBox#WalkerDialogInput:focus,
-                QSpinBox#WalkerDialogInput:focus {
+                QLineEdit#SummarizerDialogInput:focus,
+                QComboBox#SummarizerDialogInput:focus,
+                QSpinBox#SummarizerDialogInput:focus {
                     border-color: #9CA3AF;
                 }
-                QSpinBox#WalkerDialogInput::up-button,
-                QSpinBox#WalkerDialogInput::down-button {
+                QSpinBox#SummarizerDialogInput::up-button,
+                QSpinBox#SummarizerDialogInput::down-button {
                     width: 0px;
                     border: none;
                     background: transparent;
                     margin: 0;
                     padding: 0;
                 }
-                QSpinBox#WalkerDialogInput::up-arrow,
-                QSpinBox#WalkerDialogInput::down-arrow {
+                QSpinBox#SummarizerDialogInput::up-arrow,
+                QSpinBox#SummarizerDialogInput::down-arrow {
                     width: 0px;
                     height: 0px;
                     image: none;
                 }
-                QCheckBox#WalkerDialogCheck {
+                QCheckBox#SummarizerDialogCheck {
                     color: #111827;
                     font-size: 12px;
                     font-weight: 400;
                 }
-                QPushButton#WalkerDialogPrimaryButton,
-                QPushButton#WalkerDialogSecondaryButton {
+                QPushButton#SummarizerDialogPrimaryButton,
+                QPushButton#SummarizerDialogSecondaryButton {
                     min-height: 32px;
                     border-radius: 8px;
                     padding: 0 14px;
                     font-size: 12px;
                 }
-                QPushButton#WalkerDialogSecondaryButton {
+                QPushButton#SummarizerDialogSecondaryButton {
                     color: #111827;
                     background: #FFFFFF;
                     border: 1px solid #D1D5DB;
                     font-weight: 400;
                 }
-                QPushButton#WalkerDialogSecondaryButton:hover {
+                QPushButton#SummarizerDialogSecondaryButton:hover {
                     background: #F9FAFB;
                     border-color: #9CA3AF;
                 }
-                QPushButton#WalkerDialogPrimaryButton {
+                QPushButton#SummarizerDialogPrimaryButton {
                     color: #FFFFFF;
                     background: #111827;
                     border: 1px solid #111827;
                     font-weight: 500;
                 }
-                QPushButton#WalkerDialogPrimaryButton:hover {
+                QPushButton#SummarizerDialogPrimaryButton:hover {
                     background: #1F2937;
                     border-color: #1F2937;
                 }
-                QPushButton#WalkerColorChip {
+                QPushButton#SummarizerColorChip {
                     min-width: 22px;
                     max-width: 22px;
                     min-height: 22px;
@@ -332,7 +332,7 @@ if QDialog is not object:
                     border: 1px solid #D1D5DB;
                     padding: 0;
                 }
-                QLabel#WalkerAuxText {
+                QLabel#SummarizerAuxText {
                     color: #6B7280;
                     font-size: 10px;
                 }
@@ -356,33 +356,33 @@ if QDialog is not object:
             if hasattr(self, "setStyleSheet") and _is_dark_theme():
                 self.setStyleSheet(
                     """
-                    QDialog#WalkerCanvasStyleDialog {
+                    QDialog#SummarizerCanvasStyleDialog {
                         background: #111827;
                         border: 1px solid #374151;
                         border-radius: 10px;
                         color: #F8FAFC;
                     }
-                    QFrame#WalkerDialogCard {
+                    QFrame#SummarizerDialogCard {
                         background: #1F2937;
                         border: 1px solid #374151;
                         border-radius: 8px;
                     }
-                    QFrame#WalkerDialogDragHandle,
+                    QFrame#SummarizerDialogDragHandle,
                     QLabel {
                         background: transparent;
                     }
-                    QLabel#WalkerDialogTitle,
-                    QLabel#WalkerFieldLabel,
-                    QCheckBox#WalkerDialogCheck {
+                    QLabel#SummarizerDialogTitle,
+                    QLabel#SummarizerFieldLabel,
+                    QCheckBox#SummarizerDialogCheck {
                         color: #F8FAFC;
                     }
-                    QLabel#WalkerDialogSubtitle,
-                    QLabel#WalkerAuxText {
+                    QLabel#SummarizerDialogSubtitle,
+                    QLabel#SummarizerAuxText {
                         color: #CBD5E1;
                     }
-                    QLineEdit#WalkerDialogInput,
-                    QComboBox#WalkerDialogInput,
-                    QSpinBox#WalkerDialogInput {
+                    QLineEdit#SummarizerDialogInput,
+                    QComboBox#SummarizerDialogInput,
+                    QSpinBox#SummarizerDialogInput {
                         min-height: 30px;
                         padding: 0 9px;
                         color: #F8FAFC;
@@ -392,56 +392,56 @@ if QDialog is not object:
                         selection-background-color: #374151;
                         selection-color: #F8FAFC;
                     }
-                    QLineEdit#WalkerDialogInput:focus,
-                    QComboBox#WalkerDialogInput:focus,
-                    QSpinBox#WalkerDialogInput:focus {
+                    QLineEdit#SummarizerDialogInput:focus,
+                    QComboBox#SummarizerDialogInput:focus,
+                    QSpinBox#SummarizerDialogInput:focus {
                         border-color: #7C6CFF;
                     }
-                    QComboBox#WalkerDialogInput QAbstractItemView {
+                    QComboBox#SummarizerDialogInput QAbstractItemView {
                         background: #1F2937;
                         color: #F8FAFC;
                         border: 1px solid #374151;
                         selection-background-color: #374151;
                         selection-color: #F8FAFC;
                     }
-                    QSpinBox#WalkerDialogInput::up-button,
-                    QSpinBox#WalkerDialogInput::down-button,
-                    QSpinBox#WalkerDialogInput::up-arrow,
-                    QSpinBox#WalkerDialogInput::down-arrow {
+                    QSpinBox#SummarizerDialogInput::up-button,
+                    QSpinBox#SummarizerDialogInput::down-button,
+                    QSpinBox#SummarizerDialogInput::up-arrow,
+                    QSpinBox#SummarizerDialogInput::down-arrow {
                         width: 0px;
                         height: 0px;
                         border: none;
                         background: transparent;
                         image: none;
                     }
-                    QPushButton#WalkerDialogPrimaryButton,
-                    QPushButton#WalkerDialogSecondaryButton {
+                    QPushButton#SummarizerDialogPrimaryButton,
+                    QPushButton#SummarizerDialogSecondaryButton {
                         min-height: 32px;
                         border-radius: 8px;
                         padding: 0 14px;
                         font-size: 12px;
                     }
-                    QPushButton#WalkerDialogSecondaryButton {
+                    QPushButton#SummarizerDialogSecondaryButton {
                         color: #F8FAFC;
                         background: #1F2937;
                         border: 1px solid #374151;
                         font-weight: 400;
                     }
-                    QPushButton#WalkerDialogSecondaryButton:hover {
+                    QPushButton#SummarizerDialogSecondaryButton:hover {
                         background: #273449;
                         border-color: #475569;
                     }
-                    QPushButton#WalkerDialogPrimaryButton {
+                    QPushButton#SummarizerDialogPrimaryButton {
                         color: #0B1020;
                         background: #F8FAFC;
                         border: 1px solid #F8FAFC;
                         font-weight: 500;
                     }
-                    QPushButton#WalkerDialogPrimaryButton:hover {
+                    QPushButton#SummarizerDialogPrimaryButton:hover {
                         background: #E2E8F0;
                         border-color: #E2E8F0;
                     }
-                    QPushButton#WalkerColorChip {
+                    QPushButton#SummarizerColorChip {
                         min-width: 22px;
                         max-width: 22px;
                         min-height: 22px;
@@ -483,36 +483,36 @@ if QDialog is not object:
             helper_font.setPixelSize(11)
 
             drag_handle = _DialogDragHandle(self, self) if _DialogDragHandle is not None else QFrame(self)
-            drag_handle.setObjectName("WalkerDialogDragHandle")
+            drag_handle.setObjectName("SummarizerDialogDragHandle")
             drag_handle.setFixedHeight(24)
             top_bar = QHBoxLayout(drag_handle)
             top_bar.setContentsMargins(0, 0, 0, 0)
             top_bar.setSpacing(8)
-            top_hint = QLabel(_rt("Configuração visual"), self)
-            top_hint.setObjectName("WalkerDialogSubtitle")
+            top_hint = QLabel(_rt("ConfiguraÃ§Ã£o visual"), self)
+            top_hint.setObjectName("SummarizerDialogSubtitle")
             top_hint.setFont(helper_font)
             top_bar.addWidget(top_hint, 0)
             top_bar.addStretch(1)
             close_btn = QToolButton(self)
             close_btn.setObjectName("ConfigDialogCloseButton")
-            close_btn.setText("×")
+            close_btn.setText("Ã—")
             close_btn.clicked.connect(self.reject)
             top_bar.addWidget(close_btn, 0)
             layout.addWidget(drag_handle, 0)
 
             title = QLabel(_rt("Configurar canvas"), self)
-            title.setObjectName("WalkerDialogTitle")
+            title.setObjectName("SummarizerDialogTitle")
             title.setFont(title_font)
             layout.addWidget(title, 0)
 
             subtitle = QLabel(_rt("Ajuste fundo, grade e densidade visual com visual minimalista."), self)
-            subtitle.setObjectName("WalkerDialogSubtitle")
+            subtitle.setObjectName("SummarizerDialogSubtitle")
             subtitle.setWordWrap(True)
             subtitle.setFont(helper_font)
             layout.addWidget(subtitle, 0)
 
             card = QFrame(self)
-            card.setObjectName("WalkerDialogCard")
+            card.setObjectName("SummarizerDialogCard")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(12, 12, 12, 12)
             card_layout.setSpacing(10)
@@ -523,23 +523,23 @@ if QDialog is not object:
 
             def _build_label(text: str) -> QLabel:
                 label = QLabel(text, card)
-                label.setObjectName("WalkerFieldLabel")
+                label.setObjectName("SummarizerFieldLabel")
                 label.setFont(body_font)
                 return label
 
             self.theme_label = _build_label(_rt("Tema"))
             self.theme_combo = QComboBox(card)
-            self.theme_combo.setObjectName("WalkerDialogInput")
+            self.theme_combo.setObjectName("SummarizerDialogInput")
             self.theme_combo.addItem(_rt("Personalizado"), "custom")
-            self.theme_combo.addItem(_rt("Padrão clean"), "clean")
-            self.theme_combo.addItem(_rt("Padrão suave"), "soft")
+            self.theme_combo.addItem(_rt("PadrÃ£o clean"), "clean")
+            self.theme_combo.addItem(_rt("PadrÃ£o suave"), "soft")
             self.theme_combo.addItem(_rt("Noturno"), "dark")
             grid.addWidget(self.theme_label, 0, 0)
             grid.addWidget(self.theme_combo, 0, 1, 1, 3)
 
             self.bg_label = _build_label(_rt("Cor do fundo"))
             self.bg_edit = QLineEdit(str(self._initial_style.get("background") or ""), card)
-            self.bg_edit.setObjectName("WalkerDialogInput")
+            self.bg_edit.setObjectName("SummarizerDialogInput")
             self.bg_preview = QLabel(card)
             set_color_preview_chip(self.bg_preview, self.bg_edit.text(), "#FFFFFF")
             grid.addWidget(self.bg_label, 1, 0)
@@ -548,7 +548,7 @@ if QDialog is not object:
 
             self.grid_label = _build_label(_rt("Cor da grade"))
             self.grid_edit = QLineEdit(str(self._initial_style.get("grid_color") or ""), card)
-            self.grid_edit.setObjectName("WalkerDialogInput")
+            self.grid_edit.setObjectName("SummarizerDialogInput")
             self.grid_preview = QLabel(card)
             set_color_preview_chip(self.grid_preview, self.grid_edit.text(), "#FFFFFF")
             grid.addWidget(self.grid_label, 2, 0)
@@ -556,14 +556,14 @@ if QDialog is not object:
             grid.addWidget(self.grid_preview, 2, 3)
 
             self.show_grid_check = QCheckBox(_rt("Mostrar grade no modo de edicao"), card)
-            self.show_grid_check.setObjectName("WalkerDialogCheck")
+            self.show_grid_check.setObjectName("SummarizerDialogCheck")
             self.show_grid_check.setFont(body_font)
             self.show_grid_check.setChecked(bool(self._initial_style.get("show_grid", True)))
             grid.addWidget(self.show_grid_check, 3, 0, 1, 4)
 
             self.grid_size_label = _build_label(_rt("Tamanho da grade"))
             self.grid_size_spin = QSpinBox(card)
-            self.grid_size_spin.setObjectName("WalkerDialogInput")
+            self.grid_size_spin.setObjectName("SummarizerDialogInput")
             self.grid_size_spin.setRange(4, 48)
             self.grid_size_spin.setValue(int(self._initial_style.get("grid_size", 8)))
             self.grid_size_spin.setButtonSymbols(QSpinBox.NoButtons)
@@ -573,7 +573,7 @@ if QDialog is not object:
 
             self.grid_opacity_label = _build_label(_rt("Opacidade da grade (%)"))
             self.grid_opacity_spin = QSpinBox(card)
-            self.grid_opacity_spin.setObjectName("WalkerDialogInput")
+            self.grid_opacity_spin.setObjectName("SummarizerDialogInput")
             self.grid_opacity_spin.setRange(10, 100)
             self.grid_opacity_spin.setValue(int(round(float(self._initial_style.get("grid_opacity", 1.0)) * 100.0)))
             self.grid_opacity_spin.setButtonSymbols(QSpinBox.NoButtons)
@@ -590,10 +590,10 @@ if QDialog is not object:
             bg_quick_colors = ["#FFFFFF", "#F8FAFC", "#F3F4F6", "#F1F5F9", "#111827"]
             for color in bg_quick_colors:
                 chip = QPushButton("", card)
-                chip.setObjectName("WalkerColorChip")
+                chip.setObjectName("SummarizerColorChip")
                 chip.setToolTip(color)
                 chip.setStyleSheet(
-                    f"QPushButton#WalkerColorChip{{background:{color};border:1px solid #D1D5DB;border-radius:6px;}}"
+                    f"QPushButton#SummarizerColorChip{{background:{color};border:1px solid #D1D5DB;border-radius:6px;}}"
                 )
                 chip.clicked.connect(lambda checked=False, value=color: self.bg_edit.setText(value))
                 palette_bg.addWidget(chip)
@@ -607,10 +607,10 @@ if QDialog is not object:
             grid_quick_colors = ["#FFFFFF", "#E5E7EB", "#D1D5DB", "#9CA3AF", "#6B7280", "#374151"]
             for color in grid_quick_colors:
                 chip = QPushButton("", card)
-                chip.setObjectName("WalkerColorChip")
+                chip.setObjectName("SummarizerColorChip")
                 chip.setToolTip(color)
                 chip.setStyleSheet(
-                    f"QPushButton#WalkerColorChip{{background:{color};border:1px solid #D1D5DB;border-radius:6px;}}"
+                    f"QPushButton#SummarizerColorChip{{background:{color};border:1px solid #D1D5DB;border-radius:6px;}}"
                 )
                 chip.clicked.connect(lambda checked=False, value=color: self.grid_edit.setText(value))
                 palette_grid.addWidget(chip)
@@ -618,7 +618,7 @@ if QDialog is not object:
             card_layout.addLayout(palette_grid)
 
             helper = QLabel(_rt("Dica: use fundo claro com grade suave para um visual limpo."), card)
-            helper.setObjectName("WalkerAuxText")
+            helper.setObjectName("SummarizerAuxText")
             helper.setWordWrap(True)
             helper.setFont(helper_font)
             card_layout.addWidget(helper, 0)
@@ -632,13 +632,13 @@ if QDialog is not object:
             actions.addStretch(1)
 
             self.reset_btn = QPushButton(_rt("Restaurar padrao"), self)
-            self.reset_btn.setObjectName("WalkerDialogSecondaryButton")
+            self.reset_btn.setObjectName("SummarizerDialogSecondaryButton")
             self.reset_btn.setFont(body_font)
             self.cancel_btn = QPushButton(_rt("Cancelar"), self)
-            self.cancel_btn.setObjectName("WalkerDialogSecondaryButton")
+            self.cancel_btn.setObjectName("SummarizerDialogSecondaryButton")
             self.cancel_btn.setFont(body_font)
             self.apply_btn = QPushButton(_rt("Aplicar"), self)
-            self.apply_btn.setObjectName("WalkerDialogPrimaryButton")
+            self.apply_btn.setObjectName("SummarizerDialogPrimaryButton")
             self.apply_btn.setFont(body_font)
 
             actions.addWidget(self.reset_btn, 0)

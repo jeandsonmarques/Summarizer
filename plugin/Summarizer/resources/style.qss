@@ -1,4 +1,4 @@
-﻿/* Power BI Desktop inspired style for Summarizer */
+﻿/* Modern analytics style for Summarizer */
 
 * {
     font-family: ${font_ui_stack};
@@ -740,4 +740,3 @@ QToolTip[themeMode="dark"] {
     color: ${color_text_primary};
     border-color: ${color_border};
 }
-

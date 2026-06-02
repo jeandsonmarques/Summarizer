@@ -8,7 +8,7 @@ from qgis.PyQt.QtWidgets import QGraphicsScene, QGraphicsView, QMenu
 
 from ..utils.logging_utils import log_exception
 class ModelCanvasView(QGraphicsView):
-    """QGraphicsView com pan/zoom suave e grade ao estilo Power BI."""
+    """QGraphicsView with smooth pan/zoom and a modern analytics grid."""
 
     zoomChanged = pyqtSignal(float)
 
@@ -234,7 +234,7 @@ class ModelCanvasView(QGraphicsView):
             style_menu = menu.addMenu("Estilo das linhas")
             styles = [
                 ("Linhas ortogonais", "orthogonal"),
-                ("Linhas curvas (Power BI)", "curved"),
+                ("Linhas curvas", "curved"),
                 ("Linhas retas", "straight"),
             ]
             current_style = getattr(manager, "connection_style", "curved")

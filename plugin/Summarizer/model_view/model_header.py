@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
@@ -90,19 +90,19 @@ def build_model_header(
     close_project_btn = QToolButton()
     close_project_btn.setObjectName("ModelCloseProjectButton")
 
-    configure_toolbar_icon_button(undo_btn, "Walker-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
-    configure_toolbar_icon_button(redo_btn, "Walker-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
-    configure_toolbar_icon_button(new_btn, "Walker-New.svg", _rt("Novo"))
-    configure_toolbar_icon_button(open_btn, "Walker-Open.svg", _rt("Abrir"))
-    configure_toolbar_icon_button(save_btn, "Walker-Save.svg", _rt("Salvar"))
-    configure_toolbar_icon_button(save_as_btn, "Walker-SaveAs.svg", _rt("Salvar como"))
-    configure_toolbar_icon_button(export_btn, "Walker-Image.svg", _rt("Exportar imagem"))
+    configure_toolbar_icon_button(undo_btn, "Summarizer-Undo.svg", _rt("Desfazer (Ctrl+Z)"))
+    configure_toolbar_icon_button(redo_btn, "Summarizer-Redo.svg", _rt("Refazer (Ctrl+Shift+Z)"))
+    configure_toolbar_icon_button(new_btn, "Summarizer-New.svg", _rt("Novo"))
+    configure_toolbar_icon_button(open_btn, "Summarizer-Open.svg", _rt("Abrir"))
+    configure_toolbar_icon_button(save_btn, "Summarizer-Save.svg", _rt("Salvar"))
+    configure_toolbar_icon_button(save_as_btn, "Summarizer-SaveAs.svg", _rt("Salvar como"))
+    configure_toolbar_icon_button(export_btn, "Summarizer-Image.svg", _rt("Exportar imagem"))
     configure_toolbar_icon_button(create_chart_btn, "ModelVisual-Pie.svg", _rt("Criar grafico"))
-    configure_toolbar_icon_button(format_visual_btn, "Walker-Format.svg", _rt("Formatar visual"))
-    configure_toolbar_icon_button(edit_mode_btn, "Walker-Edit.svg", _rt("Edicao"))
+    configure_toolbar_icon_button(format_visual_btn, "Summarizer-Format.svg", _rt("Formatar visual"))
+    configure_toolbar_icon_button(edit_mode_btn, "Summarizer-Edit.svg", _rt("Edicao"))
     configure_toolbar_icon_button(
         settings_btn,
-        "Walker-Settings.svg",
+        "Summarizer-Settings.svg",
         _rt("Configurar fundo e grade do canvas"),
         icon_color="#F97316",
     )
@@ -164,12 +164,12 @@ def build_model_header(
     mode_layout = QHBoxLayout(mode_switch_wrap)
     mode_layout.setContentsMargins(0, 0, 0, 0)
     mode_layout.setSpacing(6)
-    mode_state_label = QLabel(_rt("Edição"), mode_switch_wrap)
+    mode_state_label = QLabel(_rt("EdiÃ§Ã£o"), mode_switch_wrap)
     mode_state_label.setObjectName("ModelModeStateLabel")
     mode_toggle = _ModelModeToggle(mode_switch_wrap)
     mode_toggle.setObjectName("ModelModeToggle")
     mode_toggle.setChecked(True, animated=False)
-    mode_toggle.setToolTip(_rt("Alternar entre modo de edição e pré-visualização"))
+    mode_toggle.setToolTip(_rt("Alternar entre modo de ediÃ§Ã£o e prÃ©-visualizaÃ§Ã£o"))
     mode_layout.addWidget(mode_state_label, 0)
     mode_layout.addWidget(mode_toggle, 0)
 
@@ -188,7 +188,7 @@ def build_model_header(
     header_layout.addLayout(top_row)
 
     project_hint_label = QLabel(
-        _rt("Monte painéis com os graficos da aba Resumo. O painel salvo continua editavel.")
+        _rt("Monte painÃ©is com os graficos da aba Resumo. O painel salvo continua editavel.")
     )
     project_hint_label.setObjectName("ModelHint")
     project_hint_label.setWordWrap(True)

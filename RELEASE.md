@@ -1,37 +1,36 @@
-# Release do Summarizer
+# Summarizer Release
 
-O pacote distribuivel do plugin deve ser gerado fora do repositorio, em uma
-pasta separada dentro de `Documents`, para evitar que ZIPs, staging e artefatos
-temporarios fiquem dentro da arvore do projeto.
+The QGIS plugin package must be generated outside the repository in a separate
+folder under `Documents`. This keeps ZIP files, staging folders, and temporary
+artifacts out of the project tree.
 
-## Saida padrao
+## Default Output
 
-O comando abaixo gera o release em:
-
-`$env:USERPROFILE\Documents\Summarizer_release`
+Run the release script from the repository root:
 
 ```powershell
 .\scripts\build_release.ps1
 ```
 
-## Saida personalizada
+The final ZIP is created as:
 
-Voce pode informar uma pasta de saida externa usando `-OutputDir`:
+`$env:USERPROFILE\Documents\Summarizer_release\Summarizer-qgis-release.zip`
+
+## Custom Output
+
+You can provide an external output folder with `-OutputDir`:
 
 ```powershell
 .\scripts\build_release.ps1 -OutputDir "$env:USERPROFILE\Documents\Summarizer_release"
 ```
 
-O ZIP final sera criado como:
-
-`$env:USERPROFILE\Documents\Summarizer_release\Summarizer-qgis-release.zip`
-
-## Estrutura esperada do ZIP
+## Expected ZIP Structure
 
 ```text
 Summarizer/
   __init__.py
   metadata.txt
+  LICENSE
   README.md
   CHANGELOG.md
   resources/
@@ -42,50 +41,57 @@ Summarizer/
   ui/
 ```
 
-## O que nao deve entrar no ZIP
+The ZIP root must contain only `Summarizer/`. Do not upload GitHub's automatic
+Source Code ZIP to the QGIS plugin repository.
+
+## Excluded Files
 
 - `.git`
 - `.github`
 - `tests`
 - `__pycache__`
 - `*.pyc`
+- `*.pyo`
 - `.pytest_cache`
 - `.ruff_cache`
 - `_release`
+- `_release_stage`
+- `__MACOSX`
 - `logs`
 - `*.log`
 - `*.tmp`
-- arquivos temporarios
-- senhas, tokens ou configs locais
+- temporary files
+- passwords, tokens, or local configs
 
-## O que o script faz
+## What The Script Does
 
-1. valida `metadata.txt`;
-2. valida o `icon.svg` referenciado no metadata e o `icon.png` usado como ativo auxiliar do pacote;
-3. roda `compileall` em `plugin/Summarizer` e `tests`;
-4. limpa caches e artefatos gerados;
-5. monta o staging fora do repositorio;
-6. cria o ZIP final em `Summarizer_release`;
-7. verifica a estrutura interna do ZIP;
-8. remove o staging temporario ao final.
+1. Validates `metadata.txt`.
+2. Validates the icon referenced by `metadata.txt` and the raster `icon.png`.
+3. Runs `compileall` for `plugin/Summarizer`.
+4. Removes caches and generated artifacts.
+5. Copies only `plugin/Summarizer` into a temporary staging folder.
+6. Creates `Summarizer-qgis-release.zip` with `Summarizer/` at the archive root.
+7. Blocks repository, test, cache, bytecode, generated, and hidden platform files from the ZIP.
+8. Audits the release package for prohibited references.
+9. Removes temporary staging files at the end.
 
-## Icones
+## Icons
 
-O `metadata.txt` aponta para `resources/icon.svg`, que e o icone principal usado pelo QGIS na instalacao do plugin.
-O `scripts/build_release.ps1` tambem valida `resources/icon.png` porque o pacote de release mantem esse ativo auxiliar disponivel para o empacotamento.
-Os dois arquivos sao mantidos de proposito para nao quebrar o carregamento do plugin nem o fluxo de distribuicao.
+The `metadata.txt` file points to `resources/icon.png`, which is the QGIS
+plugin icon used for publication. The SVG companion can remain as a local
+resource, but the release script validates the raster icon used by metadata.
 
-## Checklist rapido
+## Quick Checklist
 
-1. Confirmar que o branch esta limpo.
-2. Rodar o script de release.
-3. Abrir o ZIP e verificar que a raiz e `Summarizer/`.
-4. Confirmar que nao existem `tests/`, `.github/`, `__pycache__/` ou `*.pyc`.
-5. Instalar o ZIP no QGIS e testar a abertura do plugin.
-6. Publicar somente o ZIP final fora do repositorio.
+1. Confirm the branch is clean.
+2. Run `scripts/build_release.ps1`.
+3. Open the ZIP and verify the root is only `Summarizer/`.
+4. Confirm there are no `tests/`, `.github/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `*.pyc`, or `*.pyo` files.
+5. Install the ZIP in QGIS and test that the plugin opens correctly.
+6. Publish only `Summarizer-qgis-release.zip`.
 
-## Observacao importante
+## Important Note
 
-O ZIP deve nascer sempre da pasta `plugin/Summarizer`. Nao compacte a raiz
-inteira do repositorio, porque isso cria caminhos duplicados e dificulta a
-instalacao limpa no QGIS.
+The ZIP must always be generated from `plugin/Summarizer`. Do not compress the
+repository root, because that creates extra paths and prevents a clean QGIS
+installation.

@@ -76,7 +76,7 @@ SAVED_CONNECTIONS_KEY = "Summarizer/integration/saved_connections"
 LAST_DB_PARAMS_KEY = "Summarizer/integration/last_db_params"
 
 
-def _apply_walker_dialog_buttons(*, primary=None, secondary=None):
+def _apply_summarizer_dialog_buttons(*, primary=None, secondary=None):
     for button in list(primary or []):
         if button is None:
             continue
@@ -597,9 +597,9 @@ class IntegrationPanel(QWidget):
                 accent="#E8EEFF",
                 icon_text="SQL",
                 handler=self._handle_sqlserver_database,
-                description="Conector para ambientes Microsoft SQL Server.",
+                description="Conector para ambientes SQL Server.",
                 icon_path=os.path.join(_ICON_DIR, "source_sqlserver.svg"),
-                keywords="sql server mssql servidor banco microsoft",
+                keywords="sql server mssql servidor banco",
             )
         )
         register(
@@ -1225,7 +1225,7 @@ class ExcelImportDialog(SlimDialogBase):
         preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
         load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
         cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
-        _apply_walker_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn, browse_btn])
+        _apply_summarizer_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn, browse_btn])
         layout.addWidget(buttons)
 
         preview_btn.clicked.connect(self._preview)
@@ -1343,7 +1343,7 @@ class DelimitedFileDialog(SlimDialogBase):
         preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
         load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
         cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
-        _apply_walker_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn, browse_btn])
+        _apply_summarizer_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn, browse_btn])
         layout.addWidget(buttons)
 
         preview_btn.clicked.connect(self._preview)
@@ -1477,7 +1477,7 @@ class ClipboardImportDialog(SlimDialogBase):
         preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
         load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
         cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
-        _apply_walker_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn])
+        _apply_summarizer_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn])
         layout.addWidget(buttons)
 
         self.preview_table = QTableWidget(self)
@@ -1661,7 +1661,7 @@ class DatabaseImportDialog(SlimDialogBase):
         preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
         load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
         cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
-        _apply_walker_dialog_buttons(
+        _apply_summarizer_dialog_buttons(
             primary=[load_btn],
             secondary=[preview_btn, cancel_btn, self.test_btn, self.browser_sync_btn],
         )
@@ -1931,17 +1931,17 @@ class DatabaseImportDialog(SlimDialogBase):
             return {}
         if not schema:
             schema = "public"
-        safe_schema = schema.replace("'", "''")
-        safe_name = name.replace("'", "''")
         query = QSqlQuery(db)
-        sql = (
+        query.prepare(
             "SELECT f_geometry_column, srid, type "
             "FROM public.geometry_columns "
-            f"WHERE f_table_schema = '{safe_schema}' "
-            f"AND f_table_name = '{safe_name}' "
+            "WHERE f_table_schema = ? "
+            "AND f_table_name = ? "
             "LIMIT 1"
         )
-        if not query.exec_(sql):
+        query.addBindValue(schema)
+        query.addBindValue(name)
+        if not query.exec_():
             return {}
         if not query.next():
             return {}
@@ -2112,7 +2112,7 @@ class GoogleSheetsDialog(SlimDialogBase):
         preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
         load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
         cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
-        _apply_walker_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn])
+        _apply_summarizer_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn])
         layout.addWidget(buttons)
 
         self.preview_table = QTableWidget(self)
@@ -2194,6 +2194,3 @@ class ExtendedConnectorsDialog(SlimDialogBase):
         close_btn.rejected.connect(self.reject)
         layout.addWidget(close_btn)
         _apply_i18n_widgets(self)
-
-
-

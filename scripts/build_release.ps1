@@ -45,7 +45,7 @@ function Remove-GeneratedArtifacts {
     }
 
     Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory |
-        Where-Object { $_.Name -in @("__pycache__", ".pytest_cache", ".ruff_cache") } |
+        Where-Object { $_.Name -in @("__pycache__", ".pytest_cache", ".ruff_cache", "__MACOSX") } |
         Remove-Item -Recurse -Force
 
     Get-ChildItem -LiteralPath $Root -Recurse -Force -File |
@@ -103,7 +103,9 @@ function Test-ZipStructure {
             '\.pytest_cache(/|$)',
             '\.ruff_cache(/|$)',
             '\.pyc$',
-            '\.pyo$'
+            '\.pyo$',
+            '__MACOSX(/|$)',
+            '\.(exe|dll|so|pyd|dylib)$'
         )
 
         foreach ($pattern in $forbiddenPatterns) {
@@ -115,8 +117,10 @@ function Test-ZipStructure {
         $requiredEntries = @(
             "$PluginFolderName/__init__.py",
             "$PluginFolderName/metadata.txt",
+            "$PluginFolderName/LICENSE",
             "$PluginFolderName/README.md",
             "$PluginFolderName/CHANGELOG.md",
+            "$PluginFolderName/resources/icon.png",
             "$PluginFolderName/resources/",
             "$PluginFolderName/i18n/",
             "$PluginFolderName/model_view/",
@@ -158,7 +162,13 @@ function Test-ZipPublicClean {
             '(?i)(^|/)reports_widget\.py$',
             '(?i)(^|/)report_ai_engine\.py$',
             '(?i)(^|/)query_interpreter\.py$',
-            '(?i)(^|/)query_preprocessor\.py$'
+            '(?i)(^|/)query_preprocessor\.py$',
+            '(?i)power\s*bi',
+            '(?i)powerbi',
+            '(?i)power_bi',
+            '(?i)microsoft',
+            '(?i)graphic\s+walker',
+            '(?i)walker'
         )
 
         foreach ($pattern in $forbiddenPathPatterns) {
@@ -179,7 +189,13 @@ function Test-ZipPublicClean {
             '(?i)operational_memory',
             '(?i)\bllm\b',
             '(?i)\bprompt\b',
-            '(?i)\bagent\b'
+            '(?i)\bagent\b',
+            '(?i)power\s*bi',
+            '(?i)powerbi',
+            '(?i)power_bi',
+            '(?i)microsoft',
+            '(?i)graphic\s+walker',
+            '(?i)walker'
         )
         $textExtensions = @(".py", ".txt", ".md", ".json", ".qss", ".svg", ".csv", ".ini")
 
@@ -227,7 +243,7 @@ $stagePluginRoot = Join-Path $stageRoot $pluginFolderName
 $zipPath = Join-Path $releaseDir "Summarizer-qgis-release.zip"
 
 Assert-FileExists -Path (Join-Path $sourcePlugin "metadata.txt") -Message "metadata.txt not found in $sourcePlugin."
-# Keep the raster companion alongside the SVG metadata icon so packaging stays compatible with the release flow.
+Assert-FileExists -Path (Join-Path $sourcePlugin "LICENSE") -Message "LICENSE not found in $sourcePlugin."
 Assert-FileExists -Path (Join-Path $sourcePlugin "resources\icon.png") -Message "icon.png not found in $sourcePlugin\resources."
 
 $metadataText = Get-Content -LiteralPath (Join-Path $sourcePlugin "metadata.txt") -Raw

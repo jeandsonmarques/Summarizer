@@ -4,7 +4,7 @@ import pathlib
 import unicodedata
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PLUGIN_DIR = ROOT / 'plugin' / 'power_bi_summarizer'
+PLUGIN_DIR = ROOT / 'plugin' / 'Summarizer'
 I18N_DIR = PLUGIN_DIR / 'i18n'
 REPORT_DIR = ROOT / 'scripts' / '_reports'
 

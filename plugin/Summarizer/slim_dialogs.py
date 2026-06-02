@@ -404,7 +404,7 @@ def _build_dialog_font() -> QFont:
 
 
 class SlimDialogBase(QDialog):
-    """Applies slim Power BI-inspired styling plus geometry persistence."""
+    """Applies compact analytics styling plus geometry persistence."""
 
     def __init__(self, parent: Optional[QWidget] = None, geometry_key: str = ""):
         super().__init__(parent)

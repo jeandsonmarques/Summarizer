@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -340,7 +340,7 @@ class ModelTab(QWidget):
         )
         self.visual_side_collapsed_btn.clicked.connect(self._toggle_visual_side_panel)
         visual_rail_layout.addWidget(self.visual_side_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
-        self.visual_side_collapsed_title = _ModelVerticalPanelLabel(_rt("Visualizações"), self.visual_side_collapsed_rail)
+        self.visual_side_collapsed_title = _ModelVerticalPanelLabel(_rt("VisualizaÃ§Ãµes"), self.visual_side_collapsed_rail)
         self.visual_side_collapsed_title.setObjectName("ModelSidePanelCollapsedTitle")
         visual_rail_layout.addWidget(self.visual_side_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
         visual_rail_layout.addStretch(1)
@@ -1950,7 +1950,7 @@ class ModelTab(QWidget):
                 self.builder_construct_card.setVisible(False)
             if hasattr(self, "builder_format_card"):
                 self.builder_format_card.setVisible(False)
-            self.builder_selected_visual_label.setText(_rt("Selecione um visual para começar."))
+            self.builder_selected_visual_label.setText(_rt("Selecione um visual para comeÃ§ar."))
             for button in self.builder_visual_buttons.values():
                 button.blockSignals(True)
                 button.setChecked(False)
@@ -1973,7 +1973,7 @@ class ModelTab(QWidget):
         active_chart_type = normalize_chart_type(binding.chart_type or getattr(item.visual_state, "chart_type", ""))
         layer_name = binding.source_name or _rt("Sem camada")
         visual_label = chart_type_label(binding.chart_type or getattr(item.visual_state, "chart_type", "bar"))
-        self.builder_selected_visual_label.setText(_rt("{visual} · {layer}", visual=visual_label, layer=layer_name))
+        self.builder_selected_visual_label.setText(_rt("{visual} Â· {layer}", visual=visual_label, layer=layer_name))
         for widget in list(getattr(self, "_builder_selection_widgets", []) or []):
             widget.setVisible(True)
         slot_defs = binding_slot_definitions(binding.chart_type or getattr(item.visual_state, "chart_type", "bar"))
@@ -3034,7 +3034,7 @@ class ModelTab(QWidget):
             answer = slim_question(
                 self,
                 _rt("Model"),
-                _rt("O painel atual tem alterações não salvas. Deseja salvar antes de fechar?"),
+                _rt("O painel atual tem alteraÃ§Ãµes nÃ£o salvas. Deseja salvar antes de fechar?"),
                 buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
                 default_button=QMessageBox.Yes,
             )
@@ -3164,7 +3164,7 @@ class ModelTab(QWidget):
         slim_message(self, _rt("Model"), _rt("Painel exportado para:\n{path}", path=path))
 
     def _sync_mode_switch_state(self, editing_enabled: bool):
-        state_text = _rt("Edição") if editing_enabled else _rt("Pré-visualizar")
+        state_text = _rt("EdiÃ§Ã£o") if editing_enabled else _rt("PrÃ©-visualizar")
         self.mode_state_label.setText(state_text)
         self.mode_state_label.setProperty("modeState", "editing" if editing_enabled else "preview")
         self.mode_state_label.style().unpolish(self.mode_state_label)
@@ -3248,15 +3248,15 @@ class ModelTab(QWidget):
             self.visual_side_toggle_btn.setVisible(not collapsed)
             self.visual_side_toggle_btn.setArrowType(Qt.NoArrow)
             self.visual_side_toggle_btn.setIcon(QIcon())
-            self.visual_side_toggle_btn.setText("›")
+            self.visual_side_toggle_btn.setText("â€º")
             self.visual_side_toggle_btn.setFixedSize(22, 22)
-            self.visual_side_toggle_btn.setToolTip(_rt("Recolher visualizações"))
+            self.visual_side_toggle_btn.setToolTip(_rt("Recolher visualizaÃ§Ãµes"))
         if hasattr(self, "visual_side_collapsed_btn"):
             self.visual_side_collapsed_btn.setArrowType(Qt.NoArrow)
             self.visual_side_collapsed_btn.setIcon(QIcon())
-            self.visual_side_collapsed_btn.setText("‹")
+            self.visual_side_collapsed_btn.setText("â€¹")
             self.visual_side_collapsed_btn.setFixedSize(22, 22)
-            self.visual_side_collapsed_btn.setToolTip(_rt("Expandir visualizações"))
+            self.visual_side_collapsed_btn.setToolTip(_rt("Expandir visualizaÃ§Ãµes"))
         self._apply_collapsed_panel_chrome()
         try:
             self.visual_side_panel.style().unpolish(self.visual_side_panel)
@@ -3495,11 +3495,11 @@ class ModelTab(QWidget):
         self._sync_toolbar_separator_visibility()
         self.mode_switch_wrap.setVisible(show_project_actions)
         if has_project:
-            self._configure_toolbar_icon_button(self.new_btn, "Walker-New.svg", _rt("Novo"))
-            self._configure_toolbar_icon_button(self.open_btn, "Walker-Open.svg", _rt("Abrir"))
+            self._configure_toolbar_icon_button(self.new_btn, "Summarizer-New.svg", _rt("Novo"))
+            self._configure_toolbar_icon_button(self.open_btn, "Summarizer-Open.svg", _rt("Abrir"))
         else:
-            self._configure_toolbar_text_icon_button(self.new_btn, "Walker-New.svg", _rt("Novo"), _rt("Novo"))
-            self._configure_toolbar_text_icon_button(self.open_btn, "Walker-Open.svg", _rt("Abrir"), _rt("Abrir"))
+            self._configure_toolbar_text_icon_button(self.new_btn, "Summarizer-New.svg", _rt("Novo"), _rt("Novo"))
+            self._configure_toolbar_text_icon_button(self.open_btn, "Summarizer-Open.svg", _rt("Abrir"), _rt("Abrir"))
         try:
             self.new_btn.style().unpolish(self.new_btn)
             self.new_btn.style().polish(self.new_btn)
@@ -3640,4 +3640,3 @@ class ModelTab(QWidget):
         self.filters_bar.setVisible(bool(self.edit_mode_btn.isChecked()) and self.filters_bar.isVisible())
         self._sync_mode_switch_state(bool(self.edit_mode_btn.isChecked()))
         self._update_undo_redo_buttons()
-
