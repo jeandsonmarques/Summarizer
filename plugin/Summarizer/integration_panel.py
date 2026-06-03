@@ -1097,10 +1097,10 @@ class IntegrationPanel(QWidget):
             provider_key = "mssql"
         else:
             return
-        conn_name = self._normalize_connection_name(
-            connection.get("name") or
-            f"{connection.get('database', 'Summarizer')}_{connection.get('user', '').strip() or 'user'}"
-        )
+        connection_name = connection.get("name")
+        if not connection_name:
+            connection_name = f"{connection.get('database', 'Summarizer')}_{connection.get('user', '').strip() or 'user'}"
+        conn_name = self._normalize_connection_name(connection_name)
         base = f"{prefix}/{conn_name}"
         secure_connection = secure_connection_payload(connection, name=conn_name)
         password = secure_connection.get("password", "")
@@ -1261,10 +1261,9 @@ class IntegrationPanel(QWidget):
                 self._saved_connections.insert(0, connection_meta)
                 self._save_connections()
                 self._mirror_connection_in_browser(connection_meta)
-            fingerprint = (
-                (connection_meta or {}).get("fingerprint") or
-                (session_connection or {}).get("fingerprint")
-            )
+            fingerprint = (connection_meta or {}).get("fingerprint")
+            if not fingerprint:
+                fingerprint = (session_connection or {}).get("fingerprint")
 
     def _handle_sql_database(self):
         self._open_database_dialog()

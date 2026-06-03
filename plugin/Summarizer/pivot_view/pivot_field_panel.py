@@ -527,10 +527,7 @@ def sync_fields_panel_width_to_content(
         if getattr(self, "_filters_panel_collapsed", False)
         else max(
             tools_filters_min_width,
-            int(
-                getattr(self, "_tools_builder_width", tools_filters_default_width) or
-                tools_filters_default_width
-            ),
+            int(getattr(self, "_tools_builder_width", tools_filters_default_width) or tools_filters_default_width),
         )
     )
     table_width = max(1, total_width - desired_width - builder_width)

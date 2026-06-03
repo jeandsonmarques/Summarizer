@@ -44,6 +44,13 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
+def _first_truthy(*values: Any) -> Any:
+    for value in values:
+        if value:
+            return value
+    return ""
+
+
 class ChartFactory:
     MAX_RENDER_ITEMS = 160
 
@@ -518,10 +525,12 @@ class ReportChartWidget(QWidget):
         return float(self.ANIMATION_INTENSITY_MULTIPLIERS.get(self._animation_intensity, 1.0))
 
     def _animations_active(self) -> bool:
-        return bool(
-            self.animation_enabled and
-            self.GLOBAL_ANIMATION_ENABLED and
-            self._animation_intensity_multiplier() > 0.0
+        return all(
+            (
+                self.animation_enabled,
+                self.GLOBAL_ANIMATION_ENABLED,
+                self._animation_intensity_multiplier() > 0.0,
+            )
         )
 
     def _clamp01(self, value: float) -> float:
@@ -812,10 +821,8 @@ class ReportChartWidget(QWidget):
             next_snapshot,
             self._animation_reason,
         )
-        self._transition_crossfade_strength = (
-            0.10 +
-            0.14 * self._transition_change_level
-        ) * max(0.5, self._animation_intensity_multiplier())
+        base_crossfade_strength = 0.10 + 0.14 * self._transition_change_level
+        self._transition_crossfade_strength = base_crossfade_strength * max(0.5, self._animation_intensity_multiplier())
         if self._should_use_frame_blend(self._animation_reason, self._transition_change_level):
             self._previous_frame_snapshot = self._capture_frame_snapshot()
         else:
@@ -1144,11 +1151,13 @@ class ReportChartWidget(QWidget):
         self._rerender_chart(transition="selection")
 
     def clear_selection(self, *, emit_signal: bool = False, clear_map: bool = False):
-        has_feedback = bool(
-            self._selected_category_key or
-            self._active_category_keys or
-            self._filtered_category_key or
-            self._hovered_category_key
+        has_feedback = any(
+            (
+                self._selected_category_key,
+                self._active_category_keys,
+                self._filtered_category_key,
+                self._hovered_category_key,
+            )
         )
         if not has_feedback:
             if clear_map:
@@ -1283,30 +1292,34 @@ class ReportChartWidget(QWidget):
         config = dict(source_meta.get("config") or {})
         chart_id = str(self._chart_identity.get("chart_id") or self._chart_context.get("chart_id") or "").strip()
         source_id = str(
-            self._chart_identity.get("source_id") or
-            metadata.get("layer_id") or
-            payload.selection_layer_id or
-            source_meta.get("source_id") or
-            ""
+            _first_truthy(
+                self._chart_identity.get("source_id"),
+                metadata.get("layer_id"),
+                payload.selection_layer_id,
+                source_meta.get("source_id"),
+            )
         ).strip()
         dimension_field = str(
-            self._chart_identity.get("dimension_field") or
-            config.get("row_label") or
-            config.get("row_field") or
-            payload.category_field or
-            ""
+            _first_truthy(
+                self._chart_identity.get("dimension_field"),
+                config.get("row_label"),
+                config.get("row_field"),
+                payload.category_field,
+            )
         ).strip()
         measure_field = str(
-            self._chart_identity.get("measure_field") or
-            config.get("value_label") or
-            payload.value_label or
-            ""
+            _first_truthy(
+                self._chart_identity.get("measure_field"),
+                config.get("value_label"),
+                payload.value_label,
+            )
         ).strip()
         aggregation = str(
-            self._chart_identity.get("aggregation") or
-            config.get("aggregation") or
-            payload.chart_type or
-            ""
+            _first_truthy(
+                self._chart_identity.get("aggregation"),
+                config.get("aggregation"),
+                payload.chart_type,
+            )
         ).strip()
         base_filters = [dict(item or {}) for item in list(self._chart_identity.get("base_filters") or self._chart_context.get("filters") or [])]
         return {
@@ -1393,12 +1406,7 @@ class ReportChartWidget(QWidget):
                 "show_card_sparkline": bool(getattr(self.chart_state, "show_card_sparkline", True)),
                 "alt_text": str(getattr(self.chart_state, "alt_text", "") or ""),
             },
-            "title": str(
-                self._chart_context.get("title") or
-                self.chart_state.title_override or
-                payload.title or
-                "Grafico"
-            ),
+            "title": str(_first_truthy(self._chart_context.get("title"), self.chart_state.title_override, payload.title, "Grafico")),
             "subtitle": str(self._chart_context.get("subtitle") or ""),
             "filters": list(self._chart_context.get("filters") or []),
             "source_meta": source_meta,
@@ -1658,26 +1666,34 @@ class ReportChartWidget(QWidget):
         return profile.has_positive and profile.nonzero_count >= 1
 
     def _supports_pie_family(self, profile: ChartDataProfile) -> bool:
-        return (
-            profile.count >= 1 and
-            not profile.has_negative and
-            profile.positive_count >= 1
+        return all(
+            (
+                profile.count >= 1,
+                not profile.has_negative,
+                profile.positive_count >= 1,
+            )
         )
 
     def _supports_line_family(self, profile: ChartDataProfile) -> bool:
-        return (
-            1 <= profile.count <= 24 and
-            profile.unique_category_count >= 1 and
-            (profile.sequential_hint or profile.count <= 12)
+        has_sequence_shape = profile.sequential_hint or profile.count <= 12
+        return all(
+            (
+                1 <= profile.count <= 24,
+                profile.unique_category_count >= 1,
+                has_sequence_shape,
+            )
         )
 
     def _supports_area_family(self, profile: ChartDataProfile) -> bool:
-        return (
-            1 <= profile.count <= 18 and
-            profile.unique_category_count >= 1 and
-            not profile.has_negative and
-            profile.has_positive and
-            (profile.sequential_hint or profile.count <= 10)
+        has_area_shape = profile.sequential_hint or profile.count <= 10
+        return all(
+            (
+                1 <= profile.count <= 18,
+                profile.unique_category_count >= 1,
+                not profile.has_negative,
+                profile.has_positive,
+                has_area_shape,
+            )
         )
 
     def _chart_data_profile(self) -> ChartDataProfile:
@@ -2072,24 +2088,27 @@ class ReportChartWidget(QWidget):
 
     def _current_source_id(self) -> str:
         return str(
-            self._chart_identity.get("source_id") or
-            getattr(self._payload, "selection_layer_id", "") or
-            ""
+            _first_truthy(
+                self._chart_identity.get("source_id"),
+                getattr(self._payload, "selection_layer_id", ""),
+            )
         ).strip()
 
     def _current_filter_key(self) -> str:
         field_name = str(
-            self._chart_identity.get("semantic_field_key") or
-            self._chart_identity.get("dimension_field") or
-            getattr(self._payload, "category_field", "") or
-            ""
+            _first_truthy(
+                self._chart_identity.get("semantic_field_key"),
+                self._chart_identity.get("dimension_field"),
+                getattr(self._payload, "category_field", ""),
+            )
         ).strip()
         if field_name:
             return field_name.lower()
         field_name = str(
-            self._chart_identity.get("dimension_field") or
-            getattr(self._payload, "category_field", "") or
-            ""
+            _first_truthy(
+                self._chart_identity.get("dimension_field"),
+                getattr(self._payload, "category_field", ""),
+            )
         ).strip()
         if field_name:
             return field_name.lower()
@@ -2234,25 +2253,28 @@ class ReportChartWidget(QWidget):
             "source_id": self._current_source_id(),
             "field_key": self._current_filter_key(),
             "semantic_field_key": str(
-                self._chart_identity.get("semantic_field_key") or
-                self._chart_identity.get("dimension_field") or
-                getattr(self._payload, "category_field", "") or
-                ""
+                _first_truthy(
+                    self._chart_identity.get("semantic_field_key"),
+                    self._chart_identity.get("dimension_field"),
+                    getattr(self._payload, "category_field", ""),
+                )
             ).strip(),
             "semantic_field_aliases": list(self._chart_identity.get("semantic_field_aliases") or []),
             "field": str(
-                self._chart_identity.get("dimension_field") or
-                getattr(self._payload, "category_field", "") or
-                ""
+                _first_truthy(
+                    self._chart_identity.get("dimension_field"),
+                    getattr(self._payload, "category_field", ""),
+                )
             ).strip(),
             "values": interaction_values,
             "feature_ids": [safe_id for fid in list(item.get("feature_ids") or []) if fid is not None and (safe_id := _safe_int(fid)) is not None],
             "key": selection_key,
             "current_text": str(
-                item.get("current_text") or
-                item.get("display_label") or
-                item.get("category") or
-                ""
+                _first_truthy(
+                    item.get("current_text"),
+                    item.get("display_label"),
+                    item.get("category"),
+                )
             ),
             "display_label": str(item.get("display_label") or item.get("category") or ""),
             "raw_category": item.get("raw_category"),
@@ -2306,14 +2328,22 @@ class ReportChartWidget(QWidget):
             except Exception:
                 return QPointF()
         fixed_size = QSize(self._fixed_render_size)
-        if (
-            fixed_size.isValid() and
-            fixed_size.width() > 0 and
-            fixed_size.height() > 0 and
-            self.width() > 0 and
-            self.height() > 0 and
-            (fixed_size.width() != self.width() or fixed_size.height() != self.height())
-        ):
+        fixed_size_valid = all(
+            (
+                fixed_size.isValid(),
+                fixed_size.width() > 0,
+                fixed_size.height() > 0,
+                self.width() > 0,
+                self.height() > 0,
+            )
+        )
+        fixed_size_differs = any(
+            (
+                fixed_size.width() != self.width(),
+                fixed_size.height() != self.height(),
+            )
+        )
+        if all((fixed_size_valid, fixed_size_differs)):
             return QPointF(
                 point.x() * float(fixed_size.width()) / float(self.width()),
                 point.y() * float(fixed_size.height()) / float(self.height()),
@@ -2412,11 +2442,9 @@ class ReportChartWidget(QWidget):
 
     def wheelEvent(self, event):
         scrollbar = getattr(self, "_matrix_scrollbar", None)
-        if (
-            scrollbar is not None and
-            self._normalize_chart_type(self.chart_state.chart_type) == "matrix" and
-            scrollbar.isVisible()
-        ):
+        matrix_chart = self._normalize_chart_type(self.chart_state.chart_type) == "matrix"
+        scrollbar_visible = bool(scrollbar is not None and scrollbar.isVisible())
+        if all((scrollbar is not None, matrix_chart, scrollbar_visible)):
             try:
                 delta = event.angleDelta().y()
             except Exception:
@@ -3233,14 +3261,22 @@ class ReportChartWidget(QWidget):
 
     def paintEvent(self, event):
         fixed_size = QSize(self._fixed_render_size)
-        if (
-            fixed_size.isValid() and
-            fixed_size.width() > 0 and
-            fixed_size.height() > 0 and
-            self.width() > 0 and
-            self.height() > 0 and
-            (fixed_size.width() != self.width() or fixed_size.height() != self.height())
-        ):
+        fixed_size_valid = all(
+            (
+                fixed_size.isValid(),
+                fixed_size.width() > 0,
+                fixed_size.height() > 0,
+                self.width() > 0,
+                self.height() > 0,
+            )
+        )
+        fixed_size_differs = any(
+            (
+                fixed_size.width() != self.width(),
+                fixed_size.height() != self.height(),
+            )
+        )
+        if all((fixed_size_valid, fixed_size_differs)):
             painter = QPainter(self)
             painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
             painter.save()
@@ -3610,10 +3646,12 @@ class ReportChartWidget(QWidget):
 
     def _item_cache_key(self, item: Dict[str, object], index: int) -> str:
         return str(
-            item.get("key") or
-            item.get("raw_category") or
-            item.get("category") or
-            f"item_{index}"
+            _first_truthy(
+                item.get("key"),
+                item.get("raw_category"),
+                item.get("category"),
+                f"item_{index}",
+            )
         ).strip()
 
     def _resolve_item_color(self, item: Dict[str, object], index: int) -> QColor:
@@ -3967,11 +4005,13 @@ class ReportChartWidget(QWidget):
             return
 
         colors = self._palette_colors(len(values), "donut" if donut else "pie")
-        show_legend = bool(
-            self.chart_state.show_legend and
-            rect.width() >= 300 and
-            rect.height() >= 180 and
-            len(values) <= self.MAX_PIE_SLICES
+        show_legend = all(
+            (
+                self.chart_state.show_legend,
+                rect.width() >= 300,
+                rect.height() >= 180,
+                len(values) <= self.MAX_PIE_SLICES,
+            )
         )
         if show_legend:
             diameter = min(rect.width() * 0.42, rect.height() * 0.75)

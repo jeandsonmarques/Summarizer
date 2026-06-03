@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.3] - 2026-06-02
+
+- Cleaned remaining Flake8 W504 informational findings reported by the QGIS Plugin Repository validation.
+- Reworked long boolean expressions using intermediate variables, all(), any(), and fallback helpers to avoid W503/W504 conflicts.
+- Kept plugin functionality unchanged.
+
 ## [0.5.2] - 2026-06-02
 
 - Cleaned Python code style issues reported by the QGIS Plugin Repository validation.

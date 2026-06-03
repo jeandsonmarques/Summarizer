@@ -229,11 +229,14 @@ def create_layer_from_dataframe(
             except Exception:
                 crs_authid = ""
 
-        if (
-            "__target_feature_id" in df.columns and
-            geometry_layer is not None and
-            geometry_layer.isValid()
-        ):
+        geometry_lookup_available = all(
+            (
+                "__target_feature_id" in df.columns,
+                geometry_layer is not None,
+                geometry_layer.isValid() if geometry_layer is not None else False,
+            )
+        )
+        if geometry_lookup_available:
             geometry_lookup = build_geometry_lookup(
                 geometry_layer,
                 df["__target_feature_id"],

@@ -339,12 +339,15 @@ class ModelManager:
         # fallback: return any recent relationship matching tables
         for item in self.relationships.values():
             data = item.metadata or {}
-            if (
-                data.get("source_table") == source and
-                data.get("target_table") == target and
-                data.get("source_field") == metadata.get("source_field") and
-                data.get("target_field") == metadata.get("target_field")
-            ):
+            same_relationship = all(
+                (
+                    data.get("source_table") == source,
+                    data.get("target_table") == target,
+                    data.get("source_field") == metadata.get("source_field"),
+                    data.get("target_field") == metadata.get("target_field"),
+                )
+            )
+            if same_relationship:
                 self._save_state()
                 try:
                     self.recompute_all_virtual_fields()
