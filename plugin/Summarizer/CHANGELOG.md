@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.5.4] - 2026-06-03
+
+- Fixed the final Flake8 E306 informational finding reported by the QGIS Plugin Repository validation.
+- Kept plugin functionality unchanged.
+
 ## [0.5.3] - 2026-06-02
 
 - Cleaned remaining Flake8 W504 informational findings reported by the QGIS Plugin Repository validation.
