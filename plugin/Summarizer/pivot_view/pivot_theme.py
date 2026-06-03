@@ -18,12 +18,8 @@ INK_COLOR = "#252B33"
 
 
 def is_dark_theme() -> bool:
-    return (
-        str(QSettings().value("Summarizer/uiTheme", "light") or "light")
-        .strip()
-        .lower() ==
-        "dark"
-    )
+    theme_name = str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower()
+    return theme_name == "dark"
 
 
 def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) -> None:

@@ -11,12 +11,8 @@ from qgis.PyQt.QtWidgets import QWidget
 def _is_dark_theme() -> bool:
     from qgis.PyQt.QtCore import QSettings
 
-    return (
-        str(QSettings().value("Summarizer/uiTheme", "light") or "light")
-        .strip()
-        .lower() ==
-        "dark"
-    )
+    theme_name = str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower()
+    return theme_name == "dark"
 
 
 class PivotSwitch(QWidget):

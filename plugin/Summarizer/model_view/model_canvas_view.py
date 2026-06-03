@@ -31,11 +31,10 @@ class ModelCanvasView(QGraphicsView):
         self._pan_press_pos = QPoint()
         self._legend_widget = None
 
-        self.setRenderHints(
-            QPainter.Antialiasing |
-            QPainter.TextAntialiasing |
-            QPainter.SmoothPixmapTransform
-        )
+        render_hints = QPainter.Antialiasing
+        render_hints |= QPainter.TextAntialiasing
+        render_hints |= QPainter.SmoothPixmapTransform
+        self.setRenderHints(render_hints)
         self.setDragMode(self.RubberBandDrag)
         self.setViewportUpdateMode(self.SmartViewportUpdate)
         self.setTransformationAnchor(self.NoAnchor)

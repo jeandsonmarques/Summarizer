@@ -849,13 +849,20 @@ class DatabaseExplorerPanel(QWidget):
         filtered: List[DatabaseGroup] = []
         for group in groups:
             schema_matches = needle in str(group.name or "").lower()
+            def _object_matches(obj: DatabaseObject) -> bool:
+                return any(
+                    (
+                        schema_matches,
+                        needle in str(obj.name or "").lower(),
+                        needle in str(obj.object_type or "").lower(),
+                        needle in str(obj.comment or "").lower(),
+                    )
+                )
+
             objects = [
                 obj
                 for obj in group.objects
-                if schema_matches or
-                needle in str(obj.name or "").lower() or
-                needle in str(obj.object_type or "").lower() or
-                needle in str(obj.comment or "").lower()
+                if _object_matches(obj)
             ]
             if objects:
                 filtered.append(DatabaseGroup(name=group.name, objects=objects))
@@ -906,10 +913,13 @@ class DatabaseExplorerPanel(QWidget):
         self._stop_row_loading()
         for card in self._cards:
             for row in card.object_rows():
-                if (
-                    row.database_object.schema == database_object.schema and
-                    row.database_object.name == database_object.name
-                ):
+                row_matches = all(
+                    (
+                        row.database_object.schema == database_object.schema,
+                        row.database_object.name == database_object.name,
+                    )
+                )
+                if row_matches:
                     row.set_loading(True)
                     row.repaint()
                     self._loading_rows.append(row)
@@ -1025,10 +1035,10 @@ class DatabaseExplorerPanel(QWidget):
 
     def _connection_key(self, connection_meta: Dict) -> str:
         meta = connection_meta or {}
-        return str(
-            meta.get("fingerprint") or
-            "|".join(
-                str(meta.get(key) or "")
-                for key in ("driver", "source_driver", "host", "service", "port", "database", "name", "username")
-            )
+        fingerprint = meta.get("fingerprint")
+        if fingerprint:
+            return str(fingerprint)
+        return "|".join(
+            str(meta.get(key) or "")
+            for key in ("driver", "source_driver", "host", "service", "port", "database", "name", "username")
         )

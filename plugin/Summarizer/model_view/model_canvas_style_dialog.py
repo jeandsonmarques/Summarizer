@@ -240,9 +240,8 @@ if QDialog is not object:
             self.resize(560, 392)
             self.setFont(ui_font())
             self._font_enforcer = attach_ui_font_enforcer(self)
-            self.setStyleSheet(
-                WALKER_DIALOG_STYLE +
-                """
+            style_sheet = WALKER_DIALOG_STYLE
+            style_sheet += """
                 QDialog#WalkerCanvasStyleDialog {
                     background: #FFFFFF;
                     border: 1px solid #E5E7EB;
@@ -346,7 +345,7 @@ if QDialog is not object:
                     font-size: 10px;
                 }
                 """
-            )
+            self.setStyleSheet(style_sheet)
             if hasattr(self, "setStyleSheet") and _is_dark_theme():
                 self.setStyleSheet(
                     """

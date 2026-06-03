@@ -623,14 +623,12 @@ class SummarizerDialog(QDialog):
     def _enable_native_window_controls(self):
         try:
             flags = self.windowFlags()
-            flags |= (
-                Qt.Window |
-                Qt.WindowTitleHint |
-                Qt.WindowSystemMenuHint |
-                Qt.WindowMinimizeButtonHint |
-                Qt.WindowMaximizeButtonHint |
-                Qt.WindowCloseButtonHint
-            )
+            flags |= Qt.Window
+            flags |= Qt.WindowTitleHint
+            flags |= Qt.WindowSystemMenuHint
+            flags |= Qt.WindowMinimizeButtonHint
+            flags |= Qt.WindowMaximizeButtonHint
+            flags |= Qt.WindowCloseButtonHint
             self.setWindowFlags(flags)
         except Exception:
             log_exception("falha opcional ignorada")
@@ -1244,11 +1242,7 @@ class SummarizerDialog(QDialog):
                     if str(conn.get("fingerprint") or "") != fingerprint
                 ]
                 saved.insert(0, active_connection)
-            preferred_driver = str(
-                active_connection.get("source_driver") or
-                active_connection.get("driver") or
-                "PostgreSQL"
-            )
+            preferred_driver = str(active_connection.get("source_driver") or active_connection.get("driver") or "PostgreSQL")
             dialog = DatabaseImportDialog(self.dlg, saved, preferred_driver=preferred_driver)
             dialog.raise_()
             dialog.activateWindow()
@@ -1596,11 +1590,7 @@ class SummarizerDialog(QDialog):
         source_path: str,
         descriptor: Dict,
     ) -> Optional[QgsVectorLayer]:
-        base_name = (
-            descriptor.get("display_name") or
-            os.path.basename(source_path) or
-            "Camada externa"
-        ).strip()
+        base_name = (descriptor.get("display_name") or os.path.basename(source_path) or "Camada externa").strip()
         if not base_name:
             base_name = "Camada externa"
 
@@ -2945,13 +2935,12 @@ class GetDataDialog(QDialog):
         add_walker_close_button(header, self)
         layout.addLayout(header)
 
-        info = QLabel(
-            _rt_runtime("Escolha a fonte de dados disponível para importar.") +
-            _rt_runtime(
-                "As tabelas selecionadas serão adicionadas ao modelo sem abrir "
-                "camadas no mapa."
-            )
+        info_text = _rt_runtime("Escolha a fonte de dados disponível para importar.")
+        info_text += _rt_runtime(
+            "As tabelas selecionadas serão adicionadas ao modelo sem abrir "
+            "camadas no mapa."
         )
+        info = QLabel(info_text)
         info.setWordWrap(True)
         layout.addWidget(info)
 

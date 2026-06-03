@@ -58,6 +58,13 @@ def _is_dark_theme() -> bool:
         return False
 
 
+def _first_truthy(*values: Any) -> Any:
+    for value in values:
+        if value:
+            return value
+    return ""
+
+
 class DashboardWidget(QWidget):
     """Dashboard that reuses the same chart system used by the main results view."""
 
@@ -440,23 +447,24 @@ class DashboardWidget(QWidget):
     def _dashboard_chart_binding(self, item_id: str) -> DashboardChartBinding:
         row_fields = [str(field) for field in list(self.current_config.get("row_fields") or []) if str(field).strip()]
         column_fields = [str(field) for field in list(self.current_config.get("column_fields") or []) if str(field).strip()]
-        semantic_field = (
-            self.current_config.get("row_label") or
-            self.current_config.get("row_field") or
-            self.current_config.get("column_label") or
-            self.current_config.get("column_field") or
-            (row_fields[0] if row_fields else "") or
-            (column_fields[0] if column_fields else "") or
-            "Categoria"
+        semantic_field = _first_truthy(
+            self.current_config.get("row_label"),
+            self.current_config.get("row_field"),
+            self.current_config.get("column_label"),
+            self.current_config.get("column_field"),
+            row_fields[0] if row_fields else "",
+            column_fields[0] if column_fields else "",
+            "Categoria",
+        )
+        semantic_field_key = _first_truthy(
+            self.current_config.get("row_field"),
+            row_fields[0] if row_fields else semantic_field,
         )
         return DashboardChartBinding(
             chart_id=str(item_id or "").strip(),
             source_id=str(self.current_metadata.get("layer_id") or "").strip(),
             dimension_field=str(semantic_field or "").strip(),
-            semantic_field_key=str(
-                self.current_config.get("row_field") or
-                (row_fields[0] if row_fields else semantic_field)
-            ).strip(),
+            semantic_field_key=str(semantic_field_key).strip(),
             semantic_field_aliases=[semantic_field, *row_fields, *column_fields],
             measure_field=str(self.current_config.get("value_label") or self.current_config.get("aggregation") or "Valor"),
             aggregation=str(self.current_config.get("aggregation") or "").strip(),
@@ -1242,18 +1250,18 @@ class DashboardWidget(QWidget):
             return None
 
         display_df = chart_df.head(limit).copy()
-        value_label = (
-            self.current_config.get("aggregation_label") or
-            self.current_config.get("value_label") or
-            self.current_config.get("aggregation") or
-            "Valor"
+        value_label = _first_truthy(
+            self.current_config.get("aggregation_label"),
+            self.current_config.get("value_label"),
+            self.current_config.get("aggregation"),
+            "Valor",
         )
-        category_field = (
-            self.current_config.get("row_label") or
-            self.current_config.get("row_field") or
-            self.current_config.get("column_label") or
-            self.current_config.get("column_field") or
-            "Categoria"
+        category_field = _first_truthy(
+            self.current_config.get("row_label"),
+            self.current_config.get("row_field"),
+            self.current_config.get("column_label"),
+            self.current_config.get("column_field"),
+            "Categoria",
         )
 
         return ChartPayload.build(
@@ -1540,11 +1548,14 @@ class DashboardWidget(QWidget):
         self._update_table()
 
     def _update_table(self):
-        if (
-            not self.details_table.isVisible() and
-            not self.table_hint_label.isVisible() and
-            not self.table_filter_label.isVisible()
-        ):
+        tables_hidden = all(
+            (
+                not self.details_table.isVisible(),
+                not self.table_hint_label.isVisible(),
+                not self.table_filter_label.isVisible(),
+            )
+        )
+        if tables_hidden:
             self.details_table.clear()
             self.details_table.setRowCount(0)
             self.details_table.setColumnCount(0)
@@ -1630,9 +1641,11 @@ class DashboardWidget(QWidget):
         self.active_category_label = ", ".join(
             [
                 str(
-                    self._category_filters.get(item, {}).get("display_label") or
-                    self._category_filters.get(item, {}).get("category") or
-                    item
+                    _first_truthy(
+                        self._category_filters.get(item, {}).get("display_label"),
+                        self._category_filters.get(item, {}).get("category"),
+                        item,
+                    )
                 )
                 for item in keys
             ]

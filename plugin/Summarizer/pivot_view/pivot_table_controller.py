@@ -36,11 +36,14 @@ def compute_dataframe_pivot(widget: Any) -> None:
         self.pivot_df = pd.DataFrame()
         return
 
-    if (
-        metric is not None and
-        agg_func not in {"count", "min", "max", "unique"} and
-        metric not in self.numeric_candidates
-    ):
+    metric_needs_numeric = all(
+        (
+            metric is not None,
+            agg_func not in {"count", "min", "max", "unique"},
+            metric not in self.numeric_candidates,
+        )
+    )
+    if metric_needs_numeric:
         try:
             df[metric] = pd.to_numeric(df[metric], errors="coerce")
         except Exception:
@@ -78,11 +81,14 @@ def compute_dataframe_pivot(widget: Any) -> None:
             )
         else:
             values = None if metric is None else metric
-            if (
-                values is not None and
-                agg_func not in {"count", "min", "max", "unique"} and
-                values not in self.numeric_candidates
-            ):
+            values_need_numeric = all(
+                (
+                    values is not None,
+                    agg_func not in {"count", "min", "max", "unique"},
+                    values not in self.numeric_candidates,
+                )
+            )
+            if values_need_numeric:
                 try:
                     working[values] = pd.to_numeric(working[values], errors="coerce")
                 except Exception:
