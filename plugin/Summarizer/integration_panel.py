@@ -350,8 +350,7 @@ class ConnectorCard(QFrame):
 
     def _apply_styles(self):
         colors = DARK_COLORS if _is_dark_theme() else COLORS
-        self.setStyleSheet(
-            f"""
+        style_template = f"""
             ConnectorCard {{
                 background-color: transparent;
                 border: none;
@@ -365,9 +364,8 @@ class ConnectorCard(QFrame):
                 font-weight: 400;
                 color: {colors["color_text_secondary"]};
             }}
-            """ %
-            ui_font_stack()
-        )
+            """
+        self.setStyleSheet(style_template % ui_font_stack())
 
         self._apply_icon()
         self.title_label.setFont(ui_font(10, QFont.DemiBold))
@@ -608,8 +606,7 @@ class IntegrationPanel(QWidget):
         clear_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
         clear_pressed = "#CBD5E1" if _is_dark_theme() else "#0B1220"
         clear_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
-        style = (
-            """
+        style_template = """
             QListWidget {
                 border: none;
                 background: transparent;
@@ -655,9 +652,8 @@ class IntegrationPanel(QWidget):
                 background: #D1D5DB;
                 color: #FFFFFF;
             }
-            """ %
-            (ui_font_stack(), ui_font_stack())
-        )
+            """
+        style = style_template % (ui_font_stack(), ui_font_stack())
         style = (
             style.replace("__ITEM_BG__", item_bg)
             .replace("__ITEM_FG__", colors["color_text_primary"])
@@ -681,8 +677,7 @@ class IntegrationPanel(QWidget):
         clear_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
         clear_pressed = "#CBD5E1" if _is_dark_theme() else "#0B1220"
         clear_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
-        style = (
-            """
+        style_template = """
             QFrame#integrationWrapper {
                 background: __PANEL_BG__;
                 border: 1px solid __PANEL_BORDER__;
@@ -748,9 +743,8 @@ class IntegrationPanel(QWidget):
                 background: __CLEAR_DISABLED_BG__;
                 color: __CLEAR_DISABLED_FG__;
             }
-            """ %
-            (ui_font_stack(), ui_font_stack())
-        )
+            """
+        style = style_template % (ui_font_stack(), ui_font_stack())
         panel_bg = "#1F2937" if _is_dark_theme() else colors["color_surface"]
         panel_border = "rgba(148, 163, 184, 0.22)" if _is_dark_theme() else colors["color_border"]
         clear_disabled_bg = "#334155" if _is_dark_theme() else "#D1D5DB"
