@@ -849,6 +849,7 @@ class DatabaseExplorerPanel(QWidget):
         filtered: List[DatabaseGroup] = []
         for group in groups:
             schema_matches = needle in str(group.name or "").lower()
+
             def _object_matches(obj: DatabaseObject) -> bool:
                 return any(
                     (
