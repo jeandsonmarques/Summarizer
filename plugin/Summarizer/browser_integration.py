@@ -61,6 +61,22 @@ def _is_supported_driver(driver: str) -> bool:
     return is_supported_driver(driver)
 
 
+def _network_data_item_capabilities():
+    try:
+        capability = Qgis.DataItemProviderCapability.NetworkSources
+        return Qgis.DataItemProviderCapabilities(capability)
+    except Exception:
+        return int(QgsDataProvider.Net)
+
+
+def _browser_no_capabilities():
+    try:
+        capability = Qgis.BrowserItemCapability.NoCapabilities
+        return Qgis.BrowserItemCapabilities(capability)
+    except Exception:
+        return int(Qgis.BrowserItemCapability.NoCapabilities)
+
+
 class IntegrationConnectionRegistry(QObject):
     """Central registry that keeps saved and runtime connections in sync."""
 
@@ -180,8 +196,8 @@ class SummarizerBrowserProvider(QgsDataItemProvider):
     def name(self) -> str:  # noqa: D401 - required override
         return self.PROVIDER_NAME
 
-    def capabilities(self) -> int:
-        return int(QgsDataProvider.Net)
+    def capabilities(self):
+        return _network_data_item_capabilities()
 
     def dataProviderKey(self) -> str:
         return self.PROVIDER_NAME
@@ -264,7 +280,7 @@ class SummarizerPlaceholderItem(QgsDataCollectionItem):
             SummarizerBrowserProvider.PROVIDER_NAME,
         )
         self.setState(Qgis.BrowserItemState.Populated)
-        self.setCapabilities(int(Qgis.BrowserItemCapability.NoCapabilities))
+        self.setCapabilities(_browser_no_capabilities())
 
     def createChildren(self) -> List[QgsDataItem]:
         return []

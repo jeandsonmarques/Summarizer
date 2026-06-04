@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.5] - 2026-06-03
+
+- Fixed QGIS 3.44 compatibility for the Summarizer Browser provider capabilities return type.
+- Kept compatibility with QGIS 3.34+.
+- Kept plugin functionality unchanged.
+
 ## [0.5.4] - 2026-06-03
 
 - Fixed the final Flake8 E306 informational finding reported by the QGIS Plugin Repository validation.
