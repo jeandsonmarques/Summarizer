@@ -32,4 +32,3 @@ class DatabaseConnectionSnapshot:
     groups: List[DatabaseGroup] = field(default_factory=list)
     connected: bool = False
     error_message: str = ""
-

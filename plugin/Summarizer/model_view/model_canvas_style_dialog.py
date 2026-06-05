@@ -240,9 +240,8 @@ if QDialog is not object:
             self.resize(560, 392)
             self.setFont(ui_font())
             self._font_enforcer = attach_ui_font_enforcer(self)
-            self.setStyleSheet(
-                WALKER_DIALOG_STYLE
-                + """
+            style_sheet = WALKER_DIALOG_STYLE
+            style_sheet += """
                 QDialog#WalkerCanvasStyleDialog {
                     background: #FFFFFF;
                     border: 1px solid #E5E7EB;
@@ -346,7 +345,7 @@ if QDialog is not object:
                     font-size: 10px;
                 }
                 """
-            )
+            self.setStyleSheet(style_sheet)
             if hasattr(self, "setStyleSheet") and _is_dark_theme():
                 self.setStyleSheet(
                     """
@@ -690,7 +689,6 @@ if QDialog is not object:
             draft["grid_opacity"] = max(0.1, min(1.0, float(self.grid_opacity_spin.value()) / 100.0))
             return normalize_canvas_style(draft, base=default_canvas_style())
 
-
     def open_canvas_style_dialog(parent=None, current_style: Optional[Dict[str, object]] = None) -> Optional[Dict[str, object]]:
         dialog = ModelCanvasStyleDialog(parent, current_style=current_style)
         if dialog.exec_() != QDialog.Accepted:
@@ -701,7 +699,6 @@ else:
 
     class ModelCanvasStyleDialog:  # pragma: no cover - fallback for non-QGIS imports
         pass
-
 
     def open_canvas_style_dialog(parent=None, current_style: Optional[Dict[str, object]] = None) -> Optional[Dict[str, object]]:  # pragma: no cover - fallback for non-QGIS imports
         return None
@@ -717,4 +714,3 @@ __all__ = [
     "open_canvas_style_dialog",
     "set_color_preview_chip",
 ]
-

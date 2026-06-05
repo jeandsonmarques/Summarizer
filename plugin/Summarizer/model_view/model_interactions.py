@@ -29,4 +29,3 @@ def event_point(event, *, prefer_global: bool = False) -> QPoint:
             return event.pos()
         except Exception:
             return QPoint()
-

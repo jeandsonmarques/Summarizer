@@ -18,12 +18,8 @@ INK_COLOR = "#252B33"
 
 
 def is_dark_theme() -> bool:
-    return (
-        str(QSettings().value("Summarizer/uiTheme", "light") or "light")
-        .strip()
-        .lower()
-        == "dark"
-    )
+    theme_name = str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower()
+    return theme_name == "dark"
 
 
 def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) -> None:
@@ -280,6 +276,7 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
     if hasattr(self, "filters_panel_collapsed_title"):
         self.filters_panel_collapsed_title.setText(_rt("Filtros"))
     self._apply_runtime_i18n()
+
 
 def apply_styles(widget) -> None:
     self = widget
@@ -1353,6 +1350,7 @@ def apply_styles(widget) -> None:
     self.setStyleSheet(qss)
     self._refresh_toolbar_chrome()
     self._enforce_filters_surface_backgrounds()
+
 
 def enforce_filters_surface_backgrounds(widget) -> None:
     self = widget

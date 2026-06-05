@@ -45,4 +45,3 @@ class PivotFormatter:
             else:
                 parts.append(str(value))
         return " / ".join(parts)
-

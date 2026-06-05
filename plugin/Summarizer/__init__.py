@@ -14,14 +14,13 @@ def _is_shadowing_vendor_path(path):
         return False
 
     normalized = _normalized_path(path)
-    return (
-        os.path.sep + "plugins" + os.path.sep in normalized
-        and "vendor_py" in normalized
-        and (
-            os.path.isdir(os.path.join(path, "numpy"))
-            or os.path.isdir(os.path.join(path, "pandas"))
-        )
-    )
+    plugin_marker = os.path.sep + "plugins" + os.path.sep
+    has_plugin_path = plugin_marker in normalized
+    has_vendor_marker = "vendor_py" in normalized
+    has_numpy = os.path.isdir(os.path.join(path, "numpy"))
+    has_pandas = os.path.isdir(os.path.join(path, "pandas"))
+    has_vendor_package = any((has_numpy, has_pandas))
+    return all((has_plugin_path, has_vendor_marker, has_vendor_package))
 
 
 def _prioritize_qgis_binary_packages():
@@ -57,4 +56,3 @@ def classFactory(iface):
     from .data_summarizer import Summarizer
 
     return Summarizer(iface)
-

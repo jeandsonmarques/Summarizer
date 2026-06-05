@@ -38,7 +38,6 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QShortcut,
@@ -70,6 +69,7 @@ def _is_dark_theme() -> bool:
         return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
     except Exception:
         return False
+
 
 try:  # pragma: no cover - handles platforms without QtSql
     from qgis.PyQt.QtSql import QSqlDatabase, QSqlQuery
@@ -350,8 +350,7 @@ class ConnectorCard(QFrame):
 
     def _apply_styles(self):
         colors = DARK_COLORS if _is_dark_theme() else COLORS
-        self.setStyleSheet(
-            f"""
+        style_template = f"""
             ConnectorCard {{
                 background-color: transparent;
                 border: none;
@@ -366,8 +365,7 @@ class ConnectorCard(QFrame):
                 color: {colors["color_text_secondary"]};
             }}
             """
-            % ui_font_stack()
-        )
+        self.setStyleSheet(style_template % ui_font_stack())
 
         self._apply_icon()
         self.title_label.setFont(ui_font(10, QFont.DemiBold))
@@ -608,8 +606,7 @@ class IntegrationPanel(QWidget):
         clear_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
         clear_pressed = "#CBD5E1" if _is_dark_theme() else "#0B1220"
         clear_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
-        style = (
-            """
+        style_template = """
             QListWidget {
                 border: none;
                 background: transparent;
@@ -656,8 +653,7 @@ class IntegrationPanel(QWidget):
                 color: #FFFFFF;
             }
             """
-            % (ui_font_stack(), ui_font_stack())
-        )
+        style = style_template % (ui_font_stack(), ui_font_stack())
         style = (
             style.replace("__ITEM_BG__", item_bg)
             .replace("__ITEM_FG__", colors["color_text_primary"])
@@ -681,8 +677,7 @@ class IntegrationPanel(QWidget):
         clear_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
         clear_pressed = "#CBD5E1" if _is_dark_theme() else "#0B1220"
         clear_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
-        style = (
-            """
+        style_template = """
             QFrame#integrationWrapper {
                 background: __PANEL_BG__;
                 border: 1px solid __PANEL_BORDER__;
@@ -749,8 +744,7 @@ class IntegrationPanel(QWidget):
                 color: __CLEAR_DISABLED_FG__;
             }
             """
-            % (ui_font_stack(), ui_font_stack())
-        )
+        style = style_template % (ui_font_stack(), ui_font_stack())
         panel_bg = "#1F2937" if _is_dark_theme() else colors["color_surface"]
         panel_border = "rgba(148, 163, 184, 0.22)" if _is_dark_theme() else colors["color_border"]
         clear_disabled_bg = "#334155" if _is_dark_theme() else "#D1D5DB"
@@ -1097,10 +1091,10 @@ class IntegrationPanel(QWidget):
             provider_key = "mssql"
         else:
             return
-        conn_name = self._normalize_connection_name(
-            connection.get("name")
-            or f"{connection.get('database', 'Summarizer')}_{connection.get('user', '').strip() or 'user'}"
-        )
+        connection_name = connection.get("name")
+        if not connection_name:
+            connection_name = f"{connection.get('database', 'Summarizer')}_{connection.get('user', '').strip() or 'user'}"
+        conn_name = self._normalize_connection_name(connection_name)
         base = f"{prefix}/{conn_name}"
         secure_connection = secure_connection_payload(connection, name=conn_name)
         password = secure_connection.get("password", "")
@@ -1261,10 +1255,9 @@ class IntegrationPanel(QWidget):
                 self._saved_connections.insert(0, connection_meta)
                 self._save_connections()
                 self._mirror_connection_in_browser(connection_meta)
-            fingerprint = (
-                (connection_meta or {}).get("fingerprint")
-                or (session_connection or {}).get("fingerprint")
-            )
+            fingerprint = (connection_meta or {}).get("fingerprint")
+            if not fingerprint:
+                fingerprint = (session_connection or {}).get("fingerprint")
 
     def _handle_sql_database(self):
         self._open_database_dialog()

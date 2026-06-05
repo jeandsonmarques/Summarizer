@@ -147,10 +147,9 @@ def clean_label_text(value: Any) -> str:
             parts = [part for part in parts if part]
             if parts:
                 return " / ".join(parts)
-    if (
-        (text.startswith("'") and text.endswith("'"))
-        or (text.startswith('"') and text.endswith('"'))
-    ):
+    single_quoted = text.startswith("'") and text.endswith("'")
+    double_quoted = text.startswith('"') and text.endswith('"')
+    if any((single_quoted, double_quoted)):
         text = text[1:-1].strip()
     return text
 
@@ -326,4 +325,3 @@ __all__ = [
     "value_scale_bounds",
     "value_scale_ratio",
 ]
-

@@ -12,6 +12,8 @@ from ..utils.fonts import ui_font
 
 
 from ..utils.logging_utils import log_exception
+
+
 class RelationshipItem(QGraphicsPathItem):
     """Liga dois FieldItem e atualiza a geometria quando os cards se movem."""
 
@@ -195,4 +197,3 @@ class RelationshipItem(QGraphicsPathItem):
             painter.rotate(180)
             painter.drawPolygon(triangle)
         painter.restore()
-

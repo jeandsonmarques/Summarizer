@@ -140,5 +140,3 @@ class DashboardProjectStore:
             self.settings.setValue(RECENTS_SETTINGS_KEY, json.dumps(items, ensure_ascii=False))
         except Exception:
             self.settings.setValue(RECENTS_SETTINGS_KEY, "[]")
-
-

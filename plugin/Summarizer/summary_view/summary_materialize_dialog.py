@@ -56,10 +56,8 @@ def build_materialize_options(can_use_geometry: bool) -> tuple[list[str], str]:
 
 
 def build_gpkg_suggested_name(base_name: str) -> str:
-    return (
-        re.sub(r"[^a-zA-Z0-9_\\-]+", "_", normalize_base_name(base_name)).strip("_")
-        or "resultado"
-    )
+    sanitized = re.sub(r"[^a-zA-Z0-9_\\-]+", "_", normalize_base_name(base_name)).strip("_")
+    return sanitized or "resultado"
 
 
 def build_default_gpkg_path(last_dir: str, base_name: str) -> str:
@@ -138,12 +136,15 @@ def materialize_dataframe_dialog(
             geometry_layer=geometry_layer,
         )
         fallback_note = ""
-        if (
-            layer is None
-            and can_use_geometry
-            and error_message
-            and "Nenhuma feição" in error_message
-        ):
+        fallback_available = all(
+            (
+                layer is None,
+                can_use_geometry,
+                error_message,
+                "Nenhuma feição" in error_message if error_message else False,
+            )
+        )
+        if fallback_available:
             layer, error_message = host._create_layer_from_dataframe(
                 df,
                 layer_name,
@@ -243,4 +244,3 @@ def materialize_dataframe_dialog(
             dialog_title,
             final_message,
         )
-

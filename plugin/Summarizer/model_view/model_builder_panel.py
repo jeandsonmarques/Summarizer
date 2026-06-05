@@ -307,7 +307,6 @@ if pyqtSignal is not None:
                 self.setCursor(Qt.OpenHandCursor)
             super().mouseMoveEvent(event)
 
-
     class _ModelBindingSlot(QFrame):
         fieldDropped = pyqtSignal(str, object)
         removeRequested = pyqtSignal(str, str)
@@ -444,7 +443,6 @@ else:
 
     class _ModelFieldBindingChip:  # pragma: no cover - fallback for non-QGIS unit imports
         pass
-
 
     class _ModelBindingSlot:  # pragma: no cover - fallback for non-QGIS unit imports
         pass

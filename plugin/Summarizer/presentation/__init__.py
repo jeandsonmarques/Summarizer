@@ -10,4 +10,3 @@ __all__ = [
     "PresentationWindowManager",
     "create_presentation_button",
 ]
-

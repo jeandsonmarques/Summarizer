@@ -3,12 +3,13 @@
 
 from .utils.fonts import ui_font_family
 
+
 # Helper para aplicar o CSS tipografico dentro do HTML renderizado em QTextBrowser
 def apply_result_style(html: str) -> str:
     font_family = ui_font_family()
     base = """
     <style>
-    body { font-family: '%s',sans-serif;
+    body { font-family: '__FONT_FAMILY__',sans-serif;
            color:#2E3A59; background-color:#F8F9FB; font-size:11pt; margin:0; padding:0.2em 0.4em; }
     h1,h2,h3 { color:#153C8A; font-weight:600; }
     .section-title { color:#20C2A0; font-weight:600; margin-top:0.6em; }
@@ -19,6 +20,5 @@ def apply_result_style(html: str) -> str:
     th, td { padding: 6px 8px; border-bottom: 1px solid #E6EEF2; text-align: left; }
     th { color: #153C8A; font-weight:600; }
     </style>
-    """ % font_family
+    """.replace("__FONT_FAMILY__", font_family)
     return base + html
-

@@ -9,4 +9,3 @@ from .model_canvas_view import ModelCanvasView
 ModelCanvas = ModelCanvasView
 
 __all__ = ["ModelCanvas", "ModelCanvasScene", "ModelCanvasView"]
-

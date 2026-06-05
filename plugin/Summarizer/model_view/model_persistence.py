@@ -82,4 +82,3 @@ def build_export_preset(
         "relationships": [dict(rel) for rel in available_relationships],
         "layout_state": dict(layout_state or {}),
     }
-

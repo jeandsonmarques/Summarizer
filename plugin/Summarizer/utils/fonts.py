@@ -105,4 +105,3 @@ def attach_ui_font_enforcer(root: Optional[QWidget]) -> Optional[QObject]:
     setattr(root, "_ui_font_enforcer", enforcer)
     QTimer.singleShot(0, lambda: harmonize_widget_fonts(root))
     return enforcer
-

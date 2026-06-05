@@ -15,6 +15,8 @@ from .pivot_validators import PivotValidator
 
 
 from ...utils.logging_utils import log_exception
+
+
 class PivotEngine:
     SIMPLE_AGGREGATIONS = {"count", "sum", "average", "min", "max"}
     HEAVY_AGGREGATIONS = {"median", "variance", "stddev", "unique"}
@@ -361,4 +363,3 @@ class PivotEngine:
 
     def _sort_tuple_key(self, values: Tuple[Any, ...]):
         return tuple("" if value is None else str(value).lower() for value in values)
-

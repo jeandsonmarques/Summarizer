@@ -329,5 +329,3 @@ def _encode_multipart_body(
     chunks.append(b"\r\n")
     chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
     return b"".join(chunks)
-
-

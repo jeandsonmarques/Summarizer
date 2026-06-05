@@ -200,4 +200,3 @@ class ExportManager:
                 y += 18
 
         painter.end()
-

@@ -583,4 +583,3 @@ __all__ = [
     "unique_layer_name",
     "variant_type_for_series",
 ]
-

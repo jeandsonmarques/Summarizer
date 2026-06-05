@@ -109,4 +109,3 @@ class DashboardPageWidget(QWidget):
 
     def export_image(self, path: str) -> bool:
         return self.canvas.export_image(path)
-

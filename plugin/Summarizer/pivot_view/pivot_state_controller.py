@@ -350,4 +350,3 @@ __all__ = [
     "store_current_configuration",
     "undo_last_action",
 ]
-

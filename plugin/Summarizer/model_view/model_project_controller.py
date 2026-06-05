@@ -228,4 +228,3 @@ __all__ = [
     "snapshot_signature",
     "snapshot_state",
 ]
-

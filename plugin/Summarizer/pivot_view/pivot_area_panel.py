@@ -160,10 +160,8 @@ class _PivotDropListWidget(QListWidget):
             spec = self._owner._field_spec_from_key(item.get("spec_key"))
             if spec is None:
                 continue
-            added = (
-                self._owner._add_field_to_area(self._area_name, spec, auto_refresh=False)
-                or added
-            )
+            field_added = self._owner._add_field_to_area(self._area_name, spec, auto_refresh=False)
+            added = field_added or added
             if added and source_widget is not None and source_widget is not self and spec_key:
                 self._owner._take_area_field_by_key(source_widget._area_name, spec_key)
             if not self._allow_multiple:
@@ -475,13 +473,15 @@ def create_area_chip_widget(
     text_width = label.fontMetrics().horizontalAdvance(field_spec.display_name) + 10
     label.setMinimumWidth(text_width)
     label.setMaximumWidth(text_width)
-    chip_width = (
-        layout.contentsMargins().left()
-        + remove_btn.width()
-        + layout.spacing()
-        + text_width
-        + layout.contentsMargins().right()
-        + 6
+    chip_width = sum(
+        (
+            layout.contentsMargins().left(),
+            remove_btn.width(),
+            layout.spacing(),
+            text_width,
+            layout.contentsMargins().right(),
+            6,
+        )
     )
     chip.setMinimumWidth(chip_width)
     row_widget.setMinimumWidth(chip_width)
@@ -738,4 +738,3 @@ def handle_filter_panel_drop_event(widget, event) -> bool:
         return True
     event.ignore()
     return True
-

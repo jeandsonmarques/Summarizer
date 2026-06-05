@@ -13,7 +13,6 @@ from qgis.PyQt.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -865,15 +864,18 @@ class DashboardCanvas(QWidget):
         seen_relation_keys = set()
         for relation in list(chart_relations or []):
             normalized = relation.normalized()
-            if (
-                not normalized.source_chart_id
-                or not normalized.target_chart_id
-                or normalized.source_chart_id == normalized.target_chart_id
-                or normalized.source_chart_id not in valid_ids
-                or normalized.target_chart_id not in valid_ids
-                or not normalized.source_field
-                or not normalized.target_field
-            ):
+            invalid_relation = any(
+                (
+                    not normalized.source_chart_id,
+                    not normalized.target_chart_id,
+                    normalized.source_chart_id == normalized.target_chart_id,
+                    normalized.source_chart_id not in valid_ids,
+                    normalized.target_chart_id not in valid_ids,
+                    not normalized.source_field,
+                    not normalized.target_field,
+                )
+            )
+            if invalid_relation:
                 continue
             duplicate_key = normalized.duplicate_key()
             if duplicate_key in seen_relation_keys:
@@ -887,14 +889,17 @@ class DashboardCanvas(QWidget):
         seen_links = set()
         for link in list(visual_links or []):
             normalized = link.normalized()
-            if (
-                not normalized.source_chart_id
-                or not normalized.target_chart_id
-                or normalized.source_chart_id == normalized.target_chart_id
-                or normalized.source_chart_id not in valid_ids
-                or normalized.target_chart_id not in valid_ids
-                or not normalized.relation_id
-            ):
+            invalid_link = any(
+                (
+                    not normalized.source_chart_id,
+                    not normalized.target_chart_id,
+                    normalized.source_chart_id == normalized.target_chart_id,
+                    normalized.source_chart_id not in valid_ids,
+                    normalized.target_chart_id not in valid_ids,
+                    not normalized.relation_id,
+                )
+            )
+            if invalid_link:
                 continue
             if normalized.relation_id not in relation_ids:
                 continue
@@ -933,26 +938,38 @@ class DashboardCanvas(QWidget):
 
     def _prune_graph_state(self):
         valid_ids = {item.item_id for item in self._items}
+        relation_ids = {relation.relation_id for relation in self._chart_relations}
+
+        def _relation_is_valid(relation: DashboardChartRelation) -> bool:
+            return all(
+                (
+                    relation.source_chart_id in valid_ids,
+                    relation.target_chart_id in valid_ids,
+                    relation.source_chart_id != relation.target_chart_id,
+                )
+            )
+
+        def _link_is_valid(link: DashboardVisualLink) -> bool:
+            return all(
+                (
+                    link.source_chart_id in valid_ids,
+                    link.target_chart_id in valid_ids,
+                    link.source_chart_id != link.target_chart_id,
+                    bool(link.relation_id),
+                    link.relation_id in relation_ids,
+                )
+            )
+
         self._chart_relations = [
             relation.normalized()
             for relation in self._chart_relations
-            if (
-                relation.source_chart_id in valid_ids
-                and relation.target_chart_id in valid_ids
-                and relation.source_chart_id != relation.target_chart_id
-            )
+            if _relation_is_valid(relation)
         ]
         relation_ids = {relation.relation_id for relation in self._chart_relations}
         self._visual_links = [
             link.normalized()
             for link in self._visual_links
-            if (
-                link.source_chart_id in valid_ids
-                and link.target_chart_id in valid_ids
-                and link.source_chart_id != link.target_chart_id
-                and bool(link.relation_id)
-                and link.relation_id in relation_ids
-            )
+            if _link_is_valid(link)
         ]
         self._ensure_visual_links_for_relations()
         self.interaction_manager.set_chart_relations(self._chart_relations)
@@ -1580,13 +1597,16 @@ class DashboardCanvas(QWidget):
 
     def _save_relation(self, relation: DashboardChartRelation, *, source_anchor: str, target_anchor: str):
         normalized = relation.normalized()
-        if (
-            not normalized.source_chart_id
-            or not normalized.target_chart_id
-            or normalized.source_chart_id == normalized.target_chart_id
-            or not normalized.source_field
-            or not normalized.target_field
-        ):
+        invalid_relation = any(
+            (
+                not normalized.source_chart_id,
+                not normalized.target_chart_id,
+                normalized.source_chart_id == normalized.target_chart_id,
+                not normalized.source_field,
+                not normalized.target_field,
+            )
+        )
+        if invalid_relation:
             return
 
         duplicate = self._find_duplicate_relation(normalized, ignore_relation_id=normalized.relation_id)
