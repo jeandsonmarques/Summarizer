@@ -1,7 +1,7 @@
 [general]
 name=Summarizer
 qgisMinimumVersion=3.34
-qgisMaximumVersion=3.99
+qgisMaximumVersion=4.99
 description=Summarizes QGIS layers and prepares charts, dashboards, and report-ready analytical outputs.
 about=Summarizer helps analysts explore QGIS project layers, build attribute summaries, generate charts, prepare dashboard-ready tables, and export structured analytical results from geospatial data. Core workflows run locally inside QGIS and do not require external services.
 version=0.5.5
