@@ -15,7 +15,7 @@ For the public project overview, screenshots, installation notes, compatibility 
 
 ## Distribution notes
 
-- The package remains experimental while public testing continues.
+- The package is stable for the public QGIS 3.x release line.
 - Release compatibility and version metadata are defined in `metadata.txt`.
 - ZIP archives for QGIS publication must contain the `Summarizer/` folder at the archive root.
 - Development-only files, temporary artifacts, cached bytecode, and build outputs should stay out of release archives.
