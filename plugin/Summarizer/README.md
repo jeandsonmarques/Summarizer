@@ -1,35 +1,21 @@
 # Summarizer QGIS Plugin Package
 
-This folder contains the distributable QGIS plugin package used for publication.
+This folder contains the distributable QGIS plugin package used by QGIS.
+
+Summarizer helps users create layer summaries, charts, dashboards, and report-ready analytical outputs from QGIS project data. Main workflows run locally inside QGIS.
+
+For the public project overview, screenshots, installation notes, compatibility table, feedback links, and license details, see the repository [README](../../README.md).
 
 ## Package scope
 
-This v0.5.1 package includes the plugin code, metadata, and resources required for QGIS to load and run the extension locally.
+- QGIS plugin entry point.
+- Plugin metadata and resources.
+- Layer summary, chart, dashboard, model, connection, visualization, and export components.
+- Local icons and runtime assets required by the QGIS client.
 
-## Distribution rules
+## Distribution notes
 
-- Ship only the `Summarizer/` folder at the root of the ZIP archive.
-- Exclude development-only files, temporary artifacts, cached bytecode, and build outputs.
-- Use `Summarizer-qgis-release.zip`, generated with `scripts/build_release.ps1`, as the QGIS package.
-
-## Included surface area
-
-- plugin entry point
-- plugin metadata
-- summary, chart, dashboard, model, connection, visualization, and export components
-- local resources and icons
-- report-oriented helpers used by the QGIS client
-
-## Release checklist
-
-- confirm version, description, and compatibility in `metadata.txt`
-- confirm repository, homepage, and issue tracker URLs
-- verify that the archive root is `Summarizer/`
-- verify that no generated files or hidden directories are present
-
-## License and Branding
-
-- Code: `GPL-3.0-or-later`.
-- Brand, logo, name, and visual identity: see `TRADEMARKS.md`.
-- Modified versions must use a different name if there is chance of confusion.
-- Modified versions must preserve copyright notices and clearly mark changes.
+- The package remains experimental while public testing continues.
+- Release compatibility and version metadata are defined in `metadata.txt`.
+- ZIP archives for QGIS publication must contain the `Summarizer/` folder at the archive root.
+- Development-only files, temporary artifacts, cached bytecode, and build outputs should stay out of release archives.
