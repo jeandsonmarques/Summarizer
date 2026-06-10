@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.6
+
+- First stable QGIS 3.x release.
+- Removed experimental plugin status.
+- Kept compatibility with QGIS 3.34 to 3.99.
+- Kept QGIS 4 compatibility not declared.
+- No breaking workflow changes.
+
 ## [0.5.5] - 2026-06-03
 
 - Fixed QGIS 3.44 compatibility for the Summarizer Browser provider capabilities return type.

@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/QGIS-3.34%20to%203.99-green" alt="QGIS compatibility">
-  <img src="https://img.shields.io/badge/status-experimental-orange" alt="Experimental status">
+  <img src="https://img.shields.io/badge/status-stable-brightgreen" alt="Stable status">
   <img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue" alt="License">
   <img src="https://img.shields.io/badge/platform-QGIS-lightgrey" alt="QGIS plugin">
   <img src="https://img.shields.io/badge/Python-3.x-3776AB" alt="Python">
@@ -99,9 +99,8 @@ Core workflows run locally inside QGIS and do not require external services.
 
 1. Open QGIS.
 2. Go to **Plugins > Manage and Install Plugins**.
-3. Enable experimental plugins.
-4. Search for **Summarizer**.
-5. Click **Install Experimental Plugin**.
+3. Search for **Summarizer**.
+4. Click **Install Plugin**.
 
 ### From ZIP
 
@@ -117,13 +116,13 @@ Core workflows run locally inside QGIS and do not require external services.
 |---|---|
 | QGIS 3.34 LTR | Supported |
 | QGIS 3.44 LTR | Supported |
-| QGIS 4.x | Not declared yet |
+| QGIS 4.x | Not declared |
 
-QGIS 4 compatibility will be evaluated separately after Qt 6 and PyQGIS 4 testing.
+QGIS 4.x compatibility is not declared for this release.
 
 ## Current status
 
-Summarizer is currently an experimental public QGIS plugin. The plugin is usable and under active public testing, and feedback from real QGIS projects is welcome.
+Summarizer is a stable public QGIS 3.x plugin. Feedback from real QGIS projects is welcome.
 
 ## Roadmap
 
@@ -131,7 +130,7 @@ Summarizer is currently an experimental public QGIS plugin. The plugin is usable
 - Refine dashboard workflows.
 - Improve database connection workflows.
 - Add more usage examples.
-- Evaluate QGIS 4 compatibility separately.
+- Keep QGIS 4.x compatibility tracked separately from this QGIS 3.x release line.
 
 ## Feedback and issues
 
