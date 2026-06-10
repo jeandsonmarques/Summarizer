@@ -94,15 +94,15 @@ def _emit(level, message: object, *, file_path: Optional[Path] = None) -> str:
 
 
 def log_info(message: object, *, file_path: Optional[Path] = None) -> str:
-    return _emit(Qgis.Info, message, file_path=file_path)
+    return _emit(Qgis.MessageLevel.Info, message, file_path=file_path)
 
 
 def log_warning(message: object, *, file_path: Optional[Path] = None) -> str:
-    return _emit(Qgis.Warning, message, file_path=file_path)
+    return _emit(Qgis.MessageLevel.Warning, message, file_path=file_path)
 
 
 def log_error(message: object, *, file_path: Optional[Path] = None) -> str:
-    return _emit(Qgis.Critical, message, file_path=file_path)
+    return _emit(Qgis.MessageLevel.Critical, message, file_path=file_path)
 
 
 def log_exception(
@@ -110,7 +110,7 @@ def log_exception(
     exc: BaseException | None = None,
     *,
     file_path: Optional[Path] = None,
-    level=Qgis.Warning,
+    level=Qgis.MessageLevel.Warning,
 ) -> str:
     module, function = _caller_origin()
     current_exc = exc if exc is not None else sys.exc_info()[1]

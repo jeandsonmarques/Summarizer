@@ -425,7 +425,7 @@ class PresentationMapController(QObject):
         menu.addAction(_rt("Extensão total"), self._zoom_full_extent)
         menu.addAction(_rt("Zoom na seleção"), self._zoom_to_current_selection)
         try:
-            menu.exec_(self.plugin_window.cursor().pos())
+            menu.exec(self.plugin_window.cursor().pos())
         except Exception:
             pass
 

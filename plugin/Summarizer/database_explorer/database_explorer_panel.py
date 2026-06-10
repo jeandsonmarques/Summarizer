@@ -61,8 +61,8 @@ class _StatusDot(QWidget):
     def paintEvent(self, event):  # noqa: D401 - Qt override
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setPen(Qt.NoPen)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(self._color))
         painter.drawEllipse(1, 1, 8, 8)
         painter.end()
@@ -72,7 +72,7 @@ class _ClickableLabel(QLabel):
     clicked = pyqtSignal()
 
     def mouseReleaseEvent(self, event):  # noqa: D401 - Qt override
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
             event.accept()
             return
@@ -83,7 +83,7 @@ class _ClickableFrame(QFrame):
     clicked = pyqtSignal()
 
     def mouseReleaseEvent(self, event):  # noqa: D401 - Qt override
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
             event.accept()
             return
@@ -101,10 +101,10 @@ class _ObjectRow(QFrame):
         self._activation_loading = False
         self._loading_duration_ms = 0
         self.setObjectName("DatabaseObjectRow")
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.setMinimumWidth(190)
         self.setMinimumHeight(40)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(_rt("Clique para abrir"))
 
         layout = QHBoxLayout(self)
@@ -113,7 +113,7 @@ class _ObjectRow(QFrame):
 
         kind = self._kind_label(database_object)
         kind.setFixedSize(24, 24)
-        layout.addWidget(kind, 0, Qt.AlignVCenter)
+        layout.addWidget(kind, 0, Qt.AlignmentFlag.AlignVCenter)
 
         text_layout = QVBoxLayout()
         text_layout.setContentsMargins(0, 0, 0, 0)
@@ -122,7 +122,7 @@ class _ObjectRow(QFrame):
         name = QLabel(self._display_name(database_object.name), self)
         name.setObjectName("DatabaseObjectName")
         name.setWordWrap(True)
-        name.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         text_layout.addWidget(name)
 
         detail = self._detail_text(database_object)
@@ -130,7 +130,7 @@ class _ObjectRow(QFrame):
             detail_label = QLabel(detail, self)
             detail_label.setObjectName("DatabaseObjectDetail")
             detail_label.setWordWrap(True)
-            detail_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            detail_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             text_layout.addWidget(detail_label)
 
         layout.addLayout(text_layout, 1)
@@ -138,8 +138,8 @@ class _ObjectRow(QFrame):
         if database_object.is_vector:
             spatial = QLabel(_rt("spatial"), self)
             spatial.setObjectName("DatabaseSpatialBadge")
-            spatial.setAlignment(Qt.AlignCenter)
-            layout.addWidget(spatial, 0, Qt.AlignVCenter)
+            spatial.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(spatial, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.loading_bar = QFrame(self)
         self.loading_bar.setObjectName("DatabaseObjectLoadingBar")
@@ -152,7 +152,7 @@ class _ObjectRow(QFrame):
         return text.replace("_", "_\n")
 
     def mousePressEvent(self, event):  # noqa: D401 - Qt override
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._activation_loading = True
             self.set_loading(True)
             self.activated.emit(self.database_object)
@@ -206,7 +206,7 @@ class _ObjectRow(QFrame):
 
     def _kind_label(self, database_object: DatabaseObject) -> QLabel:
         label = QLabel(self)
-        label.setAlignment(Qt.AlignCenter)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setObjectName("DatabaseObjectKind")
         object_type = str(database_object.object_type or "").lower()
         if database_object.is_vector or object_type == "vector":
@@ -255,7 +255,7 @@ class _SchemaCard(QFrame):
         self._object_layout: Optional[QGridLayout] = None
         self._object_host: Optional[QWidget] = None
         self.setObjectName("DatabaseSchemaCard")
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -268,10 +268,10 @@ class _SchemaCard(QFrame):
         self.toggle_btn = QToolButton(self)
         self.toggle_btn.setObjectName("DatabaseSchemaToggle")
         self.toggle_btn.setAutoRaise(True)
-        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.toggle_btn.setFixedSize(22, 22)
         self.toggle_btn.clicked.connect(self.toggle_expanded)
-        header.addWidget(self.toggle_btn, 0, Qt.AlignVCenter)
+        header.addWidget(self.toggle_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
         title = QLabel(group.name or "(padrao)", self)
         title.setObjectName("DatabaseSchemaTitle")
@@ -279,8 +279,8 @@ class _SchemaCard(QFrame):
 
         count = QLabel(self._counter_text(objects), self)
         count.setObjectName("DatabaseSchemaCount")
-        count.setAlignment(Qt.AlignCenter)
-        header.addWidget(count, 0, Qt.AlignRight | Qt.AlignVCenter)
+        count.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.addWidget(count, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(header)
 
         self._body_layout = layout
@@ -304,7 +304,7 @@ class _SchemaCard(QFrame):
             self._materialize_rows()
 
     def _sync_expanded_state(self):
-        self.toggle_btn.setArrowType(Qt.DownArrow if self._expanded else Qt.RightArrow)
+        self.toggle_btn.setArrowType(Qt.ArrowType.DownArrow if self._expanded else Qt.ArrowType.RightArrow)
         self.setProperty("collapsed", not self._expanded)
         if self._object_host is not None:
             self._object_host.setVisible(self._expanded)
@@ -475,7 +475,7 @@ class DatabaseExplorerPanel(QWidget):
 
         header = _ClickableFrame(self.toolbar_frame)
         header.setObjectName("DatabaseExplorerHeader")
-        header.setCursor(Qt.PointingHandCursor)
+        header.setCursor(Qt.CursorShape.PointingHandCursor)
         header.clicked.connect(self._request_connection_edit)
         header.setMinimumHeight(44)
         header_layout = QHBoxLayout(header)
@@ -483,28 +483,28 @@ class DatabaseExplorerPanel(QWidget):
         header_layout.setSpacing(2)
 
         self.status_dot = _StatusDot(header)
-        header_layout.addWidget(self.status_dot, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self.status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.status_label = QLabel(_rt("Desconectado"), header)
         self.status_label.setObjectName("DatabaseExplorerStatus")
-        header_layout.addWidget(self.status_label, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self.status_label, 0, Qt.AlignmentFlag.AlignVCenter)
         header_layout.addWidget(self._toolbar_separator(header), 0)
 
         self.database_label = QPushButton("", header)
         self.database_label.setObjectName("DatabaseExplorerDatabase")
-        self.database_label.setCursor(Qt.PointingHandCursor)
+        self.database_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.database_label.setFlat(True)
         self.database_label.setToolTip(_rt("Editar conexÃ£o"))
         self.database_label.clicked.connect(self._request_connection_edit)
-        header_layout.addWidget(self.database_label, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self.database_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.driver_label = QPushButton("", header)
         self.driver_label.setObjectName("DatabaseExplorerDriver")
-        self.driver_label.setCursor(Qt.PointingHandCursor)
+        self.driver_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.driver_label.setFlat(True)
         self.driver_label.setToolTip(_rt("Editar conexão"))
         self.driver_label.clicked.connect(self._request_connection_edit)
-        header_layout.addWidget(self.driver_label, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self.driver_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.search_edit = QLineEdit(header)
         self.search_edit.setObjectName("DatabaseExplorerSearch")
@@ -512,20 +512,20 @@ class DatabaseExplorerPanel(QWidget):
         self.search_edit.setFixedHeight(28)
         self.search_edit.setMinimumWidth(166)
         self.search_edit.setMaximumWidth(220)
-        self.search_edit.addAction(svg_icon("Search.svg"), QLineEdit.LeadingPosition)
+        self.search_edit.addAction(svg_icon("Search.svg"), QLineEdit.ActionPosition.LeadingPosition)
         self.search_edit.textChanged.connect(lambda *_: self._search_timer.start())
         header_layout.addStretch(1)
         header_layout.addWidget(self.search_edit, 0)
 
         self.refresh_btn = QPushButton("", header)
         self.refresh_btn.setObjectName("DatabaseExplorerRefresh")
-        self.refresh_btn.setCursor(Qt.PointingHandCursor)
+        self.refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.refresh_btn.setIcon(svg_icon("Refresh.svg"))
         self.refresh_btn.setIconSize(QSize(17, 17))
         self.refresh_btn.setFixedSize(28, 28)
         self.refresh_btn.setToolTip(_rt("Atualizar"))
         self.refresh_btn.clicked.connect(self.refresh)
-        header_layout.addWidget(self.refresh_btn, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
         toolbar.addWidget(header, 1)
         root.addWidget(self.toolbar_frame, 0)
@@ -538,11 +538,11 @@ class DatabaseExplorerPanel(QWidget):
         message_layout.setSpacing(8)
         self.message_title = QLabel("", self.message_frame)
         self.message_title.setObjectName("DatabaseExplorerMessageTitle")
-        self.message_title.setAlignment(Qt.AlignCenter)
+        self.message_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         message_layout.addWidget(self.message_title)
         self.message_body = QLabel("", self.message_frame)
         self.message_body.setObjectName("DatabaseExplorerMessageBody")
-        self.message_body.setAlignment(Qt.AlignCenter)
+        self.message_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.message_body.setWordWrap(True)
         message_layout.addWidget(self.message_body)
         root.addWidget(self.message_frame, 1)
@@ -550,7 +550,7 @@ class DatabaseExplorerPanel(QWidget):
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setObjectName("DatabaseExplorerScroll")
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         self.cards_host = QWidget(self.scroll_area)
         self.cards_host.setObjectName("DatabaseExplorerCardsHost")
@@ -564,7 +564,7 @@ class DatabaseExplorerPanel(QWidget):
     def _toolbar_separator(self, parent: QWidget) -> QFrame:
         separator = QFrame(parent)
         separator.setObjectName("DatabaseExplorerToolbarSeparator")
-        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShape(QFrame.Shape.VLine)
         return separator
 
     def _apply_styles(self):
@@ -884,7 +884,7 @@ class DatabaseExplorerPanel(QWidget):
             return
         self._activating_object_keys.add(object_key)
         self._start_row_loading(database_object)
-        QApplication.processEvents(QEventLoop.ExcludeUserInputEvents, 50)
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents, 50)
         QTimer.singleShot(900, lambda obj=database_object: self._emit_object_after_loading_intro(obj))
 
     def mark_object_loaded(self, database_object: Optional[DatabaseObject] = None, loaded: bool = False):

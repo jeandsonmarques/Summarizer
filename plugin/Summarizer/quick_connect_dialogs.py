@@ -65,7 +65,7 @@ class PostgresQuickConnectDialog(SlimDialogBase):
         self.user_edit = QLineEdit(self)
         self.user_edit.setPlaceholderText(_rt("usuário"))
         self.password_edit = QLineEdit(self)
-        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_edit.setPlaceholderText(_rt("********"))
 
         form.addWidget(QLabel(_rt("Nome da conexão")), 0, 0)
@@ -87,7 +87,7 @@ class PostgresQuickConnectDialog(SlimDialogBase):
         self.save_password_cb.setChecked(False)
         layout.addWidget(self.save_password_cb)
 
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)

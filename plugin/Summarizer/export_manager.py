@@ -8,9 +8,9 @@ from datetime import datetime
 
 import pandas as pd
 from qgis.PyQt.QtCore import QRectF, Qt
-from qgis.PyQt.QtGui import QColor, QFont, QPainter, QPageSize, QPdfWriter
+from qgis.PyQt.QtGui import QColor, QPainter, QPageSize, QPdfWriter
 
-from .utils.fonts import ui_font
+from .utils.fonts import _qfont_weight, ui_font
 
 
 class ExportManager:
@@ -95,7 +95,7 @@ class ExportManager:
             return str(value)
 
         writer = QPdfWriter(file_path)
-        writer.setPageSize(QPageSize(QPageSize.A4))
+        writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
         writer.setResolution(300)
         painter = QPainter(writer)
 
@@ -110,8 +110,8 @@ class ExportManager:
                 writer.newPage()
                 y = margin
 
-        title_font = ui_font(16, QFont.Bold)
-        header_font = ui_font(11, QFont.DemiBold)
+        title_font = ui_font(16, _qfont_weight("Bold", 75))
+        header_font = ui_font(11, _qfont_weight("DemiBold", 63))
         text_font = ui_font(10)
 
         painter.fillRect(QRectF(0, 0, page_width, margin + 20), QColor("#0078D4"))
@@ -119,20 +119,20 @@ class ExportManager:
         painter.setFont(title_font)
         painter.drawText(
             QRectF(margin, 20, page_width - 2 * margin, 30),
-            Qt.AlignLeft | Qt.AlignVCenter,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             "Relatório Summarizer",
         )
         painter.setFont(text_font)
         painter.drawText(
             QRectF(margin, 48, page_width - 2 * margin, 20),
-            Qt.AlignLeft | Qt.AlignVCenter,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             f"Gerado em {metadata.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}",
         )
         y = margin + 30
 
         painter.setFont(header_font)
         painter.setPen(QColor("#1F2933"))
-        painter.drawText(QRectF(margin, y, page_width - 2 * margin, 24), Qt.AlignLeft | Qt.AlignVCenter, "Resumo")
+        painter.drawText(QRectF(margin, y, page_width - 2 * margin, 24), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "Resumo")
         y += 26
         painter.setFont(text_font)
         meta_lines = [
@@ -143,13 +143,13 @@ class ExportManager:
         ]
         for label, value in meta_lines:
             ensure_space(18)
-            painter.drawText(QRectF(margin, y, 180, 18), Qt.AlignLeft | Qt.AlignVCenter, f"{label}:")
-            painter.drawText(QRectF(margin + 190, y, page_width - margin * 2 - 190, 18), Qt.AlignLeft | Qt.AlignVCenter, str(value))
+            painter.drawText(QRectF(margin, y, 180, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"{label}:")
+            painter.drawText(QRectF(margin + 190, y, page_width - margin * 2 - 190, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, str(value))
             y += 18
 
         y += 12
         painter.setFont(header_font)
-        painter.drawText(QRectF(margin, y, page_width - 2 * margin, 24), Qt.AlignLeft | Qt.AlignVCenter, "Estatísticas básicas")
+        painter.drawText(QRectF(margin, y, page_width - 2 * margin, 24), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "Estatísticas básicas")
         y += 26
         painter.setFont(text_font)
         stats_lines = [
@@ -163,13 +163,13 @@ class ExportManager:
         ]
         for label, value, digits in stats_lines:
             ensure_space(18)
-            painter.drawText(QRectF(margin, y, 180, 18), Qt.AlignLeft | Qt.AlignVCenter, f"{label}:")
-            painter.drawText(QRectF(margin + 190, y, page_width - margin * 2 - 190, 18), Qt.AlignLeft | Qt.AlignVCenter, fmt(value, digits))
+            painter.drawText(QRectF(margin, y, 180, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"{label}:")
+            painter.drawText(QRectF(margin + 190, y, page_width - margin * 2 - 190, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, fmt(value, digits))
             y += 18
 
         y += 12
         painter.setFont(header_font)
-        painter.drawText(QRectF(margin, y, page_width - 2 * margin, 24), Qt.AlignLeft | Qt.AlignVCenter, "Percentis")
+        painter.drawText(QRectF(margin, y, page_width - 2 * margin, 24), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "Percentis")
         y += 26
         painter.setFont(text_font)
         percent_lines = [
@@ -181,22 +181,22 @@ class ExportManager:
         ]
         for label, value, digits in percent_lines:
             ensure_space(18)
-            painter.drawText(QRectF(margin, y, 180, 18), Qt.AlignLeft | Qt.AlignVCenter, f"{label}:")
-            painter.drawText(QRectF(margin + 190, y, page_width - margin * 2 - 190, 18), Qt.AlignLeft | Qt.AlignVCenter, fmt(value, digits))
+            painter.drawText(QRectF(margin, y, 180, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"{label}:")
+            painter.drawText(QRectF(margin + 190, y, page_width - margin * 2 - 190, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, fmt(value, digits))
             y += 18
 
         if top_groups:
             y += 14
             painter.setFont(header_font)
-            painter.drawText(QRectF(margin, y, page_width - 2 * margin, 24), Qt.AlignLeft | Qt.AlignVCenter, "Top 10 grupos (por soma)")
+            painter.drawText(QRectF(margin, y, page_width - 2 * margin, 24), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "Top 10 grupos (por soma)")
             y += 26
             painter.setFont(text_font)
             for idx, (group_name, group_stats) in enumerate(top_groups, start=1):
                 ensure_space(18)
                 clean_name = str(group_name) if group_name not in (None, "") else "Sem valor"
-                painter.drawText(QRectF(margin, y, 240, 18), Qt.AlignLeft | Qt.AlignVCenter, f"{idx:02d}. {clean_name}")
-                painter.drawText(QRectF(margin + 260, y, 120, 18), Qt.AlignLeft | Qt.AlignVCenter, fmt(group_stats.get("sum"), 2))
-                painter.drawText(QRectF(margin + 400, y, 100, 18), Qt.AlignLeft | Qt.AlignVCenter, f"{fmt(group_stats.get('percentage'), 1)}%")
+                painter.drawText(QRectF(margin, y, 240, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"{idx:02d}. {clean_name}")
+                painter.drawText(QRectF(margin + 260, y, 120, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, fmt(group_stats.get("sum"), 2))
+                painter.drawText(QRectF(margin + 400, y, 100, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"{fmt(group_stats.get('percentage'), 1)}%")
                 y += 18
 
         painter.end()

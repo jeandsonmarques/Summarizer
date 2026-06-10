@@ -57,31 +57,31 @@ def _model_theme_color(name: str) -> str:
 
 
 def _force_model_white_background(widget: QWidget):
-    widget.setAttribute(Qt.WA_StyledBackground, True)
+    widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     widget.setAutoFillBackground(True)
     palette = widget.palette()
     palette.setColor(widget.foregroundRole(), QColor(_model_theme_color("text")))
     palette.setColor(widget.backgroundRole(), QColor(_model_theme_color("surface")))
-    palette.setColor(QPalette.Window, QColor(_model_theme_color("surface")))
-    palette.setColor(QPalette.Base, QColor(_model_theme_color("surface")))
-    palette.setColor(QPalette.AlternateBase, QColor(_model_theme_color("surface_2")))
+    palette.setColor(QPalette.ColorRole.Window, QColor(_model_theme_color("surface")))
+    palette.setColor(QPalette.ColorRole.Base, QColor(_model_theme_color("surface")))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(_model_theme_color("surface_2")))
     widget.setPalette(palette)
 
 
 def _model_builder_trash_icon(size: int = 14) -> QIcon:
     icon = QIcon()
     for mode, color in (
-        (QIcon.Normal, "#EF4444"),
-        (QIcon.Active, "#DC2626"),
-        (QIcon.Selected, "#DC2626"),
-        (QIcon.Disabled, "#FCA5A5"),
+        (QIcon.Mode.Normal, "#EF4444"),
+        (QIcon.Mode.Active, "#DC2626"),
+        (QIcon.Mode.Selected, "#DC2626"),
+        (QIcon.Mode.Disabled, "#FCA5A5"),
     ):
         svg_data = QByteArray(_MODEL_TRASH_SVG.replace("__COLOR__", color).encode("utf-8"))
         renderer = QSvgRenderer(svg_data)
         pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         renderer.render(painter)
         painter.end()
         icon.addPixmap(pixmap, mode)
@@ -95,27 +95,27 @@ def _model_panel_fields_icon(size: int = 14) -> QIcon:
     checked = active
     disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
-        (QIcon.Normal, normal),
-        (QIcon.Active, active),
-        (QIcon.Disabled, disabled),
+        (QIcon.Mode.Normal, normal),
+        (QIcon.Mode.Active, active),
+        (QIcon.Mode.Disabled, disabled),
     ):
         svg_data = QByteArray(_MODEL_FIELDS_SVG.replace("__COLOR__", color).encode("utf-8"))
         renderer = QSvgRenderer(svg_data)
         pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         renderer.render(painter)
         painter.end()
         icon.addPixmap(pixmap, mode)
-        if mode in (QIcon.Normal, QIcon.Active):
+        if mode in (QIcon.Mode.Normal, QIcon.Mode.Active):
             checked_svg = QByteArray(_MODEL_FIELDS_SVG.replace("__COLOR__", checked).encode("utf-8"))
             checked_renderer = QSvgRenderer(checked_svg)
             checked_pixmap = QPixmap(size, size)
-            checked_pixmap.fill(Qt.transparent)
+            checked_pixmap.fill(Qt.GlobalColor.transparent)
             checked_painter = QPainter(checked_pixmap)
             checked_renderer.render(checked_painter)
             checked_painter.end()
-            icon.addPixmap(checked_pixmap, mode, QIcon.On)
+            icon.addPixmap(checked_pixmap, mode, QIcon.State.On)
     return icon
 
 
@@ -134,28 +134,28 @@ def _model_panel_chevron_icon(direction: str = "right", size: int = 20) -> QIcon
     checked = active
     disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
-        (QIcon.Normal, normal),
-        (QIcon.Active, active),
-        (QIcon.Disabled, disabled),
+        (QIcon.Mode.Normal, normal),
+        (QIcon.Mode.Active, active),
+        (QIcon.Mode.Disabled, disabled),
     ):
         try:
             svg_data = QByteArray(template.replace("__COLOR__", color).encode("utf-8"))
             renderer = QSvgRenderer(svg_data)
             pixmap = QPixmap(size, size)
-            pixmap.fill(Qt.transparent)
+            pixmap.fill(Qt.GlobalColor.transparent)
             painter = QPainter(pixmap)
             renderer.render(painter)
             painter.end()
             icon.addPixmap(pixmap, mode)
-            if mode in (QIcon.Normal, QIcon.Active):
+            if mode in (QIcon.Mode.Normal, QIcon.Mode.Active):
                 checked_svg = QByteArray(template.replace("__COLOR__", checked).encode("utf-8"))
                 checked_renderer = QSvgRenderer(checked_svg)
                 checked_pixmap = QPixmap(size, size)
-                checked_pixmap.fill(Qt.transparent)
+                checked_pixmap.fill(Qt.GlobalColor.transparent)
                 checked_painter = QPainter(checked_pixmap)
                 checked_renderer.render(checked_painter)
                 checked_painter.end()
-                icon.addPixmap(checked_pixmap, mode, QIcon.On)
+                icon.addPixmap(checked_pixmap, mode, QIcon.State.On)
         except Exception:
             log_exception("falha opcional ignorada")
     return icon
@@ -179,15 +179,15 @@ def _model_tinted_svg_icon(icon_name: str, size: int = 18, accent_color: str = "
         checked = active
         disabled = "#64748B" if _is_dark_theme() else "#CBD5E1"
     for mode, color in (
-        (QIcon.Normal, normal),
-        (QIcon.Active, active),
-        (QIcon.Disabled, disabled),
+        (QIcon.Mode.Normal, normal),
+        (QIcon.Mode.Active, active),
+        (QIcon.Mode.Disabled, disabled),
     ):
         try:
             with open(path, "rb") as handle:
                 renderer = QSvgRenderer(QByteArray(handle.read()))
             pixmap = QPixmap(size, size)
-            pixmap.fill(Qt.transparent)
+            pixmap.fill(Qt.GlobalColor.transparent)
             painter = QPainter(pixmap)
             viewbox = renderer.viewBoxF()
             if viewbox.isValid() and viewbox.width() > 0 and viewbox.height() > 0:
@@ -197,24 +197,24 @@ def _model_tinted_svg_icon(icon_name: str, size: int = 18, accent_color: str = "
                 renderer.render(painter, QRectF((size - target_w) / 2, (size - target_h) / 2, target_w, target_h))
             else:
                 renderer.render(painter)
-            painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
             painter.fillRect(pixmap.rect(), QColor(color))
             painter.end()
             icon.addPixmap(pixmap, mode)
-            if mode in (QIcon.Normal, QIcon.Active):
+            if mode in (QIcon.Mode.Normal, QIcon.Mode.Active):
                 with open(path, "rb") as handle:
                     checked_renderer = QSvgRenderer(QByteArray(handle.read()))
                 checked_pixmap = QPixmap(size, size)
-                checked_pixmap.fill(Qt.transparent)
+                checked_pixmap.fill(Qt.GlobalColor.transparent)
                 checked_painter = QPainter(checked_pixmap)
                 if viewbox.isValid() and viewbox.width() > 0 and viewbox.height() > 0:
                     checked_renderer.render(checked_painter, QRectF((size - target_w) / 2, (size - target_h) / 2, target_w, target_h))
                 else:
                     checked_renderer.render(checked_painter)
-                checked_painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+                checked_painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
                 checked_painter.fillRect(checked_pixmap.rect(), QColor(checked))
                 checked_painter.end()
-                icon.addPixmap(checked_pixmap, mode, QIcon.On)
+                icon.addPixmap(checked_pixmap, mode, QIcon.State.On)
         except Exception:
             log_exception("falha opcional ignorada")
             return svg_icon(icon_name)

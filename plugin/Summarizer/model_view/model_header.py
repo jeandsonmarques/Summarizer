@@ -55,8 +55,8 @@ class ModelHeaderParts:
 def _create_toolbar_separator(parent: QWidget) -> QFrame:
     separator = QFrame(parent)
     separator.setObjectName("ModelToolbarSeparator")
-    separator.setFrameShape(QFrame.VLine)
-    separator.setFrameShadow(QFrame.Plain)
+    separator.setFrameShape(QFrame.Shape.VLine)
+    separator.setFrameShadow(QFrame.Shadow.Plain)
     return separator
 
 
@@ -149,7 +149,7 @@ def build_model_header(
 
     toolbar_strip = QFrame(header)
     toolbar_strip.setObjectName("ModelToolbarStrip")
-    toolbar_strip.setAttribute(Qt.WA_StyledBackground, True)
+    toolbar_strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     toolbar_strip.setMinimumHeight(44)
     toolbar_layout = QHBoxLayout(toolbar_strip)
     toolbar_layout.setContentsMargins(8, 5, 8, 5)
@@ -222,7 +222,7 @@ def build_model_header(
 
     filters_bar = QFrame(parent)
     filters_bar.setObjectName("ModelFiltersBar")
-    filters_bar.setAttribute(Qt.WA_StyledBackground, True)
+    filters_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     filters_layout = QHBoxLayout(filters_bar)
     filters_layout.setContentsMargins(14, 10, 14, 10)
     filters_layout.setSpacing(10)

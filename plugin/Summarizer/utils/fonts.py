@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Jeandson Marques
 
 import os
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from qgis.PyQt.QtCore import QEvent, QObject, QTimer
 from qgis.PyQt.QtGui import QFont, QFontDatabase
@@ -50,12 +50,35 @@ def ui_font_stack() -> str:
     return f'"{family}", sans-serif'
 
 
-def ui_font(point_size: Optional[int] = None, weight: int = QFont.Normal) -> QFont:
+def _qfont_weight(name: str, fallback: int = 50) -> Any:
+    try:
+        return getattr(QFont.Weight, name)
+    except Exception:
+        return getattr(QFont, name, fallback)
+
+
+def _qfont_stretch(name: str, fallback: int = 100) -> Any:
+    try:
+        return getattr(QFont.Stretch, name)
+    except Exception:
+        return getattr(QFont, name, fallback)
+
+
+def _qevent_type(name: str) -> Any:
+    try:
+        return getattr(QEvent.Type, name)
+    except Exception:
+        return getattr(QEvent, name, None)
+
+
+def ui_font(point_size: Optional[int] = None, weight=None) -> QFont:
     font = QFont(ui_font_family())
     if point_size is not None:
         font.setPointSize(point_size)
+    if weight is None:
+        weight = _qfont_weight("Normal", 50)
     font.setWeight(weight)
-    font.setStretch(QFont.Unstretched)
+    font.setStretch(_qfont_stretch("Unstretched", 100))
     font.setKerning(True)
     return font
 
@@ -63,7 +86,7 @@ def ui_font(point_size: Optional[int] = None, weight: int = QFont.Normal) -> QFo
 def harmonize_font_family(font: Optional[QFont]) -> QFont:
     resolved = QFont(font) if font is not None else QFont()
     resolved.setFamily(ui_font_family())
-    resolved.setStretch(QFont.Unstretched)
+    resolved.setStretch(_qfont_stretch("Unstretched", 100))
     resolved.setKerning(True)
     return resolved
 
@@ -87,7 +110,7 @@ def harmonize_widget_fonts(root: Optional[QObject]) -> None:
 
 class _UiFontEnforcer(QObject):
     def eventFilter(self, watched, event):
-        if event is not None and event.type() == QEvent.ChildAdded:
+        if event is not None and event.type() == _qevent_type("ChildAdded"):
             child = event.child()
             if child is not None:
                 QTimer.singleShot(0, lambda c=child: harmonize_widget_fonts(c))

@@ -34,10 +34,10 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
     icon_active = "#FFFFFF" if dark_mode else INK_COLOR
     icon_disabled = "#94A3B8" if dark_mode else "#C7CDD6"
     mono_icon_colors = {
-        QIcon.Normal: icon_normal,
-        QIcon.Active: icon_active,
-        QIcon.Selected: icon_active,
-        QIcon.Disabled: icon_disabled,
+        QIcon.Mode.Normal: icon_normal,
+        QIcon.Mode.Active: icon_active,
+        QIcon.Mode.Selected: icon_active,
+        QIcon.Mode.Disabled: icon_disabled,
     }
     search_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["search"], size=18, color_map=mono_icon_colors)
     clear_icon = _svg_icon_from_template(_TOOLBAR_SVG_ICONS["clear"], size=18, color_map=mono_icon_colors)
@@ -191,7 +191,7 @@ def refresh_toolbar_chrome(widget, *, icon_factory, toolbar_icons, translate) ->
         if getattr(self, "_search_icon_action", None) is None:
             self._search_icon_action = self.search_input.addAction(
                 search_icon,
-                QLineEdit.LeadingPosition,
+                QLineEdit.ActionPosition.LeadingPosition,
             )
         else:
             self._search_icon_action.setIcon(search_icon)
@@ -1387,10 +1387,10 @@ def enforce_filters_surface_backgrounds(widget) -> None:
             continue
         try:
             palette = widget.palette()
-            palette.setColor(QPalette.Window, surface)
-            palette.setColor(QPalette.Base, surface)
-            palette.setColor(QPalette.Text, text)
-            palette.setColor(QPalette.WindowText, text)
+            palette.setColor(QPalette.ColorRole.Window, surface)
+            palette.setColor(QPalette.ColorRole.Base, surface)
+            palette.setColor(QPalette.ColorRole.Text, text)
+            palette.setColor(QPalette.ColorRole.WindowText, text)
             widget.setPalette(palette)
             widget.setAutoFillBackground(True)
         except Exception:
@@ -1407,17 +1407,17 @@ def enforce_filters_surface_backgrounds(widget) -> None:
             continue
         try:
             palette = list_widget.palette()
-            palette.setColor(QPalette.Base, surface)
-            palette.setColor(QPalette.Window, surface)
-            palette.setColor(QPalette.Text, text)
-            palette.setColor(QPalette.WindowText, text)
+            palette.setColor(QPalette.ColorRole.Base, surface)
+            palette.setColor(QPalette.ColorRole.Window, surface)
+            palette.setColor(QPalette.ColorRole.Text, text)
+            palette.setColor(QPalette.ColorRole.WindowText, text)
             list_widget.setPalette(palette)
             list_widget.setAutoFillBackground(True)
             viewport = list_widget.viewport()
             if viewport is not None:
                 viewport.setPalette(palette)
                 viewport.setAutoFillBackground(True)
-                viewport.setBackgroundRole(QPalette.Base)
+                viewport.setBackgroundRole(QPalette.ColorRole.Base)
         except Exception:
             log_exception("falha opcional ignorada")
 
@@ -1461,12 +1461,12 @@ def enforce_filters_surface_backgrounds(widget) -> None:
             continue
         try:
             palette = combo.palette()
-            palette.setColor(QPalette.Window, input_surface)
-            palette.setColor(QPalette.Base, input_surface)
-            palette.setColor(QPalette.Button, input_surface)
-            palette.setColor(QPalette.Text, text)
-            palette.setColor(QPalette.ButtonText, text)
-            palette.setColor(QPalette.WindowText, text)
+            palette.setColor(QPalette.ColorRole.Window, input_surface)
+            palette.setColor(QPalette.ColorRole.Base, input_surface)
+            palette.setColor(QPalette.ColorRole.Button, input_surface)
+            palette.setColor(QPalette.ColorRole.Text, text)
+            palette.setColor(QPalette.ColorRole.ButtonText, text)
+            palette.setColor(QPalette.ColorRole.WindowText, text)
             combo.setPalette(palette)
             combo.setAutoFillBackground(True)
             combo.setStyleSheet(combo_style)

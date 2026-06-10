@@ -29,10 +29,10 @@ class _ModelClockIcon(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(QColor("#6B7280"), 1.6)
         painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         rect = QRectF(2.0, 2.0, 14.0, 14.0)
         painter.drawEllipse(rect)
         center = QPointF(9.0, 9.0)
@@ -52,7 +52,7 @@ class _ModelElidedLabel(QLabel):
         self.setToolTip(self._full_text)
         metrics = self.fontMetrics()
         width = max(24, self.width() or self.sizeHint().width() or 120)
-        super().setText(metrics.elidedText(self._full_text, Qt.ElideRight, width))
+        super().setText(metrics.elidedText(self._full_text, Qt.TextElideMode.ElideRight, width))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -65,15 +65,15 @@ class _ModelCardAction(QFrame):
     def __init__(self, title: str, description: str, icon_name: str = "", parent=None):
         super().__init__(parent)
         self.setObjectName("ModelActionCard")
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._description = str(description or "")
         self._icon_name = str(icon_name or "")
         self._connected = False
         if self._description:
             self.setToolTip(self._description)
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMinimumHeight(88)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
@@ -89,7 +89,7 @@ class _ModelCardAction(QFrame):
         icon = svg_icon(self._icon_name) if self._icon_name else QIcon()
         if not icon.isNull():
             self.icon_chip.setPixmap(icon.pixmap(20, 20))
-            self.icon_chip.setAlignment(Qt.AlignCenter)
+            self.icon_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top_row.addWidget(self.icon_chip, 0)
         top_row.addStretch(1)
         layout.addLayout(top_row)
@@ -117,7 +117,7 @@ class _ModelCardAction(QFrame):
             return
         rect = self.icon_chip.geometry()
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(QPen(QColor("#FFFFFF"), 1.4))
         painter.setBrush(QColor("#22C55E"))
         painter.drawEllipse(QRectF(rect.right() - 4.0, rect.bottom() - 4.0, 8.0, 8.0))
@@ -156,7 +156,7 @@ class _ModelCardAction(QFrame):
         )
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
             try:
                 event.accept()
@@ -181,12 +181,12 @@ class _ModelRecentFolderIcon(QWidget):
     def paintEvent(self, event):
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(QColor("#4B5563"), 2.0)
-        pen.setJoinStyle(Qt.RoundJoin)
-        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(self._folder_path())
 
     def _folder_path(self):
@@ -207,8 +207,8 @@ class _ModelRecentCard(QFrame):
     def __init__(self, title: str, description: str, parent=None):
         super().__init__(parent)
         self.setObjectName("ModelRecentCard")
-        self.setCursor(Qt.PointingHandCursor)
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedSize(212, 238)
 
         shadow = QGraphicsDropShadowEffect(self)
@@ -229,7 +229,7 @@ class _ModelRecentCard(QFrame):
         preview_layout.setSpacing(0)
 
         icon_widget = _ModelRecentFolderIcon(preview)
-        preview_layout.addWidget(icon_widget, 1, Qt.AlignCenter)
+        preview_layout.addWidget(icon_widget, 1, Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(preview)
 
         content = QWidget(self)
@@ -293,7 +293,7 @@ class _ModelRecentCard(QFrame):
         )
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
             try:
                 event.accept()
@@ -309,15 +309,15 @@ class _DialogDragHandle(QFrame):
         self._target = target
         self._drag_active = False
         self._drag_offset = QPoint()
-        self.setCursor(Qt.OpenHandCursor)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._drag_active = True
             self._drag_offset = (
                 event_point(event, prefer_global=True) - self._target.frameGeometry().topLeft()
             )
-            self.setCursor(Qt.ClosedHandCursor)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
             try:
                 event.accept()
             except Exception:
@@ -336,9 +336,9 @@ class _DialogDragHandle(QFrame):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._drag_active = False
-            self.setCursor(Qt.OpenHandCursor)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
             try:
                 event.accept()
             except Exception:
@@ -354,13 +354,13 @@ class _ModelModeToggle(QWidget):
         super().__init__(parent)
         self._checked = True
         self._thumb_pos = 1.0
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFixedSize(34, 18)
 
         self._animation = QVariantAnimation(self)
         self._animation.setDuration(170)
-        self._animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._animation.valueChanged.connect(self._handle_animation_step)
 
     def _handle_animation_step(self, value):
@@ -393,7 +393,7 @@ class _ModelModeToggle(QWidget):
         self.setChecked(not self._checked, animated=True)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton and self.rect().contains(event_point(event)):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event_point(event)):
             self._toggle()
             try:
                 event.accept()
@@ -403,7 +403,7 @@ class _ModelModeToggle(QWidget):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._toggle()
             try:
                 event.accept()
@@ -415,12 +415,12 @@ class _ModelModeToggle(QWidget):
     def paintEvent(self, event):
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         try:
-            painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         except Exception:
             log_exception("falha opcional ignorada")
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         track_rect = QRectF(
             0.5,
             0.5,

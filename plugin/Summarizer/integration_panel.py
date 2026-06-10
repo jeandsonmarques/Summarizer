@@ -23,7 +23,7 @@ from qgis.PyQt.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from qgis.PyQt.QtGui import QColor, QCursor, QFont, QIcon, QKeySequence, QPainter, QPen, QPixmap
+from qgis.PyQt.QtGui import QColor, QCursor, QIcon, QKeySequence, QPainter, QPen, QPixmap
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -53,7 +53,7 @@ from qgis.core import QgsVectorLayer
 from .slim_dialogs import SlimDialogBase, SlimMessageDialog
 from .browser_integration import connection_registry
 from .palette import COLORS, DARK_COLORS
-from .utils.fonts import harmonize_widget_fonts, ui_font, ui_font_stack
+from .utils.fonts import _qfont_weight, harmonize_widget_fonts, ui_font, ui_font_stack
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.resources import svg_icon
 from .utils.security_utils import reveal_connection_payload, secure_connection_payload
@@ -229,27 +229,27 @@ def _database_table_names(db, driver: str) -> List[str]:
         return tables
     query = QSqlQuery(db)
     if driver == "PostgreSQL":
-        query.exec_(
+        query.exec(
             "SELECT table_schema || '.' || table_name "
             "FROM information_schema.tables "
             "WHERE table_type = 'BASE TABLE' "
             "ORDER BY 1"
         )
     elif driver == "SQL Server":
-        query.exec_(
+        query.exec(
             "SELECT TABLE_SCHEMA + '.' + TABLE_NAME "
             "FROM INFORMATION_SCHEMA.TABLES "
             "WHERE TABLE_TYPE = 'BASE TABLE' "
             "ORDER BY 1"
         )
     elif driver == "Oracle":
-        query.exec_(
+        query.exec(
             "SELECT OWNER || '.' || TABLE_NAME "
             "FROM ALL_TABLES "
             "ORDER BY 1"
         )
     else:
-        query.exec_(
+        query.exec(
             "SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) "
             "FROM INFORMATION_SCHEMA.TABLES "
             "WHERE TABLE_TYPE = 'BASE TABLE' "
@@ -320,8 +320,8 @@ class ConnectorCard(QFrame):
         super().__init__(parent)
         self.config = config
         self.setObjectName(f"integrationCard_{config.key}")
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFixedSize(148, 102)
 
         self._build_ui()
@@ -333,19 +333,19 @@ class ConnectorCard(QFrame):
         layout.setSpacing(8)
 
         self.icon_label = QLabel(self)
-        self.icon_label.setAlignment(Qt.AlignCenter)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_label.setFixedSize(40, 40)
-        layout.addWidget(self.icon_label, 0, Qt.AlignHCenter)
+        layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignHCenter)
 
         self.title_label = QLabel(self.config.title, self)
         self.title_label.setWordWrap(True)
-        self.title_label.setAlignment(Qt.AlignHCenter)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.title_label)
 
         self.caption_label = QLabel(self.config.caption, self)
         self.caption_label.setWordWrap(True)
         self.caption_label.setProperty("class", "cardCaption")
-        self.caption_label.setAlignment(Qt.AlignHCenter)
+        self.caption_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.caption_label)
 
     def _apply_styles(self):
@@ -368,7 +368,7 @@ class ConnectorCard(QFrame):
         self.setStyleSheet(style_template % ui_font_stack())
 
         self._apply_icon()
-        self.title_label.setFont(ui_font(10, QFont.DemiBold))
+        self.title_label.setFont(ui_font(10, _qfont_weight("DemiBold", 63)))
 
     def _apply_icon(self):
         if self.config.icon_path and os.path.exists(self.config.icon_path):
@@ -382,7 +382,7 @@ class ConnectorCard(QFrame):
                 self.icon_label.setPixmap(icon.pixmap(QSize(40, 40)))
                 return
         self.icon_label.setText(self.config.icon_text.upper()[:3])
-        self.icon_label.setFont(ui_font(12, QFont.Bold))
+        self.icon_label.setFont(ui_font(12, _qfont_weight("Bold", 75)))
 
     def enterEvent(self, event: QEvent):
         super().enterEvent(event)
@@ -391,12 +391,12 @@ class ConnectorCard(QFrame):
         super().leaveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.triggered.emit(self.config.key)
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             self.triggered.emit(self.config.key)
             event.accept()
             return
@@ -415,7 +415,7 @@ class ResponsiveGrid(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._layout = QGridLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setHorizontalSpacing(12)
@@ -443,7 +443,7 @@ class ResponsiveGrid(QWidget):
         for idx, card in enumerate(visible_cards):
             row = idx // columns
             col = idx % columns
-            self._layout.addWidget(card, row, col, Qt.AlignHCenter | Qt.AlignTop)
+            self._layout.addWidget(card, row, col, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
 
         for col in range(columns):
             self._layout.setColumnStretch(col, 0)
@@ -456,7 +456,7 @@ def _show_walker_modal_overlay(dialog: QDialog) -> Optional[QFrame]:
     host = parent.window() or parent
     overlay = QFrame(host)
     overlay.setObjectName("WalkerModalOverlay")
-    overlay.setAttribute(Qt.WA_StyledBackground, True)
+    overlay.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     overlay.setStyleSheet("QFrame#WalkerModalOverlay { background-color: rgba(0, 0, 0, 128); }")
     overlay.setGeometry(host.rect())
     overlay.show()
@@ -480,13 +480,13 @@ def _center_dialog_on_parent(dialog: QDialog):
 
 
 def _walker_database_dialog_flags():
-    flags = Qt.Dialog
+    flags = Qt.WindowType.Dialog
     if sys.platform.startswith("win"):
-        flags |= Qt.FramelessWindowHint
+        flags |= Qt.WindowType.FramelessWindowHint
     else:
-        flags |= Qt.WindowCloseButtonHint
+        flags |= Qt.WindowType.WindowCloseButtonHint
     try:
-        flags |= Qt.NoDropShadowWindowHint
+        flags |= Qt.WindowType.NoDropShadowWindowHint
     except Exception:
         pass
     return flags
@@ -542,7 +542,7 @@ class IntegrationPanel(QWidget):
         wrapper.setObjectName("integrationWrapper")
         wrapper.setProperty("card", True)
         wrapper.setMaximumWidth(16777215)
-        wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        wrapper.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         wrapper_layout = QVBoxLayout(wrapper)
         wrapper_layout.setContentsMargins(28, 28, 28, 28)
         wrapper_layout.setSpacing(20)
@@ -552,7 +552,7 @@ class IntegrationPanel(QWidget):
 
         self.title_label = QLabel(_rt("Adicionar dados ao seu relatorio"), wrapper)
         self.title_label.setProperty("cardTitle", True)
-        self.title_label.setFont(ui_font(18, QFont.DemiBold))
+        self.title_label.setFont(ui_font(18, _qfont_weight("DemiBold", 63)))
         header_layout.addWidget(self.title_label)
 
         wrapper_layout.addLayout(header_layout)
@@ -572,7 +572,7 @@ class IntegrationPanel(QWidget):
         recents_header.setSpacing(6)
         recents_title = QLabel(_rt("Recentes"), recents_frame)
         recents_title.setProperty("cardTitle", True)
-        recents_title.setFont(ui_font(12, QFont.DemiBold))
+        recents_title.setFont(ui_font(12, _qfont_weight("DemiBold", 63)))
         recents_header.addWidget(recents_title)
         recents_header.addStretch(1)
 
@@ -590,7 +590,7 @@ class IntegrationPanel(QWidget):
         recents_layout.addWidget(self.recents_list)
 
         self.recents_placeholder = QLabel(_rt("Nenhuma conexao recente..."), recents_frame)
-        self.recents_placeholder.setAlignment(Qt.AlignCenter)
+        self.recents_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.recents_placeholder.setProperty("role", "helper")
         recents_layout.addWidget(self.recents_placeholder)
 
@@ -976,14 +976,14 @@ class IntegrationPanel(QWidget):
             connector = item.get("connector", "-")
             ts = self._format_timestamp(item.get("timestamp"))
             qitem.setText(f"{title}\n{connector} • {ts}")
-            qitem.setData(Qt.UserRole, item)
+            qitem.setData(Qt.ItemDataRole.UserRole, item)
             self.recents_list.addItem(qitem)
 
         self._apply_runtime_i18n()
 
     def _store_recent(self, descriptor: Dict):
         descriptor = dict(descriptor)
-        descriptor["timestamp"] = descriptor.get("timestamp") or QDateTime.currentDateTime().toString(Qt.ISODate)
+        descriptor["timestamp"] = descriptor.get("timestamp") or QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate)
         key = descriptor.get("id") or descriptor.get("source_path") or descriptor.get("display_name")
 
         self._recents = [item for item in self._recents if item.get("id") != key][:7]
@@ -998,7 +998,7 @@ class IntegrationPanel(QWidget):
         self._populate_recents()
 
     def _open_recent(self, item: QListWidgetItem):
-        data = item.data(Qt.UserRole) or {}
+        data = item.data(Qt.ItemDataRole.UserRole) or {}
         connector = data.get("connector")
         if connector == "Excel":
             path = data.get("source_path")
@@ -1173,14 +1173,14 @@ class IntegrationPanel(QWidget):
         for conn in self._saved_connections:
             label = conn.get("name") or f"{conn.get('driver')} • {conn.get('database')}"
             item = QListWidgetItem(label)
-            item.setData(Qt.UserRole, conn)
+            item.setData(Qt.ItemDataRole.UserRole, conn)
             list_widget.addItem(item)
         if list_widget.count() > 0:
             list_widget.setCurrentRow(0)
         layout.addWidget(list_widget, 1)
 
-        button_box = QDialogButtonBox(QDialogButtonBox.Close, dialog)
-        remove_btn = button_box.addButton(_rt("Remover"), QDialogButtonBox.ActionRole)
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, dialog)
+        remove_btn = button_box.addButton(_rt("Remover"), QDialogButtonBox.ButtonRole.ActionRole)
         remove_btn.setEnabled(False)
         layout.addWidget(button_box)
 
@@ -1188,7 +1188,7 @@ class IntegrationPanel(QWidget):
             item = list_widget.currentItem()
             if not item:
                 return None
-            return item.data(Qt.UserRole)
+            return item.data(Qt.ItemDataRole.UserRole)
 
         def update_state_from_selection():
             conn = _current_connection()
@@ -1212,7 +1212,7 @@ class IntegrationPanel(QWidget):
 
         update_state_from_selection()
         _apply_i18n_widgets(dialog)
-        dialog.exec_()
+        dialog.exec()
 
     # ------------------------------------------------------------------ Connectors
     def _on_card_triggered(self, key: str):
@@ -1226,7 +1226,7 @@ class IntegrationPanel(QWidget):
             parent=self,
             last_dir=self.settings.value("integ/last_excel_dir", ""),
         )
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             df, metadata = dialog.result()
             if metadata.get("source_path"):
                 self.settings.setValue(
@@ -1241,7 +1241,7 @@ class IntegrationPanel(QWidget):
             browser_sync_callback=self._mirror_connection_in_browser,
             preferred_driver=preferred_driver or "PostgreSQL",
         )
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             df, metadata, connection_meta, session_connection = dialog.result()
             self._finalize_import(df, metadata)
             if session_connection:
@@ -1279,7 +1279,7 @@ class IntegrationPanel(QWidget):
 
     def _handle_clipboard(self):
         dialog = ClipboardImportDialog(self)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             df, metadata = dialog.result()
             self._finalize_import(df, metadata)
 
@@ -1288,7 +1288,7 @@ class IntegrationPanel(QWidget):
             parent=self,
             last_dir=self.settings.value("integ/last_csv_dir", ""),
         )
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             df, metadata = dialog.result()
             if metadata.get("source_path"):
                 self.settings.setValue(
@@ -1336,13 +1336,13 @@ class IntegrationPanel(QWidget):
 
     def _handle_google_sheets(self):
         dialog = GoogleSheetsDialog(self)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             df, metadata = dialog.result()
             self._finalize_import(df, metadata)
 
     def _show_extended_connectors(self):
         dialog = ExtendedConnectorsDialog(self._connectors, self)
-        dialog.exec_()
+        dialog.exec()
 
     # ------------------------------------------------------------------ Helpers
     def _finalize_import(self, df: pd.DataFrame, metadata: Dict):
@@ -1352,7 +1352,7 @@ class IntegrationPanel(QWidget):
         metadata = dict(metadata)
         metadata.setdefault("import_target", "project")
         metadata.setdefault("record_count", len(df))
-        metadata.setdefault("timestamp", QDateTime.currentDateTime().toString(Qt.ISODate))
+        metadata.setdefault("timestamp", QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate))
         try:
             descriptor = self.host.register_integration_dataframe(df, metadata)
             if descriptor and descriptor.get("layer_id"):
@@ -1385,7 +1385,7 @@ class IntegrationPanel(QWidget):
         if not ts:
             return "-"
         try:
-            dt = QDateTime.fromString(ts, Qt.ISODate)
+            dt = QDateTime.fromString(ts, Qt.DateFormat.ISODate)
             if dt.isValid():
                 return dt.toString("dd/MM/yyyy HH:mm")
         except Exception:
@@ -1462,9 +1462,9 @@ class ExcelImportDialog(SlimDialogBase):
         layout.addWidget(self.preview_table, 1)
 
         buttons = QDialogButtonBox(self)
-        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
-        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
-        cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
+        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ButtonRole.ActionRole)
+        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel_btn = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         _apply_walker_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn, browse_btn])
         layout.addWidget(buttons)
 
@@ -1581,9 +1581,9 @@ class DelimitedFileDialog(SlimDialogBase):
         layout.addWidget(self.preview_table, 1)
 
         buttons = QDialogButtonBox(self)
-        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
-        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
-        cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
+        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ButtonRole.ActionRole)
+        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel_btn = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         _apply_walker_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn, browse_btn])
         layout.addWidget(buttons)
 
@@ -1715,9 +1715,9 @@ class ClipboardImportDialog(SlimDialogBase):
         layout.addWidget(self.text_edit, 1)
 
         buttons = QDialogButtonBox(self)
-        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
-        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
-        cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
+        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ButtonRole.ActionRole)
+        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel_btn = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         _apply_walker_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn])
         layout.addWidget(buttons)
 
@@ -1794,8 +1794,8 @@ class _WalkerSslModePicker(QFrame):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("WalkerSslPicker")
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFixedSize(self._WIDTH, 36)
         self._options = ["Disable", "Prefer", "Require"]
         self._current = "Disable"
@@ -1811,8 +1811,8 @@ class _WalkerSslModePicker(QFrame):
         self.button.setText(self._current)
         self.button.setIcon(self._chevron_icon())
         self.button.setIconSize(QSize(12, 12))
-        self.button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.button.setLayoutDirection(Qt.RightToLeft)
+        self.button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.button.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.button.clicked.connect(self._toggle_popup)
         layout.addWidget(self.button, 1)
 
@@ -1842,7 +1842,7 @@ class _WalkerSslModePicker(QFrame):
         popup = self._popup
         if popup is None or not popup.isVisible():
             return super().eventFilter(watched, event)
-        if event.type() == QEvent.MouseButtonPress:
+        if event.type() == QEvent.Type.MouseButtonPress:
             try:
                 point = event.globalPos()
                 picker_rect = self.rect()
@@ -1855,19 +1855,19 @@ class _WalkerSslModePicker(QFrame):
                     self.hidePopup()
             except Exception:
                 log_exception("falha opcional ignorada")
-        if event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:
+        if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
             self.hidePopup()
             return True
         return super().eventFilter(watched, event)
 
     def _chevron_icon(self) -> QIcon:
         pixmap = QPixmap(12, 12)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         pen = QPen(QColor("#6B7280"), 1.6)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         painter.drawLine(3, 5, 6, 8)
         painter.drawLine(6, 8, 9, 5)
@@ -1887,7 +1887,7 @@ class _WalkerSslModePicker(QFrame):
         parent = self.window() or self.parentWidget() or self
         popup = QFrame(parent)
         popup.setObjectName("WalkerSslDropdown")
-        popup.setAttribute(Qt.WA_StyledBackground, True)
+        popup.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         popup.setFixedSize(self._POPUP_WIDTH, 92)
 
         layout = QVBoxLayout(popup)
@@ -1950,12 +1950,12 @@ class _WalkerDatabaseTitleIcon(QWidget):
     def paintEvent(self, event):
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         pen = QPen(QColor("#111827"), 1.5)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
 
         top = QRectF(2.5, 3.0, 12.0, 5.6)
         body = QRectF(2.5, 3.0, 12.0, 14.5)
@@ -1998,7 +1998,7 @@ class DatabaseImportDialog(SlimDialogBase):
             self.setGraphicsEffect(None)
         except Exception:
             log_exception("falha opcional ignorada")
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedSize(500, 430)
         self._build_ui()
         harmonize_widget_fonts(self)
@@ -2063,7 +2063,7 @@ class DatabaseImportDialog(SlimDialogBase):
 
         panel = QFrame(self)
         panel.setObjectName("WalkerDatabasePanel")
-        panel.setAttribute(Qt.WA_StyledBackground, True)
+        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._walker_panel = panel
         root_layout.addWidget(panel)
 
@@ -2076,17 +2076,17 @@ class DatabaseImportDialog(SlimDialogBase):
         header.setSpacing(8)
 
         self.connection_status_icon = _WalkerDatabaseTitleIcon(self)
-        header.addWidget(self.connection_status_icon, 0, Qt.AlignVCenter)
+        header.addWidget(self.connection_status_icon, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.title_label = QLabel(_rt("Connect to PostgreSQL"), self)
         self.title_label.setObjectName("WalkerDatabaseTitle")
-        header.addWidget(self.title_label, 1, Qt.AlignVCenter)
+        header.addWidget(self.title_label, 1, Qt.AlignmentFlag.AlignVCenter)
 
         close_btn = QToolButton(self)
         close_btn.setObjectName("WalkerDialogCloseButton")
         close_btn.setText("×")
         close_btn.clicked.connect(self.reject)
-        header.addWidget(close_btn, 0, Qt.AlignTop)
+        header.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
         form = QGridLayout()
@@ -2130,7 +2130,7 @@ class DatabaseImportDialog(SlimDialogBase):
         form.addWidget(self.user_edit, 5, 0, 1, 2)
 
         self.password_edit = QLineEdit(self)
-        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_label = _field_label("Password")
         form.addWidget(self.password_label, 4, 2)
         form.addWidget(self.password_edit, 5, 2, 1, 2)
@@ -2146,13 +2146,13 @@ class DatabaseImportDialog(SlimDialogBase):
 
         self.remember_box = QCheckBox(_rt("Salvar conexão"), self)
         self.remember_box.setObjectName("WalkerSaveConnectionCheck")
-        form.addWidget(self.remember_box, 7, 1, Qt.AlignVCenter)
+        form.addWidget(self.remember_box, 7, 1, Qt.AlignmentFlag.AlignVCenter)
 
         self.delete_connection_btn = QPushButton(_rt("Excluir conexão"), self)
         self.delete_connection_btn.setObjectName("WalkerDeleteConnectionButton")
         self.delete_connection_btn.clicked.connect(self._delete_saved_connection)
         self.delete_connection_btn.setVisible(False)
-        form.addWidget(self.delete_connection_btn, 7, 2, 1, 2, Qt.AlignRight | Qt.AlignVCenter)
+        form.addWidget(self.delete_connection_btn, 7, 2, 1, 2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         for field in (self.host_edit, self.port_edit, self.database_edit, self.user_edit, self.password_edit):
             field.textEdited.connect(lambda *_: self._set_connection_status(False))
@@ -2195,9 +2195,9 @@ class DatabaseImportDialog(SlimDialogBase):
         layout.addStretch(1)
 
         buttons = QDialogButtonBox(self)
-        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
-        self.load_btn = buttons.addButton(_rt("Connect"), QDialogButtonBox.AcceptRole)
-        cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
+        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ButtonRole.ActionRole)
+        self.load_btn = buttons.addButton(_rt("Connect"), QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel_btn = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         cancel_btn.setText(_rt("Cancel"))
         _apply_walker_dialog_buttons(
             primary=[self.load_btn],
@@ -2440,7 +2440,7 @@ class DatabaseImportDialog(SlimDialogBase):
             _rt("Excluir conexão"),
             _rt("Excluir esta conexão salva?"),
         )
-        if confirm != QMessageBox.Yes:
+        if confirm != QMessageBox.StandardButton.Yes:
             return
         _forget_connected_database_params(self._params())
         connection_registry.remove_connection(fingerprint)
@@ -2662,7 +2662,7 @@ class DatabaseImportDialog(SlimDialogBase):
 
     def _test_connection(self):
         params = self._params()
-        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
         try:
             ok, db_or_error = self._create_connection(params)
         finally:
@@ -2744,27 +2744,27 @@ class DatabaseImportDialog(SlimDialogBase):
             return
         query = QSqlQuery(db)
         if driver == "PostgreSQL":
-            query.exec_(
+            query.exec(
                 "SELECT table_schema || '.' || table_name "
                 "FROM information_schema.tables "
                 "WHERE table_type = 'BASE TABLE' "
                 "ORDER BY 1"
             )
         elif driver == "SQL Server":
-            query.exec_(
+            query.exec(
                 "SELECT TABLE_SCHEMA + '.' + TABLE_NAME "
                 "FROM INFORMATION_SCHEMA.TABLES "
                 "WHERE TABLE_TYPE = 'BASE TABLE' "
                 "ORDER BY 1"
             )
         elif driver == "Oracle":
-            query.exec_(
+            query.exec(
                 "SELECT OWNER || '.' || TABLE_NAME "
                 "FROM ALL_TABLES "
                 "ORDER BY 1"
             )
         else:
-            query.exec_(
+            query.exec(
                 "SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) "
                 "FROM INFORMATION_SCHEMA.TABLES "
                 "WHERE TABLE_TYPE = 'BASE TABLE' "
@@ -2820,7 +2820,7 @@ class DatabaseImportDialog(SlimDialogBase):
         )
         query.addBindValue(schema)
         query.addBindValue(name)
-        if not query.exec_():
+        if not query.exec():
             return {}
         if not query.next():
             return {}
@@ -2846,7 +2846,7 @@ class DatabaseImportDialog(SlimDialogBase):
 
     def _retrieve(self, preview: bool):
         params = self._params()
-        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
         try:
             ok, db_or_error = self._create_connection(params)
         finally:
@@ -2858,7 +2858,7 @@ class DatabaseImportDialog(SlimDialogBase):
         db = db_or_error
         self._remember_last_params(params)
         try:
-            QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             if self.tables_combo.count() == 0:
                 self._populate_tables(db, params["driver"])
             self._remember_connected_connection(params, self._current_table_names())
@@ -2885,7 +2885,7 @@ class DatabaseImportDialog(SlimDialogBase):
             sql = self._build_select_sql(quoted_table, params["driver"], preview)
 
             query = QSqlQuery(db)
-            if not query.exec_(sql):
+            if not query.exec(sql):
                 QMessageBox.warning(self, _rt("Importar"), query.lastError().text())
                 return
 
@@ -3002,9 +3002,9 @@ class GoogleSheetsDialog(SlimDialogBase):
         layout.addWidget(self.url_edit)
 
         buttons = QDialogButtonBox(self)
-        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ActionRole)
-        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.AcceptRole)
-        cancel_btn = buttons.addButton(QDialogButtonBox.Cancel)
+        preview_btn = buttons.addButton(_rt("Pré-visualizar"), QDialogButtonBox.ButtonRole.ActionRole)
+        load_btn = buttons.addButton(_rt("Carregar"), QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel_btn = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         _apply_walker_dialog_buttons(primary=[load_btn], secondary=[preview_btn, cancel_btn])
         layout.addWidget(buttons)
 
@@ -3083,7 +3083,7 @@ class ExtendedConnectorsDialog(SlimDialogBase):
             lst.addItem(item)
         layout.addWidget(lst, 1)
 
-        close_btn = QDialogButtonBox(QDialogButtonBox.Close, self)
+        close_btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
         close_btn.rejected.connect(self.reject)
         layout.addWidget(close_btn)
         _apply_i18n_widgets(self)

@@ -92,9 +92,9 @@ class _DashboardConnectorOverlay(QWidget):
         super().__init__(parent)
         self._host = host
         self.setObjectName("ModelDashboardOverlay")
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -105,7 +105,7 @@ class _DashboardConnectorOverlay(QWidget):
             return
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         frame_rect = self.rect().adjusted(1, 1, -2, -2)
         if frame_rect.width() <= 0 or frame_rect.height() <= 0:
             return
@@ -122,10 +122,10 @@ class _DashboardConnectorOverlay(QWidget):
         selection_pen = QPen(border_color, 1)
         selection_pen.setCosmetic(True)
         painter.setPen(selection_pen)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(frame_rect)
 
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(handle_color))
         zoom = max(0.8, min(1.4, float(getattr(self._host, "_zoom_scale", 1.0) or 1.0)))
         handle_size = max(5, min(8, int(round(6 * zoom))))
@@ -225,7 +225,7 @@ class _EmptyVisualPreview(QWidget):
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         bounds = QRectF(self.rect()).adjusted(2, 2, -2, -2)
         dark_mode = _is_dark_theme()
         preview_bg = QColor("#111827" if dark_mode else "#F3F4F6")
@@ -239,7 +239,7 @@ class _EmptyVisualPreview(QWidget):
             painter.drawLine(QPoint(int(bounds.left()), int(y)), QPoint(int(bounds.right()), int(y)))
 
         chart_type = str(self._chart_type or "bar").lower()
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(bar_color))
 
         if chart_type in {"barh", "funnel"}:
@@ -268,7 +268,7 @@ class _EmptyVisualPreview(QWidget):
                 area.setAlpha(105)
                 painter.setBrush(QBrush(area))
                 painter.drawPath(path)
-            painter.setPen(QPen(darker, 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.setPen(QPen(darker, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
             for index in range(len(points) - 1):
                 painter.drawLine(points[index], points[index + 1])
         elif chart_type in {"pie", "donut"}:
@@ -315,7 +315,7 @@ class _DashboardVisualDropOverlay(QFrame):
         super().__init__(parent)
         self.setObjectName("ModelDashboardDropOverlay")
         self.setAcceptDrops(True)
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -324,7 +324,7 @@ class _DashboardVisualDropOverlay(QFrame):
         self.message_label = QLabel(_rt("Arraste campos para configurar este visual"), self)
         self.message_label.setObjectName("ModelDashboardEmptyVisualText")
         self.message_label.setWordWrap(True)
-        self.message_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.message_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.message_label, 0)
 
         self.preview_widget = _EmptyVisualPreview(self)
@@ -412,7 +412,7 @@ class _ColorButton(QPushButton):
     def __init__(self, color: str, parent=None):
         super().__init__(parent)
         self._color = "#FFFFFF"
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMinimumWidth(92)
         self.set_color(color)
         self.clicked.connect(self._pick_color)
@@ -676,11 +676,11 @@ class VisualPropertiesDialog(QDialog):
         action_row.addWidget(self.reset_btn)
         root.addLayout(action_row)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Apply | QDialogButtonBox.Cancel, self)
-        buttons.button(QDialogButtonBox.Apply).setText(_rt("Aplicar"))
-        buttons.button(QDialogButtonBox.Cancel).setText(_rt("Cancelar"))
-        apply_walker_buttons(primary=[buttons.button(QDialogButtonBox.Apply)], secondary=[buttons.button(QDialogButtonBox.Cancel)])
-        buttons.button(QDialogButtonBox.Apply).clicked.connect(self.accept)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Apply | QDialogButtonBox.StandardButton.Cancel, self)
+        buttons.button(QDialogButtonBox.StandardButton.Apply).setText(_rt("Aplicar"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(_rt("Cancelar"))
+        apply_walker_buttons(primary=[buttons.button(QDialogButtonBox.StandardButton.Apply)], secondary=[buttons.button(QDialogButtonBox.StandardButton.Cancel)])
+        buttons.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
 
@@ -841,6 +841,9 @@ class DashboardItemWidget(QFrame):
         self._external_highlights = {}
         self._zoom_scale = 1.0
         self._logical_chart_size = QSize()
+        self._applying_styles = False
+        self._last_style_sheet = ""
+        self._edit_mode_applied = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -868,22 +871,22 @@ class DashboardItemWidget(QFrame):
         title_column.setSpacing(1)
         self.title_label = QLabel("", self.header)
         self.title_label.setObjectName("ModelDashboardItemTitle")
-        self.title_label.setCursor(Qt.PointingHandCursor)
+        self.title_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.title_label.setToolTip(_rt("Duplo clique para renomear"))
         self.title_label.setFont(ui_font())
-        self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         title_column.addWidget(self.title_label)
         self.subtitle_label = QLabel("", self.header)
         self.subtitle_label.setObjectName("ModelDashboardItemSubtitle")
         self.subtitle_label.setWordWrap(True)
         self.subtitle_label.setFont(ui_font())
-        self.subtitle_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.subtitle_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         title_column.addWidget(self.subtitle_label)
         header_layout.addLayout(title_column, 1)
 
         self.model_edit_btn = QToolButton(self.header)
         self.model_edit_btn.setObjectName("ModelDashboardHeaderIconButton")
-        self.model_edit_btn.setCursor(Qt.PointingHandCursor)
+        self.model_edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.model_edit_btn.setToolTip(_rt("Alterar tipo de grafico"))
         model_icon = _icon_from_resource("ModelVisual-Donut.svg")
         self.model_edit_btn.setIcon(model_icon)
@@ -895,7 +898,7 @@ class DashboardItemWidget(QFrame):
 
         self.personalize_btn = QToolButton(self.header)
         self.personalize_btn.setObjectName("ModelDashboardHeaderIconButton")
-        self.personalize_btn.setCursor(Qt.PointingHandCursor)
+        self.personalize_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.personalize_btn.setToolTip(_rt("Personalizar visual do grafico"))
         personalize_icon = _icon_from_resource("walker_chart_brush.svg")
         self.personalize_btn.setIcon(personalize_icon)
@@ -907,7 +910,7 @@ class DashboardItemWidget(QFrame):
 
         self.link_command_btn = QToolButton(self.header)
         self.link_command_btn.setObjectName("ModelDashboardLinkCommandButton")
-        self.link_command_btn.setCursor(Qt.PointingHandCursor)
+        self.link_command_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.link_command_btn.setToolTip(_rt("Criar relacao com outro grafico"))
         link_icon = _icon_from_resource("Model.svg")
         self.link_command_btn.setIcon(link_icon)
@@ -920,7 +923,7 @@ class DashboardItemWidget(QFrame):
 
         self.remove_btn = QToolButton(self.header)
         self.remove_btn.setObjectName("ModelDashboardRemoveButton")
-        self.remove_btn.setCursor(Qt.PointingHandCursor)
+        self.remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.remove_btn.setToolTip(_rt("Fechar grafico"))
         close_icon = _icon_from_resource("model_close.svg")
         self.remove_btn.setIcon(close_icon)
@@ -1223,7 +1226,11 @@ class DashboardItemWidget(QFrame):
                 log_exception("falha opcional ignorada")
 
     def set_edit_mode(self, enabled: bool):
-        self._edit_mode = bool(enabled)
+        enabled = bool(enabled)
+        if enabled == self._edit_mode and self._edit_mode_applied:
+            return
+        self._edit_mode = enabled
+        self._edit_mode_applied = True
         if not self._edit_mode:
             self._link_active = False
             self._active_link_side = ""
@@ -1300,8 +1307,8 @@ class DashboardItemWidget(QFrame):
             available = max(80, header_width - reserved)
             title_width = max(60, int(available * 0.64))
             subtitle_width = max(40, available - title_width)
-            self.title_label.setText(metrics.elidedText(title_text, Qt.ElideRight, title_width))
-            self.subtitle_label.setText(metrics.elidedText(subtitle_text, Qt.ElideRight, subtitle_width))
+            self.title_label.setText(metrics.elidedText(title_text, Qt.TextElideMode.ElideRight, title_width))
+            self.subtitle_label.setText(metrics.elidedText(subtitle_text, Qt.TextElideMode.ElideRight, subtitle_width))
             self.title_label.setToolTip(title_text)
             self.subtitle_label.setToolTip(subtitle_text)
         except Exception:
@@ -1379,8 +1386,7 @@ class DashboardItemWidget(QFrame):
             border = "#A3A3A3"
             card_border = f"1px solid {border}"
 
-        self.setStyleSheet(
-            f"""
+        style_sheet = f"""
             QFrame#ModelDashboardItem {{
                 background: transparent;
                 border: none;
@@ -1469,7 +1475,13 @@ class DashboardItemWidget(QFrame):
                 font-weight: 500;
             }}
             """
-        )
+        if style_sheet != self._last_style_sheet:
+            self._last_style_sheet = style_sheet
+            self._applying_styles = True
+            try:
+                self.setStyleSheet(style_sheet)
+            finally:
+                self._applying_styles = False
         self._sync_drop_overlay()
 
     def _header_button_anchor(self, button: QWidget) -> QPoint:
@@ -1512,7 +1524,7 @@ class DashboardItemWidget(QFrame):
                 group_menu.addAction(action)
 
         before = copy.deepcopy(self.chart_widget.chart_state)
-        menu.exec_(self._header_button_anchor(self.model_edit_btn))
+        menu.exec(self._header_button_anchor(self.model_edit_btn))
         if before != self.chart_widget.chart_state:
             self._item.visual_state = copy.deepcopy(self.chart_widget.chart_state)
             self.itemChanged.emit()
@@ -1619,7 +1631,7 @@ class DashboardItemWidget(QFrame):
         menu.addAction(reset_action)
 
         before = copy.deepcopy(self.chart_widget.chart_state)
-        menu.exec_(self._header_button_anchor(self.personalize_btn))
+        menu.exec(self._header_button_anchor(self.personalize_btn))
         if before != self.chart_widget.chart_state:
             self._item.visual_state = copy.deepcopy(self.chart_widget.chart_state)
             self._sync_title_visibility()
@@ -1655,8 +1667,8 @@ class DashboardItemWidget(QFrame):
             self._apply_visual_state_preview,
             self,
         )
-        result = dialog.exec_()
-        if result == QDialog.Accepted:
+        result = dialog.exec()
+        if result == QDialog.DialogCode.Accepted:
             self._apply_visual_state_preview(dialog.visual_state())
             self.itemChanged.emit()
             return
@@ -1664,18 +1676,29 @@ class DashboardItemWidget(QFrame):
 
     def _event_global_pos(self, event) -> QPoint:
         try:
+            return event.globalPosition().toPoint()
+        except Exception:
+            pass
+        try:
             return event.globalPos()
         except Exception:
             try:
-                return self.mapToGlobal(event.pos())
+                return self.mapToGlobal(self._event_local_pos(event))
             except Exception:
                 return QPoint()
 
-    def _map_event_pos(self, watched: QWidget, event) -> QPoint:
+    def _event_local_pos(self, event) -> QPoint:
         try:
-            local_pos = event.pos()
+            return event.position().toPoint()
+        except Exception:
+            pass
+        try:
+            return event.pos()
         except Exception:
             return QPoint()
+
+    def _map_event_pos(self, watched: QWidget, event) -> QPoint:
+        local_pos = self._event_local_pos(event)
         if watched is self:
             return local_pos
         try:
@@ -1715,15 +1738,15 @@ class DashboardItemWidget(QFrame):
 
     def _cursor_for_resize_mode(self, mode: str):
         return {
-            "left": Qt.SizeHorCursor,
-            "right": Qt.SizeHorCursor,
-            "top": Qt.SizeVerCursor,
-            "bottom": Qt.SizeVerCursor,
-            "top_left": Qt.SizeFDiagCursor,
-            "bottom_right": Qt.SizeFDiagCursor,
-            "top_right": Qt.SizeBDiagCursor,
-            "bottom_left": Qt.SizeBDiagCursor,
-        }.get(mode, Qt.ArrowCursor)
+            "left": Qt.CursorShape.SizeHorCursor,
+            "right": Qt.CursorShape.SizeHorCursor,
+            "top": Qt.CursorShape.SizeVerCursor,
+            "bottom": Qt.CursorShape.SizeVerCursor,
+            "top_left": Qt.CursorShape.SizeFDiagCursor,
+            "bottom_right": Qt.CursorShape.SizeFDiagCursor,
+            "top_right": Qt.CursorShape.SizeBDiagCursor,
+            "bottom_left": Qt.CursorShape.SizeBDiagCursor,
+        }.get(mode, Qt.CursorShape.ArrowCursor)
 
     def _set_hover_cursor(self, pos: QPoint):
         if not self._edit_mode:
@@ -1731,14 +1754,14 @@ class DashboardItemWidget(QFrame):
             return
         connector_side = self.connector_hit_side(pos)
         if connector_side:
-            self.setCursor(Qt.CrossCursor)
+            self.setCursor(Qt.CursorShape.CrossCursor)
             return
         resize_mode = self._resize_mode_for_pos(pos)
         if resize_mode:
             self.setCursor(self._cursor_for_resize_mode(resize_mode))
             return
         if self._header_drag_rect().contains(pos):
-            self.setCursor(Qt.OpenHandCursor if not self._drag_active else Qt.ClosedHandCursor)
+            self.setCursor(Qt.CursorShape.OpenHandCursor if not self._drag_active else Qt.CursorShape.ClosedHandCursor)
             return
         self.unsetCursor()
 
@@ -1747,7 +1770,7 @@ class DashboardItemWidget(QFrame):
         self._drag_active = False
         self._header_pressed = True
         self._press_pos = global_pos
-        self.setCursor(Qt.ClosedHandCursor)
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def _start_resize(self, resize_mode: str, global_pos: QPoint):
         self._resize_active = True
@@ -1808,7 +1831,7 @@ class DashboardItemWidget(QFrame):
         self._drag_active = False
         self._header_pressed = False
         self.set_highlight_mode("idle")
-        self.setCursor(Qt.OpenHandCursor if self._edit_mode else Qt.ArrowCursor)
+        self.setCursor(Qt.CursorShape.OpenHandCursor if self._edit_mode else Qt.CursorShape.ArrowCursor)
 
     def _finish_resize(self, global_pos: QPoint):
         self.resizeFinished.emit(
@@ -1879,14 +1902,14 @@ class DashboardItemWidget(QFrame):
             return super().eventFilter(watched, event)
 
         event_type = event.type()
-        local_pos = self._map_event_pos(watched, event)
-        global_pos = self._event_global_pos(event)
+        if self._applying_styles:
+            return super().eventFilter(watched, event)
 
-        if watched is self.chart_widget and event_type == QEvent.Resize:
+        if watched is self.chart_widget and event_type == QEvent.Type.Resize:
             self._sync_logical_chart_render_size()
             return super().eventFilter(watched, event)
 
-        if event_type == QEvent.Wheel:
+        if event_type == QEvent.Type.Wheel:
             canvas = self._find_canvas_host()
             if canvas is not None and hasattr(canvas, "is_edit_mode"):
                 try:
@@ -1909,7 +1932,19 @@ class DashboardItemWidget(QFrame):
         if not self._edit_mode:
             return super().eventFilter(watched, event)
 
-        if event_type == QEvent.MouseMove:
+        position_event_types = {
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonDblClick,
+            QEvent.Type.MouseButtonRelease,
+        }
+        if event_type not in position_event_types:
+            return super().eventFilter(watched, event)
+
+        local_pos = self._map_event_pos(watched, event)
+        global_pos = self._event_global_pos(event)
+
+        if event_type == QEvent.Type.MouseMove:
             if self._link_active:
                 self._emit_link_move(global_pos)
                 return True
@@ -1928,7 +1963,7 @@ class DashboardItemWidget(QFrame):
             self._set_hover_cursor(local_pos)
             return False
 
-        if event_type == QEvent.MouseButtonPress and getattr(event, "button", lambda: None)() == Qt.LeftButton:
+        if event_type == QEvent.Type.MouseButtonPress and getattr(event, "button", lambda: None)() == Qt.MouseButton.LeftButton:
             self.itemSelected.emit(self.item_id)
             link_side = self.connector_hit_side(local_pos)
             if link_side:
@@ -1945,11 +1980,11 @@ class DashboardItemWidget(QFrame):
                 return True
             return False
 
-        if event_type == QEvent.MouseButtonDblClick and watched is self.title_label and self._edit_mode:
+        if event_type == QEvent.Type.MouseButtonDblClick and watched is self.title_label and self._edit_mode:
             self._edit_title()
             return True
 
-        if event_type == QEvent.MouseButtonRelease and getattr(event, "button", lambda: None)() == Qt.LeftButton:
+        if event_type == QEvent.Type.MouseButtonRelease and getattr(event, "button", lambda: None)() == Qt.MouseButton.LeftButton:
             if self._link_active:
                 self._finish_link(global_pos)
                 return True

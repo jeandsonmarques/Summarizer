@@ -4,16 +4,22 @@
 from typing import Dict, List, Optional
 
 from qgis.PyQt.QtCore import QPointF, QRectF, Qt
-from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
+from qgis.PyQt.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from qgis.PyQt.QtWidgets import QGraphicsDropShadowEffect, QGraphicsRectItem, QMenu, QGraphicsSceneContextMenuEvent
 from qgis.core import QgsMessageLog
 
 from .field_item import FieldItem
-from ..utils.fonts import ui_font
+from ..utils.fonts import _qfont_weight, ui_font
 from ..walker_dialogs import apply_walker_menu
 
 
 from ..utils.logging_utils import log_exception
+
+
+def _font_text_width(metrics: QFontMetrics, text: str) -> int:
+    if hasattr(metrics, "horizontalAdvance"):
+        return int(metrics.horizontalAdvance(text))
+    return int(metrics.boundingRect(text).width())
 
 
 class TableCardItem(QGraphicsRectItem):
@@ -38,7 +44,7 @@ class TableCardItem(QGraphicsRectItem):
         self._virtual_header_rect: Optional[QRectF] = None
         self._virtual_title_height = 0
 
-        self.title_font = ui_font(8, QFont.DemiBold)
+        self.title_font = ui_font(8, _qfont_weight("DemiBold", 63))
         self.body_font = ui_font(8)
         self.preview_title_font = ui_font(8)
         self.preview_title_font.setItalic(True)
@@ -46,7 +52,7 @@ class TableCardItem(QGraphicsRectItem):
         self.setFlag(self.ItemIsMovable, True)
         self.setFlag(self.ItemIsSelectable, True)
         self.setFlag(self.ItemSendsGeometryChanges, True)
-        self.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton | Qt.MouseButton.RightButton)
         self.setZValue(1)
 
         self._apply_shadow()
@@ -66,21 +72,21 @@ class TableCardItem(QGraphicsRectItem):
 
     def _measure_width(self) -> float:
         metrics = QFontMetrics(self.title_font)
-        width = metrics.width(self.table_name) + self.padding * 2
+        width = _font_text_width(metrics, self.table_name) + self.padding * 2
 
         field_metrics = QFontMetrics(self.body_font)
         for field in self.fields_data:
             name = field.get("name") or field.get("field") or ""
-            field_width = field_metrics.width(str(name)) + 90
+            field_width = _font_text_width(field_metrics, str(name)) + 90
             width = max(width, field_width)
         for name in self._virtual_fields:
-            field_width = field_metrics.width(str(name)) + 90
+            field_width = _font_text_width(field_metrics, str(name)) + 90
             width = max(width, field_width)
 
         if self._virtual_fields:
             preview_title = self._preview_section_title()
             preview_metrics = QFontMetrics(self.preview_title_font)
-            width = max(width, preview_metrics.width(preview_title) + self.padding * 2)
+            width = max(width, _font_text_width(preview_metrics, preview_title) + self.padding * 2)
         return max(width, float(self.min_width))
 
     def _preview_section_title(self) -> str:
@@ -180,7 +186,7 @@ class TableCardItem(QGraphicsRectItem):
     # ---------------------------------------------------------------- Painting
     def paint(self, painter: QPainter, option, widget=None):  # type: ignore[override]
         rect = self.rect()
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         painter.setPen(QPen(QColor("#C8C8C8")))
         painter.setBrush(QColor("#FFFFFF"))
@@ -198,7 +204,7 @@ class TableCardItem(QGraphicsRectItem):
         painter.setFont(self.title_font)
         painter.drawText(
             header_rect.adjusted(8, 0, -8, 0),
-            Qt.AlignVCenter | Qt.AlignLeft,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
             self.table_name,
         )
 
@@ -207,7 +213,7 @@ class TableCardItem(QGraphicsRectItem):
             painter.setFont(self.preview_title_font)
             painter.drawText(
                 self._virtual_header_rect,
-                Qt.AlignVCenter | Qt.AlignLeft,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                 self._preview_section_title(),
             )
 
@@ -250,7 +256,7 @@ class TableCardItem(QGraphicsRectItem):
             )
             menu = apply_walker_menu(QMenu())
             export_action = menu.addAction("Exportar camada (preview herdado)")
-            chosen = menu.exec_(event.screenPos())
+            chosen = menu.exec(event.screenPos())
             if chosen == export_action:
                 scene = self.scene()
                 manager = getattr(scene, "manager", None) if scene is not None else None

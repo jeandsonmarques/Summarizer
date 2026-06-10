@@ -268,10 +268,10 @@ QToolButton[navIcon="true"] {
     background: transparent;
     border: none;
     padding: 4px;
-    margin: 2px 0;
+    margin: 0;
     min-width: 50px;
     max-width: 50px;
-    min-height: 36px;
+    min-height: 34px;
     border-radius: 0;
 }
 
@@ -287,6 +287,24 @@ QToolButton[navIcon="true"]:checked {
     background: #F3F4F6;
     border: none;
     padding-left: 4px;
+}
+
+QPushButton[reportBugButton="true"] {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    color: #64748B;
+    padding: 4px;
+    margin: 0 0 8px 0;
+    min-width: 50px;
+    max-width: 50px;
+    min-height: 34px;
+    max-height: 34px;
+}
+
+QPushButton[reportBugButton="true"]:hover {
+    background: #F3F4F6;
+    color: #334155;
 }
 
 #sidebarActiveIndicator {
@@ -312,6 +330,16 @@ QFrame#sidebarContainer[themeMode="dark"] QPushButton[navIcon="true"]:checked,
 QFrame#sidebarContainer[themeMode="dark"] QToolButton[navIcon="true"]:checked {
     background: #243044;
     border: none;
+}
+
+QFrame#sidebarContainer[themeMode="dark"] QPushButton[reportBugButton="true"] {
+    background: transparent;
+    color: #CBD5E1;
+}
+
+QFrame#sidebarContainer[themeMode="dark"] QPushButton[reportBugButton="true"]:hover {
+    background: #243044;
+    color: #F8FAFC;
 }
 
 /* Tables and lists --------------------------------------------------------- */

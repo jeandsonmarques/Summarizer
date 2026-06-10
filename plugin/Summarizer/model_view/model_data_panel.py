@@ -131,7 +131,7 @@ def model_fields_panel_font():
 
 
 def _field_role():
-    return Qt.UserRole + MODEL_FIELD_ROLE_OFFSET
+    return Qt.ItemDataRole.UserRole + MODEL_FIELD_ROLE_OFFSET
 
 
 if pyqtSignal is not None:
@@ -143,26 +143,26 @@ if pyqtSignal is not None:
             super().__init__(parent)
             self._drag_start_pos = QPoint()
             self.setDragEnabled(True)
-            self.setSelectionMode(QAbstractItemView.SingleSelection)
-            self.setDragDropMode(QAbstractItemView.DragOnly)
-            self.setDefaultDropAction(Qt.CopyAction)
+            self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+            self.setDefaultDropAction(Qt.DropAction.CopyAction)
             self.itemDoubleClicked.connect(self._emit_activated)
 
         def supportedDropActions(self):
-            return Qt.CopyAction
+            return Qt.DropAction.CopyAction
 
         def mousePressEvent(self, event):
             item = self.itemAt(event.pos())
             if item is not None:
                 self.setCurrentItem(item)
-                if event.button() == Qt.LeftButton:
+                if event.button() == Qt.MouseButton.LeftButton:
                     self._drag_start_pos = event.pos()
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event):
-            if event.buttons() & Qt.LeftButton:
+            if event.buttons() & Qt.MouseButton.LeftButton:
                 if (event.pos() - self._drag_start_pos).manhattanLength() >= 6:
-                    self.startDrag(Qt.CopyAction)
+                    self.startDrag(Qt.DropAction.CopyAction)
                     return
             super().mouseMoveEvent(event)
 
@@ -185,7 +185,7 @@ if pyqtSignal is not None:
             mime.setData(MODEL_FIELD_MIME, json.dumps(payload).encode("utf-8"))
             drag = QDrag(self)
             drag.setMimeData(mime)
-            drag.exec_(Qt.CopyAction)
+            drag.exec(Qt.DropAction.CopyAction)
 
 else:
 
@@ -320,7 +320,7 @@ def field_kind_for_layer_field(layer, field_name: str) -> str:
 def text_width(metrics: QFontMetrics, text: str) -> int:
     if hasattr(metrics, "horizontalAdvance"):
         return int(metrics.horizontalAdvance(text))
-    return int(metrics.width(text))
+    return int(metrics.boundingRect(text).width())
 
 
 def desired_data_panel_width(
@@ -338,7 +338,7 @@ def desired_data_panel_width(
             item = fields_list.item(index)
             if item is None:
                 continue
-            text = str(item.text() or item.data(Qt.UserRole + 2) or "")
+            text = str(item.text() or item.data(Qt.ItemDataRole.UserRole + 2) or "")
             max_text = max(max_text, text_width(metrics, text))
         icon_width = int(fields_list.iconSize().width() or 14)
         chrome = icon_width + 48
@@ -500,18 +500,18 @@ def build_model_data_panel(
     data_panel_icon = QLabel(data_panel_header)
     data_panel_icon.setObjectName("ModelDataPanelIcon")
     data_panel_icon.setPixmap(_model_tinted_svg_icon("Layers.svg", 14).pixmap(14, 14))
-    header.addWidget(data_panel_icon, 0, Qt.AlignVCenter)
+    header.addWidget(data_panel_icon, 0, Qt.AlignmentFlag.AlignVCenter)
     data_panel_title = QLabel(_rt("Campos"), data_panel_header)
     data_panel_title.setObjectName("ModelBuilderTitle")
     data_panel_title.setFont(model_fields_panel_font())
-    header.addWidget(data_panel_title, 1, Qt.AlignVCenter)
+    header.addWidget(data_panel_title, 1, Qt.AlignmentFlag.AlignVCenter)
     data_panel_toggle_btn = QToolButton(data_panel_header)
     data_panel_toggle_btn.setObjectName("ModelDataPanelToggle")
     data_panel_toggle_btn.setAutoRaise(True)
-    data_panel_toggle_btn.setCursor(Qt.PointingHandCursor)
+    data_panel_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     data_panel_toggle_btn.setFixedSize(22, 22)
     data_panel_toggle_btn.clicked.connect(toggle_data_panel)
-    header.addWidget(data_panel_toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+    header.addWidget(data_panel_toggle_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     layout.addWidget(data_panel_header, 0)
 
     data_panel_body = QWidget(panel)
@@ -529,7 +529,7 @@ def build_model_data_panel(
     layer_layout.setSpacing(6)
     layer_title = QLabel(_rt("Camada"), layer_card)
     layer_title.setObjectName("ModelBuilderFieldLabel")
-    layer_layout.addWidget(layer_title, 0, Qt.AlignVCenter)
+    layer_layout.addWidget(layer_title, 0, Qt.AlignmentFlag.AlignVCenter)
     builder_layer_combo = QgsMapLayerComboBox(panel)
     builder_layer_combo.setObjectName("ModelBuilderCombo")
     builder_layer_combo.setFont(model_fields_panel_font())
@@ -537,13 +537,13 @@ def build_model_data_panel(
         builder_layer_combo.view().setFont(model_fields_panel_font())
     except Exception:
         log_exception("falha opcional ignorada")
-    builder_layer_combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
+    builder_layer_combo.setFilters(QgsMapLayerProxyModel.Filter.VectorLayer)
     builder_layer_combo.layerChanged.connect(on_builder_layer_changed)
     layer_layout.addWidget(builder_layer_combo, 1)
     builder_database_source_display = QLabel("", panel)
     builder_database_source_display.setObjectName("ModelBuilderDatabaseSource")
     builder_database_source_display.setVisible(False)
-    builder_database_source_display.setTextInteractionFlags(Qt.NoTextInteraction)
+    builder_database_source_display.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
     body_layout.addWidget(layer_card, 0)
     body_layout.addWidget(builder_database_source_display, 0)
 
@@ -590,13 +590,13 @@ def build_model_data_panel(
     data_panel_collapsed_btn = QToolButton(data_panel_collapsed_rail)
     data_panel_collapsed_btn.setObjectName("ModelDataPanelToggle")
     data_panel_collapsed_btn.setAutoRaise(True)
-    data_panel_collapsed_btn.setCursor(Qt.PointingHandCursor)
+    data_panel_collapsed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     data_panel_collapsed_btn.setFixedSize(22, 22)
     data_panel_collapsed_btn.clicked.connect(toggle_data_panel)
-    rail_layout.addWidget(data_panel_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
+    rail_layout.addWidget(data_panel_collapsed_btn, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
     data_panel_collapsed_title = vertical_label_cls(_rt("Campos"), data_panel_collapsed_rail)
     data_panel_collapsed_title.setObjectName("ModelDataPanelCollapsedTitle")
-    rail_layout.addWidget(data_panel_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
+    rail_layout.addWidget(data_panel_collapsed_title, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
     rail_layout.addStretch(1)
     layout.addWidget(data_panel_collapsed_rail, 1)
 
@@ -645,7 +645,7 @@ def refresh_builder_data_fonts(data_panel_owner):
             item = data_panel_owner.builder_fields_list.item(index)
             if item is not None:
                 item.setFont(model_fields_panel_font())
-                item.setFlags(item.flags() | Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
     except Exception:
         log_exception("falha opcional ignorada")
 
@@ -694,18 +694,18 @@ def sync_data_panel_chrome(data_panel_owner, *, collapsed_width: int, min_width:
     if hasattr(data_panel_owner, "data_panel_collapsed_rail"):
         data_panel_owner.data_panel_collapsed_rail.setVisible(collapsed)
     if hasattr(data_panel_owner, "data_panel_toggle_btn"):
-        data_panel_owner.data_panel_toggle_btn.setArrowType(Qt.NoArrow)
+        data_panel_owner.data_panel_toggle_btn.setArrowType(Qt.ArrowType.NoArrow)
         data_panel_owner.data_panel_toggle_btn.setIcon(_model_panel_chevron_icon("right", 18))
-        data_panel_owner.data_panel_toggle_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        data_panel_owner.data_panel_toggle_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         data_panel_owner.data_panel_toggle_btn.setText("")
         data_panel_owner.data_panel_toggle_btn.setText("‹")
         data_panel_owner.data_panel_toggle_btn.setText("")
         data_panel_owner.data_panel_toggle_btn.setFixedSize(22, 22)
         set_walker_tooltip(data_panel_owner.data_panel_toggle_btn, _rt("Recolher campos"))
     if hasattr(data_panel_owner, "data_panel_collapsed_btn"):
-        data_panel_owner.data_panel_collapsed_btn.setArrowType(Qt.NoArrow)
+        data_panel_owner.data_panel_collapsed_btn.setArrowType(Qt.ArrowType.NoArrow)
         data_panel_owner.data_panel_collapsed_btn.setIcon(_model_panel_chevron_icon("left", 18))
-        data_panel_owner.data_panel_collapsed_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        data_panel_owner.data_panel_collapsed_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         data_panel_owner.data_panel_collapsed_btn.setText("")
         data_panel_owner.data_panel_collapsed_btn.setText("›")
         data_panel_owner.data_panel_collapsed_btn.setText("")

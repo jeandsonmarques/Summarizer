@@ -52,10 +52,10 @@ def animation_duration_ms(
 def animation_easing_curve(reason: str) -> QEasingCurve:
     key = str(reason or "data").strip().lower()
     if key in {"hover", "selection"}:
-        return QEasingCurve(QEasingCurve.OutCubic)
+        return QEasingCurve(QEasingCurve.Type.OutCubic)
     if key in {"type", "entry"}:
-        return QEasingCurve(QEasingCurve.OutQuart)
-    return QEasingCurve(QEasingCurve.InOutCubic)
+        return QEasingCurve(QEasingCurve.Type.OutQuart)
+    return QEasingCurve(QEasingCurve.Type.InOutCubic)
 
 
 __all__ = [

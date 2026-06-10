@@ -235,7 +235,7 @@ def build_layer_dataframe_from_request(
             log_exception("falha opcional ignorada")
     if not geometry_value_name:
         try:
-            feature_request.setFlags(QgsFeatureRequest.NoGeometry)
+            feature_request.setFlags(QgsFeatureRequest.Flag.NoGeometry)
         except Exception:
             log_exception("falha opcional ignorada")
 
@@ -378,7 +378,7 @@ def build_layer_dataframe_from_pivot_config(
             log_exception("falha opcional ignorada")
     if not geometry_value_name:
         try:
-            feature_request.setFlags(QgsFeatureRequest.NoGeometry)
+            feature_request.setFlags(QgsFeatureRequest.Flag.NoGeometry)
         except Exception:
             log_exception("falha opcional ignorada")
 
@@ -537,7 +537,7 @@ def export_to_gpkg(host: Any, path: str):
         status = result
         message = ""
 
-    if status != QgsVectorFileWriter.NoError:
+    if status != QgsVectorFileWriter.WriterError.NoError:
         raise RuntimeError(message or "Falha ao escrever GeoPackage.")
 
 

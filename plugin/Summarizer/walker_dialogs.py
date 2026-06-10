@@ -38,6 +38,33 @@ WALKER_HOVER = "#F3F4F6"
 WALKER_PRIMARY = "#111111"
 
 
+def _message_box_button(name: str, fallback: int = 0):
+    try:
+        return getattr(QMessageBox.StandardButton, name)
+    except Exception:
+        return getattr(QMessageBox, name, fallback)
+
+
+def _enum_value(value) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(getattr(value, "value", value))
+
+
+_MB_NO_BUTTON = _message_box_button("NoButton", 0)
+_MB_OK = _message_box_button("Ok", 0x00000400)
+_MB_SAVE = _message_box_button("Save", 0x00000800)
+_MB_YES = _message_box_button("Yes", 0x00004000)
+_MB_NO = _message_box_button("No", 0x00010000)
+_MB_ABORT = _message_box_button("Abort", 0x00040000)
+_MB_RETRY = _message_box_button("Retry", 0x00080000)
+_MB_IGNORE = _message_box_button("Ignore", 0x00100000)
+_MB_CLOSE = _message_box_button("Close", 0x00200000)
+_MB_CANCEL = _message_box_button("Cancel", 0x00400000)
+_MB_DISCARD = _message_box_button("Discard", 0x00800000)
+
+
 WALKER_DIALOG_STYLE = """
 QDialog#WalkerDialog,
 QDialog[walkerDialog="true"] {
@@ -328,9 +355,9 @@ QListView#WalkerComboPopup::item:hover {
 
 
 def walker_dialog_flags():
-    flags = Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+    flags = Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowSystemMenuHint | Qt.WindowType.WindowCloseButtonHint
     try:
-        flags |= Qt.NoDropShadowWindowHint
+        flags |= Qt.WindowType.NoDropShadowWindowHint
     except Exception:
         pass
     return flags
@@ -338,7 +365,7 @@ def walker_dialog_flags():
 
 def _disable_window_shadow(widget: QWidget) -> None:
     try:
-        widget.setWindowFlags(widget.windowFlags() | Qt.NoDropShadowWindowHint)
+        widget.setWindowFlags(widget.windowFlags() | Qt.WindowType.NoDropShadowWindowHint)
     except Exception:
         log_exception("falha opcional ignorada")
     try:
@@ -395,7 +422,7 @@ def apply_walker_dialog(widget: QWidget) -> None:
     widget.setStyleSheet(WALKER_DIALOG_STYLE)
     widget.setFont(ui_font(10))
     try:
-        widget.setAttribute(Qt.WA_StyledBackground, True)
+        widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     except Exception:
         pass
     harmonize_widget_fonts(widget)
@@ -419,15 +446,15 @@ class _WalkerModalChromeFilter(QObject):
         if watched is not self.dialog:
             return False
         event_type = event.type()
-        if event_type == QEvent.Show:
+        if event_type == QEvent.Type.Show:
             self._show_overlay()
             center_dialog_on_parent(self.dialog)
             apply_walker_dialog(self.dialog)
             self.dialog.raise_()
             QTimer.singleShot(0, self.dialog.raise_)
-        elif event_type in (QEvent.Hide, QEvent.Close):
+        elif event_type in (QEvent.Type.Hide, QEvent.Type.Close):
             self._hide_overlay()
-        elif event_type == QEvent.Resize and self.overlay is not None:
+        elif event_type == QEvent.Type.Resize and self.overlay is not None:
             parent = _walker_overlay_parent(self.dialog)
             if parent is not None:
                 self.overlay.setGeometry(parent.rect())
@@ -449,7 +476,7 @@ def install_walker_modal_chrome(dialog: QDialog) -> None:
     dialog.setProperty("walkerDialog", True)
     dialog.setWindowFlags(walker_dialog_flags())
     _disable_window_shadow(dialog)
-    dialog.setAttribute(Qt.WA_StyledBackground, True)
+    dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     apply_walker_dialog(dialog)
     if getattr(dialog, "_walker_modal_chrome_filter", None) is None:
         event_filter = _WalkerModalChromeFilter(dialog)
@@ -462,7 +489,7 @@ def add_walker_close_button(layout: QHBoxLayout, dialog: QDialog) -> QToolButton
     button.setObjectName("WalkerDialogCloseButton")
     button.setText(chr(215))
     button.clicked.connect(dialog.reject)
-    layout.addWidget(button, 0, Qt.AlignTop)
+    layout.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
     return button
 
 
@@ -482,13 +509,13 @@ def apply_walker_buttons(
 def apply_walker_menu(menu: QMenu) -> QMenu:
     _disable_window_shadow(menu)
     try:
-        menu.setAttribute(Qt.WA_StyledBackground, True)
-        menu.setAttribute(Qt.WA_TranslucentBackground, True)
+        menu.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         menu.setAutoFillBackground(False)
     except Exception:
         log_exception("falha opcional ignorada")
     try:
-        menu.setWindowFlags(menu.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        menu.setWindowFlags(menu.windowFlags() | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
     except Exception:
         log_exception("falha opcional ignorada")
     menu.setStyleSheet(WALKER_MENU_STYLE)
@@ -504,9 +531,9 @@ def _style_walker_combo_popup(combo: QComboBox) -> None:
             combo.setView(view)
         view.setObjectName("WalkerComboPopup")
         view.setFont(ui_font(10))
-        view.setFrameShape(QFrame.NoFrame)
-        view.setAttribute(Qt.WA_StyledBackground, True)
-        view.setAttribute(Qt.WA_TranslucentBackground, True)
+        view.setFrameShape(QFrame.Shape.NoFrame)
+        view.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         view.setAutoFillBackground(False)
         view.viewport().setAutoFillBackground(False)
         view.setStyleSheet(WALKER_COMBO_POPUP_STYLE)
@@ -514,17 +541,17 @@ def _style_walker_combo_popup(combo: QComboBox) -> None:
         popup = view.window()
         if popup is not None:
             popup.setObjectName("WalkerComboPopupFrame")
-            popup.setAttribute(Qt.WA_StyledBackground, True)
-            popup.setAttribute(Qt.WA_TranslucentBackground, True)
+            popup.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            popup.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             popup.setAutoFillBackground(False)
             popup.setStyleSheet(WALKER_COMBO_POPUP_STYLE)
             _disable_window_shadow(popup)
             try:
-                popup.setWindowFlags(popup.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+                popup.setWindowFlags(popup.windowFlags() | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
             except Exception:
                 log_exception("falha opcional ignorada")
         try:
-            view.setWindowFlags(view.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+            view.setWindowFlags(view.windowFlags() | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
         except Exception:
             log_exception("falha opcional ignorada")
     except Exception:
@@ -538,7 +565,7 @@ class _WalkerComboPopupFilter(QObject):
 
     def eventFilter(self, watched, event):  # noqa: N802 - Qt naming style
         event_type = event.type()
-        if event_type in (QEvent.Show, QEvent.Polish, QEvent.ParentChange, QEvent.ChildAdded):
+        if event_type in (QEvent.Type.Show, QEvent.Type.Polish, QEvent.Type.ParentChange, QEvent.Type.ChildAdded):
             _style_walker_combo_popup(self.combo)
             QTimer.singleShot(0, lambda: _style_walker_combo_popup(self.combo))
         return False
@@ -569,7 +596,7 @@ class WalkerModalDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(walker_dialog_flags())
         _disable_window_shadow(self)
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMinimumWidth(width)
         self.setFont(ui_font(10))
         self._font_enforcer = attach_ui_font_enforcer(self)
@@ -627,15 +654,15 @@ class WalkerModalDialog(QDialog):
         if icon is not None and not icon.isNull():
             icon_label = QLabel(self.panel)
             icon_label.setPixmap(icon.pixmap(18, 18))
-            header.addWidget(icon_label, 0, Qt.AlignVCenter)
+            header.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
         title_label = QLabel(title, self.panel)
         title_label.setObjectName("WalkerDialogTitle")
-        header.addWidget(title_label, 1, Qt.AlignVCenter)
+        header.addWidget(title_label, 1, Qt.AlignmentFlag.AlignVCenter)
         close_btn = QToolButton(self.panel)
         close_btn.setObjectName("WalkerDialogCloseButton")
         close_btn.setText(chr(215))
         close_btn.clicked.connect(self.reject)
-        header.addWidget(close_btn, 0, Qt.AlignTop)
+        header.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignTop)
         self.panel_layout.addLayout(header)
         return header
 
@@ -648,20 +675,20 @@ class WalkerMessageDialog(WalkerModalDialog):
         parent: Optional[QWidget] = None,
         *,
         icon: Optional[QIcon] = None,
-        buttons: int = QMessageBox.Ok,
-        default_button: int = QMessageBox.Ok,
+        buttons: int = _MB_OK,
+        default_button: int = _MB_OK,
     ):
         super().__init__(parent, width=500)
         translated_title = _rt(title)
         translated_text = _rt(text)
         self.setWindowTitle(translated_title)
-        self._clicked = QMessageBox.NoButton
+        self._clicked = _MB_NO_BUTTON
         self.add_header(translated_title, icon)
 
         body = QLabel(translated_text, self.panel)
         body.setObjectName("WalkerMessageBody")
         body.setWordWrap(True)
-        body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.panel_layout.addWidget(body)
         self.panel_layout.addSpacing(8)
 
@@ -671,50 +698,50 @@ class WalkerMessageDialog(WalkerModalDialog):
         row.addStretch(1)
         for standard in self._button_order(buttons):
             button = QPushButton(self._button_text(standard), self.panel)
-            is_primary = int(standard) == int(default_button) or standard in (QMessageBox.Ok, QMessageBox.Yes)
+            is_primary = _enum_value(standard) == _enum_value(default_button) or standard in (_MB_OK, _MB_YES)
             apply_walker_buttons(primary=[button] if is_primary else [], secondary=[] if is_primary else [button])
             button.clicked.connect(lambda _checked=False, value=standard: self._finish(value))
             row.addWidget(button)
-            if int(standard) == int(default_button):
+            if _enum_value(standard) == _enum_value(default_button):
                 button.setDefault(True)
         self.panel_layout.addLayout(row)
 
     def _finish(self, button: int) -> None:
         self._clicked = button
-        if button in (QMessageBox.Cancel, QMessageBox.No, QMessageBox.Close):
+        if button in (_MB_CANCEL, _MB_NO, _MB_CLOSE):
             self.reject()
         else:
             self.accept()
 
     def clicked_button(self) -> int:
-        return int(self._clicked or QMessageBox.NoButton)
+        return _enum_value(self._clicked or _MB_NO_BUTTON)
 
     @staticmethod
     def _button_order(mask: int) -> list[int]:
         order = [
-            QMessageBox.Yes,
-            QMessageBox.No,
-            QMessageBox.Ok,
-            QMessageBox.Cancel,
-            QMessageBox.Save,
-            QMessageBox.Discard,
-            QMessageBox.Close,
+            _MB_YES,
+            _MB_NO,
+            _MB_OK,
+            _MB_CANCEL,
+            _MB_SAVE,
+            _MB_DISCARD,
+            _MB_CLOSE,
         ]
-        result = [button for button in order if int(mask) & int(button)]
-        return result or [QMessageBox.Ok]
+        result = [button for button in order if _enum_value(mask) & _enum_value(button)]
+        return result or [_MB_OK]
 
     @staticmethod
     def _button_text(button: int) -> str:
         mapping = {
-            int(QMessageBox.Ok): "OK",
-            int(QMessageBox.Cancel): _rt("Cancelar"),
-            int(QMessageBox.Yes): _rt("Sim"),
-            int(QMessageBox.No): _rt("Não"),
-            int(QMessageBox.Save): _rt("Salvar"),
-            int(QMessageBox.Discard): _rt("Descartar"),
-            int(QMessageBox.Close): _rt("Fechar"),
+            _enum_value(_MB_OK): "OK",
+            _enum_value(_MB_CANCEL): _rt("Cancelar"),
+            _enum_value(_MB_YES): _rt("Sim"),
+            _enum_value(_MB_NO): _rt("Não"),
+            _enum_value(_MB_SAVE): _rt("Salvar"),
+            _enum_value(_MB_DISCARD): _rt("Descartar"),
+            _enum_value(_MB_CLOSE): _rt("Fechar"),
         }
-        return mapping.get(int(button), "OK")
+        return mapping.get(_enum_value(button), "OK")
 
 
 def _standard_icon(parent: Optional[QWidget], icon: QStyle.StandardPixmap) -> QIcon:
@@ -724,20 +751,20 @@ def _standard_icon(parent: Optional[QWidget], icon: QStyle.StandardPixmap) -> QI
 
 
 def walker_message(parent: Optional[QWidget], title: str, text: str, *, icon: Optional[QIcon] = None) -> None:
-    dialog = WalkerMessageDialog(title, text, parent, icon=icon, buttons=QMessageBox.Ok, default_button=QMessageBox.Ok)
-    dialog.exec_()
+    dialog = WalkerMessageDialog(title, text, parent, icon=icon, buttons=_MB_OK, default_button=_MB_OK)
+    dialog.exec()
 
 
 def walker_info(parent: Optional[QWidget], title: str, text: str) -> None:
-    walker_message(parent, title, text, icon=_standard_icon(parent, QStyle.SP_MessageBoxInformation))
+    walker_message(parent, title, text, icon=_standard_icon(parent, QStyle.StandardPixmap.SP_MessageBoxInformation))
 
 
 def walker_warning(parent: Optional[QWidget], title: str, text: str) -> None:
-    walker_message(parent, title, text, icon=_standard_icon(parent, QStyle.SP_MessageBoxWarning))
+    walker_message(parent, title, text, icon=_standard_icon(parent, QStyle.StandardPixmap.SP_MessageBoxWarning))
 
 
 def walker_error(parent: Optional[QWidget], title: str, text: str) -> None:
-    walker_message(parent, title, text, icon=_standard_icon(parent, QStyle.SP_MessageBoxCritical))
+    walker_message(parent, title, text, icon=_standard_icon(parent, QStyle.StandardPixmap.SP_MessageBoxCritical))
 
 
 def walker_confirm(
@@ -745,59 +772,59 @@ def walker_confirm(
     title: str,
     text: str,
     *,
-    buttons: int = QMessageBox.Yes | QMessageBox.No,
-    default_button: int = QMessageBox.No,
+    buttons: int = _MB_YES | _MB_NO,
+    default_button: int = _MB_NO,
 ) -> int:
     dialog = WalkerMessageDialog(
         title,
         text,
         parent,
-        icon=_standard_icon(parent, QStyle.SP_MessageBoxQuestion),
+        icon=_standard_icon(parent, QStyle.StandardPixmap.SP_MessageBoxQuestion),
         buttons=buttons,
         default_button=default_button,
     )
-    dialog.exec_()
+    dialog.exec()
     return dialog.clicked_button()
 
 
 class WalkerMessageBox:
-    Ok = QMessageBox.Ok
-    Cancel = QMessageBox.Cancel
-    Yes = QMessageBox.Yes
-    No = QMessageBox.No
-    Save = QMessageBox.Save
-    Discard = QMessageBox.Discard
-    Close = QMessageBox.Close
-    Abort = QMessageBox.Abort
-    Retry = QMessageBox.Retry
-    Ignore = QMessageBox.Ignore
-    NoButton = QMessageBox.NoButton
+    Ok = _MB_OK
+    Cancel = _MB_CANCEL
+    Yes = _MB_YES
+    No = _MB_NO
+    Save = _MB_SAVE
+    Discard = _MB_DISCARD
+    Close = _MB_CLOSE
+    Abort = _MB_ABORT
+    Retry = _MB_RETRY
+    Ignore = _MB_IGNORE
+    NoButton = _MB_NO_BUTTON
 
     @staticmethod
     def information(parent: Optional[QWidget], title: str, text: str, *args, **kwargs) -> int:
         del args, kwargs
         walker_info(parent, title, text)
-        return int(QMessageBox.Ok)
+        return _enum_value(_MB_OK)
 
     @staticmethod
     def warning(parent: Optional[QWidget], title: str, text: str, *args, **kwargs) -> int:
         del args, kwargs
         walker_warning(parent, title, text)
-        return int(QMessageBox.Ok)
+        return _enum_value(_MB_OK)
 
     @staticmethod
     def critical(parent: Optional[QWidget], title: str, text: str, *args, **kwargs) -> int:
         del args, kwargs
         walker_error(parent, title, text)
-        return int(QMessageBox.Ok)
+        return _enum_value(_MB_OK)
 
     @staticmethod
     def question(
         parent: Optional[QWidget],
         title: str,
         text: str,
-        buttons: int = QMessageBox.Yes | QMessageBox.No,
-        defaultButton: int = QMessageBox.No,
+        buttons: int = _MB_YES | _MB_NO,
+        defaultButton: int = _MB_NO,
         *args,
         **kwargs,
     ) -> int:

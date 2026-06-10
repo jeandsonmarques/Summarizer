@@ -341,12 +341,12 @@ def export_layer_to_gpkg(layer, path: str, layer_name: str):
     options.driverName = "GPKG"
     options.layerName = layer_name
     options.fileEncoding = "UTF-8"
-    options.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
+    options.actionOnExistingFile = QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
     context = QgsProject.instance().transformContext()
     result = QgsVectorFileWriter.writeAsVectorFormatV2(layer, path, context, options)
     error = result[0] if isinstance(result, (list, tuple)) else result
     message = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else ""
-    if error != QgsVectorFileWriter.NoError:
+    if error != QgsVectorFileWriter.WriterError.NoError:
         return False, message
     return True, ""
 
@@ -375,7 +375,7 @@ def create_memory_table_from_dataframe(
                 QgsMessageLog.logMessage(
                     f"Falha ao criar tabela de integração: {error_message}",
                     "Summarizer",
-                    Qgis.Warning,
+                    Qgis.MessageLevel.Warning,
                 )
             return None
         return add_layer_to_project_fn(layer)

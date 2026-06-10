@@ -178,7 +178,7 @@ class DatabaseMetadataService:
         )
         if self.object_limit > 0:
             sql += f" LIMIT {int(self.object_limit)}"
-        if not query.exec_(sql):
+        if not query.exec(sql):
             return self._snapshot(False, self._safe_text(query.lastError().text()))
 
         grouped: Dict[str, List[DatabaseObject]] = {}

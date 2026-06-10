@@ -91,7 +91,7 @@ class PivotEngine:
         geometry_required = any(spec.source_type == "geometry" for spec in self._iter_specs(request))
         if not geometry_required:
             try:
-                feature_request.setFlags(QgsFeatureRequest.NoGeometry)
+                feature_request.setFlags(QgsFeatureRequest.Flag.NoGeometry)
             except Exception:
                 log_exception("falha opcional ignorada")
         return feature_request

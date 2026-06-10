@@ -240,7 +240,7 @@ def _request_via_qgis(
     status_code = 0
     if hasattr(reply, "attribute"):
         try:
-            status_code = int(reply.attribute(QNetworkRequest.HttpStatusCodeAttribute) or 0)
+            status_code = int(reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute) or 0)
         except Exception:
             status_code = 0
 

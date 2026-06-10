@@ -4,11 +4,11 @@
 from typing import Dict, Optional
 
 from qgis.PyQt.QtCore import QPointF, Qt, QRectF
-from qgis.PyQt.QtGui import QColor, QPainterPath, QPen, QFont, QPolygonF
+from qgis.PyQt.QtGui import QColor, QPainterPath, QPen, QPolygonF
 from qgis.PyQt.QtWidgets import QGraphicsPathItem
 
 from .field_item import FieldItem
-from ..utils.fonts import ui_font
+from ..utils.fonts import _qfont_weight, ui_font
 
 
 from ..utils.logging_utils import log_exception
@@ -130,7 +130,7 @@ class RelationshipItem(QGraphicsPathItem):
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):  # type: ignore[override]
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             if self.manager is not None:
                 try:
@@ -152,7 +152,7 @@ class RelationshipItem(QGraphicsPathItem):
         source_point = path.pointAtPercent(start_pct)
         target_point = path.pointAtPercent(end_pct)
 
-        card_font = ui_font(8, QFont.DemiBold)
+        card_font = ui_font(8, _qfont_weight("DemiBold", 63))
         painter.setFont(card_font)
 
         def draw_card_box(point: QPointF, text: str):
@@ -167,7 +167,7 @@ class RelationshipItem(QGraphicsPathItem):
             painter.setPen(QColor("#1F1F1F"))
             painter.drawText(
                 QRectF(top_left.x(), top_left.y(), box_width, box_height),
-                Qt.AlignCenter,
+                Qt.AlignmentFlag.AlignCenter,
                 text,
             )
 
@@ -183,7 +183,7 @@ class RelationshipItem(QGraphicsPathItem):
         painter.translate(pos)
         painter.rotate(-angle_deg)
         color = QColor("#505050")
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(color)
         size = 8
         triangle = QPolygonF([QPointF(0, 0), QPointF(-size, size / 2), QPointF(-size, -size / 2)])

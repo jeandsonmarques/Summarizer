@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
-from qgis.PyQt.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QRegExp, QSettings, QSize, QTimer, Qt, QSortFilterProxyModel, QVariant
-from qgis.PyQt.QtGui import QCursor, QColor, QFont, QIcon, QKeySequence, QPainter, QPalette, QPixmap, QStandardItemModel
+from qgis.PyQt.QtCore import QByteArray, QEvent, QItemSelection, QItemSelectionModel, QSettings, QSize, QTimer, Qt, QSortFilterProxyModel, QVariant
+from qgis.PyQt.QtGui import QCursor, QColor, QIcon, QKeySequence, QPainter, QPalette, QPixmap, QStandardItemModel
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QAbstractScrollArea,
@@ -137,7 +137,7 @@ from .pivot_view.pivot_toolbar import (
     update_undo_redo_buttons as _pivot_update_undo_redo_buttons,
 )
 from .slim_dialogs import slim_message
-from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
+from .utils.fonts import _qfont_weight, attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .report_view.pivot import (
     PivotEngine,
@@ -157,9 +157,8 @@ class _PivotFilterProxy(QSortFilterProxyModel):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._global_regexp = QRegExp()
-        self._column_filters: Dict[int, QRegExp] = {}
-        self.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self._global_filter = ""
+        self._column_filters: Dict[int, str] = {}
 
     def filterAcceptsRow(self, source_row, source_parent):
         model = self.sourceModel()
@@ -167,39 +166,37 @@ class _PivotFilterProxy(QSortFilterProxyModel):
             return True
         column_count = model.columnCount()
 
-        if not self._global_regexp.isEmpty():
+        if self._global_filter:
             matched = False
             for col in range(column_count):
                 idx = model.index(source_row, col, source_parent)
-                value = str(model.data(idx) or "")
-                if self._global_regexp.indexIn(value) != -1:
+                value = str(model.data(idx) or "").casefold()
+                if self._global_filter in value:
                     matched = True
                     break
             if not matched:
                 return False
 
-        for col, rx in self._column_filters.items():
-            if rx.isEmpty():
+        for col, text in self._column_filters.items():
+            if not text:
                 continue
             if col >= column_count:
                 continue
             idx = model.index(source_row, col, source_parent)
-            value = str(model.data(idx) or "")
-            if rx.indexIn(value) == -1:
+            value = str(model.data(idx) or "").casefold()
+            if text not in value:
                 return False
         return True
 
     def set_global_filter(self, text: str):
-        self._global_regexp = QRegExp(text, Qt.CaseInsensitive, QRegExp.FixedString)
+        self._global_filter = str(text or "").casefold()
         self.invalidateFilter()
 
     def set_column_filter(self, column: int, text: str):
         if not text:
             self._column_filters.pop(column, None)
         else:
-            self._column_filters[column] = QRegExp(
-                text, Qt.CaseInsensitive, QRegExp.FixedString
-            )
+            self._column_filters[column] = str(text).casefold()
         self.invalidateFilter()
 
 
@@ -215,11 +212,11 @@ class _PivotTableCellDelegate(QStyledItemDelegate):
         opt.text = ""
         widget = opt.widget
         style = widget.style() if widget is not None else QApplication.style()
-        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, widget)
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
 
-        alignment = index.data(Qt.TextAlignmentRole)
+        alignment = index.data(Qt.ItemDataRole.TextAlignmentRole)
         if alignment is None:
-            alignment = Qt.AlignLeft | Qt.AlignVCenter
+            alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         text_rect = option.rect.adjusted(
             self.HORIZONTAL_PADDING,
             0,
@@ -232,9 +229,9 @@ class _PivotTableCellDelegate(QStyledItemDelegate):
             max(0, text_rect.width()),
         )
         color_role = (
-            QPalette.HighlightedText
-            if opt.state & QStyle.State_Selected
-            else QPalette.Text
+            QPalette.ColorRole.HighlightedText
+            if opt.state & QStyle.StateFlag.State_Selected
+            else QPalette.ColorRole.Text
         )
         painter.save()
         painter.setFont(opt.font)
@@ -342,16 +339,16 @@ _TOOLBAR_SVG_ICONS = {
 def _svg_icon_from_template(svg_template: str, size: int = 16, color_map: Optional[Dict[int, str]] = None) -> QIcon:
     icon = QIcon()
     mode_colors = color_map or {
-        QIcon.Normal: "#6b7280",
-        QIcon.Active: _INK_COLOR,
-        QIcon.Selected: _INK_COLOR,
-        QIcon.Disabled: "#c7cdd6",
+        QIcon.Mode.Normal: "#6b7280",
+        QIcon.Mode.Active: _INK_COLOR,
+        QIcon.Mode.Selected: _INK_COLOR,
+        QIcon.Mode.Disabled: "#c7cdd6",
     }
     for mode, color in mode_colors.items():
         svg_data = QByteArray(svg_template.replace("__COLOR__", color).encode("utf-8"))
         renderer = QSvgRenderer(svg_data)
         pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         renderer.render(painter)
         painter.end()
@@ -378,11 +375,11 @@ class PivotTableWidget(QWidget):
 
     def __init__(self, iface=None, parent=None, host=None):
         super().__init__(parent)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(0, 0)
         base_ui_font = ui_font()
         base_ui_font.setPixelSize(int(TYPOGRAPHY.get("font_body_px", 13)))
-        base_ui_font.setWeight(QFont.Normal)
+        base_ui_font.setWeight(_qfont_weight("Normal", 50))
         self.setFont(base_ui_font)
         self._font_enforcer = attach_ui_font_enforcer(self)
         self.iface = iface
@@ -468,17 +465,17 @@ class PivotTableWidget(QWidget):
         helper_text_px = int(TYPOGRAPHY.get("font_caption_px", 11))
         section_title_font = ui_font()
         section_title_font.setPixelSize(section_title_px)
-        section_title_font.setWeight(QFont.Medium)
+        section_title_font.setWeight(_qfont_weight("Medium", 57))
         body_text_font = ui_font()
         body_text_font.setPixelSize(body_text_px)
-        body_text_font.setWeight(QFont.Normal)
+        body_text_font.setWeight(_qfont_weight("Normal", 50))
         helper_text_font = ui_font()
         helper_text_font.setPixelSize(helper_text_px)
-        helper_text_font.setWeight(QFont.Normal)
+        helper_text_font.setWeight(_qfont_weight("Normal", 50))
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 2, 4, 3)
         root.setSpacing(4)
-        root.setSizeConstraint(QLayout.SetNoConstraint)
+        root.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
 
         self.context_bar = QWidget()
         self.context_bar.setObjectName("summaryContextBar")
@@ -493,7 +490,7 @@ class PivotTableWidget(QWidget):
         self.context_label = QLabel("Camada")
         self.context_label.setObjectName("summaryContextLabel")
         self.context_label.setFont(helper_text_font)
-        self.context_layer_row.addWidget(self.context_label, 0, Qt.AlignVCenter)
+        self.context_layer_row.addWidget(self.context_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.layer_combo_host = QFrame()
         self.layer_combo_host.setObjectName("summaryLayerHost")
@@ -524,7 +521,7 @@ class PivotTableWidget(QWidget):
         self.initial_welcome_wrap.setObjectName("summaryWelcomeWrap")
         self.initial_welcome_wrap.setMinimumWidth(600)
         self.initial_welcome_wrap.setMaximumWidth(720)
-        self.initial_welcome_wrap.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.initial_welcome_wrap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         welcome_layout = QVBoxLayout(self.initial_welcome_wrap)
         welcome_layout.setContentsMargins(0, 0, 0, 0)
         welcome_layout.setSpacing(12)
@@ -532,13 +529,13 @@ class PivotTableWidget(QWidget):
         self.initial_state_title = QLabel("Adicionar dados ao seu relatório")
         self.initial_state_title.setObjectName("summaryWelcomeTitle")
         self.initial_state_title.setMinimumWidth(600)
-        self.initial_state_title.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.initial_state_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.initial_state_title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.initial_state_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         welcome_title_font = ui_font()
         welcome_title_font.setPixelSize(26)
-        welcome_title_font.setWeight(QFont.DemiBold)
+        welcome_title_font.setWeight(_qfont_weight("DemiBold", 63))
         self.initial_state_title.setFont(welcome_title_font)
-        welcome_layout.addWidget(self.initial_state_title, 0, Qt.AlignLeft)
+        welcome_layout.addWidget(self.initial_state_title, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.initial_state_text = QLabel(
             "Escolha uma fonte para começar. Os dados carregados serão exibidos no painel Resumo."
@@ -546,23 +543,23 @@ class PivotTableWidget(QWidget):
         self.initial_state_text.setObjectName("summaryWelcomeText")
         self.initial_state_text.setMinimumWidth(600)
         self.initial_state_text.setMaximumWidth(720)
-        self.initial_state_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.initial_state_text.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.initial_state_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.initial_state_text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.initial_state_text.setWordWrap(True)
         welcome_text_font = ui_font()
         welcome_text_font.setPixelSize(14)
-        welcome_text_font.setWeight(QFont.Normal)
+        welcome_text_font.setWeight(_qfont_weight("Normal", 50))
         self.initial_state_text.setFont(welcome_text_font)
-        welcome_layout.addWidget(self.initial_state_text, 0, Qt.AlignLeft)
+        welcome_layout.addWidget(self.initial_state_text, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.source_cards_host = QWidget(self.initial_welcome_wrap)
         self.source_cards_host.setObjectName("summarySourceCardsHost")
         self.source_cards_host.setMinimumWidth(520)
-        self.source_cards_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.source_cards_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         source_cards_layout = QHBoxLayout(self.source_cards_host)
         source_cards_layout.setContentsMargins(0, 12, 0, 0)
         source_cards_layout.setSpacing(14)
-        source_cards_layout.setAlignment(Qt.AlignLeft)
+        source_cards_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         self.source_card_group = QButtonGroup(self)
         self.source_card_group.setExclusive(True)
@@ -582,9 +579,9 @@ class PivotTableWidget(QWidget):
             self.source_cards[key] = card
             source_cards_layout.addWidget(card, 0)
 
-        welcome_layout.addWidget(self.source_cards_host, 0, Qt.AlignLeft)
+        welcome_layout.addWidget(self.source_cards_host, 0, Qt.AlignmentFlag.AlignLeft)
 
-        initial_layout.addWidget(self.initial_welcome_wrap, 0, Qt.AlignTop | Qt.AlignHCenter)
+        initial_layout.addWidget(self.initial_welcome_wrap, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
         initial_layout.addStretch(1)
 
         self._build_toolbar(body_text_font=body_text_font)
@@ -597,7 +594,7 @@ class PivotTableWidget(QWidget):
         self.edit_mode_btn.clicked.connect(self._toggle_sidebar)
         self.settings_btn.clicked.connect(self._open_table_settings_dialog)
 
-        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setObjectName("summaryMainSplitter")
         self.main_splitter.setChildrenCollapsible(False)
         self.main_splitter.setHandleWidth(6)
@@ -606,7 +603,7 @@ class PivotTableWidget(QWidget):
 
         self.main_column = QWidget()
         self.main_column.setObjectName("summaryMainColumn")
-        self.main_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.main_column.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         main_column_layout = QVBoxLayout(self.main_column)
         main_column_layout.setContentsMargins(0, 0, 0, 0)
         main_column_layout.setSpacing(4)
@@ -622,14 +619,14 @@ class PivotTableWidget(QWidget):
 
         self.content_zone = QWidget()
         self.content_zone.setObjectName("summaryContentZone")
-        self.content_zone.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.content_zone.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.content_zone_layout = QVBoxLayout(self.content_zone)
         self.content_zone_layout.setContentsMargins(0, 0, 0, 0)
         self.content_zone_layout.setSpacing(0)
         self.content_zone_layout.addWidget(self.initial_state_frame, 1)
         main_column_layout.addWidget(self.content_zone, 1)
 
-        self.analytics_splitter = QSplitter(Qt.Horizontal)
+        self.analytics_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.analytics_splitter.setObjectName("summaryAnalyticsSplitter")
         self.analytics_splitter.setChildrenCollapsible(False)
         self.analytics_splitter.setHandleWidth(6)
@@ -639,7 +636,7 @@ class PivotTableWidget(QWidget):
 
         self.fields_panel = QFrame()
         self.fields_panel.setObjectName("summaryFieldsPanel")
-        self.fields_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.fields_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.fields_panel.setMinimumWidth(_TOOLS_FIELDS_MIN_WIDTH)
         self.fields_panel.setMaximumWidth(_TOOLS_FIELDS_MAX_WIDTH)
         self.fields_panel_layout = QVBoxLayout(self.fields_panel)
@@ -652,20 +649,20 @@ class PivotTableWidget(QWidget):
         self.fields_panel_header_layout.setSpacing(6)
         self.fields_panel_icon = QLabel(self.fields_panel_header)
         self.fields_panel_icon.setObjectName("summaryPanelIcon")
-        self.fields_panel_header_layout.addWidget(self.fields_panel_icon, 0, Qt.AlignVCenter)
+        self.fields_panel_header_layout.addWidget(self.fields_panel_icon, 0, Qt.AlignmentFlag.AlignVCenter)
         self.fields_panel_title = QLabel(_rt("Campos"))
         self.fields_panel_title.setObjectName("summaryPanelTitle")
         self.fields_panel_title.setFont(section_title_font)
         self.fields_panel_title.setStyleSheet("color: #475467; font-weight: 500;")
-        self.fields_panel_header_layout.addWidget(self.fields_panel_title, 1, Qt.AlignVCenter)
+        self.fields_panel_header_layout.addWidget(self.fields_panel_title, 1, Qt.AlignmentFlag.AlignVCenter)
         self.fields_panel_toggle_btn = QToolButton(self.fields_panel_header)
         self.fields_panel_toggle_btn.setObjectName("summaryPanelToggle")
         self.fields_panel_toggle_btn.setAutoRaise(True)
-        self.fields_panel_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.fields_panel_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.fields_panel_toggle_btn.setFixedSize(22, 22)
         self.fields_panel_toggle_btn.clicked.connect(self._toggle_fields_panel)
         self.fields_panel_header_layout.addWidget(
-            self.fields_panel_toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter
+            self.fields_panel_toggle_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         self.fields_panel_layout.addWidget(self.fields_panel_header)
         self.fields_panel_body = QWidget(self.fields_panel)
@@ -689,20 +686,20 @@ class PivotTableWidget(QWidget):
         self.fields_panel_collapsed_btn = QToolButton(self.fields_panel_collapsed_rail)
         self.fields_panel_collapsed_btn.setObjectName("summaryPanelToggle")
         self.fields_panel_collapsed_btn.setAutoRaise(True)
-        self.fields_panel_collapsed_btn.setCursor(Qt.PointingHandCursor)
+        self.fields_panel_collapsed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.fields_panel_collapsed_btn.setFixedSize(22, 22)
         self.fields_panel_collapsed_btn.clicked.connect(self._toggle_fields_panel)
-        fields_rail_layout.addWidget(self.fields_panel_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
+        fields_rail_layout.addWidget(self.fields_panel_collapsed_btn, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         self.fields_panel_collapsed_title = _VerticalPanelLabel(_rt("Campos"), self.fields_panel_collapsed_rail)
         self.fields_panel_collapsed_title.setObjectName("summaryPanelCollapsedTitle")
-        fields_rail_layout.addWidget(self.fields_panel_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
+        fields_rail_layout.addWidget(self.fields_panel_collapsed_title, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         fields_rail_layout.addStretch(1)
         self.fields_panel_layout.addWidget(self.fields_panel_collapsed_rail, 1)
         self.analytics_splitter.addWidget(self.fields_panel)
 
         self.filters_panel = QFrame()
         self.filters_panel.setObjectName("summaryFiltersPanel")
-        self.filters_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.filters_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.filters_panel.setMinimumWidth(_TOOLS_FILTERS_MIN_WIDTH)
         self.filters_panel.setMaximumWidth(_TOOLS_FILTERS_MAX_WIDTH)
         self.filters_panel_layout = QVBoxLayout(self.filters_panel)
@@ -715,20 +712,20 @@ class PivotTableWidget(QWidget):
         self.filters_panel_header_layout.setSpacing(6)
         self.filters_panel_icon = QLabel(self.filters_panel_header)
         self.filters_panel_icon.setObjectName("summaryPanelIcon")
-        self.filters_panel_header_layout.addWidget(self.filters_panel_icon, 0, Qt.AlignVCenter)
+        self.filters_panel_header_layout.addWidget(self.filters_panel_icon, 0, Qt.AlignmentFlag.AlignVCenter)
         self.filter_area_title = QLabel(_rt("Filtros"))
         self.filter_area_title.setObjectName("summaryPanelTitle")
         self.filter_area_title.setFont(section_title_font)
         self.filter_area_title.setStyleSheet("color: #475467; font-weight: 500;")
-        self.filters_panel_header_layout.addWidget(self.filter_area_title, 1, Qt.AlignVCenter)
+        self.filters_panel_header_layout.addWidget(self.filter_area_title, 1, Qt.AlignmentFlag.AlignVCenter)
         self.filters_panel_toggle_btn = QToolButton(self.filters_panel_header)
         self.filters_panel_toggle_btn.setObjectName("summaryPanelToggle")
         self.filters_panel_toggle_btn.setAutoRaise(True)
-        self.filters_panel_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.filters_panel_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.filters_panel_toggle_btn.setFixedSize(22, 22)
         self.filters_panel_toggle_btn.clicked.connect(self._toggle_filters_panel)
         self.filters_panel_header_layout.addWidget(
-            self.filters_panel_toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter
+            self.filters_panel_toggle_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         self.filters_panel_layout.addWidget(self.filters_panel_header)
         self.filters_panel_body = QWidget(self.filters_panel)
@@ -741,16 +738,16 @@ class PivotTableWidget(QWidget):
         self.filters_builder_scroll = QScrollArea(self.filters_panel)
         self.filters_builder_scroll.setObjectName("summaryFiltersScroll")
         self.filters_builder_scroll.setWidgetResizable(True)
-        self.filters_builder_scroll.setFrameShape(QScrollArea.NoFrame)
-        self.filters_builder_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.filters_builder_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.filters_builder_scroll.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.filters_builder_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.filters_builder_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.filters_builder_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.filters_builder_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.filters_builder_scroll.viewport().setObjectName("summaryFiltersViewport")
         self.filters_panel_body_layout.addWidget(self.filters_builder_scroll, 1)
 
         self.filters_builder_content = QWidget()
         self.filters_builder_content.setObjectName("summaryFiltersBuilderContent")
-        self.filters_builder_content.setAttribute(Qt.WA_StyledBackground, True)
+        self.filters_builder_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.filters_builder_scroll.setWidget(self.filters_builder_content)
         self.filters_builder_layout = QVBoxLayout(self.filters_builder_content)
         self.filters_builder_layout.setContentsMargins(0, 0, 0, 0)
@@ -773,13 +770,13 @@ class PivotTableWidget(QWidget):
         self.filters_panel_collapsed_btn = QToolButton(self.filters_panel_collapsed_rail)
         self.filters_panel_collapsed_btn.setObjectName("summaryPanelToggle")
         self.filters_panel_collapsed_btn.setAutoRaise(True)
-        self.filters_panel_collapsed_btn.setCursor(Qt.PointingHandCursor)
+        self.filters_panel_collapsed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.filters_panel_collapsed_btn.setFixedSize(22, 22)
         self.filters_panel_collapsed_btn.clicked.connect(self._toggle_filters_panel)
-        filters_rail_layout.addWidget(self.filters_panel_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
+        filters_rail_layout.addWidget(self.filters_panel_collapsed_btn, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         self.filters_panel_collapsed_title = _VerticalPanelLabel(_rt("Filtros"), self.filters_panel_collapsed_rail)
         self.filters_panel_collapsed_title.setObjectName("summaryPanelCollapsedTitle")
-        filters_rail_layout.addWidget(self.filters_panel_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
+        filters_rail_layout.addWidget(self.filters_panel_collapsed_title, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         filters_rail_layout.addStretch(1)
         self.filters_panel_layout.addWidget(self.filters_panel_collapsed_rail, 1)
         self.analytics_splitter.addWidget(self.filters_panel)
@@ -787,7 +784,7 @@ class PivotTableWidget(QWidget):
         # -- Left (table) -------------------------------------------------
         self.table_container = QWidget()
         self.table_container.setObjectName("summaryTablePane")
-        self.table_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.table_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.table_container.setMinimumSize(360, 0)
         left_layout = QVBoxLayout(self.table_container)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -815,7 +812,7 @@ class PivotTableWidget(QWidget):
         self.empty_state_title.setObjectName("summaryEmptyTitle")
         empty_title_font = ui_font()
         empty_title_font.setPixelSize(body_text_px)
-        empty_title_font.setWeight(QFont.Medium)
+        empty_title_font.setWeight(_qfont_weight("Medium", 57))
         self.empty_state_title.setFont(empty_title_font)
         empty_layout.addWidget(self.empty_state_title)
         self.empty_state_text = QLabel(_rt("Nenhum resultado para a configuração atual."))
@@ -833,17 +830,17 @@ class PivotTableWidget(QWidget):
 
         self.table_view = QTableView()
         self.table_view.setModel(self.proxy_model)
-        self.table_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.table_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.table_view.setMinimumSize(0, 0)
-        self.table_view.setSizeAdjustPolicy(QAbstractScrollArea.AdjustIgnored)
+        self.table_view.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
         self.table_view.setSortingEnabled(True)
-        self.table_view.setSelectionBehavior(QAbstractItemView.SelectItems)
-        self.table_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.table_view.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.table_view.setFocusPolicy(Qt.NoFocus)
+        self.table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self.table_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.table_view.setItemDelegate(_PivotTableCellDelegate(self.table_view))
         self.table_view.horizontalHeader().setStretchLastSection(True)
-        self.table_view.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.table_view.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.table_view.clicked.connect(self._handle_table_cell_clicked)
         self.table_view.customContextMenuRequested.connect(self._open_table_context_menu)
         self.table_view.installEventFilter(self)
@@ -883,7 +880,7 @@ class PivotTableWidget(QWidget):
         # -- Right (field list) ------------------------------------------
         self.side_panel = QFrame()
         self.side_panel.setObjectName("summarySidebarPanel")
-        self.side_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.side_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.side_panel.setMinimumSize(0, 0)
         side_panel_layout = QVBoxLayout(self.side_panel)
         side_panel_layout.setContentsMargins(0, 0, 0, 0)
@@ -902,24 +899,24 @@ class PivotTableWidget(QWidget):
 
         self.sidebar_toggle_inner_btn = QToolButton(self.sidebar_header)
         self.sidebar_toggle_inner_btn.setObjectName("summarySidebarToggle")
-        self.sidebar_toggle_inner_btn.setCursor(Qt.PointingHandCursor)
+        self.sidebar_toggle_inner_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.sidebar_toggle_inner_btn.setAutoRaise(True)
         self.sidebar_toggle_inner_btn.setFixedSize(28, 28)
         self.sidebar_toggle_inner_btn.clicked.connect(self._toggle_sidebar_from_panel)
-        self.sidebar_header_layout.addWidget(self.sidebar_toggle_inner_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+        self.sidebar_header_layout.addWidget(self.sidebar_toggle_inner_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         side_panel_layout.addWidget(self.sidebar_header, 0)
 
         self.builder_scroll = QScrollArea(self.side_panel)
         self.builder_scroll.setWidgetResizable(True)
-        self.builder_scroll.setFrameShape(QScrollArea.NoFrame)
-        self.builder_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.builder_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.builder_scroll.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.builder_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.builder_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.builder_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.builder_scroll.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         side_panel_layout.addWidget(self.builder_scroll, 1)
 
         self.builder_content = QWidget()
         self.builder_content.setObjectName("summaryBuilderContent")
-        self.builder_content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.builder_content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self.builder_scroll.setWidget(self.builder_content)
 
         right_layout = QVBoxLayout(self.builder_content)
@@ -930,14 +927,14 @@ class PivotTableWidget(QWidget):
 
         self.fields_list = _PivotFieldSourceListWidget(owner=self)
         self.fields_list.setObjectName("summaryFieldsList")
-        self.fields_list.setSizeAdjustPolicy(QAbstractScrollArea.AdjustIgnored)
-        self.fields_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.fields_list.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+        self.fields_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.fields_list.itemDoubleClicked.connect(self._handle_field_double_click)
         self.fields_list.setUniformItemSizes(True)
         self.fields_list.setSpacing(1)
         self.fields_list.setMinimumHeight(0)
         self.fields_list.setMaximumHeight(16777215)
-        self.fields_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.fields_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.fields_list.setIconSize(QSize(14, 14))
         self.fields_list.setItemDelegate(_PivotFieldListDelegate(self.fields_list))
         self.fields_panel_body_layout.addWidget(self.fields_list, 1)
@@ -951,7 +948,7 @@ class PivotTableWidget(QWidget):
         self.advanced_group = QGroupBox("Avançado")
         self.advanced_group.setObjectName("summaryAdvancedGroup")
         self.advanced_group.setProperty("filterSectionCard", True)
-        self.advanced_group.setAttribute(Qt.WA_StyledBackground, True)
+        self.advanced_group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.advanced_group.setFlat(True)
         self.advanced_group.setCheckable(True)
         self.advanced_group.setChecked(False)
@@ -981,7 +978,7 @@ class PivotTableWidget(QWidget):
         only_selected_row.setContentsMargins(0, 0, 0, 0)
         only_selected_row.setSpacing(8)
         only_selected_row.addWidget(self.only_selected_label, 1)
-        only_selected_row.addWidget(self.only_selected_check, 0, Qt.AlignRight | Qt.AlignVCenter)
+        only_selected_row.addWidget(self.only_selected_check, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         advanced_layout.addLayout(only_selected_row)
 
         self.include_nulls_label = QLabel(_rt("Incluir nulos"))
@@ -996,7 +993,7 @@ class PivotTableWidget(QWidget):
         include_nulls_row.setContentsMargins(0, 0, 0, 0)
         include_nulls_row.setSpacing(8)
         include_nulls_row.addWidget(self.include_nulls_label, 1)
-        include_nulls_row.addWidget(self.include_nulls_check, 0, Qt.AlignRight | Qt.AlignVCenter)
+        include_nulls_row.addWidget(self.include_nulls_check, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         advanced_layout.addLayout(include_nulls_row)
         self.filters_builder_layout.addWidget(self.advanced_group)
         self.filters_builder_layout.addStretch(1)
@@ -1013,7 +1010,7 @@ class PivotTableWidget(QWidget):
         self.apply_btn.setFixedHeight(34)
         button_font = ui_font()
         button_font.setPixelSize(body_text_px)
-        button_font.setWeight(QFont.Medium)
+        button_font.setWeight(_qfont_weight("Medium", 57))
         self.apply_btn.setFont(button_font)
         self.apply_btn.clicked.connect(self.refresh)
         footer_layout.addWidget(self.apply_btn)
@@ -1032,7 +1029,7 @@ class PivotTableWidget(QWidget):
         self._shortcut_redo.activated.connect(self._redo_last_action)
         self._shortcut_redo_alt = QShortcut(QKeySequence("Ctrl+Y"), self)
         self._shortcut_redo_alt.activated.connect(self._redo_last_action)
-        self._shortcut_copy = QShortcut(QKeySequence.Copy, self.table_view)
+        self._shortcut_copy = QShortcut(QKeySequence.StandardKey.Copy, self.table_view)
         self._shortcut_copy.activated.connect(self._copy_selected_cells_to_clipboard)
         self._shortcut_copy_headers = QShortcut(QKeySequence("Ctrl+Shift+C"), self.table_view)
         self._shortcut_copy_headers.activated.connect(
@@ -1098,10 +1095,10 @@ class PivotTableWidget(QWidget):
         if hasattr(self, "sidebar_header_layout"):
             if expanded:
                 self.sidebar_header_layout.setContentsMargins(16, 8, 12, 8)
-                self.sidebar_header_layout.setAlignment(self.sidebar_toggle_inner_btn, Qt.AlignRight | Qt.AlignVCenter)
+                self.sidebar_header_layout.setAlignment(self.sidebar_toggle_inner_btn, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             else:
                 self.sidebar_header_layout.setContentsMargins(10, 8, 10, 8)
-                self.sidebar_header_layout.setAlignment(self.sidebar_toggle_inner_btn, Qt.AlignHCenter | Qt.AlignVCenter)
+                self.sidebar_header_layout.setAlignment(self.sidebar_toggle_inner_btn, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
 
         if hasattr(self, "sidebar_title"):
             self.sidebar_title.setVisible(expanded)
@@ -1113,7 +1110,7 @@ class PivotTableWidget(QWidget):
             self.sidebar_footer.setVisible(expanded)
 
         if hasattr(self, "sidebar_toggle_inner_btn"):
-            self.sidebar_toggle_inner_btn.setArrowType(Qt.LeftArrow if expanded else Qt.RightArrow)
+            self.sidebar_toggle_inner_btn.setArrowType(Qt.ArrowType.LeftArrow if expanded else Qt.ArrowType.RightArrow)
             self.sidebar_toggle_inner_btn.setToolTip(
                 "Recolher construtor" if expanded else "Expandir construtor"
             )
@@ -1194,11 +1191,11 @@ class PivotTableWidget(QWidget):
             panel.setMaximumWidth(_TOOLS_PANEL_COLLAPSED_WIDTH if collapsed else max_width)
             panel.setProperty("collapsed", collapsed)
             if header_btn is not None:
-                header_btn.setArrowType(Qt.NoArrow)
+                header_btn.setArrowType(Qt.ArrowType.NoArrow)
                 header_btn.setText("‹")
                 header_btn.setToolTip(f"Recolher {title}")
             if rail_btn is not None:
-                rail_btn.setArrowType(Qt.NoArrow)
+                rail_btn.setArrowType(Qt.ArrowType.NoArrow)
                 rail_btn.setText("›")
                 rail_btn.setToolTip(f"Expandir {title}")
             try:
@@ -1345,7 +1342,7 @@ class PivotTableWidget(QWidget):
         filters_action = menu.addAction(filters_text)
         menu.addSeparator()
         restore_action = menu.addAction(_rt("Restaurar layout"))
-        chosen = menu.exec_(self.settings_btn.mapToGlobal(self.settings_btn.rect().bottomLeft()))
+        chosen = menu.exec(self.settings_btn.mapToGlobal(self.settings_btn.rect().bottomLeft()))
         if chosen == fields_action:
             self._toggle_fields_panel()
         elif chosen == filters_action:
@@ -1483,7 +1480,7 @@ class PivotTableWidget(QWidget):
         self._set_content_mode(False)
         combo = getattr(self, "_layer_combo_widget", None)
         if combo is not None:
-            combo.setFocus(Qt.MouseFocusReason)
+            combo.setFocus(Qt.FocusReason.MouseFocusReason)
             try:
                 QTimer.singleShot(0, combo.showPopup)
             except Exception:
@@ -1508,7 +1505,7 @@ class PivotTableWidget(QWidget):
             menu_pos = anchor.mapToGlobal(anchor.rect().bottomLeft())
         else:
             menu_pos = QCursor.pos()
-        chosen = menu.exec_(menu_pos)
+        chosen = menu.exec(menu_pos)
         if chosen == excel_action and hasattr(panel, "_handle_excel"):
             panel._handle_excel()
         elif chosen == csv_action and hasattr(panel, "_handle_delimited_file"):
@@ -1591,7 +1588,7 @@ class PivotTableWidget(QWidget):
             combo.setParent(self.layer_combo_host)
         combo.setObjectName("summaryLayerCombo")
         combo.setMinimumHeight(28)
-        combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(combo)
         combo.setVisible(True)
         combo.show()
@@ -1687,7 +1684,7 @@ class PivotTableWidget(QWidget):
             self,
             translate=_rt,
             message_log=QgsMessageLog,
-            qgis_info=Qgis.Info,
+            qgis_info=Qgis.MessageLevel.Info,
             ui_font_factory=ui_font,
             typography=TYPOGRAPHY,
         )
@@ -1810,7 +1807,7 @@ class PivotTableWidget(QWidget):
         if not start.isValid() or not end.isValid():
             return
         selection = QItemSelection(start, end)
-        selection_model.select(selection, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Select)
+        selection_model.select(selection, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Select)
         self.table_view.setCurrentIndex(start)
 
     def _select_proxy_column_data_cells(self, proxy_column: int):
@@ -1825,7 +1822,7 @@ class PivotTableWidget(QWidget):
         if not start.isValid() or not end.isValid():
             return
         selection = QItemSelection(start, end)
-        selection_model.select(selection, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Select)
+        selection_model.select(selection, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Select)
         self.table_view.setCurrentIndex(start)
 
     def _update_status_label(self):
@@ -1871,10 +1868,10 @@ class PivotTableWidget(QWidget):
 
         if watched in {getattr(self, "table_view", None), getattr(getattr(self, "table_view", None), "viewport", lambda: None)()}:
             if event is not None and event.type() in {
-                QEvent.MouseButtonRelease,
-                QEvent.KeyRelease,
-                QEvent.FocusIn,
-                QEvent.FocusOut,
+                QEvent.Type.MouseButtonRelease,
+                QEvent.Type.KeyRelease,
+                QEvent.Type.FocusIn,
+                QEvent.Type.FocusOut,
             }:
                 self._schedule_selection_feedback_refresh()
         return super().eventFilter(watched, event)
@@ -1892,7 +1889,7 @@ class PivotTableWidget(QWidget):
             QgsMessageLog.logMessage(
                 f"PivotTableWidget: falha ao atualizar resumo de selecao: {exc}",
                 "Summarizer",
-                Qgis.Warning,
+                Qgis.MessageLevel.Warning,
             )
             if hasattr(self, "selection_summary_label"):
                 self.selection_summary_label.setText(_rt("Não foi possível calcular a seleção atual."))
@@ -1904,7 +1901,7 @@ class PivotTableWidget(QWidget):
             QgsMessageLog.logMessage(
                 f"PivotTableWidget: falha ao sincronizar selecao no mapa: {exc}",
                 "Summarizer",
-                Qgis.Warning,
+                Qgis.MessageLevel.Warning,
             )
 
     def _sync_selection_to_map(self):
@@ -2014,7 +2011,7 @@ class PivotTableWidget(QWidget):
                 if proxy_index.column() < self._pivot_data_column_offset:
                     continue
                 selected_count += 1
-                raw_value = proxy_index.data(Qt.DisplayRole)
+                raw_value = proxy_index.data(Qt.ItemDataRole.DisplayRole)
                 if raw_value is None or str(raw_value).strip() == "":
                     blank_count += 1
                     continue
@@ -2066,7 +2063,7 @@ class PivotTableWidget(QWidget):
             copy_headers_action.setEnabled(False)
             copy_stats_action.setEnabled(False)
 
-        action = menu.exec_(self.table_view.viewport().mapToGlobal(pos))
+        action = menu.exec(self.table_view.viewport().mapToGlobal(pos))
         if action == copy_action:
             self._copy_selected_cells_to_clipboard(include_headers=False)
         elif action == copy_headers_action:
@@ -2091,14 +2088,14 @@ class PivotTableWidget(QWidget):
         columns = sorted({index.column() for index in indexes})
         grid: Dict[Tuple[int, int], str] = {}
         for index in indexes:
-            value = index.data(Qt.DisplayRole)
+            value = index.data(Qt.ItemDataRole.DisplayRole)
             grid[(index.row(), index.column())] = "" if value is None else str(value)
 
         lines: List[str] = []
         if include_headers:
             header_values = []
             for column in columns:
-                header = self.proxy_model.headerData(column, Qt.Horizontal, Qt.DisplayRole)
+                header = self.proxy_model.headerData(column, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
                 header_values.append("" if header is None else str(header))
             lines.append("\t".join(header_values))
 
@@ -2205,7 +2202,7 @@ class PivotTableWidget(QWidget):
             return None
 
     def _feature_ids_for_proxy_index(self, proxy_index, source_index=None) -> List[int]:
-        payload = proxy_index.data(Qt.UserRole)
+        payload = proxy_index.data(Qt.ItemDataRole.UserRole)
         if isinstance(payload, str) and payload.strip():
             ids = [int(part) for part in payload.split(",") if part.strip().isdigit()]
             if ids:
@@ -2229,29 +2226,29 @@ class PivotTableWidget(QWidget):
         try:
             base_font = ui_font()
             base_font.setPixelSize(int(TYPOGRAPHY.get("font_body_px", 13)))
-            base_font.setWeight(QFont.Normal)
+            base_font.setWeight(_qfont_weight("Normal", 50))
             self.table_view.setFont(base_font)
             header_font = ui_font()
             header_font.setPixelSize(int(TYPOGRAPHY.get("font_secondary_px", 12)))
-            header_font.setWeight(QFont.Medium)
+            header_font.setWeight(_qfont_weight("Medium", 57))
             self.table_view.horizontalHeader().setFont(header_font)
             dark_mode = str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
             table_base = QColor("#0B1020" if dark_mode else "#ffffff")
             table_alternate = QColor("#0F172A" if dark_mode else "#fcfcfd")
             table_text = QColor("#F8FAFC" if dark_mode else "#111827")
             table_palette = self.table_view.palette()
-            table_palette.setColor(QPalette.Base, table_base)
-            table_palette.setColor(QPalette.AlternateBase, table_alternate)
-            table_palette.setColor(QPalette.Window, table_base)
-            table_palette.setColor(QPalette.Text, table_text)
-            table_palette.setColor(QPalette.WindowText, table_text)
+            table_palette.setColor(QPalette.ColorRole.Base, table_base)
+            table_palette.setColor(QPalette.ColorRole.AlternateBase, table_alternate)
+            table_palette.setColor(QPalette.ColorRole.Window, table_base)
+            table_palette.setColor(QPalette.ColorRole.Text, table_text)
+            table_palette.setColor(QPalette.ColorRole.WindowText, table_text)
             self.table_view.setPalette(table_palette)
             self.table_view.setAutoFillBackground(True)
             viewport = self.table_view.viewport()
             if viewport is not None:
                 viewport.setPalette(table_palette)
                 viewport.setAutoFillBackground(True)
-                viewport.setBackgroundRole(QPalette.Base)
+                viewport.setBackgroundRole(QPalette.ColorRole.Base)
             self.table_view.setAlternatingRowColors(True)
             self.table_view.verticalHeader().setDefaultSectionSize(30)
             self.table_view.horizontalHeader().setMinimumHeight(34)
@@ -2311,7 +2308,7 @@ class PivotTableWidget(QWidget):
         list_widget = self._area_list(area)
         real_items_present = False
         for index in reversed(range(list_widget.count())):
-            if list_widget.item(index).data(Qt.UserRole) == "__placeholder__":
+            if list_widget.item(index).data(Qt.ItemDataRole.UserRole) == "__placeholder__":
                 list_widget.takeItem(index)
             else:
                 real_items_present = True
@@ -2332,7 +2329,7 @@ class PivotTableWidget(QWidget):
         spec = self._field_spec_from_key(self.value_field_combo.currentData())
         if spec is not None:
             item = QListWidgetItem(spec.display_name)
-            item.setData(Qt.UserRole, self._register_field_spec(spec))
+            item.setData(Qt.ItemDataRole.UserRole, self._register_field_spec(spec))
             self.value_fields_list.addItem(item)
             self.value_fields_list.setCurrentItem(item)
         self._sync_area_placeholder("value")
@@ -2558,7 +2555,7 @@ class PivotTableWidget(QWidget):
             checkbox.setContentsMargins(0, 0, 0, 0)
             check_font = ui_font()
             check_font.setPixelSize(int(TYPOGRAPHY.get("font_secondary_px", 12)))
-            check_font.setWeight(QFont.Normal)
+            check_font.setWeight(_qfont_weight("Normal", 50))
             checkbox.setFont(check_font)
             self.toolbar_strip_layout.addSpacing(10)
             self.toolbar_strip_layout.addWidget(checkbox)
@@ -2665,7 +2662,7 @@ class PivotTableWidget(QWidget):
             return self.get_visible_pivot_dataframe()
 
         headers = [
-            str(self.proxy_model.headerData(column, Qt.Horizontal) or f"Coluna {column + 1}")
+            str(self.proxy_model.headerData(column, Qt.Orientation.Horizontal) or f"Coluna {column + 1}")
             for column in column_indexes
         ]
         rows: List[List[Any]] = []
@@ -2673,7 +2670,7 @@ class PivotTableWidget(QWidget):
             row_values: List[Any] = []
             for column in column_indexes:
                 index = self.proxy_model.index(row, column)
-                value = self.proxy_model.data(index, Qt.DisplayRole) if index.isValid() else None
+                value = self.proxy_model.data(index, Qt.ItemDataRole.DisplayRole) if index.isValid() else None
                 row_values.append("" if value is None else value)
             rows.append(row_values)
         return pd.DataFrame(rows, columns=headers)

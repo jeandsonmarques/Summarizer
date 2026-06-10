@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from qgis.PyQt.QtCore import QSettings, Qt, QSize
-from qgis.PyQt.QtGui import QFont, QIcon
+from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import (
     QAction,
     QFileDialog,
@@ -35,7 +35,7 @@ from .report_view.chart_factory import ReportChartWidget
 from .report_view.charts import ChartVisualState
 from .report_view.pivot.pivot_formatters import PivotFormatter
 from .report_view.result_models import ChartPayload
-from .utils.fonts import ui_font
+from .utils.fonts import _qfont_weight, ui_font
 from .utils.i18n_runtime import tr_text as _rt
 from .utils.logging_utils import log_exception
 from .walker_dialogs import WalkerMessageBox as QMessageBox, apply_walker_menu
@@ -87,6 +87,7 @@ class DashboardWidget(QWidget):
         self._updating_filter_chips = False
         self._chart_variant_index = 0
         self._dashboard_locked = False
+        self._last_render_input_key = None
 
         self._build_ui()
         self._apply_styles()
@@ -99,7 +100,7 @@ class DashboardWidget(QWidget):
 
         header_font = ui_font()
         header_font.setPixelSize(int(TYPOGRAPHY.get("font_page_title_px", 24)))
-        header_font.setWeight(QFont.DemiBold)
+        header_font.setWeight(_qfont_weight("DemiBold", 63))
 
         body_font = ui_font()
         body_font.setPixelSize(int(TYPOGRAPHY.get("font_secondary_px", 12)))
@@ -110,7 +111,7 @@ class DashboardWidget(QWidget):
         self.title_label = QLabel(_rt("Dashboard Interativo"))
         self.title_label.setFont(header_font)
         self.title_label.setProperty("role", "title")
-        self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.title_label.hide()
 
         self.subtitle_label = QLabel(_rt("Selecione uma camada e gere um resumo para visualizar o dashboard."))
@@ -158,9 +159,9 @@ class DashboardWidget(QWidget):
         self.add_chart_btn.setObjectName("AddChartButton")
         self.add_chart_btn.setText(_rt("Novo gráfico"))
         self.add_chart_btn.setFont(body_font)
-        self.add_chart_btn.setPopupMode(QToolButton.InstantPopup)
-        self.add_chart_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.add_chart_btn.setCursor(Qt.PointingHandCursor)
+        self.add_chart_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.add_chart_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.add_chart_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_chart_menu = apply_walker_menu(QMenu(self.add_chart_btn))
         self._populate_add_chart_menu(self.add_chart_menu)
         self.add_chart_btn.setMenu(self.add_chart_menu)
@@ -168,8 +169,8 @@ class DashboardWidget(QWidget):
 
         self.center_btn = QToolButton()
         self.center_btn.setObjectName("DashboardIconButton")
-        self.center_btn.setCursor(Qt.PointingHandCursor)
-        self.center_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.center_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.center_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.center_btn.setIcon(_icon_from_resource("dashboard_center.svg"))
         self.center_btn.setIconSize(QSize(16, 16))
         self.center_btn.setToolTip(_rt("Ajustar visualização"))
@@ -179,8 +180,8 @@ class DashboardWidget(QWidget):
         self.visual_panel_btn = QToolButton()
         self.visual_panel_btn.setObjectName("DashboardIconButton")
         self.visual_panel_btn.setCheckable(True)
-        self.visual_panel_btn.setCursor(Qt.PointingHandCursor)
-        self.visual_panel_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.visual_panel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.visual_panel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.visual_panel_btn.setIcon(_icon_from_resource("icon_chart.svg"))
         self.visual_panel_btn.setIconSize(QSize(16, 16))
         self.visual_panel_btn.setToolTip(_rt("Formatar visual"))
@@ -190,8 +191,8 @@ class DashboardWidget(QWidget):
         self.lock_btn = QToolButton()
         self.lock_btn.setObjectName("DashboardIconButton")
         self.lock_btn.setCheckable(True)
-        self.lock_btn.setCursor(Qt.PointingHandCursor)
-        self.lock_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.lock_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.lock_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.lock_btn.setIconSize(QSize(16, 16))
         self.lock_btn.toggled.connect(self._set_dashboard_locked)
         toolbar_layout.addWidget(self.lock_btn, 0)
@@ -201,9 +202,9 @@ class DashboardWidget(QWidget):
         self.filter_chip_container.hide()
         self.filter_chip_scroll = QScrollArea(self)
         self.filter_chip_scroll.setWidgetResizable(True)
-        self.filter_chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.filter_chip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.filter_chip_scroll.setFrameShape(QFrame.NoFrame)
+        self.filter_chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.filter_chip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.filter_chip_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.filter_chip_container.setObjectName("FilterChipContainer")
         self.filter_chip_layout = QHBoxLayout(self.filter_chip_container)
         self.filter_chip_layout.setContentsMargins(0, 2, 0, 2)
@@ -212,7 +213,7 @@ class DashboardWidget(QWidget):
         self.filter_chip_scroll.setWidget(self.filter_chip_container)
         self.filter_chip_scroll.hide()
 
-        self.content_splitter = QSplitter(Qt.Vertical, self)
+        self.content_splitter = QSplitter(Qt.Orientation.Vertical, self)
         self.content_splitter.hide()
 
         canvas_shell = QFrame()
@@ -239,7 +240,7 @@ class DashboardWidget(QWidget):
         self.visual_format_panel.hide()
         self.visual_format_panel.closeRequested.connect(self.hide_visual_panel)
 
-        self.dashboard_area_splitter = QSplitter(Qt.Horizontal, self)
+        self.dashboard_area_splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.dashboard_area_splitter.setChildrenCollapsible(False)
         self.dashboard_area_splitter.addWidget(canvas_shell)
         self.dashboard_area_splitter.addWidget(self.visual_format_panel)
@@ -807,6 +808,55 @@ class DashboardWidget(QWidget):
                 pass
 
     # ------------------------------------------------------------------ Public API
+    def _mapping_signature(self, values: Optional[Dict[str, Any]]) -> str:
+        try:
+            return repr(sorted((str(key), repr(value)) for key, value in dict(values or {}).items()))
+        except Exception:
+            return repr(values)
+
+    def _dataframe_signature(self, df: Optional[pd.DataFrame]) -> tuple:
+        if df is None:
+            return (0, 0, ())
+        try:
+            rows, columns_count = df.shape
+        except Exception:
+            rows, columns_count = 0, 0
+        try:
+            columns = tuple(str(column) for column in list(df.columns))
+        except Exception:
+            columns = ()
+        return (int(rows or 0), int(columns_count or 0), columns)
+
+    def _render_input_key(
+        self,
+        source: str,
+        df: Optional[pd.DataFrame],
+        metadata: Optional[Dict[str, Any]],
+        config: Optional[Dict[str, Any]],
+        source_id: Optional[int] = None,
+    ) -> tuple:
+        return (
+            str(source or ""),
+            source_id if source_id is not None else id(df),
+            self._dataframe_signature(df),
+            self._mapping_signature(metadata),
+            self._mapping_signature(config),
+        )
+
+    def _has_dashboard_content(self) -> bool:
+        canvas = getattr(self, "dashboard_canvas", None)
+        widgets = getattr(canvas, "_widgets", None)
+        return bool(widgets)
+
+    def _can_skip_full_render(self, input_key: tuple) -> bool:
+        if input_key != self._last_render_input_key:
+            return False
+        if not self._has_dashboard_content():
+            return False
+        if self.active_category_keys or self._category_filters:
+            return False
+        return True
+
     def set_pivot_data(
         self,
         df: pd.DataFrame,
@@ -815,6 +865,10 @@ class DashboardWidget(QWidget):
     ):
         metadata = metadata or {}
         config = config or {}
+        input_key = self._render_input_key("dataframe", df, metadata, config)
+        if self._can_skip_full_render(input_key):
+            return
+
         self.current_pivot_result = None
         self.active_category_key = ""
         self.active_category_label = ""
@@ -827,6 +881,7 @@ class DashboardWidget(QWidget):
             self.current_metadata = metadata
             self.current_config = config
             self._render_empty_state("Nenhum dado filtrado. Ajuste a tabela dinamica e tente novamente.")
+            self._last_render_input_key = input_key
             return
 
         self.current_source_df = df.copy()
@@ -835,17 +890,23 @@ class DashboardWidget(QWidget):
         self.current_metadata = metadata
         self.current_config = config
         self._render_current_data()
+        self._last_render_input_key = input_key
 
     def set_pivot_result(self, result):
         if result is None:
             self.set_pivot_data(pd.DataFrame(), {}, {})
             return
 
+        metadata = dict(getattr(result, "metadata", {}) or {})
+        config = self._build_dashboard_config(metadata)
+        input_key = self._render_input_key("pivot", None, metadata, config, source_id=id(result))
+        if self._can_skip_full_render(input_key):
+            return
+
         self.current_pivot_result = result
         self.active_category_key = ""
         self.active_category_label = ""
         self.active_category_keys = []
-        metadata = dict(getattr(result, "metadata", {}) or {})
         raw_df = self._build_source_dataframe_from_pivot_result(result)
         if raw_df is None or raw_df.empty:
             self.current_pivot_result = None
@@ -853,7 +914,8 @@ class DashboardWidget(QWidget):
             self.current_view_df = pd.DataFrame()
             self.current_df = pd.DataFrame()
             self.current_metadata = metadata
-            self.current_config = self._build_dashboard_config(metadata)
+            self.current_config = config
+            self._last_render_input_key = input_key
             self._render_empty_state(_rt("Não foi possível reconstruir os registros reais para este resumo."))
             return
 
@@ -861,8 +923,9 @@ class DashboardWidget(QWidget):
         self.current_view_df = self.current_source_df.copy()
         self.current_df = self.current_view_df
         self.current_metadata = metadata
-        self.current_config = self._build_dashboard_config(metadata)
+        self.current_config = config
         self._render_current_data()
+        self._last_render_input_key = input_key
 
     def _build_dashboard_config(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         row_fields = list(metadata.get("row_fields") or [])
@@ -942,7 +1005,7 @@ class DashboardWidget(QWidget):
             self,
             _rt("Escolha a pasta para salvar o dashboard"),
             "",
-            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
+            QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks,
         )
         if not directory:
             return
@@ -1588,9 +1651,9 @@ class DashboardWidget(QWidget):
                     text = str(value)
                 item = QTableWidgetItem(text)
                 if isinstance(value, (float, np.floating, int, np.integer)):
-                    item.setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
                 else:
-                    item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                 self.details_table.setItem(row_idx, col_idx, item)
 
         self.table_hint_label.setText(

@@ -73,7 +73,7 @@ class _DashboardCanvasSurface(QWidget):
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), self._canvas.resolved_background_color())
 
         outline_rect = self._canvas.page_outline_rect()
@@ -81,10 +81,10 @@ class _DashboardCanvasSurface(QWidget):
             outline = QColor("#334155" if _is_dark_theme() else "#111827")
             outline_pen = QPen(outline)
             outline_pen.setWidth(1)
-            outline_pen.setStyle(Qt.DotLine)
+            outline_pen.setStyle(Qt.PenStyle.DotLine)
             outline_pen.setCosmetic(True)
             painter.setPen(outline_pen)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(outline_rect.adjusted(0, 0, -1, -1))
 
         if self._canvas._edit_mode and self._canvas._show_grid:
@@ -112,7 +112,7 @@ class _DashboardCanvasSurface(QWidget):
                 else:
                     line_pen = QPen(QColor("#6B7280" if is_selected else "#9CA3AF"))
                     line_pen.setWidth(3 if is_selected else 2)
-                    line_pen.setStyle(Qt.DashLine)
+                    line_pen.setStyle(Qt.PenStyle.DashLine)
                 painter.setPen(line_pen)
                 path = list(line.get("path") or [])
                 if len(path) >= 2:
@@ -128,7 +128,7 @@ class _DashboardCanvasSurface(QWidget):
                 if isinstance(start, QPoint) and isinstance(end, QPoint):
                     preview_pen = QPen(QColor("#6366F1"))
                     preview_pen.setWidth(2)
-                    preview_pen.setStyle(Qt.DashLine)
+                    preview_pen.setStyle(Qt.PenStyle.DashLine)
                     painter.setPen(preview_pen)
                     preview_side = str(link_preview.get("source_side") or "right")
                     preview_path = self._canvas._build_orthogonal_path(start, end, preview_side, "left")
@@ -142,7 +142,7 @@ class _DashboardCanvasSurface(QWidget):
         if preview_rect is not None and self._canvas._edit_mode:
             fill = QColor(99, 114, 255, 35)
             border = QColor("#6372FF")
-            painter.setPen(QPen(border, 2, Qt.DashLine))
+            painter.setPen(QPen(border, 2, Qt.PenStyle.DashLine))
             scaled_preview = self._canvas._scaled_rect(preview_rect)
             painter.fillRect(scaled_preview, fill)
             painter.drawRoundedRect(scaled_preview.adjusted(1, 1, -1, -1), 12, 12)
@@ -150,7 +150,7 @@ class _DashboardCanvasSurface(QWidget):
         if self._canvas._edit_mode:
             guide_pen = QPen(QColor("#EF4444"))
             guide_pen.setWidth(1)
-            guide_pen.setStyle(Qt.DashLine)
+            guide_pen.setStyle(Qt.PenStyle.DashLine)
             guide_pen.setCosmetic(True)
             painter.setPen(guide_pen)
             for guide in self._canvas.alignment_guides():
@@ -164,12 +164,12 @@ class _DashboardCanvasSurface(QWidget):
     def mousePressEvent(self, event):
         if self._canvas._handle_surface_mouse_press(event):
             return
-        if getattr(event, "button", lambda: None)() in (Qt.LeftButton, Qt.MiddleButton):
+        if getattr(event, "button", lambda: None)() in (Qt.MouseButton.LeftButton, Qt.MouseButton.MiddleButton):
             self._pan_active = True
             self._pan_start_pos = self._event_global_point(event)
             self._pan_start_h = self._canvas.scroll.horizontalScrollBar().value()
             self._pan_start_v = self._canvas.scroll.verticalScrollBar().value()
-            self.setCursor(Qt.ClosedHandCursor)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
             try:
                 event.accept()
             except Exception:
@@ -197,7 +197,7 @@ class _DashboardCanvasSurface(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self._pan_active and getattr(event, "button", lambda: None)() in (Qt.LeftButton, Qt.MiddleButton):
+        if self._pan_active and getattr(event, "button", lambda: None)() in (Qt.MouseButton.LeftButton, Qt.MouseButton.MiddleButton):
             self._pan_active = False
             self.unsetCursor()
             try:
@@ -271,9 +271,9 @@ class DashboardCanvas(QWidget):
         self.scroll = QScrollArea(self)
         self.scroll.setObjectName("DashboardCanvasScrollArea")
         self.scroll.setWidgetResizable(True)
-        self.scroll.setFrameShape(QFrame.NoFrame)
-        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root.addWidget(self.scroll, 1)
 
         self.surface = _DashboardCanvasSurface(self, self.scroll)
@@ -445,7 +445,7 @@ class DashboardCanvas(QWidget):
         try:
             modifiers = event.modifiers()
         except Exception:
-            modifiers = Qt.NoModifier
+            modifiers = Qt.KeyboardModifier.NoModifier
         try:
             delta = event.angleDelta().y()
         except Exception:
@@ -457,7 +457,7 @@ class DashboardCanvas(QWidget):
                 log_exception("falha opcional ignorada")
             return False
 
-        if modifiers & Qt.ShiftModifier:
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
             step = max(1, int(abs(delta) / 2))
             direction = -1 if delta > 0 else 1
             hbar = self.scroll.horizontalScrollBar()
@@ -468,7 +468,7 @@ class DashboardCanvas(QWidget):
                 log_exception("falha opcional ignorada")
             return True
 
-        if not (modifiers & Qt.ControlModifier):
+        if not (modifiers & Qt.KeyboardModifier.ControlModifier):
             try:
                 event.ignore()
             except Exception:
@@ -989,6 +989,7 @@ class DashboardCanvas(QWidget):
 
         for item in self._items:
             widget = self._widgets.get(item.item_id)
+            item_fingerprint = item.to_dict()
             if widget is None:
                 widget = DashboardItemWidget(item, self.surface)
                 widget.removeRequested.connect(self._remove_item)
@@ -1011,7 +1012,10 @@ class DashboardCanvas(QWidget):
                 widget.linkFinished.connect(self._finish_link_drag)
                 widget.linkCommandRequested.connect(self._handle_link_command_requested)
                 self._widgets[item.item_id] = widget
-            widget.refresh(item)
+                widget._dashboard_item_fingerprint = item_fingerprint
+            elif getattr(widget, "_dashboard_item_fingerprint", None) != item_fingerprint:
+                widget.refresh(item)
+                widget._dashboard_item_fingerprint = item_fingerprint
             widget.set_edit_mode(self._edit_mode)
             self.interaction_manager.register_chart(widget, item.binding)
         self.interaction_manager.set_chart_relations(self._chart_relations)
@@ -1391,7 +1395,7 @@ class DashboardCanvas(QWidget):
             return
 
         popup = ModelRelationsPopup(source_item, target_item, parent=self)
-        if popup.exec_() != popup.Accepted:
+        if popup.exec() != popup.Accepted:
             self.surface.update()
             return
         if popup.remove_requested():
@@ -1427,7 +1431,7 @@ class DashboardCanvas(QWidget):
 
         source_anchor, target_anchor = self._best_anchor_sides(source_widget, target_widget)
         popup = ModelRelationsPopup(source_item, target_item, parent=self)
-        if popup.exec_() == popup.Accepted and not popup.remove_requested():
+        if popup.exec() == popup.Accepted and not popup.remove_requested():
             relation = popup.selected_relation()
             if relation is not None:
                 self._save_relation(
@@ -1497,7 +1501,7 @@ class DashboardCanvas(QWidget):
         root.addLayout(actions)
         harmonize_widget_fonts(dialog)
 
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return ""
         return str(combo.currentData() or "").strip()
 
@@ -1521,7 +1525,7 @@ class DashboardCanvas(QWidget):
     def _handle_surface_mouse_press(self, event) -> bool:
         if not self._edit_mode:
             return False
-        if getattr(event, "button", lambda: None)() != Qt.LeftButton:
+        if getattr(event, "button", lambda: None)() != Qt.MouseButton.LeftButton:
             return False
         hit = self._relation_line_at(event.pos())
         if hit is None:
@@ -1573,7 +1577,7 @@ class DashboardCanvas(QWidget):
             existing_relation=relation,
             parent=self,
         )
-        if popup.exec_() != popup.Accepted:
+        if popup.exec() != popup.Accepted:
             return
         if popup.remove_requested():
             self._remove_relation(relation.relation_id)

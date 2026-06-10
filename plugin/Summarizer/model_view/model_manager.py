@@ -194,7 +194,7 @@ class ModelManager:
             QgsMessageLog.logMessage(
                 f"[PBI Summarizer] iter_tables_for_reports -> {len(tables)} tabelas (available_tables)",
                 "Summarizer Summarizer",
-                level=Qgis.Info,
+                level=Qgis.MessageLevel.Info,
             )
         else:
             # Fallback: use tables currently on the canvas (with their field items)
@@ -216,7 +216,7 @@ class ModelManager:
             QgsMessageLog.logMessage(
                 f"[PBI Summarizer] iter_tables_for_reports (fallback canvas) -> {len(tables)} tabelas",
                 "Summarizer Summarizer",
-                level=Qgis.Info,
+                level=Qgis.MessageLevel.Info,
             )
 
         for table in tables:
@@ -639,7 +639,7 @@ class ModelManager:
 
     def _layer_has_geometry(self, layer: QgsVectorLayer) -> bool:
         try:
-            return layer.wkbType() != QgsWkbTypes.NoGeometry
+            return layer.wkbType() != QgsWkbTypes.Type.NoGeometry
         except Exception:
             return False
 
@@ -1355,10 +1355,10 @@ class ModelManager:
             self.view,
             _rt("Criar relacionamento"),
             text,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
 
         metadata = {
@@ -1435,11 +1435,11 @@ class ModelManager:
         def configure_table(table_widget: QTableWidget):
             table_widget.setColumnCount(2)
             table_widget.setHorizontalHeaderLabels([_rt("Campo"), _rt("Incluir")])
-            table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-            table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
             table_widget.verticalHeader().setVisible(False)
-            table_widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
-            table_widget.setSelectionMode(QAbstractItemView.NoSelection)
+            table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+            table_widget.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
             small_font = harmonize_font_family(table_widget.font())
             small_font.setPointSize(9)
             table_widget.setFont(small_font)
@@ -1457,13 +1457,13 @@ class ModelManager:
         grid.addWidget(forward_table, 5, 0, 1, 2)
         grid.addWidget(backward_table, 5, 2, 1, 2)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
-        grid.addWidget(buttons, 6, 2, 1, 2, alignment=Qt.AlignRight)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, dialog)
+        grid.addWidget(buttons, 6, 2, 1, 2, alignment=Qt.AlignmentFlag.AlignRight)
         delete_btn = QPushButton(_rt("Excluir"), dialog)
         delete_btn.setStyleSheet("color: #B00020;")
         if data.get("origin") != "custom":
             delete_btn.setToolTip(_rt("Remove apenas do canvas; não altera camadas."))
-        grid.addWidget(delete_btn, 6, 0, 1, 1, alignment=Qt.AlignLeft)
+        grid.addWidget(delete_btn, 6, 0, 1, 1, alignment=Qt.AlignmentFlag.AlignLeft)
 
         def populate_table(table_widget: QTableWidget, table_name: str, exclude_field: Optional[str], selected_fields: List[str]):
             fields = [name for name in self._fields_for_table(table_name) if not exclude_field or str(name).lower() != str(exclude_field).lower()]
@@ -1471,10 +1471,10 @@ class ModelManager:
             table_widget.setRowCount(len(fields))
             for row, name in enumerate(fields):
                 name_item = QTableWidgetItem(str(name))
-                name_item.setFlags(Qt.ItemIsEnabled)
+                name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 check_item = QTableWidgetItem()
-                check_item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-                check_item.setCheckState(Qt.Checked if str(name).lower() in selected_set else Qt.Unchecked)
+                check_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+                check_item.setCheckState(Qt.CheckState.Checked if str(name).lower() in selected_set else Qt.CheckState.Unchecked)
                 table_widget.setItem(row, 0, name_item)
                 table_widget.setItem(row, 1, check_item)
 
@@ -1521,7 +1521,7 @@ class ModelManager:
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
 
-        if not dialog.exec_():
+        if not dialog.exec():
             try:
                 settings.setValue(geom_key, dialog.saveGeometry())
             except Exception:
@@ -1539,7 +1539,7 @@ class ModelManager:
             for row in range(table_widget.rowCount()):
                 name_item = table_widget.item(row, 0)
                 check_item = table_widget.item(row, 1)
-                if check_item is not None and check_item.checkState() == Qt.Checked:
+                if check_item is not None and check_item.checkState() == Qt.CheckState.Checked:
                     results.append(name_item.text())
             return results
 

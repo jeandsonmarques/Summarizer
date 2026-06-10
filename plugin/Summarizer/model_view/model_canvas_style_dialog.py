@@ -235,7 +235,7 @@ if QDialog is not object:
 
         def _build_ui(self):
             self.setObjectName("WalkerCanvasStyleDialog")
-            self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+            self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
             self.setModal(True)
             self.resize(560, 392)
             self.setFont(ui_font())
@@ -546,8 +546,8 @@ if QDialog is not object:
             self.grid_size_spin.setObjectName("WalkerDialogInput")
             self.grid_size_spin.setRange(4, 48)
             self.grid_size_spin.setValue(int(self._initial_style.get("grid_size", 8)))
-            self.grid_size_spin.setButtonSymbols(QSpinBox.NoButtons)
-            self.grid_size_spin.setAlignment(Qt.AlignCenter)
+            self.grid_size_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+            self.grid_size_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
             grid.addWidget(self.grid_size_label, 4, 0)
             grid.addWidget(self.grid_size_spin, 4, 1)
 
@@ -556,8 +556,8 @@ if QDialog is not object:
             self.grid_opacity_spin.setObjectName("WalkerDialogInput")
             self.grid_opacity_spin.setRange(10, 100)
             self.grid_opacity_spin.setValue(int(round(float(self._initial_style.get("grid_opacity", 1.0)) * 100.0)))
-            self.grid_opacity_spin.setButtonSymbols(QSpinBox.NoButtons)
-            self.grid_opacity_spin.setAlignment(Qt.AlignCenter)
+            self.grid_opacity_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+            self.grid_opacity_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
             grid.addWidget(self.grid_opacity_label, 4, 2)
             grid.addWidget(self.grid_opacity_spin, 4, 3)
 
@@ -691,7 +691,7 @@ if QDialog is not object:
 
     def open_canvas_style_dialog(parent=None, current_style: Optional[Dict[str, object]] = None) -> Optional[Dict[str, object]]:
         dialog = ModelCanvasStyleDialog(parent, current_style=current_style)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.selected_style()
 

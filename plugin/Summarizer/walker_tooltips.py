@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from qgis.PyQt.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPropertyAnimation, QRectF, Qt, QTimer
+from qgis.PyQt.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPointF, QPropertyAnimation, QRectF, Qt, QTimer
 from qgis.PyQt.QtGui import QColor, QPainter, QPainterPath, QPolygonF
 from qgis.PyQt.QtWidgets import QApplication, QGraphicsOpacityEffect, QLabel, QHBoxLayout, QWidget
 
@@ -27,10 +27,10 @@ class _WalkerTooltipPopup(QWidget):
     _ARROW_HEIGHT = 6
 
     def __init__(self):
-        super().__init__(None, Qt.ToolTip | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        super().__init__(None, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
         self.setObjectName("WalkerTooltip")
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAutoFillBackground(False)
         self.setStyleSheet(WALKER_TOOLTIP_STYLE)
         self._arrow_on_top = False
@@ -40,7 +40,7 @@ class _WalkerTooltipPopup(QWidget):
         self._label = QLabel(self)
         self._label.setObjectName("WalkerTooltipLabel")
         self._label.setFont(ui_font(8))
-        self._label.setAlignment(Qt.AlignCenter)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 7, 12, 7 + self._ARROW_HEIGHT)
@@ -80,13 +80,13 @@ class _WalkerTooltipPopup(QWidget):
         self._move_animation.setDuration(120)
         self._move_animation.setStartValue(start)
         self._move_animation.setEndValue(target)
-        self._move_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._move_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._fade_animation = QPropertyAnimation(self._opacity, b"opacity", self)
         self._fade_animation.setDuration(90)
         self._fade_animation.setStartValue(0.0)
         self._fade_animation.setEndValue(1.0)
-        self._fade_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._move_animation.start()
         self._fade_animation.start()
@@ -113,8 +113,8 @@ class _WalkerTooltipPopup(QWidget):
     def paintEvent(self, event):  # noqa: N802 - Qt naming style
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setPen(Qt.NoPen)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#111111"))
 
         arrow = float(self._ARROW_HEIGHT)
@@ -122,18 +122,18 @@ class _WalkerTooltipPopup(QWidget):
             body = QRectF(0, arrow, self.width(), self.height() - arrow)
             triangle = QPolygonF(
                 [
-                    QPoint(self.width() // 2 - 5, int(arrow)),
-                    QPoint(self.width() // 2 + 5, int(arrow)),
-                    QPoint(self.width() // 2, 0),
+                    QPointF(self.width() / 2 - 5, arrow),
+                    QPointF(self.width() / 2 + 5, arrow),
+                    QPointF(self.width() / 2, 0),
                 ]
             )
         else:
             body = QRectF(0, 0, self.width(), self.height() - arrow)
             triangle = QPolygonF(
                 [
-                    QPoint(self.width() // 2 - 5, int(body.bottom())),
-                    QPoint(self.width() // 2 + 5, int(body.bottom())),
-                    QPoint(self.width() // 2, self.height()),
+                    QPointF(self.width() / 2 - 5, body.bottom()),
+                    QPointF(self.width() / 2 + 5, body.bottom()),
+                    QPointF(self.width() / 2, self.height()),
                 ]
             )
 
@@ -156,12 +156,12 @@ class _WalkerTooltipFilter(QObject):
         if watched is not self.widget:
             return False
         event_type = event.type()
-        if event_type == QEvent.Enter:
+        if event_type == QEvent.Type.Enter:
             self._show_timer.start(260)
             return False
-        if event_type == QEvent.ToolTip:
+        if event_type == QEvent.Type.ToolTip:
             return True
-        if event_type in (QEvent.Leave, QEvent.MouseButtonPress, QEvent.Hide, QEvent.Close, QEvent.FocusOut):
+        if event_type in (QEvent.Type.Leave, QEvent.Type.MouseButtonPress, QEvent.Type.Hide, QEvent.Type.Close, QEvent.Type.FocusOut):
             self.hide()
         return False
 

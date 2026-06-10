@@ -226,7 +226,7 @@ class ModelRelationsPopup(QDialog):
         title = QLabel(_rt("Relação entre gráficos"), self)
         title.setObjectName("WalkerDialogTitle")
         title.setProperty("role", "title")
-        header.addWidget(title, 1, Qt.AlignVCenter)
+        header.addWidget(title, 1, Qt.AlignmentFlag.AlignVCenter)
         add_walker_close_button(header, self)
         root.addLayout(header)
 
@@ -369,8 +369,8 @@ class ModelRelationsPopup(QDialog):
 
     def _apply_initial_selection(self):
         if self._existing_relation is not None:
-            source_index = self.source_field_combo.findText(self._existing_relation.source_field, Qt.MatchFixedString)
-            target_index = self.target_field_combo.findText(self._existing_relation.target_field, Qt.MatchFixedString)
+            source_index = self.source_field_combo.findText(self._existing_relation.source_field, Qt.MatchFlag.MatchFixedString)
+            target_index = self.target_field_combo.findText(self._existing_relation.target_field, Qt.MatchFlag.MatchFixedString)
             if source_index >= 0:
                 self.source_field_combo.setCurrentIndex(source_index)
             if target_index >= 0:
@@ -387,8 +387,8 @@ class ModelRelationsPopup(QDialog):
             return
         if self._suggestions:
             best = self._suggestions[0]
-            source_index = self.source_field_combo.findText(best[1], Qt.MatchFixedString)
-            target_index = self.target_field_combo.findText(best[2], Qt.MatchFixedString)
+            source_index = self.source_field_combo.findText(best[1], Qt.MatchFlag.MatchFixedString)
+            target_index = self.target_field_combo.findText(best[2], Qt.MatchFlag.MatchFixedString)
             if source_index >= 0:
                 self.source_field_combo.setCurrentIndex(source_index)
             if target_index >= 0:

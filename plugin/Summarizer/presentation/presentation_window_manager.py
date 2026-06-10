@@ -185,11 +185,11 @@ class PresentationWindowManager(QObject):
         return True
 
     def _create_splitter(self, parent):
-        splitter = QSplitter(Qt.Horizontal, parent)
+        splitter = QSplitter(Qt.Orientation.Horizontal, parent)
         splitter.setObjectName("PresentationMapSplitter")
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(6)
-        splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         splitter.setStyleSheet(
             """
             QSplitter#PresentationMapSplitter::handle {
@@ -265,7 +265,7 @@ class PresentationWindowManager(QObject):
         panel = QFrame(parent)
         panel.setObjectName("PresentationEmbeddedMapPanel")
         panel.setMinimumWidth(420)
-        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)

@@ -143,7 +143,7 @@ class _ModelVerticalPanelLabel(QLabel):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         painter.translate(self.width() / 2, self.height() / 2)
         painter.rotate(-90)
         rect = QRect(
@@ -152,9 +152,9 @@ class _ModelVerticalPanelLabel(QLabel):
             int(self.height()),
             int(self.width()),
         )
-        painter.setPen(self.palette().color(QPalette.WindowText))
+        painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
         painter.setFont(self.font())
-        painter.drawText(rect, Qt.AlignCenter, self.text())
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text())
 
 
 class _CurrentPageStackedWidget(QStackedWidget):
@@ -234,7 +234,7 @@ class ModelTab(QWidget):
         self.page_strip = None
 
         self.body_stack = _CurrentPageStackedWidget(self)
-        self.body_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.body_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.body_stack.setMinimumSize(0, 0)
         root.addWidget(self.body_stack, 1)
 
@@ -266,8 +266,8 @@ class ModelTab(QWidget):
 
         self.recents_card = QFrame(self.empty_page)
         self.recents_card.setObjectName("ModelRecentsCard")
-        self.recents_card.setAttribute(Qt.WA_StyledBackground, True)
-        self.recents_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.recents_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.recents_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         recents_layout = QVBoxLayout(self.recents_card)
         recents_layout.setContentsMargins(0, 0, 0, 0)
         recents_layout.setSpacing(16)
@@ -276,10 +276,10 @@ class ModelTab(QWidget):
         recents_header.setContentsMargins(0, 0, 0, 0)
         recents_header.setSpacing(7)
         self.recents_clock_icon = _ModelClockIcon(self.recents_card)
-        recents_header.addWidget(self.recents_clock_icon, 0, Qt.AlignVCenter)
+        recents_header.addWidget(self.recents_clock_icon, 0, Qt.AlignmentFlag.AlignVCenter)
         recents_title = QLabel(_rt("Recent Panels"))
         recents_title.setObjectName("ModelRecentsTitle")
-        recents_header.addWidget(recents_title, 0, Qt.AlignVCenter)
+        recents_header.addWidget(recents_title, 0, Qt.AlignmentFlag.AlignVCenter)
         recents_header.addStretch(1)
         recents_layout.addLayout(recents_header)
 
@@ -291,14 +291,14 @@ class ModelTab(QWidget):
         self.recents_scroll = QScrollArea(self.recents_card)
         self.recents_scroll.setObjectName("ModelRecentsScroll")
         self.recents_scroll.setWidgetResizable(True)
-        self.recents_scroll.setFrameShape(QFrame.NoFrame)
-        self.recents_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.recents_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.recents_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.recents_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.recents_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.recents_scroll.setFixedHeight(_MODEL_RECENT_CARD_HEIGHT)
-        self.recents_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.recents_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self.recents_container = QWidget(self.recents_scroll)
-        self.recents_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.recents_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.recents_layout = QGridLayout(self.recents_container)
         self.recents_layout.setContentsMargins(0, 0, 0, 0)
         self.recents_layout.setHorizontalSpacing(_MODEL_RECENT_CARD_GAP)
@@ -306,7 +306,7 @@ class ModelTab(QWidget):
         self.recents_scroll.setWidget(self.recents_container)
         recents_layout.addWidget(self.recents_scroll)
 
-        empty_layout.addWidget(self.recents_card, 0, Qt.AlignTop)
+        empty_layout.addWidget(self.recents_card, 0, Qt.AlignmentFlag.AlignTop)
         empty_layout.addStretch(1)
 
         self.canvas_page = QWidget(self.body_stack)
@@ -314,7 +314,7 @@ class ModelTab(QWidget):
         canvas_page_layout.setContentsMargins(0, 0, 0, 0)
         canvas_page_layout.setSpacing(0)
 
-        self.canvas_splitter = QSplitter(Qt.Horizontal, self.canvas_page)
+        self.canvas_splitter = QSplitter(Qt.Orientation.Horizontal, self.canvas_page)
         self.canvas_splitter.setObjectName("ModelCanvasSplitter")
         self.canvas_splitter.setChildrenCollapsible(False)
         canvas_page_layout.addWidget(self.canvas_splitter, 1)
@@ -341,7 +341,7 @@ class ModelTab(QWidget):
         self.visual_data_tab_btn = QPushButton(_rt("Adicionar dados"), self.visual_tab_bar)
         self.visual_data_tab_btn.setObjectName("ModelVisualPanelTabButton")
         self.visual_data_tab_btn.setCheckable(True)
-        self.visual_data_tab_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_data_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.visual_data_tab_btn.setFlat(True)
         self.visual_data_tab_btn.setAutoDefault(False)
         self.visual_data_tab_btn.setDefault(False)
@@ -353,7 +353,7 @@ class ModelTab(QWidget):
         self.visual_format_tab_btn = QPushButton(_rt("Formatar visual"), self.visual_tab_bar)
         self.visual_format_tab_btn.setObjectName("ModelVisualPanelTabButton")
         self.visual_format_tab_btn.setCheckable(True)
-        self.visual_format_tab_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_format_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.visual_format_tab_btn.setFlat(True)
         self.visual_format_tab_btn.setAutoDefault(False)
         self.visual_format_tab_btn.setDefault(False)
@@ -365,10 +365,10 @@ class ModelTab(QWidget):
         self.visual_side_toggle_btn = QToolButton(self.visual_tab_bar)
         self.visual_side_toggle_btn.setObjectName("ModelSidePanelToggle")
         self.visual_side_toggle_btn.setAutoRaise(True)
-        self.visual_side_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_side_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.visual_side_toggle_btn.setFixedSize(22, 22)
         self.visual_side_toggle_btn.clicked.connect(self._toggle_visual_side_panel)
-        visual_tab_layout.addWidget(self.visual_side_toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+        visual_tab_layout.addWidget(self.visual_side_toggle_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         visual_side_layout.addWidget(self.visual_tab_bar, 0)
 
         self.visual_side_stack = QStackedWidget(self.visual_side_panel)
@@ -391,16 +391,16 @@ class ModelTab(QWidget):
         self.visual_side_collapsed_btn = QToolButton(self.visual_side_collapsed_rail)
         self.visual_side_collapsed_btn.setObjectName("ModelSidePanelToggle")
         self.visual_side_collapsed_btn.setAutoRaise(True)
-        self.visual_side_collapsed_btn.setCursor(Qt.PointingHandCursor)
+        self.visual_side_collapsed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.visual_side_collapsed_btn.setFixedSize(22, 22)
         self.visual_side_collapsed_btn.setStyleSheet(
             "QToolButton#ModelSidePanelToggle { background: transparent; border: none; padding: 0px; }"
         )
         self.visual_side_collapsed_btn.clicked.connect(self._toggle_visual_side_panel)
-        visual_rail_layout.addWidget(self.visual_side_collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
+        visual_rail_layout.addWidget(self.visual_side_collapsed_btn, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         self.visual_side_collapsed_title = _ModelVerticalPanelLabel(_rt("Visualizações"), self.visual_side_collapsed_rail)
         self.visual_side_collapsed_title.setObjectName("ModelSidePanelCollapsedTitle")
-        visual_rail_layout.addWidget(self.visual_side_collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
+        visual_rail_layout.addWidget(self.visual_side_collapsed_title, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         visual_rail_layout.addStretch(1)
         visual_side_layout.addWidget(self.visual_side_collapsed_rail, 1)
         self._active_visual_side_tab = "build"
@@ -451,7 +451,7 @@ class ModelTab(QWidget):
 
         self.footer_bar = QFrame(self)
         self.footer_bar.setObjectName("ModelFooterBar")
-        self.footer_bar.setAttribute(Qt.WA_StyledBackground, True)
+        self.footer_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.footer_bar.setFixedHeight(42)
         self.footer_bar.setVisible(False)
         footer_layout = QHBoxLayout(self.footer_bar)
@@ -471,14 +471,14 @@ class ModelTab(QWidget):
         self.zoom_reset_btn.setObjectName("ModelZoomButton")
         self.zoom_reset_btn.setFixedSize(40, 16)
         footer_layout.addWidget(self.zoom_reset_btn, 0)
-        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self.zoom_slider.setObjectName("ModelZoomSlider")
         self.zoom_slider.setRange(60, 200)
         self.zoom_slider.setSingleStep(5)
         self.zoom_slider.setPageStep(15)
         self.zoom_slider.setFixedWidth(100)
         self.zoom_slider.setValue(100)
-        self.zoom_slider.setFocusPolicy(Qt.NoFocus)
+        self.zoom_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         footer_layout.addWidget(self.zoom_slider, 0)
         self.zoom_in_btn = QPushButton("+")
         self.zoom_in_btn.setObjectName("ModelZoomButton")
@@ -1898,11 +1898,11 @@ class ModelTab(QWidget):
             for widget in self.findChildren(QWidget, name):
                 try:
                     palette = widget.palette()
-                    palette.setColor(QPalette.Window, QColor(_model_theme_color("surface")))
-                    palette.setColor(QPalette.Base, QColor(_model_theme_color("surface_2")))
-                    palette.setColor(QPalette.AlternateBase, QColor(_model_theme_color("surface")))
-                    palette.setColor(QPalette.Text, QColor(_model_theme_color("text")))
-                    palette.setColor(QPalette.WindowText, QColor(_model_theme_color("text")))
+                    palette.setColor(QPalette.ColorRole.Window, QColor(_model_theme_color("surface")))
+                    palette.setColor(QPalette.ColorRole.Base, QColor(_model_theme_color("surface_2")))
+                    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(_model_theme_color("surface")))
+                    palette.setColor(QPalette.ColorRole.Text, QColor(_model_theme_color("text")))
+                    palette.setColor(QPalette.ColorRole.WindowText, QColor(_model_theme_color("text")))
                     widget.setPalette(palette)
                     widget.setAutoFillBackground(True)
                     widget.setStyleSheet(style)
@@ -2396,8 +2396,8 @@ class ModelTab(QWidget):
         pixmap = base_icon.pixmap(20, 20)
         if bool(connected):
             painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setPen(Qt.NoPen)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor("#22C55E"))
             painter.drawEllipse(13, 1, 6, 6)
             painter.end()
@@ -2847,8 +2847,8 @@ class ModelTab(QWidget):
         button.setProperty("modelIconName", icon_name)
         button.setProperty("modelIconSize", int(icon_size))
         button.setProperty("modelIconColor", str(icon_color or ""))
-        button.setCursor(Qt.PointingHandCursor)
-        button.setFocusPolicy(Qt.NoFocus)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         set_walker_tooltip(button, tooltip)
         button.setStatusTip(tooltip)
         try:
@@ -2872,7 +2872,7 @@ class ModelTab(QWidget):
         except Exception:
             log_exception("falha opcional ignorada")
         if isinstance(button, QToolButton):
-            button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             button.setAutoRaise(False)
 
     def _configure_toolbar_text_icon_button(self, button, icon_name: str, text: str, tooltip: str, icon_size: int = 20, icon_color: str = ""):
@@ -2886,8 +2886,8 @@ class ModelTab(QWidget):
     def _create_toolbar_separator(self, parent: QWidget) -> QFrame:
         separator = QFrame(parent)
         separator.setObjectName("ModelToolbarSeparator")
-        separator.setFrameShape(QFrame.VLine)
-        separator.setFrameShadow(QFrame.Plain)
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Plain)
         return separator
 
     def _sync_toolbar_separator_visibility(self):
@@ -3622,7 +3622,7 @@ class ModelTab(QWidget):
         menu = apply_walker_menu(QMenu(self))
         add_chart_action = menu.addAction(_rt("Adicionar grafico em branco"))
         open_panel_action = menu.addAction(_rt("Abrir painel de camada"))
-        chosen = menu.exec_(global_pos)
+        chosen = menu.exec(global_pos)
         if chosen is add_chart_action:
             self._add_chart_from_builder()
         elif chosen is open_panel_action:
@@ -3646,7 +3646,7 @@ class ModelTab(QWidget):
             recent_projects=self.store.load_recents(),
             parent=self,
         )
-        if dialog.exec_() != dialog.Accepted:
+        if dialog.exec() != dialog.Accepted:
             return False
 
         selection = dialog.selection()
@@ -3730,7 +3730,7 @@ class ModelTab(QWidget):
         card = getattr(self, "model_import_card", self)
         point = card.mapToGlobal(card.rect().bottomLeft())
         point.setY(point.y() + 4)
-        chosen = menu.exec_(point)
+        chosen = menu.exec(point)
         if chosen is None:
             return
         self._open_model_import_dataset(str(chosen.data() or "PostgreSQL"))
@@ -3874,10 +3874,10 @@ class ModelTab(QWidget):
 
     def _database_connected_icon(self) -> QIcon:
         pixmap = QPixmap(14, 14)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setPen(Qt.NoPen)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#22C55E"))
         painter.drawEllipse(QRectF(3.0, 3.0, 8.0, 8.0))
         painter.end()
@@ -3890,9 +3890,9 @@ class ModelTab(QWidget):
 
             saved = connection_registry.saved_connections()
             dialog = DatabaseImportDialog(self, saved, preferred_driver=preferred_driver)
-            result = dialog.exec_()
+            result = dialog.exec()
             self._refresh_model_database_status()
-            if result != QDialog.Accepted:
+            if result != QDialog.DialogCode.Accepted:
                 return
             df, metadata, connection_meta, session_connection = dialog.result()
             host = self.window()
@@ -3941,12 +3941,12 @@ class ModelTab(QWidget):
                 self,
                 _rt("Model"),
                 _rt("O painel atual tem alterações não salvas. Deseja salvar antes de fechar?"),
-                buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-                defaultButton=QMessageBox.Yes,
+                buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                defaultButton=QMessageBox.StandardButton.Yes,
             )
-            if answer == QMessageBox.Cancel:
+            if answer == QMessageBox.StandardButton.Cancel:
                 return
-            if answer == QMessageBox.Yes:
+            if answer == QMessageBox.StandardButton.Yes:
                 self.save_project()
                 if self.current_project is not None and self._dirty:
                     return
@@ -4154,17 +4154,17 @@ class ModelTab(QWidget):
             self.visual_side_collapsed_rail.setVisible(collapsed)
         if hasattr(self, "visual_side_toggle_btn"):
             self.visual_side_toggle_btn.setVisible(not collapsed)
-            self.visual_side_toggle_btn.setArrowType(Qt.NoArrow)
+            self.visual_side_toggle_btn.setArrowType(Qt.ArrowType.NoArrow)
             self.visual_side_toggle_btn.setIcon(_model_panel_chevron_icon("right", 18))
-            self.visual_side_toggle_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            self.visual_side_toggle_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             self.visual_side_toggle_btn.setText("›")
             self.visual_side_toggle_btn.setText("")
             self.visual_side_toggle_btn.setFixedSize(22, 22)
             set_walker_tooltip(self.visual_side_toggle_btn, _rt("Recolher visualizações"))
         if hasattr(self, "visual_side_collapsed_btn"):
-            self.visual_side_collapsed_btn.setArrowType(Qt.NoArrow)
+            self.visual_side_collapsed_btn.setArrowType(Qt.ArrowType.NoArrow)
             self.visual_side_collapsed_btn.setIcon(_model_panel_chevron_icon("left", 18))
-            self.visual_side_collapsed_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            self.visual_side_collapsed_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             self.visual_side_collapsed_btn.setText("‹")
             self.visual_side_collapsed_btn.setText("")
             self.visual_side_collapsed_btn.setFixedSize(22, 22)
@@ -4214,7 +4214,7 @@ class ModelTab(QWidget):
             self.format_visual_btn.blockSignals(False)
         if active and focus:
             try:
-                self.builder_layer_combo.setFocus(Qt.TabFocusReason)
+                self.builder_layer_combo.setFocus(Qt.FocusReason.TabFocusReason)
             except Exception:
                 log_exception("falha opcional ignorada")
         self._schedule_toolbar_visuals_strip_visibility()
@@ -4328,7 +4328,7 @@ class ModelTab(QWidget):
         self.visual_panel.set_current_item(item_widget)
         if focus:
             try:
-                self.visual_panel.setFocus(Qt.TabFocusReason)
+                self.visual_panel.setFocus(Qt.FocusReason.TabFocusReason)
             except Exception:
                 log_exception("falha opcional ignorada")
 
@@ -4704,7 +4704,7 @@ class ModelTab(QWidget):
             card.clicked.connect(lambda selected_path=path: self.open_project(selected_path))
             row = index // columns
             column = index % columns
-            self.recents_layout.addWidget(card, row, column, Qt.AlignLeft | Qt.AlignTop)
+            self.recents_layout.addWidget(card, row, column, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         for column in range(columns):
             self.recents_layout.setColumnStretch(column, 0)
         cards_height = rows * _MODEL_RECENT_CARD_HEIGHT + max(0, rows - 1) * _MODEL_RECENT_ROW_GAP

@@ -46,11 +46,11 @@ class FieldItem(QGraphicsObject):
             self._type_font.setItalic(True)
             self._height = 16.0
             self.setAcceptHoverEvents(False)
-            self.setAcceptedMouseButtons(Qt.NoButton)
+            self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self.setFlag(self.ItemIsSelectable, False)
         else:
             self.setAcceptHoverEvents(True)
-            self.setAcceptedMouseButtons(Qt.LeftButton)
+            self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
             self.setFlag(self.ItemIsSelectable, True)
 
     # State helpers ------------------------------------------------------
@@ -105,32 +105,32 @@ class FieldItem(QGraphicsObject):
         painter.setFont(self._font)
         metrics = QFontMetrics(self._font)
         max_text_width = rect.width() - 32
-        name_text = metrics.elidedText(self.field_name, Qt.ElideRight, int(max_text_width))
-        painter.drawText(rect.adjusted(8, 0, -32, 0), Qt.AlignVCenter | Qt.AlignLeft, name_text)
+        name_text = metrics.elidedText(self.field_name, Qt.TextElideMode.ElideRight, int(max_text_width))
+        painter.drawText(rect.adjusted(8, 0, -32, 0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, name_text)
 
         if self.data_type:
             painter.setFont(self._type_font)
             painter.setPen(type_color)
-            painter.drawText(rect.adjusted(rect.width() - 70, 0, -8, 0), Qt.AlignVCenter | Qt.AlignRight, self.data_type)
+            painter.drawText(rect.adjusted(rect.width() - 70, 0, -8, 0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, self.data_type)
 
         if not self.is_virtual:
             port_center = QPointF(rect.width() - self.port_radius * 2, rect.height() / 2)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor("#505050"))
             painter.drawEllipse(port_center, self.port_radius, self.port_radius)
 
             if self.hasRelations():
                 painter.setBrush(QColor("#3CB371"))  # verde suave para destacar relacoes
-                painter.setPen(Qt.NoPen)
+                painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawEllipse(port_center, self.port_radius - 1.5, self.port_radius - 1.5)
 
             if self.is_primary_key:
                 painter.setBrush(QColor("#E1B12C"))
-                painter.setPen(Qt.NoPen)
+                painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawRect(QRectF(2, rect.height() / 2 - 4, 6, 8))
             elif self.is_foreign_key:
                 painter.setBrush(QColor("#4C93D0"))
-                painter.setPen(Qt.NoPen)
+                painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawRect(QRectF(2, rect.height() / 2 - 4, 6, 8))
 
     # Interaction --------------------------------------------------------
@@ -145,7 +145,7 @@ class FieldItem(QGraphicsObject):
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):  # type: ignore[override]
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             scene = self.scene()
             if scene is not None:
                 try:
@@ -167,7 +167,7 @@ class FieldItem(QGraphicsObject):
 
     def mouseReleaseEvent(self, event):  # type: ignore[override]
         scene = self.scene()
-        if scene is not None and event.button() == Qt.LeftButton:
+        if scene is not None and event.button() == Qt.MouseButton.LeftButton:
             try:
                 scene.finalize_connection(self, event.scenePos())  # type: ignore[attr-defined]
             except Exception:

@@ -84,11 +84,11 @@ class PivotValidator:
 
         geometry_type = QgsWkbTypes.geometryType(layer.wkbType())
         for field_spec in specs:
-            if field_spec.geometry_op == "area" and geometry_type != QgsWkbTypes.PolygonGeometry:
+            if field_spec.geometry_op == "area" and geometry_type != QgsWkbTypes.GeometryType.PolygonGeometry:
                 raise PivotValidationError(_rt("Área só pode ser usada em camada poligonal."))
             if field_spec.geometry_op == "length" and geometry_type not in {
-                QgsWkbTypes.LineGeometry,
-                QgsWkbTypes.PolygonGeometry,
+                QgsWkbTypes.GeometryType.LineGeometry,
+                QgsWkbTypes.GeometryType.PolygonGeometry,
             }:
                 raise PivotValidationError(_rt("Comprimento só pode ser usado em linha ou polígono."))
 

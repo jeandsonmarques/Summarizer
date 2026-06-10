@@ -177,11 +177,11 @@ def _render_chart_image_html(labels: list[str], values: list[float]) -> str:
 
     height_px = max(320, int(len(values) * 38 + 120))
     width_px = 780
-    image = QImage(width_px, height_px, QImage.Format_ARGB32)
+    image = QImage(width_px, height_px, QImage.Format.Format_ARGB32)
     theme = VisualTheme()
     image.fill(theme.bg)
     painter = QPainter(image)
-    painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+    painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
     definition = VisualDefinition(
         tipo="barra",
         categorias=labels,
@@ -191,7 +191,7 @@ def _render_chart_image_html(labels: list[str], values: list[float]) -> str:
     BarChartRenderer().render(painter, QRectF(0, 0, width_px, height_px), definition, theme)
     painter.end()
     buffer = QBuffer()
-    buffer.open(QBuffer.ReadWrite)
+    buffer.open(QBuffer.OpenModeFlag.ReadWrite)
     image.save(buffer, "PNG")
     encoded = base64.b64encode(bytes(buffer.data())).decode("utf-8")
     return (

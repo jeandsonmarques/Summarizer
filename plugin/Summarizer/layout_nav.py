@@ -2,12 +2,18 @@
 # Copyright (C) 2026 Jeandson Marques
 
 import os
+from urllib.parse import urlencode
 from typing import Dict, Optional
 
-from qgis.PyQt.QtCore import QByteArray, QEasingCurve, QEvent, QObject, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, QSettings
-from qgis.PyQt.QtGui import QColor, QIcon, QPainter, QPixmap
+from qgis.PyQt.QtCore import QByteArray, QEasingCurve, QEvent, QObject, QRect, QRectF, QSize, Qt, QTimer, QVariantAnimation, QSettings, QUrl
+from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPixmap
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.PyQt.QtWidgets import QFrame, QPushButton, QToolTip, QVBoxLayout, QWidget
+try:
+    from qgis.core import Qgis, QgsApplication
+except Exception:  # pragma: no cover - allows tests outside QGIS
+    Qgis = None  # type: ignore
+    QgsApplication = None  # type: ignore
 
 from .utils.resources import svg_icon
 
@@ -32,7 +38,7 @@ def _tinted_svg_icon(filename: str, color: str, size: QSize) -> QIcon:
         side_w = max(1, int(size.width() or 24))
         side_h = max(1, int(size.height() or 24))
         pixmap = QPixmap(side_w, side_h)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         viewbox = renderer.viewBoxF()
         if viewbox.isValid() and viewbox.width() > 0 and viewbox.height() > 0:
@@ -43,13 +49,88 @@ def _tinted_svg_icon(filename: str, color: str, size: QSize) -> QIcon:
             renderer.render(painter, target)
         else:
             renderer.render(painter)
-        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
         painter.fillRect(pixmap.rect(), QColor(color))
         painter.end()
         return QIcon(pixmap)
     except Exception:
         log_exception("falha opcional ignorada")
         return svg_icon(filename)
+
+
+def _tinted_icon_file(path: str, color: str, size: QSize) -> QIcon:
+    if not path or not os.path.exists(path):
+        return QIcon()
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            svg_data = handle.read().replace("currentColor", color)
+            renderer = QSvgRenderer(QByteArray(svg_data.encode("utf-8")))
+        side_w = max(1, int(size.width() or 24))
+        side_h = max(1, int(size.height() or 24))
+        pixmap = QPixmap(side_w, side_h)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color))
+        painter.end()
+        return QIcon(pixmap)
+    except Exception:
+        log_exception("falha opcional ignorada")
+        return QIcon(path)
+
+
+def _qgis_version_text():
+    try:
+        if Qgis is not None:
+            return Qgis.QGIS_VERSION
+    except Exception:
+        pass
+    try:
+        if QgsApplication is not None:
+            return QgsApplication.qgisVersion()
+    except Exception:
+        pass
+    return "Unknown"
+
+
+def open_issue_report():
+    issue_url = "https://github.com/jeandsonmarques/Summarizer/issues/new"
+    title = "Bug report: Summarizer"
+    body = f"""
+## Bug report
+
+Please describe what happened:
+
+## Steps to reproduce
+
+1.
+2.
+3.
+
+## Expected behavior
+
+What did you expect to happen?
+
+## Error message or screenshot
+
+Paste the error message or screenshot here.
+
+## Environment
+
+* Summarizer version:
+* QGIS version: {_qgis_version_text()}
+* Operating system:
+* Installation source: QGIS Plugin Repository / ZIP
+"""
+    query = urlencode({
+        "title": title,
+        "body": body.strip(),
+    })
+    try:
+        QDesktopServices.openUrl(QUrl(f"{issue_url}?{query}"))
+    except Exception:
+        log_exception("falha opcional ignorada")
 
 
 class SidebarController(QObject):
@@ -84,10 +165,12 @@ class SidebarController(QObject):
         self._all_nav_buttons = []
         self._database_status_dot: Optional[QFrame] = None
         self._sidebar_container: Optional[QWidget] = None
+        self._report_bug_button: Optional[QPushButton] = None
+        self._report_bug_icon_path = os.path.join(os.path.dirname(__file__), "resources", "icons", "bug_report.svg")
         self._active_indicator: Optional[QFrame] = None
         self._indicator_animation = QVariantAnimation(self.ui if isinstance(self.ui, QWidget) else None)
         self._indicator_animation.setDuration(220)
-        self._indicator_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._indicator_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._indicator_animation.valueChanged.connect(self._on_indicator_value_changed)
         self._indicator_target_rect = QRect()
 
@@ -106,11 +189,11 @@ class SidebarController(QObject):
         if layout is None:
             layout = QVBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(8)
+        layout.setSpacing(2)
 
         self._active_indicator = QFrame(container)
         self._active_indicator.setObjectName("sidebarActiveIndicator")
-        self._active_indicator.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._active_indicator.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._active_indicator.setStyleSheet("background: #6C4CF1; border-radius: 1px;")
         self._active_indicator.setGeometry(0, 0, 3, 28)
         self._active_indicator.hide()
@@ -120,9 +203,9 @@ class SidebarController(QObject):
         for mode, (tooltip, icon_name) in self.ICON_MAP.items():
             btn = QPushButton("")
             btn.setCheckable(True)
-            btn.setCursor(Qt.PointingHandCursor)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setToolTip(tooltip)
-            btn.setFixedSize(50, 37)
+            btn.setFixedSize(50, 34)
             btn.setIconSize(QSize(22, 22))
             btn.setProperty("navIcon", "true")
             btn.setProperty("active", False)
@@ -130,7 +213,7 @@ class SidebarController(QObject):
             btn.setIcon(svg_icon(icon_name))
             self._button_icon_names[mode] = icon_name
             btn.clicked.connect(lambda checked, m=mode: self._handle_nav_click(m))
-            layout.addWidget(btn, 0, Qt.AlignTop)
+            layout.addWidget(btn, 0, Qt.AlignmentFlag.AlignTop)
             btn.installEventFilter(self)
             self.buttons[mode] = btn
             self._all_nav_buttons.append(btn)
@@ -138,12 +221,22 @@ class SidebarController(QObject):
                 btn.hide()
                 self._database_status_dot = QFrame(btn)
                 self._database_status_dot.setObjectName("databaseConnectionDot")
-                self._database_status_dot.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                self._database_status_dot.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 self._database_status_dot.setFixedSize(8, 8)
                 self._database_status_dot.setStyleSheet("background: #22C55E; border-radius: 4px;")
                 self._database_status_dot.hide()
 
         layout.addStretch(1)
+
+        self._report_bug_button = QPushButton("")
+        self._report_bug_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._report_bug_button.setToolTip("Report a bug or suggestion on GitHub")
+        self._report_bug_button.setFixedSize(50, 34)
+        self._report_bug_button.setIconSize(QSize(18, 18))
+        self._report_bug_button.setProperty("reportBugButton", True)
+        self._report_bug_button.clicked.connect(open_issue_report)
+        layout.addWidget(self._report_bug_button, 0, Qt.AlignmentFlag.AlignTop)
+        self._report_bug_button.installEventFilter(self)
 
     def _handle_nav_click(self, mode: str):
         btn = self.buttons.get(mode)
@@ -272,13 +365,36 @@ class SidebarController(QObject):
                 btn.style().polish(btn)
             except Exception:
                 log_exception("falha opcional ignorada")
+        if self._report_bug_button is not None:
+            self._refresh_report_bug_icon(hover=False)
+            try:
+                self._report_bug_button.style().unpolish(self._report_bug_button)
+                self._report_bug_button.style().polish(self._report_bug_button)
+            except Exception:
+                log_exception("falha opcional ignorada")
 
     def eventFilter(self, watched, event):
         if watched is self._sidebar_container or watched in self._all_nav_buttons:
-            if event.type() in (QEvent.Move, QEvent.Resize, QEvent.Show):
+            if event.type() in (QEvent.Type.Move, QEvent.Type.Resize, QEvent.Type.Show):
                 QTimer.singleShot(0, self._sync_indicator_to_current_mode)
                 QTimer.singleShot(0, self._position_database_status_dot)
+        if watched is self._report_bug_button:
+            if event.type() == QEvent.Type.Enter:
+                self._refresh_report_bug_icon(hover=True)
+            elif event.type() == QEvent.Type.Leave:
+                self._refresh_report_bug_icon(hover=False)
         return False
+
+    def _refresh_report_bug_icon(self, hover: bool = False):
+        btn = self._report_bug_button
+        if btn is None:
+            return
+        dark_mode = _is_dark_theme()
+        if hover:
+            icon_color = "#F8FAFC" if dark_mode else "#334155"
+        else:
+            icon_color = "#CBD5E1" if dark_mode else "#64748B"
+        btn.setIcon(_tinted_icon_file(self._report_bug_icon_path, icon_color, btn.iconSize()))
 
     def _position_database_status_dot(self):
         btn = self.buttons.get("database")

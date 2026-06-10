@@ -67,6 +67,8 @@ def populate_table(
     from qgis.PyQt.QtCore import Qt
     from qgis.PyQt.QtGui import QFont, QStandardItem, QStandardItemModel
 
+    from ..utils.fonts import _qfont_weight
+
     self = widget
     message_log.logMessage("PivotTableWidget: rebuilding table model", "Summarizer", qgis_info)
     self.proxy_model.setSourceModel(None)
@@ -124,24 +126,24 @@ def populate_table(
 
     base_font = ui_font_factory()
     base_font.setPixelSize(int(typography.get("font_body_px", 13)))
-    base_font.setWeight(QFont.Medium)
+    base_font.setWeight(_qfont_weight("Medium", 57))
     total_column_index = headers.index("Total") if "Total" in headers else -1
     for row_index, row in enumerate(self.pivot_df.itertuples(index=False, name=None)):
         items = []
         for column_index, value in enumerate(row):
             item = QStandardItem(format_table_value(value))
             item.setEditable(False)
-            item.setData(None if pd.isna(value) else value, Qt.UserRole + 3)
+            item.setData(None if pd.isna(value) else value, Qt.ItemDataRole.UserRole + 3)
             font = QFont(base_font)
             if column_index == total_column_index:
                 font.setBold(True)
             item.setFont(font)
             if column_index < self._pivot_data_column_offset:
-                item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             if isinstance(value, (float, np.floating, int, np.integer)):
-                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             else:
-                item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             has_feature_lookup = all(
                 (
                     self._current_pivot_result is not None,
@@ -158,7 +160,7 @@ def populate_table(
                     display_column_keys=self._display_column_keys,
                 )
                 if feature_ids is not None:
-                    item.setData(feature_ids, Qt.UserRole)
+                    item.setData(feature_ids, Qt.ItemDataRole.UserRole)
             items.append(item)
         new_model.appendRow(items)
 

@@ -31,9 +31,9 @@ class ModelCanvasView(QGraphicsView):
         self._pan_press_pos = QPoint()
         self._legend_widget = None
 
-        render_hints = QPainter.Antialiasing
-        render_hints |= QPainter.TextAntialiasing
-        render_hints |= QPainter.SmoothPixmapTransform
+        render_hints = QPainter.RenderHint.Antialiasing
+        render_hints |= QPainter.RenderHint.TextAntialiasing
+        render_hints |= QPainter.RenderHint.SmoothPixmapTransform
         self.setRenderHints(render_hints)
         self.setDragMode(self.RubberBandDrag)
         self.setViewportUpdateMode(self.SmartViewportUpdate)
@@ -119,7 +119,7 @@ class ModelCanvasView(QGraphicsView):
         if delta == 0:
             return
 
-        if event.modifiers() & Qt.ShiftModifier:
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
             shift_factor = delta / 2.5
             self.translate(shift_factor, 0)
             event.accept()
@@ -160,7 +160,7 @@ class ModelCanvasView(QGraphicsView):
         target = items_rect.adjusted(-padding, -padding, padding, padding)
         self.resetTransform()
         self._zoom = 1.0
-        self.fitInView(target, Qt.KeepAspectRatio)
+        self.fitInView(target, Qt.AspectRatioMode.KeepAspectRatio)
         fitted = self.transform().m11()
         self._zoom = max(self._min_zoom, min(self._max_zoom, fitted))
         if fitted != self._zoom:
@@ -178,7 +178,7 @@ class ModelCanvasView(QGraphicsView):
         target = rect.adjusted(-padding, -padding, padding, padding)
         self.resetTransform()
         self._zoom = 1.0
-        self.fitInView(target, Qt.KeepAspectRatio)
+        self.fitInView(target, Qt.AspectRatioMode.KeepAspectRatio)
         fitted = self.transform().m11()
         self._zoom = max(self._min_zoom, min(self._max_zoom, fitted))
         if fitted != self._zoom:
@@ -188,7 +188,7 @@ class ModelCanvasView(QGraphicsView):
 
     # ------------------------------------------------------------------- Panning
     def mousePressEvent(self, event):  # type: ignore[override]
-        if event.button() in (Qt.RightButton, Qt.MiddleButton):
+        if event.button() in (Qt.MouseButton.RightButton, Qt.MouseButton.MiddleButton):
             self._panning_button = event.button()
             self._last_pan_point = event.pos()
             self._pan_press_pos = event.pos()
@@ -202,7 +202,7 @@ class ModelCanvasView(QGraphicsView):
             if not self._pan_started:
                 if (event.pos() - self._pan_press_pos).manhattanLength() > 2:
                     self._pan_started = True
-                    self.setCursor(Qt.ClosedHandCursor)
+                    self.setCursor(Qt.CursorShape.ClosedHandCursor)
             if self._pan_started:
                 delta = event.pos() - self._last_pan_point
                 self._last_pan_point = event.pos()
@@ -216,11 +216,11 @@ class ModelCanvasView(QGraphicsView):
             if self._pan_started:
                 self._pan_started = False
                 self._panning_button = None
-                self.setCursor(Qt.ArrowCursor)
+                self.setCursor(Qt.CursorShape.ArrowCursor)
                 event.accept()
                 return
             self._panning_button = None
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
         super().mouseReleaseEvent(event)
 
     def contextMenuEvent(self, event):  # type: ignore[override]
@@ -249,7 +249,7 @@ class ModelCanvasView(QGraphicsView):
                 act.setChecked(value == current_style)
                 act.triggered.connect(lambda _=False, v=value: self._apply_connection_style(v))
 
-        menu.exec_(event.globalPos())
+        menu.exec(event.globalPos())
 
     # --------------------------------------------------------------------- Export
     def export_image(self, path: str, padding: float = 30.0) -> bool:
@@ -263,10 +263,10 @@ class ModelCanvasView(QGraphicsView):
 
         width = max(1, int(rect.width()))
         height = max(1, int(rect.height()))
-        image = QImage(width, height, QImage.Format_ARGB32_Premultiplied)
+        image = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
         image.fill(QColor("#FFFFFF"))
         painter = QPainter(image)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.translate(-rect.topLeft())
         scene.render(painter, target=QRectF(image.rect()), source=rect)
         painter.end()

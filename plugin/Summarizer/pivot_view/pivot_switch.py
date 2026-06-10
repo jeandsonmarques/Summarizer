@@ -22,15 +22,15 @@ class PivotSwitch(QWidget):
         super().__init__(parent)
         self._checked = False
         self._pressed = False
-        self.setAttribute(Qt.WA_StyledBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         self.setAutoFillBackground(False)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFixedSize(30, 16)
         self._handle_position = 0.0
         self._animation = QPropertyAnimation(self, b"handlePosition", self)
         self._animation.setDuration(160)
-        self._animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
     def sizeHint(self):
         return self.minimumSizeHint()
@@ -76,7 +76,7 @@ class PivotSwitch(QWidget):
         self._animation.start()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self.rect().contains(event.pos()):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             self._pressed = True
             self.update()
             event.accept()
@@ -86,7 +86,7 @@ class PivotSwitch(QWidget):
     def mouseReleaseEvent(self, event):
         was_pressed = self._pressed
         self._pressed = False
-        if event.button() == Qt.LeftButton and self.rect().contains(event.pos()):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             if was_pressed:
                 self._toggle()
             event.accept()
@@ -101,7 +101,7 @@ class PivotSwitch(QWidget):
         super().leaveEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._toggle()
             event.accept()
             return
@@ -110,9 +110,9 @@ class PivotSwitch(QWidget):
     def paintEvent(self, event):
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         try:
-            painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         except Exception:
             pass
 
@@ -147,7 +147,7 @@ class PivotSwitch(QWidget):
             halo = QColor("#7C6CFF" if self.isChecked() else "#64748B")
             halo.setAlpha(70 if self._pressed else 42)
             painter.setPen(QPen(halo, 2.0))
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(
                 track_rect.adjusted(-1.0, -1.0, 1.0, 1.0),
                 radius + 1.0,
@@ -167,7 +167,7 @@ class PivotSwitch(QWidget):
         if self._pressed:
             glow = QColor("#FFFFFF")
             glow.setAlpha(70)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(glow)
             painter.drawEllipse(knob_rect.adjusted(-1.0, -1.0, 1.0, 1.0))
         painter.setPen(QPen(QColor("#475569" if _is_dark_theme() else "#D7DEE8"), 0.8))

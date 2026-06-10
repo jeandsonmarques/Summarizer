@@ -48,7 +48,7 @@ INK_COLOR = "#252B33"
 def build_field_drag_payload(items) -> List[Dict[str, str]]:
     payload: List[Dict[str, str]] = []
     for item in items or []:
-        spec_key = item.data(Qt.UserRole)
+        spec_key = item.data(Qt.ItemDataRole.UserRole)
         if spec_key:
             payload.append({"spec_key": spec_key, "text": item.text()})
     return payload
@@ -119,13 +119,13 @@ class _PivotFieldSourceListWidget(QListWidget):
         super().__init__(parent)
         self._owner = owner
         self.setDragEnabled(True)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setDragDropMode(QAbstractItemView.DragOnly)
-        self.setDefaultDropAction(Qt.CopyAction)
-        self.setContextMenuPolicy(Qt.DefaultContextMenu)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+        self.setDefaultDropAction(Qt.DropAction.CopyAction)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
 
     def supportedDropActions(self):
-        return Qt.CopyAction
+        return Qt.DropAction.CopyAction
 
     def mimeTypes(self):
         return [PIVOT_FIELD_MIME]
@@ -136,16 +136,16 @@ class _PivotFieldSourceListWidget(QListWidget):
         return mime
 
     def startDrag(self, supported_actions):
-        items = [item for item in self.selectedItems() if item.data(Qt.UserRole)]
+        items = [item for item in self.selectedItems() if item.data(Qt.ItemDataRole.UserRole)]
         if not items:
             current = self.currentItem()
-            if current is not None and current.data(Qt.UserRole):
+            if current is not None and current.data(Qt.ItemDataRole.UserRole):
                 items = [current]
         if not items:
             return
         drag = QDrag(self)
         drag.setMimeData(self.mimeData(items))
-        drag.exec_(Qt.CopyAction)
+        drag.exec(Qt.DropAction.CopyAction)
 
     def contextMenuEvent(self, event):
         if self._owner is None:
@@ -154,7 +154,7 @@ class _PivotFieldSourceListWidget(QListWidget):
         item = self.itemAt(event.pos()) or self.currentItem()
         if item is None:
             return
-        spec_key = item.data(Qt.UserRole)
+        spec_key = item.data(Qt.ItemDataRole.UserRole)
         if not spec_key or spec_key == "__placeholder__":
             return
         spec = self._owner._field_spec_from_key(spec_key)
@@ -167,7 +167,7 @@ class _PivotFieldSourceListWidget(QListWidget):
         add_rows = menu.addAction(_rt("Adicionar em Linhas"))
         add_columns = menu.addAction(_rt("Adicionar em Colunas"))
         add_values = menu.addAction(_rt("Adicionar em Valores"))
-        action = menu.exec_(event.globalPos())
+        action = menu.exec(event.globalPos())
         if action is None:
             return
         if action == add_last:
@@ -190,7 +190,7 @@ class _VerticalPanelLabel(QLabel):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         painter.translate(self.width() / 2, self.height() / 2)
         painter.rotate(-90)
         rect = QRect(
@@ -199,9 +199,9 @@ class _VerticalPanelLabel(QLabel):
             int(self.height()),
             int(self.width()),
         )
-        painter.setPen(self.palette().color(QPalette.WindowText))
+        painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
         painter.setFont(self.font())
-        painter.drawText(rect, Qt.AlignCenter, self.text())
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text())
 
 
 class _SummarySourceCard(QToolButton):
@@ -216,7 +216,7 @@ class _SummarySourceCard(QToolButton):
         self.setObjectName("summarySourceCard")
         self.setCheckable(True)
         self.setAutoExclusive(False)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setText(title)
         self.setFixedSize(244, 68)
         self.setAutoRaise(False)
@@ -263,7 +263,7 @@ class _SummarySourceCard(QToolButton):
     def paintEvent(self, event):
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         rect = self.rect().adjusted(1, 1, -1, -1)
         radius = 12
@@ -293,8 +293,8 @@ class _SummarySourceCard(QToolButton):
         painter.setFont(title_font)
         painter.setPen(QColor("#0F172A"))
         metrics = QFontMetrics(title_font)
-        title = metrics.elidedText(self.text(), Qt.ElideRight, text_rect.width())
-        painter.drawText(text_rect, Qt.AlignCenter, title)
+        title = metrics.elidedText(self.text(), Qt.TextElideMode.ElideRight, text_rect.width())
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, title)
 
 
 class _PivotFieldListDelegate(QStyledItemDelegate):
@@ -308,28 +308,28 @@ class _PivotFieldListDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
         opt = QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
-        is_numeric = bool(index.data(Qt.UserRole + 1))
-        is_selected = bool(opt.state & QStyle.State_Selected)
+        is_numeric = bool(index.data(Qt.ItemDataRole.UserRole + 1))
+        is_selected = bool(opt.state & QStyle.StateFlag.State_Selected)
 
         if is_selected:
             painter.save()
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setPen(Qt.NoPen)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(self._NUMERIC_SELECTED_BG if is_numeric else self._TEXT_SELECTED_BG)
             painter.drawRoundedRect(opt.rect.adjusted(1, 0, -1, 0), 4, 4)
             painter.restore()
 
-        opt.state &= ~QStyle.State_Selected
-        opt.state &= ~QStyle.State_HasFocus
-        opt.palette.setColor(QPalette.Text, self._NUMERIC_COLOR if is_numeric else self._TEXT_COLOR)
+        opt.state &= ~QStyle.StateFlag.State_Selected
+        opt.state &= ~QStyle.StateFlag.State_HasFocus
+        opt.palette.setColor(QPalette.ColorRole.Text, self._NUMERIC_COLOR if is_numeric else self._TEXT_COLOR)
         if is_selected:
             opt.palette.setColor(
-                QPalette.Text,
+                QPalette.ColorRole.Text,
                 self._NUMERIC_SELECTED_COLOR if is_numeric else self._TEXT_SELECTED_COLOR,
             )
 
         style = opt.widget.style() if opt.widget is not None else QApplication.style()
-        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
 
 
 def populate_field_panel(
@@ -357,20 +357,20 @@ def populate_field_panel(
         _TOOLBAR_SVG_ICONS["field_text"],
         size=14,
         color_map={
-            QIcon.Normal: "#60a5fa",
-            QIcon.Active: "#3b82f6",
-            QIcon.Selected: "#1d4ed8",
-            QIcon.Disabled: "#cbd5e1",
+            QIcon.Mode.Normal: "#60a5fa",
+            QIcon.Mode.Active: "#3b82f6",
+            QIcon.Mode.Selected: "#1d4ed8",
+            QIcon.Mode.Disabled: "#cbd5e1",
         },
     )
     numeric_icon = _svg_icon_from_template(
         _TOOLBAR_SVG_ICONS["field_numeric"],
         size=14,
         color_map={
-            QIcon.Normal: "#c084fc",
-            QIcon.Active: "#a855f7",
-            QIcon.Selected: "#9333ea",
-            QIcon.Disabled: "#e9d5ff",
+            QIcon.Mode.Normal: "#c084fc",
+            QIcon.Mode.Active: "#a855f7",
+            QIcon.Mode.Selected: "#9333ea",
+            QIcon.Mode.Disabled: "#e9d5ff",
         },
     )
 
@@ -394,9 +394,9 @@ def populate_field_panel(
         item = QListWidgetItem(
             f"# {field_spec.display_name}" if is_numeric else field_spec.display_name
         )
-        item.setData(Qt.UserRole, spec_key)
-        item.setData(Qt.UserRole + 1, is_numeric)
-        item.setData(Qt.UserRole + 2, field_spec.display_name)
+        item.setData(Qt.ItemDataRole.UserRole, spec_key)
+        item.setData(Qt.ItemDataRole.UserRole + 1, is_numeric)
+        item.setData(Qt.ItemDataRole.UserRole + 2, field_spec.display_name)
         item.setIcon(numeric_icon if is_numeric else text_icon)
         self.fields_list.addItem(item)
         self.filter_field_combo.addItem(field_spec.display_name, spec_key)
@@ -420,11 +420,11 @@ def populate_field_panel(
 
 def handle_field_double_click(widget, item: QListWidgetItem):
     self = widget
-    spec_key = item.data(Qt.UserRole)
+    spec_key = item.data(Qt.ItemDataRole.UserRole)
     field_spec = self._field_spec_from_key(spec_key)
     if field_spec is None:
         return
-    is_numeric = item.data(Qt.UserRole + 1)
+    is_numeric = item.data(Qt.ItemDataRole.UserRole + 1)
     target_area = getattr(self, "_last_active_area", "row")
     if target_area == "value":
         if not is_numeric and field_spec.source_type != "geometry":
@@ -472,7 +472,7 @@ def desired_fields_panel_width(
         widest_text = 0
         for index in range(self.fields_list.count()):
             item = self.fields_list.item(index)
-            if item is None or item.data(Qt.UserRole) == "__placeholder__":
+            if item is None or item.data(Qt.ItemDataRole.UserRole) == "__placeholder__":
                 continue
             widest_text = max(widest_text, metrics.horizontalAdvance(str(item.text() or "")))
         icon_width = int(self.fields_list.iconSize().width() or 14)

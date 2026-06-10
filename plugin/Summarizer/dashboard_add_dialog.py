@@ -55,7 +55,7 @@ class DashboardAddDialog(QDialog):
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(8)
         title.setProperty("cardTitle", True)
-        header.addWidget(title, 1, Qt.AlignVCenter)
+        header.addWidget(title, 1, Qt.AlignmentFlag.AlignVCenter)
         add_walker_close_button(header, self)
         layout.addLayout(header)
 
@@ -104,11 +104,11 @@ class DashboardAddDialog(QDialog):
 
         layout.addWidget(options_card, 1)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, Qt.Orientation.Horizontal, self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        self.ok_button = buttons.button(QDialogButtonBox.Ok)
-        self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
+        self.ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self.cancel_button = buttons.button(QDialogButtonBox.StandardButton.Cancel)
         if self.ok_button is not None:
             self.ok_button.setObjectName("WalkerPrimaryButton")
         if self.cancel_button is not None:

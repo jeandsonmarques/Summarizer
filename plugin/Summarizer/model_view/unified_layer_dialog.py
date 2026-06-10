@@ -79,7 +79,7 @@ class UnifiedLayerDialog(QDialog):
         fields_group = QGroupBox(_rt("Campos da origem a copiar"))
         fields_layout = QVBoxLayout(fields_group)
         self.fields_list = QListWidget(fields_group)
-        self.fields_list.setSelectionMode(QListWidget.NoSelection)
+        self.fields_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         fields_layout.addWidget(self.fields_list)
         layout.addWidget(fields_group, 1)
 
@@ -105,12 +105,12 @@ class UnifiedLayerDialog(QDialog):
         layout.addWidget(QLabel(_rt("Nome da camada de saída:")))
         layout.addWidget(self.layer_name_edit)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
         apply_walker_buttons(
-            primary=[buttons.button(QDialogButtonBox.Ok)],
-            secondary=[buttons.button(QDialogButtonBox.Cancel), browse_btn],
+            primary=[buttons.button(QDialogButtonBox.StandardButton.Ok)],
+            secondary=[buttons.button(QDialogButtonBox.StandardButton.Cancel), browse_btn],
         )
         layout.addWidget(buttons)
         self.setStyleSheet(WALKER_DIALOG_STYLE)
@@ -119,8 +119,8 @@ class UnifiedLayerDialog(QDialog):
         try:
             for field in self.source_layer.fields():
                 item = QListWidgetItem(field.name())
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(Qt.Checked)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Checked)
                 self.fields_list.addItem(item)
         except Exception:
             log_exception("falha opcional ignorada")
@@ -148,12 +148,12 @@ class UnifiedLayerDialog(QDialog):
         self.accept()
 
     def result_config(self) -> Optional[dict]:
-        if self.result() != QDialog.Accepted:
+        if self.result() != QDialog.DialogCode.Accepted:
             return None
         fields = []
         for i in range(self.fields_list.count()):
             item = self.fields_list.item(i)
-            if item.checkState() == Qt.Checked:
+            if item.checkState() == Qt.CheckState.Checked:
                 fields.append(item.text())
         mode = "gpkg" if self.gpkg_radio.isChecked() else "memory"
         return {

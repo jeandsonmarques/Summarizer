@@ -31,6 +31,18 @@ from .utils.i18n_runtime import tr_text as _rt
 from .utils.window_theme import apply_windows_title_bar_theme
 from .walker_dialogs import (
     WALKER_DIALOG_STYLE,
+    _MB_ABORT,
+    _MB_CANCEL,
+    _MB_CLOSE,
+    _MB_DISCARD,
+    _MB_IGNORE,
+    _MB_NO,
+    _MB_NO_BUTTON,
+    _MB_OK,
+    _MB_RETRY,
+    _MB_SAVE,
+    _MB_YES,
+    _enum_value,
     apply_walker_dialog,
     center_dialog_on_parent,
     add_walker_close_button,
@@ -425,9 +437,9 @@ class SlimDialogBase(QDialog):
         self.setObjectName("SlimDialog")
         self.setProperty("walkerDialog", True)
         self.setModal(True)
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowFlags(walker_dialog_flags())
-        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self._walker_overlay = None
         self._walker_header_added = False
 
@@ -488,7 +500,7 @@ class SlimDialogBase(QDialog):
         header.setSpacing(8)
         title = QLabel(self.windowTitle() or "Summarizer", self)
         title.setObjectName("WalkerDialogTitle")
-        header.addWidget(title, 1, Qt.AlignVCenter)
+        header.addWidget(title, 1, Qt.AlignmentFlag.AlignVCenter)
         add_walker_close_button(header, self)
         layout.insertLayout(0, header)
 
@@ -505,9 +517,9 @@ class SlimPopoverDialog(QDialog):
         self.setObjectName("SlimPopoverDialog")
         self.setProperty("walkerDialog", True)
         self.setModal(True)
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowFlags(walker_dialog_flags())
-        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setFont(_build_dialog_font())
         self._font_enforcer = attach_ui_font_enforcer(self)
         self._refresh_dialog_style()
@@ -519,7 +531,7 @@ class SlimPopoverDialog(QDialog):
         self.panel = QFrame(self)
         self.panel.setObjectName("SlimPopoverPanel")
         self.panel.setProperty("walkerPanel", True)
-        self.panel.setAttribute(Qt.WA_StyledBackground, True)
+        self.panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         root.addWidget(self.panel)
 
         self.panel_layout = QVBoxLayout(self.panel)
@@ -613,9 +625,9 @@ class SlimTextInputDialog(SlimPopoverDialog):
             icon_label = QLabel(icon_wrap)
             icon_label.setObjectName("SlimPopoverIcon")
             icon_label.setPixmap(icon.pixmap(14, 14))
-            icon_label.setAlignment(Qt.AlignCenter)
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             icon_layout.addWidget(icon_label)
-            header.addWidget(icon_wrap, 0, Qt.AlignTop)
+            header.addWidget(icon_wrap, 0, Qt.AlignmentFlag.AlignTop)
 
         title_column = QVBoxLayout()
         title_column.setContentsMargins(0, 0, 0, 0)
@@ -665,7 +677,7 @@ class SlimTextInputDialog(SlimPopoverDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
-        self.field.setFocus(Qt.TabFocusReason)
+        self.field.setFocus(Qt.FocusReason.TabFocusReason)
         self.field.selectAll()
 
     def value(self) -> str:
@@ -707,9 +719,9 @@ class SlimMessageDialog(SlimPopoverDialog):
             icon_label = QLabel(icon_wrap)
             icon_label.setObjectName("SlimPopoverIcon")
             icon_label.setPixmap(icon.pixmap(14, 14))
-            icon_label.setAlignment(Qt.AlignCenter)
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             icon_layout.addWidget(icon_label)
-            header.addWidget(icon_wrap, 0, Qt.AlignTop)
+            header.addWidget(icon_wrap, 0, Qt.AlignmentFlag.AlignTop)
 
         title_column = QVBoxLayout()
         title_column.setContentsMargins(0, 0, 0, 0)
@@ -731,7 +743,7 @@ class SlimMessageDialog(SlimPopoverDialog):
         body_label = QLabel(translated_text, self.panel)
         body_label.setObjectName("SlimMessageBody")
         body_label.setWordWrap(True)
-        body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        body_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.panel_layout.addWidget(body_label)
 
         actions = QHBoxLayout()
@@ -752,16 +764,16 @@ class SlimChoiceDialog(SlimPopoverDialog):
     """Reusable message dialog with configurable StandardButtons."""
 
     _BUTTON_ORDER = (
-        QMessageBox.Yes,
-        QMessageBox.No,
-        QMessageBox.Ok,
-        QMessageBox.Cancel,
-        QMessageBox.Save,
-        QMessageBox.Discard,
-        QMessageBox.Close,
-        QMessageBox.Abort,
-        QMessageBox.Retry,
-        QMessageBox.Ignore,
+        _MB_YES,
+        _MB_NO,
+        _MB_OK,
+        _MB_CANCEL,
+        _MB_SAVE,
+        _MB_DISCARD,
+        _MB_CLOSE,
+        _MB_ABORT,
+        _MB_RETRY,
+        _MB_IGNORE,
     )
 
     def __init__(
@@ -771,8 +783,8 @@ class SlimChoiceDialog(SlimPopoverDialog):
         parent: Optional[QWidget] = None,
         *,
         helper_text: str = "",
-        buttons: int = QMessageBox.Ok,
-        default_button: int = QMessageBox.NoButton,
+        buttons: int = _MB_OK,
+        default_button: int = _MB_NO_BUTTON,
         icon: Optional[QIcon] = None,
         geometry_key: str = "",
     ):
@@ -783,7 +795,7 @@ class SlimChoiceDialog(SlimPopoverDialog):
         self.setWindowTitle(translated_title)
         self.setMinimumWidth(420)
         self.setMaximumWidth(520)
-        self._result_button = QMessageBox.NoButton
+        self._result_button = _enum_value(_MB_NO_BUTTON)
         self._buttons = self._resolve_buttons(buttons)
         self._default_button = self._resolve_default_button(default_button)
 
@@ -800,9 +812,9 @@ class SlimChoiceDialog(SlimPopoverDialog):
             icon_label = QLabel(icon_wrap)
             icon_label.setObjectName("SlimPopoverIcon")
             icon_label.setPixmap(icon.pixmap(14, 14))
-            icon_label.setAlignment(Qt.AlignCenter)
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             icon_layout.addWidget(icon_label)
-            header.addWidget(icon_wrap, 0, Qt.AlignTop)
+            header.addWidget(icon_wrap, 0, Qt.AlignmentFlag.AlignTop)
 
         title_column = QVBoxLayout()
         title_column.setContentsMargins(0, 0, 0, 0)
@@ -823,13 +835,13 @@ class SlimChoiceDialog(SlimPopoverDialog):
         close_btn.setObjectName("SlimPopoverCloseButton")
         close_btn.setText("×")
         close_btn.clicked.connect(self.reject)
-        header.addWidget(close_btn, 0, Qt.AlignTop)
+        header.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignTop)
         self.panel_layout.addLayout(header)
 
         body_label = QLabel(translated_text, self.panel)
         body_label.setObjectName("SlimMessageBody")
         body_label.setWordWrap(True)
-        body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        body_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.panel_layout.addWidget(body_label)
 
         actions = QHBoxLayout()
@@ -845,7 +857,7 @@ class SlimChoiceDialog(SlimPopoverDialog):
             action.setDefault(is_primary)
             action.clicked.connect(lambda checked=False, value=button: self._choose(value))
             actions.addWidget(action, 0)
-            self._button_widgets[int(button)] = action
+            self._button_widgets[_enum_value(button)] = action
         self.panel_layout.addLayout(actions)
 
     @staticmethod
@@ -859,49 +871,49 @@ class SlimChoiceDialog(SlimPopoverDialog):
 
     def _button_label(self, button: int) -> str:
         labels = {
-            int(QMessageBox.Ok): self._translate("OK"),
-            int(QMessageBox.Cancel): self._translate("Cancelar"),
-            int(QMessageBox.Yes): self._translate("Sim"),
-            int(QMessageBox.No): self._translate("Não"),
-            int(QMessageBox.Save): self._translate("Salvar"),
-            int(QMessageBox.Discard): self._translate("Descartar"),
-            int(QMessageBox.Close): self._translate("Fechar"),
-            int(QMessageBox.Abort): self._translate("Abortar"),
-            int(QMessageBox.Retry): self._translate("Tentar novamente"),
-            int(QMessageBox.Ignore): self._translate("Ignorar"),
+            _enum_value(_MB_OK): self._translate("OK"),
+            _enum_value(_MB_CANCEL): self._translate("Cancelar"),
+            _enum_value(_MB_YES): self._translate("Sim"),
+            _enum_value(_MB_NO): self._translate("Não"),
+            _enum_value(_MB_SAVE): self._translate("Salvar"),
+            _enum_value(_MB_DISCARD): self._translate("Descartar"),
+            _enum_value(_MB_CLOSE): self._translate("Fechar"),
+            _enum_value(_MB_ABORT): self._translate("Abortar"),
+            _enum_value(_MB_RETRY): self._translate("Tentar novamente"),
+            _enum_value(_MB_IGNORE): self._translate("Ignorar"),
         }
-        return labels.get(int(button), self._translate("OK"))
+        return labels.get(_enum_value(button), self._translate("OK"))
 
     def _resolve_buttons(self, buttons_mask: int) -> List[int]:
         try:
-            parsed_mask = int(buttons_mask)
+            parsed_mask = _enum_value(buttons_mask)
         except Exception:
-            parsed_mask = int(QMessageBox.Ok)
+            parsed_mask = _enum_value(_MB_OK)
         result: List[int] = []
         for button in self._BUTTON_ORDER:
             try:
-                if parsed_mask & int(button):
-                    result.append(int(button))
+                if parsed_mask & _enum_value(button):
+                    result.append(_enum_value(button))
             except Exception:
                 continue
         if not result:
-            result = [int(QMessageBox.Ok)]
+            result = [_enum_value(_MB_OK)]
         return result
 
     def _resolve_default_button(self, button: int) -> int:
         try:
-            default_button = int(button)
+            default_button = _enum_value(button)
         except Exception:
-            default_button = int(QMessageBox.NoButton)
+            default_button = _enum_value(_MB_NO_BUTTON)
         if default_button in self._buttons:
             return default_button
-        for candidate in (int(QMessageBox.Ok), int(QMessageBox.Yes), int(QMessageBox.Save)):
+        for candidate in (_enum_value(_MB_OK), _enum_value(_MB_YES), _enum_value(_MB_SAVE)):
             if candidate in self._buttons:
                 return candidate
         return self._buttons[0]
 
     def _fallback_button(self) -> int:
-        for candidate in (int(QMessageBox.Cancel), int(QMessageBox.No), int(QMessageBox.Close), int(QMessageBox.Ok)):
+        for candidate in (_enum_value(_MB_CANCEL), _enum_value(_MB_NO), _enum_value(_MB_CLOSE), _enum_value(_MB_OK)):
             if candidate in self._buttons:
                 return candidate
         return self._buttons[0]
@@ -911,12 +923,12 @@ class SlimChoiceDialog(SlimPopoverDialog):
         self.accept()
 
     def reject(self):
-        if int(self._result_button) == int(QMessageBox.NoButton):
+        if int(self._result_button) == _enum_value(_MB_NO_BUTTON):
             self._result_button = self._fallback_button()
         super().reject()
 
     def selected_button(self) -> int:
-        if int(self._result_button) == int(QMessageBox.NoButton):
+        if int(self._result_button) == _enum_value(_MB_NO_BUTTON):
             return self._fallback_button()
         return int(self._result_button)
 
@@ -979,19 +991,19 @@ class SlimChecklistDialog(SlimDialogBase):
         root.addLayout(quick_layout)
 
         self.list_widget = QListWidget(self)
-        self.list_widget.setSelectionMode(QAbstractItemView.NoSelection)
+        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.list_widget.setUniformItemSizes(True)
         self.list_widget.setAlternatingRowColors(True)
-        self.list_widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.list_widget.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.list_widget.setAccessibleName("SlimDialogChecklist")
         root.addWidget(self.list_widget, 1)
 
         for index, label in enumerate(self._labels):
             item = QListWidgetItem(label or "Item")
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            state = Qt.Checked if label in checked_set else Qt.Unchecked
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            state = Qt.CheckState.Checked if label in checked_set else Qt.CheckState.Unchecked
             item.setCheckState(state)
-            item.setData(Qt.UserRole, index)
+            item.setData(Qt.ItemDataRole.UserRole, index)
             self.list_widget.addItem(item)
 
         self.feedback_label = QLabel("")
@@ -1002,28 +1014,28 @@ class SlimChecklistDialog(SlimDialogBase):
         root.addWidget(self.feedback_label)
 
         button_box = QDialogButtonBox(self)
-        self.ok_button = button_box.addButton("OK", QDialogButtonBox.AcceptRole)
+        self.ok_button = button_box.addButton("OK", QDialogButtonBox.ButtonRole.AcceptRole)
         self.ok_button.setObjectName("SlimPrimaryButton")
         self.ok_button.setDefault(True)
         self.ok_button.setAccessibleName("SlimDialogPrimaryAction")
 
-        self.cancel_button = button_box.addButton("Cancelar", QDialogButtonBox.RejectRole)
+        self.cancel_button = button_box.addButton("Cancelar", QDialogButtonBox.ButtonRole.RejectRole)
         self.cancel_button.setObjectName("SlimSecondaryButton")
         self.cancel_button.setAccessibleName("SlimDialogCancelAction")
         root.addWidget(button_box)
 
         # Connections
         self.search_field.textChanged.connect(self._filter_items)
-        self.select_all_btn.clicked.connect(lambda: self._set_visible_items_state(Qt.Checked))
-        self.clear_all_btn.clicked.connect(lambda: self._set_visible_items_state(Qt.Unchecked))
+        self.select_all_btn.clicked.connect(lambda: self._set_visible_items_state(Qt.CheckState.Checked))
+        self.clear_all_btn.clicked.connect(lambda: self._set_visible_items_state(Qt.CheckState.Unchecked))
         self.list_widget.itemChanged.connect(lambda _: self._clear_feedback())
         button_box.accepted.connect(self._handle_accept)
         button_box.rejected.connect(self.reject)
 
         if self.search_field.isVisible():
-            self.search_field.setFocus(Qt.TabFocusReason)
+            self.search_field.setFocus(Qt.FocusReason.TabFocusReason)
         else:
-            self.list_widget.setFocus(Qt.TabFocusReason)
+            self.list_widget.setFocus(Qt.FocusReason.TabFocusReason)
 
     # ------------------------------------------------------------------ Helpers
     def _filter_items(self, text: str):
@@ -1064,8 +1076,8 @@ class SlimChecklistDialog(SlimDialogBase):
         result: List[int] = []
         for row in range(self.list_widget.count()):
             item = self.list_widget.item(row)
-            if item.checkState() == Qt.Checked:
-                result.append(int(item.data(Qt.UserRole)))
+            if item.checkState() == Qt.CheckState.Checked:
+                result.append(int(item.data(Qt.ItemDataRole.UserRole)))
         return result
 
     def selected_labels(self) -> List[str]:
@@ -1074,10 +1086,10 @@ class SlimChecklistDialog(SlimDialogBase):
 
     def set_focus_on_search(self):
         if self.search_field.isVisible():
-            self.search_field.setFocus(Qt.TabFocusReason)
+            self.search_field.setFocus(Qt.FocusReason.TabFocusReason)
             self.search_field.selectAll()
         else:
-            self.list_widget.setFocus(Qt.TabFocusReason)
+            self.list_widget.setFocus(Qt.FocusReason.TabFocusReason)
 
 
 class SlimLayerSelectionDialog(SlimChecklistDialog):
@@ -1121,10 +1133,10 @@ def _build_form_dialog(
     layout.setSpacing(10)
 
     button_box = QDialogButtonBox(dialog)
-    ok_button = button_box.addButton(_rt("OK"), QDialogButtonBox.AcceptRole)
+    ok_button = button_box.addButton(_rt("OK"), QDialogButtonBox.ButtonRole.AcceptRole)
     ok_button.setObjectName("SlimPrimaryButton")
     ok_button.setDefault(True)
-    cancel_button = button_box.addButton(_rt("Cancelar"), QDialogButtonBox.RejectRole)
+    cancel_button = button_box.addButton(_rt("Cancelar"), QDialogButtonBox.ButtonRole.RejectRole)
     cancel_button.setObjectName("SlimSecondaryButton")
     layout.addWidget(button_box)
     return dialog, layout, button_box
@@ -1163,9 +1175,9 @@ def slim_get_item(
 
     buttons.accepted.connect(accept)
     buttons.rejected.connect(dialog.reject)
-    combo.setFocus(Qt.TabFocusReason)
+    combo.setFocus(Qt.FocusReason.TabFocusReason)
 
-    accepted = dialog.exec_() == QDialog.Accepted and result["accepted"]
+    accepted = dialog.exec() == QDialog.DialogCode.Accepted and result["accepted"]
     return result["text"], accepted
 
 
@@ -1193,7 +1205,7 @@ def slim_get_text(
         preferred_width=preferred_width,
         geometry_key=geometry_key,
     )
-    accepted = dialog.exec_() == QDialog.Accepted
+    accepted = dialog.exec() == QDialog.DialogCode.Accepted
     return dialog.value(), accepted
 
 
@@ -1215,7 +1227,7 @@ def slim_message(
         icon=icon,
         geometry_key=geometry_key,
     )
-    return dialog.exec_() == QDialog.Accepted
+    return dialog.exec() == QDialog.DialogCode.Accepted
 
 
 def slim_question(
@@ -1224,8 +1236,8 @@ def slim_question(
     text: str,
     *,
     helper_text: str = "",
-    buttons: int = QMessageBox.Yes | QMessageBox.No,
-    default_button: int = QMessageBox.No,
+    buttons: int = _MB_YES | _MB_NO,
+    default_button: int = _MB_NO,
     icon: Optional[QIcon] = None,
     geometry_key: str = "",
 ) -> int:
@@ -1239,7 +1251,7 @@ def slim_question(
         icon=icon,
         geometry_key=geometry_key,
     )
-    dialog.exec_()
+    dialog.exec()
     return int(dialog.selected_button())
 
 
@@ -1276,7 +1288,7 @@ def slim_get_int(
 
     buttons.accepted.connect(accept)
     buttons.rejected.connect(dialog.reject)
-    spin.setFocus(Qt.TabFocusReason)
+    spin.setFocus(Qt.FocusReason.TabFocusReason)
 
-    accepted = dialog.exec_() == QDialog.Accepted and result["accepted"]
+    accepted = dialog.exec() == QDialog.DialogCode.Accepted and result["accepted"]
     return result["value"], accepted

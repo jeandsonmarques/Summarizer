@@ -206,10 +206,10 @@ if pyqtSignal is not None:
             self.source_item_id = str(source_item_id or "").strip()
             self._drag_start_pos = QPoint()
             self.setObjectName("ModelBindingFieldChip")
-            self.setCursor(Qt.OpenHandCursor)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
             self.setMinimumWidth(0)
             self.setMaximumWidth(16777215)
-            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
             layout = QHBoxLayout(self)
             layout.setContentsMargins(4, 2, 3, 2)
@@ -217,7 +217,7 @@ if pyqtSignal is not None:
 
             badge = QLabel(field_kind_badge(self.binding_item.type), self)
             badge.setObjectName("ModelBindingFieldBadge")
-            badge.setAlignment(Qt.AlignCenter)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(badge, 0)
 
             name = QLabel(self.binding_item.display_name or self.binding_item.field, self)
@@ -225,7 +225,7 @@ if pyqtSignal is not None:
             name.setToolTip(self.binding_item.field)
             name.setMinimumWidth(0)
             name.setMaximumWidth(16777215)
-            name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             layout.addWidget(name, 1)
 
             self.aggregation_combo = QComboBox(self)
@@ -251,7 +251,7 @@ if pyqtSignal is not None:
                 button = QToolButton(self)
                 button.setObjectName("ModelBindingSlotMove")
                 button.setText(text)
-                button.setCursor(Qt.PointingHandCursor)
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
                 button.setAutoRaise(True)
                 button.setFixedSize(14, 16)
                 button.setToolTip(tooltip)
@@ -260,7 +260,7 @@ if pyqtSignal is not None:
 
             remove = QToolButton(self)
             remove.setObjectName("ModelBindingSlotRemove")
-            remove.setCursor(Qt.PointingHandCursor)
+            remove.setCursor(Qt.CursorShape.PointingHandCursor)
             remove.setAutoRaise(True)
             remove.setFixedSize(18, 18)
             icon = _model_builder_trash_icon()
@@ -276,12 +276,12 @@ if pyqtSignal is not None:
             self.aggregationChanged.emit(self.binding_item.field, aggregation)
 
         def mousePressEvent(self, event):
-            if event.button() == Qt.LeftButton:
+            if event.button() == Qt.MouseButton.LeftButton:
                 self._drag_start_pos = event.pos()
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event):
-            if not (event.buttons() & Qt.LeftButton):
+            if not (event.buttons() & Qt.MouseButton.LeftButton):
                 super().mouseMoveEvent(event)
                 return
             if (event.pos() - self._drag_start_pos).manhattanLength() < 6:
@@ -300,11 +300,11 @@ if pyqtSignal is not None:
             mime.setData(MODEL_FIELD_MIME, json.dumps(payload).encode("utf-8"))
             drag = QDrag(self)
             drag.setMimeData(mime)
-            self.setCursor(Qt.ClosedHandCursor)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
             try:
-                drag.exec_(Qt.MoveAction)
+                drag.exec(Qt.DropAction.MoveAction)
             finally:
-                self.setCursor(Qt.OpenHandCursor)
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
             super().mouseMoveEvent(event)
 
     class _ModelBindingSlot(QFrame):
@@ -344,7 +344,7 @@ if pyqtSignal is not None:
 
             self.chips_host = QWidget(self)
             self.chips_host.setObjectName("ModelBindingSlotChips")
-            self.chips_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.chips_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self.chips_layout = QVBoxLayout(self.chips_host)
             self.chips_layout.setContentsMargins(0, 0, 0, 0)
             self.chips_layout.setSpacing(3)
@@ -480,7 +480,7 @@ def create_chart_button(
     button.setWhatsThis("")
     button.setAccessibleName(label_text)
     button.setAccessibleDescription(tooltip_text)
-    button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
     button.setAutoRaise(True)
     button.setFixedSize(button_size, button_size)
     button.setIconSize(QSize(icon_size, icon_size))
@@ -504,12 +504,12 @@ def create_overflow_toggle_button(parent: QWidget, *, button_size: int = 24):
     button = QToolButton(parent)
     button.setObjectName("ModelVisualOverflowButton")
     button.setText("")
-    button.setArrowType(Qt.NoArrow)
+    button.setArrowType(Qt.ArrowType.NoArrow)
     icon = _model_panel_chevron_icon("right", 14)
     if icon is not None:
         button.setIcon(icon)
     button.setIconSize(QSize(14, 14))
-    button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
     button.setAutoRaise(False)
     button.setFixedSize(max(22, button_size - 6), button_size)
     set_walker_tooltip(button, _rt("Mais gr\u00e1ficos"))
@@ -547,7 +547,7 @@ def set_chart_overflow_expanded(parent: QWidget, expanded: bool):
     overflow_button = getattr(parent, "_model_visual_overflow_button", None)
     if overflow_button is not None:
         try:
-            overflow_button.setArrowType(Qt.NoArrow)
+            overflow_button.setArrowType(Qt.ArrowType.NoArrow)
             icon = _model_panel_chevron_icon("left" if expanded else "right", 14)
             if icon is not None:
                 overflow_button.setIcon(icon)
@@ -691,10 +691,10 @@ def build_model_builder_panel(
         }
         """
     )
-    scroll.setFrameShape(QFrame.NoFrame)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setWidgetResizable(True)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     scroll.viewport().setObjectName("ModelBuilderScrollViewport")
     _force_model_white_background(scroll.viewport())
     scroll.viewport().setStyleSheet("background: #FFFFFF; background-color: #FFFFFF;")
@@ -711,7 +711,7 @@ def build_model_builder_panel(
 
     builder_empty_label = QFrame(panel)
     builder_empty_label.setObjectName("ModelBuilderEmptyState")
-    builder_empty_label.setFrameShape(QFrame.NoFrame)
+    builder_empty_label.setFrameShape(QFrame.Shape.NoFrame)
     builder_empty_label.setStyleSheet(
         """
         QFrame#ModelBuilderEmptyState {
@@ -754,7 +754,7 @@ def build_model_builder_panel(
     empty_layout.setSpacing(0)
     empty_card = QFrame(builder_empty_label)
     empty_card.setObjectName("ModelBuilderEmptyStateCard")
-    empty_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    empty_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
     empty_card.setStyleSheet(
         f"QFrame#ModelBuilderEmptyStateCard {{ background: {_BUILDER_GUIDANCE_CARD}; background-color: {_BUILDER_GUIDANCE_CARD}; border: none; border-radius: 0px; }}"
         f"QFrame#ModelBuilderEmptyStateCard QLabel {{ background: transparent; background-color: transparent; color: {_BUILDER_GUIDANCE_CARD_TEXT}; border: none; }}"
@@ -763,25 +763,25 @@ def build_model_builder_panel(
     empty_card_layout = QHBoxLayout(empty_card)
     empty_card_layout.setContentsMargins(8, 6, 4, 6)
     empty_card_layout.setSpacing(0)
-    empty_layout.setAlignment(Qt.AlignTop)
+    empty_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     empty_text = QLabel(_rt("Selecione um visual para adicionar dados aos campos."), empty_card)
     empty_text.setObjectName("ModelBuilderEmptyStateLabel")
     empty_text.setFont(ui_font(9))
     empty_text.setToolTip(_rt("Selecione um visual para adicionar dados aos campos."))
     empty_text.setWordWrap(True)
-    empty_text.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+    empty_text.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
     empty_card_layout.addWidget(empty_text, 1)
     empty_close = QToolButton(empty_card)
     empty_close.setObjectName("ModelBuilderEmptyStateClose")
     empty_close.setText("×")
-    empty_close.setCursor(Qt.PointingHandCursor)
+    empty_close.setCursor(Qt.CursorShape.PointingHandCursor)
     empty_close.setFixedSize(22, 22)
     empty_close.clicked.connect(builder_empty_label.hide)
     empty_close.setStyleSheet(
         f"QToolButton#ModelBuilderEmptyStateClose {{ background: transparent; background-color: transparent; border: none; color: {_BUILDER_GUIDANCE_CARD_TEXT}; padding: 0px; font-size: 18px; font-weight: 300; }}"
         f"QToolButton#ModelBuilderEmptyStateClose:hover {{ background: {_BUILDER_GUIDANCE_CARD_HOVER}; border-radius: 0px; }}"
     )
-    empty_card_layout.addWidget(empty_close, 0, Qt.AlignTop)
+    empty_card_layout.addWidget(empty_close, 0, Qt.AlignmentFlag.AlignTop)
     empty_layout.addWidget(empty_card, 1)
     host_layout.addWidget(builder_empty_label, 0)
 
@@ -836,8 +836,8 @@ def build_model_builder_panel(
     options_form = QFormLayout()
     options_form.setContentsMargins(0, 2, 0, 0)
     options_form.setSpacing(5)
-    options_form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-    options_form.setFormAlignment(Qt.AlignTop)
+    options_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    options_form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
     options_form.setHorizontalSpacing(6)
 
     builder_option_labels = {}

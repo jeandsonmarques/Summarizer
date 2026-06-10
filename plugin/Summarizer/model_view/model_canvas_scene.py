@@ -21,7 +21,7 @@ class ModelCanvasScene(QGraphicsScene):
         self.manager = None
         self._connection_start: Optional[FieldItem] = None
         self._connection_preview: Optional[QGraphicsPathItem] = None
-        self.setItemIndexMethod(QGraphicsScene.NoIndex)
+        self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
         self.setSceneRect(QRectF(-4000, -4000, 8000, 8000))
 
     # --------------------------------------------------------- Connection flow
@@ -30,7 +30,7 @@ class ModelCanvasScene(QGraphicsScene):
         if self._connection_preview is None:
             preview = QGraphicsPathItem()
             pen = QPen(QColor("#8A8A8A"))
-            pen.setStyle(Qt.DashLine)
+            pen.setStyle(Qt.PenStyle.DashLine)
             pen.setWidthF(1.0)
             pen.setCosmetic(True)
             preview.setPen(pen)
@@ -115,7 +115,7 @@ class ModelCanvasScene(QGraphicsScene):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):  # type: ignore[override]
-        if self._connection_start is not None and event.button() == Qt.LeftButton:
+        if self._connection_start is not None and event.button() == Qt.MouseButton.LeftButton:
             target = self._field_at(event.scenePos())
             self.finalize_connection(target, event.scenePos())
             event.accept()

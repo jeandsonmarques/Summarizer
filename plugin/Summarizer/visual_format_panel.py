@@ -82,26 +82,26 @@ _PANEL_GUIDANCE_CARD_TEXT = "#334155"
 
 
 def _force_panel_white_background(widget: QWidget):
-    widget.setAttribute(Qt.WA_StyledBackground, True)
+    widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     widget.setAutoFillBackground(True)
     palette = widget.palette()
     color = QColor(_panel_color("surface"))
     alternate = QColor(_panel_color("surface_2"))
     palette.setColor(widget.backgroundRole(), color)
-    palette.setColor(QPalette.Window, color)
-    palette.setColor(QPalette.Base, color)
-    palette.setColor(QPalette.AlternateBase, alternate)
+    palette.setColor(QPalette.ColorRole.Window, color)
+    palette.setColor(QPalette.ColorRole.Base, color)
+    palette.setColor(QPalette.ColorRole.AlternateBase, alternate)
     widget.setPalette(palette)
 
 
 def _force_transparent_background(widget: QWidget):
-    widget.setAttribute(Qt.WA_StyledBackground, False)
+    widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
     widget.setAutoFillBackground(False)
     palette = widget.palette()
     transparent = QColor(0, 0, 0, 0)
     palette.setColor(widget.backgroundRole(), transparent)
-    palette.setColor(QPalette.Window, transparent)
-    palette.setColor(QPalette.Base, transparent)
+    palette.setColor(QPalette.ColorRole.Window, transparent)
+    palette.setColor(QPalette.ColorRole.Base, transparent)
     widget.setPalette(palette)
 
 
@@ -109,7 +109,7 @@ class _ColorButton(QPushButton):
     def __init__(self, color: str, parent=None):
         super().__init__(parent)
         self._color = "#FFFFFF"
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMinimumWidth(86)
         self.set_color(color)
         self.clicked.connect(self._pick_color)
@@ -145,13 +145,13 @@ class _Switch(QWidget):
         self._checked = False
         self._pressed = False
         _force_transparent_background(self)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFixedSize(30, 16)
         self._handle_position = 0.0
         self._animation = QPropertyAnimation(self, b"handlePosition", self)
         self._animation.setDuration(160)
-        self._animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
     def sizeHint(self):
         return self.minimumSizeHint()
@@ -194,7 +194,7 @@ class _Switch(QWidget):
         self._animation.start()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self.rect().contains(event.pos()):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             self._pressed = True
             self.update()
             event.accept()
@@ -204,7 +204,7 @@ class _Switch(QWidget):
     def mouseReleaseEvent(self, event):
         was_pressed = self._pressed
         self._pressed = False
-        if event.button() == Qt.LeftButton and self.rect().contains(event.pos()):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             if was_pressed:
                 self._toggle()
             event.accept()
@@ -219,7 +219,7 @@ class _Switch(QWidget):
         super().leaveEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._toggle()
             event.accept()
             return
@@ -228,9 +228,9 @@ class _Switch(QWidget):
     def paintEvent(self, event):
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         try:
-            painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         except Exception:
             pass
         inset = 2.0 if self._pressed else 1.0
@@ -259,7 +259,7 @@ class _Switch(QWidget):
             halo = QColor("#7C6CFF" if self.isChecked() else "#64748B")
             halo.setAlpha(70 if self._pressed else 42)
             painter.setPen(QPen(halo, 2.0))
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(track_rect.adjusted(-1.0, -1.0, 1.0, 1.0), radius + 1.0, radius + 1.0)
 
         painter.setPen(QPen(active_border, 1.0))
@@ -275,7 +275,7 @@ class _Switch(QWidget):
         if self._pressed:
             glow = QColor("#FFFFFF")
             glow.setAlpha(70)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(glow)
             painter.drawEllipse(knob_rect.adjusted(-1.0, -1.0, 1.0, 1.0))
         painter.setPen(QPen(QColor("#475569" if _is_dark_theme() else "#D7DEE8"), 0.8))
@@ -290,17 +290,17 @@ class _SectionHeader(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VisualPanelSectionHeader")
-        self.setAttribute(Qt.WA_StyledBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         self.setAutoFillBackground(False)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.NoFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setMouseTracking(True)
-        self.setFrameShape(QFrame.NoFrame)
-        self.setFrameShadow(QFrame.Plain)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setFrameShadow(QFrame.Shadow.Plain)
         self.setLineWidth(0)
         self.setMinimumHeight(29)
         self.setMaximumHeight(29)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._hovered = False
 
     def enterEvent(self, event):
@@ -314,7 +314,7 @@ class _SectionHeader(QFrame):
         super().leaveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton and self.rect().contains(event.pos()):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             child = self.childAt(event.pos())
             while child is not None and child is not self:
                 if isinstance(child, _Switch):
@@ -328,11 +328,11 @@ class _SectionHeader(QFrame):
     def paintEvent(self, event):
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(0.5, 0.5, float(max(1, self.width() - 1)), float(max(1, self.height() - 1)))
         border = QColor(_panel_color("border"))
         painter.setPen(QPen(border, 1.0))
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(rect, 5.0, 5.0)
         painter.end()
 
@@ -341,10 +341,10 @@ class _SectionArrowLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VisualPanelSectionArrow")
-        self.setAttribute(Qt.WA_StyledBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         self.setAutoFillBackground(False)
-        self.setFocusPolicy(Qt.NoFocus)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setFixedSize(14, 16)
         self.setProperty("expanded", False)
 
@@ -355,11 +355,11 @@ class _SectionArrowLabel(QLabel):
     def paintEvent(self, event):
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         color = QColor(_panel_color("muted"))
         pen = QPen(color, 1.05)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         if bool(self.property("expanded")):
             painter.drawLine(5, 6, 7, 9)
@@ -389,28 +389,28 @@ class _PanelSection(QFrame):
         header_layout.setSpacing(4)
 
         self.arrow_label = _SectionArrowLabel(header)
-        header_layout.addWidget(self.arrow_label, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self.arrow_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.title_label = QLabel(str(title or ""), header)
         self.title_label.setObjectName("VisualPanelSectionTitle")
-        self.title_label.setAttribute(Qt.WA_StyledBackground, False)
+        self.title_label.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         self.title_label.setAutoFillBackground(False)
-        self.title_label.setFocusPolicy(Qt.NoFocus)
-        self.title_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.title_label.setTextInteractionFlags(Qt.NoTextInteraction)
-        self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        header_layout.addWidget(self.title_label, 1, Qt.AlignVCenter)
+        self.title_label.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.title_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        header_layout.addWidget(self.title_label, 1, Qt.AlignmentFlag.AlignVCenter)
 
         self.header_switch = _Switch(header)
         self.header_switch.setVisible(False)
-        header_layout.addWidget(self.header_switch, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self.header_switch, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(header)
 
         self.content_frame = QFrame(self)
         self.content_frame.setObjectName("VisualPanelSectionContent")
         _force_panel_white_background(self.content_frame)
-        self.content_frame.setFrameShape(QFrame.NoFrame)
-        self.content_frame.setFrameShadow(QFrame.Plain)
+        self.content_frame.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_frame.setFrameShadow(QFrame.Shadow.Plain)
         self.content_frame.setLineWidth(0)
         content_layout = QVBoxLayout(self.content_frame)
         content_layout.setContentsMargins(1, 0, 1, 1)
@@ -459,7 +459,7 @@ class VisualFormatPanel(QFrame):
         _force_panel_white_background(self)
         self.setMinimumWidth(240)
         self.setMaximumWidth(16777215)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._current_item_widget = None
         self._loading = False
         self._controls = {}
@@ -743,7 +743,7 @@ class VisualFormatPanel(QFrame):
 
         self.empty_host = QWidget(self)
         self.empty_host.setObjectName("VisualPanelEmptyHost")
-        self.empty_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.empty_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.empty_host.setStyleSheet(
             "QWidget#VisualPanelEmptyHost { background: transparent; background-color: transparent; border: none; }"
         )
@@ -753,8 +753,8 @@ class VisualFormatPanel(QFrame):
 
         self.empty_card = QFrame(self.empty_host)
         self.empty_card.setObjectName("VisualPanelEmptyCard")
-        self.empty_card.setFrameShape(QFrame.NoFrame)
-        self.empty_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.empty_card.setFrameShape(QFrame.Shape.NoFrame)
+        self.empty_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.empty_card.setStyleSheet(
             f"QFrame#VisualPanelEmptyCard {{ background: {_PANEL_GUIDANCE_CARD}; background-color: {_PANEL_GUIDANCE_CARD}; border: none; border-radius: 0px; }}"
             f"QFrame#VisualPanelEmptyCard QLabel {{ background: transparent; background-color: transparent; color: {_PANEL_GUIDANCE_CARD_TEXT}; border: none; }}"
@@ -770,31 +770,31 @@ class VisualFormatPanel(QFrame):
         self.empty_label.setObjectName("VisualPanelEmpty")
         self.empty_label.setToolTip(_rt("Selecione um visual para formatar suas propriedades."))
         self.empty_label.setWordWrap(True)
-        self.empty_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.empty_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.empty_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         empty_shell.addWidget(self.empty_label, 1)
         self.empty_card_close = QToolButton(self.empty_card)
         self.empty_card_close.setObjectName("VisualPanelEmptyCardClose")
         self.empty_card_close.setText("×")
-        self.empty_card_close.setCursor(Qt.PointingHandCursor)
+        self.empty_card_close.setCursor(Qt.CursorShape.PointingHandCursor)
         self.empty_card_close.setFixedSize(22, 22)
         self.empty_card_close.clicked.connect(self._dismiss_empty_card)
         self.empty_card_close.setStyleSheet(
             f"QToolButton#VisualPanelEmptyCardClose {{ background: transparent; background-color: transparent; border: none; color: {_PANEL_GUIDANCE_CARD_TEXT}; padding: 0px; font-size: 18px; font-weight: 300; }}"
             f"QToolButton#VisualPanelEmptyCardClose:hover {{ background: {_PANEL_GUIDANCE_CARD_HOVER}; border-radius: 0px; }}"
         )
-        empty_shell.addWidget(self.empty_card_close, 0, Qt.AlignTop)
-        empty_host_layout.addWidget(self.empty_card, 0, Qt.AlignTop)
+        empty_shell.addWidget(self.empty_card_close, 0, Qt.AlignmentFlag.AlignTop)
+        empty_host_layout.addWidget(self.empty_card, 0, Qt.AlignmentFlag.AlignTop)
         empty_host_layout.addStretch(1)
         root.addWidget(self.empty_host, 1)
 
         self.scroll = QScrollArea(self)
         self.scroll.setObjectName("VisualPanelScroll")
         _force_panel_white_background(self.scroll)
-        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setWidgetResizable(True)
-        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll.viewport().setObjectName("VisualPanelScrollViewport")
         _force_panel_white_background(self.scroll.viewport())
         self.form_host = QWidget(self.scroll)
@@ -1153,9 +1153,9 @@ class VisualFormatPanel(QFrame):
         form.setContentsMargins(6, 6, 6, 6)
         form.setSpacing(4)
         form.setHorizontalSpacing(6)
-        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        form.setFormAlignment(Qt.AlignLeft | Qt.AlignTop)
-        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         return form
 
     def _switch_row(self, label: str, key: str, parent) -> QWidget:
@@ -1167,7 +1167,7 @@ class VisualFormatPanel(QFrame):
         layout.addWidget(text, 1)
         switch = _Switch(row)
         self._controls[key] = switch
-        layout.addWidget(switch, 0, Qt.AlignVCenter)
+        layout.addWidget(switch, 0, Qt.AlignmentFlag.AlignVCenter)
         return row
 
     def _combo(self, parent, items):
@@ -1464,8 +1464,8 @@ class VisualFormatPanel(QFrame):
         spin.setObjectName("VisualPanelSpin")
         spin.setRange(minimum, maximum)
         spin.setSingleStep(1)
-        spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        spin.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        spin.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         return spin
 
     def _connect_live_updates(self):

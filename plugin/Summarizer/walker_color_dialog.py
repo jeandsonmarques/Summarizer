@@ -59,7 +59,7 @@ class WalkerColorDialog(WalkerModalDialog):
 
         self.preview = QLabel(self.panel)
         self.preview.setFixedHeight(46)
-        self.preview.setAlignment(Qt.AlignCenter)
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         body.addWidget(self.preview)
 
         self.hex_edit = QLineEdit(self._selected.name().upper(), self.panel)
@@ -124,6 +124,6 @@ class WalkerColorDialog(WalkerModalDialog):
 
 def walker_get_color(initial: object, parent: Optional[QWidget] = None, title: str = "") -> QColor:
     dialog = WalkerColorDialog(parent, initial=initial, title=title or _rt("Escolher cor"))
-    if dialog.exec_() == QDialog.Accepted:
+    if dialog.exec() == QDialog.DialogCode.Accepted:
         return dialog.selected_color()
     return QColor()

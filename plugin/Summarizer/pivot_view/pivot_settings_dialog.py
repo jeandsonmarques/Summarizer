@@ -285,7 +285,7 @@ def open_table_settings_dialog(
     row_spin.setRange(TABLE_ROW_HEIGHT_MIN, TABLE_ROW_HEIGHT_MAX)
     defaults = build_table_settings_defaults(widget)
     row_spin.setValue(int(defaults["row_height"]))
-    row_spin.setButtonSymbols(QSpinBox.NoButtons)
+    row_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
     grid.addWidget(row_label, 0, 0)
     grid.addWidget(row_spin, 0, 1)
 
@@ -332,4 +332,4 @@ def open_table_settings_dialog(
         dialog.accept()
 
     apply_btn.clicked.connect(_apply)
-    dialog.exec_()
+    dialog.exec()

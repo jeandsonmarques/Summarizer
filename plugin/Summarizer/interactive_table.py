@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jeandson Marques
 
-from qgis.PyQt.QtCore import Qt, QSortFilterProxyModel, QRegExp
+from qgis.PyQt.QtCore import Qt, QSortFilterProxyModel
 from qgis.PyQt.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -22,20 +22,23 @@ from .utils.i18n_runtime import tr_text as _rt
 class _AllColumnsFilter(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self._filter_text = ""
+
+    def set_filter_text(self, text: str):
+        self._filter_text = str(text or "").casefold()
+        self.invalidateFilter()
 
     def filterAcceptsRow(self, source_row, source_parent):
-        if not self.filterRegExp().isEmpty():
-            model = self.sourceModel()
-            cols = model.columnCount()
-            pattern = self.filterRegExp()
-            for c in range(cols):
-                idx = model.index(source_row, c, source_parent)
-                data = str(model.data(idx) or "")
-                if pattern.indexIn(data) != -1:
-                    return True
-            return False
-        return True
+        if not self._filter_text:
+            return True
+        model = self.sourceModel()
+        cols = model.columnCount()
+        for c in range(cols):
+            idx = model.index(source_row, c, source_parent)
+            data = str(model.data(idx) or "").casefold()
+            if self._filter_text in data:
+                return True
+        return False
 
 
 class InteractiveTable(QWidget):
@@ -66,8 +69,8 @@ class InteractiveTable(QWidget):
         self.view = QTableView(self)
         self.view.setModel(self.proxy)
         self.view.setSortingEnabled(True)
-        self.view.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.view.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.view.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.view)
 
@@ -75,7 +78,7 @@ class InteractiveTable(QWidget):
 
     def update_data(self, headers, rows, highlight_cols=None):
         QgsMessageLog.logMessage(
-            "InteractiveTable: rebuilding model", "Summarizer", Qgis.Info
+            "InteractiveTable: rebuilding model", "Summarizer", Qgis.MessageLevel.Info
         )
         self._headers = list(headers)
 
@@ -109,7 +112,7 @@ class InteractiveTable(QWidget):
                                 font = it.font()
                                 font.setBold(True)
                                 it.setFont(font)
-                                it.setBackground(Qt.yellow)
+                                it.setBackground(Qt.GlobalColor.yellow)
             except Exception:
                 log_exception("falha opcional ignorada")
 
@@ -119,12 +122,11 @@ class InteractiveTable(QWidget):
         QgsMessageLog.logMessage(
             f"InteractiveTable: model ready with {self.model.rowCount()} rows",
             "Summarizer",
-            Qgis.Info,
+            Qgis.MessageLevel.Info,
         )
 
     def _on_search(self, text):
-        rx = QRegExp(text, Qt.CaseInsensitive, QRegExp.FixedString)
-        self.proxy.setFilterRegExp(rx)
+        self.proxy.set_filter_text(text)
         self._refresh_status()
 
     def _refresh_status(self):

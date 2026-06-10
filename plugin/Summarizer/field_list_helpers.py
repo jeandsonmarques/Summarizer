@@ -92,15 +92,15 @@ def field_kind_icon(kind: Optional[str], size: int = 14) -> QIcon:
     template = _FIELD_SVG_TEMPLATES.get(kind, _FIELD_SVG_TEMPLATES["other"])
     icon = QIcon()
     for mode, color in (
-        (QIcon.Normal, field_kind_color(kind)),
-        (QIcon.Active, field_kind_color(kind)),
-        (QIcon.Selected, field_kind_color(kind)),
-        (QIcon.Disabled, "#cbd5e1"),
+        (QIcon.Mode.Normal, field_kind_color(kind)),
+        (QIcon.Mode.Active, field_kind_color(kind)),
+        (QIcon.Mode.Selected, field_kind_color(kind)),
+        (QIcon.Mode.Disabled, "#cbd5e1"),
     ):
         svg_data = QByteArray(template.replace("__COLOR__", color).encode("utf-8"))
         renderer = QSvgRenderer(svg_data)
         pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         renderer.render(painter)
         painter.end()
@@ -115,7 +115,7 @@ def configure_field_item(
     kind: Optional[str],
     tooltip: str = "",
     payload: Optional[Dict[str, Any]] = None,
-    role: int = Qt.UserRole,
+    role: int = Qt.ItemDataRole.UserRole,
     include_badge: bool = False,
 ):
     kind_key = normalize_field_kind(kind)
@@ -123,14 +123,14 @@ def configure_field_item(
     label = f"{badge}  {display_name}" if include_badge else str(display_name or "")
     item.setText(label)
     item.setFont(ui_font(8))
-    item.setFlags(item.flags() | Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
+    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
     item.setIcon(field_kind_icon(kind_key))
     item.setForeground(QColor(field_kind_color(kind_key)))
     item.setToolTip(str(tooltip or f"{display_name}\nTipo: {field_kind_label(kind_key)}"))
     item.setData(role, dict(payload or {}))
-    item.setData(Qt.UserRole + 1, kind_key)
-    item.setData(Qt.UserRole + 2, str(display_name or ""))
-    item.setData(Qt.UserRole + 3, field_kind_label(kind_key))
-    item.setData(Qt.UserRole + 4, field_kind_badge(kind_key))
+    item.setData(Qt.ItemDataRole.UserRole + 1, kind_key)
+    item.setData(Qt.ItemDataRole.UserRole + 2, str(display_name or ""))
+    item.setData(Qt.ItemDataRole.UserRole + 3, field_kind_label(kind_key))
+    item.setData(Qt.ItemDataRole.UserRole + 4, field_kind_badge(kind_key))
     item.setSizeHint(QSize(0, 24))
     return item

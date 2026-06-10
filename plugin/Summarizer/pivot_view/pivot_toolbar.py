@@ -23,7 +23,7 @@ def configure_toolbar_button(button: Optional[QPushButton]) -> None:
     button.setFlat(True)
     button.setAutoDefault(False)
     button.setDefault(False)
-    button.setCursor(Qt.PointingHandCursor)
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
 
 
 def configure_toolbar_icon_button(
@@ -37,7 +37,7 @@ def configure_toolbar_icon_button(
     configure_toolbar_button(button)
     button.setProperty("toolbarMode", "icon")
     button.setProperty("iconOnly", True)
-    button.setFocusPolicy(Qt.NoFocus)
+    button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     set_walker_tooltip(button, tooltip)
     button.setStatusTip(tooltip)
     try:
@@ -53,8 +53,8 @@ def configure_toolbar_icon_button(
 def create_toolbar_separator(parent: QWidget) -> QFrame:
     separator = QFrame(parent)
     separator.setObjectName("summaryToolbarSeparator")
-    separator.setFrameShape(QFrame.NoFrame)
-    separator.setFrameShadow(QFrame.Plain)
+    separator.setFrameShape(QFrame.Shape.NoFrame)
+    separator.setFrameShadow(QFrame.Shadow.Plain)
     separator.setFixedWidth(1)
     return separator
 
@@ -138,7 +138,7 @@ def build_toolbar(
         button.setProperty("toolbarMode", "icon")
         button.setProperty("iconOnly", True)
         button.setFixedSize(28, 28)
-        button.setCursor(Qt.PointingHandCursor)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setText("")
         button.setFlat(True)
         button.setAutoDefault(False)
@@ -155,10 +155,10 @@ def build_toolbar(
     )
     configure_toolbar_icon_button(self.settings_btn, "Walker-Settings.svg", _rt("Personalizar tabela"))
     mono_icon_colors = {
-        QIcon.Normal: ink_color,
-        QIcon.Active: ink_color,
-        QIcon.Selected: ink_color,
-        QIcon.Disabled: "#C7CDD6",
+        QIcon.Mode.Normal: ink_color,
+        QIcon.Mode.Active: ink_color,
+        QIcon.Mode.Selected: ink_color,
+        QIcon.Mode.Disabled: "#C7CDD6",
     }
     self.import_sheet_btn.setIcon(
         _svg_icon_from_template(_TOOLBAR_SVG_ICONS["summary_sheet"], size=18, color_map=mono_icon_colors)
@@ -175,8 +175,8 @@ def build_toolbar(
 
     self.toolbar_strip = QFrame(self.toolbar_frame)
     self.toolbar_strip.setObjectName("summaryToolbarStrip")
-    self.toolbar_strip.setAttribute(Qt.WA_StyledBackground, True)
-    self.toolbar_strip.setFrameShape(QFrame.StyledPanel)
+    self.toolbar_strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    self.toolbar_strip.setFrameShape(QFrame.Shape.StyledPanel)
     self.toolbar_strip.setMinimumHeight(44)
     self.toolbar_strip.setStyleSheet(
         """

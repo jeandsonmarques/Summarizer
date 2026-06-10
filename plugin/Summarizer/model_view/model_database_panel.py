@@ -71,7 +71,7 @@ if pyqtSignal is not None:
 
         def paintEvent(self, event):
             painter = QPainter(self)
-            painter.setRenderHint(QPainter.TextAntialiasing)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
             painter.translate(self.width() / 2, self.height() / 2)
             painter.rotate(-90)
             rect = QRect(
@@ -80,7 +80,7 @@ if pyqtSignal is not None:
                 self.height(),
                 self.width(),
             )
-            painter.drawText(rect, Qt.AlignCenter, self.text())
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text())
 
     class _ModelDatabaseWorker(QObject):
         finished = pyqtSignal(object)
@@ -114,7 +114,7 @@ if pyqtSignal is not None:
             self._thread: Optional[QThread] = None
             self._worker: Optional[_ModelDatabaseWorker] = None
             self.setObjectName("ModelDatabasePanel")
-            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             self._build_ui()
             self.clear()
 
@@ -131,11 +131,11 @@ if pyqtSignal is not None:
 
             self.title_label = QLabel(_rt("Banco"), header)
             self.title_label.setObjectName("ModelDatabasePanelTitle")
-            header_layout.addWidget(self.title_label, 1, Qt.AlignVCenter)
+            header_layout.addWidget(self.title_label, 1, Qt.AlignmentFlag.AlignVCenter)
 
             self.status_label = QLabel("", header)
             self.status_label.setObjectName("ModelDatabasePanelStatus")
-            header_layout.addWidget(self.status_label, 0, Qt.AlignVCenter)
+            header_layout.addWidget(self.status_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
             self.refresh_btn = QToolButton(header)
             self.refresh_btn.setObjectName("ModelDatabasePanelRefresh")
@@ -146,19 +146,19 @@ if pyqtSignal is not None:
             self.refresh_btn.setToolTip(_rt("Atualizar banco"))
             self.refresh_btn.setFixedSize(20, 20)
             self.refresh_btn.clicked.connect(self.refresh)
-            header_layout.addWidget(self.refresh_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+            header_layout.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
             self.toggle_btn = QToolButton(header)
             self.toggle_btn.setObjectName("ModelDatabasePanelToggle")
             self.toggle_btn.setAutoRaise(True)
-            self.toggle_btn.setCursor(Qt.PointingHandCursor)
-            self.toggle_btn.setArrowType(Qt.NoArrow)
+            self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.toggle_btn.setArrowType(Qt.ArrowType.NoArrow)
             self.toggle_btn.setIcon(_model_panel_chevron_icon("right", 18))
-            self.toggle_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            self.toggle_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             self.toggle_btn.setText("")
             self.toggle_btn.setFixedSize(22, 22)
             self.toggle_btn.clicked.connect(self.toggleRequested.emit)
-            header_layout.addWidget(self.toggle_btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+            header_layout.addWidget(self.toggle_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.header = header
             layout.addWidget(self.header, 0)
 
@@ -195,17 +195,17 @@ if pyqtSignal is not None:
             self.collapsed_btn = QToolButton(self.collapsed_rail)
             self.collapsed_btn.setObjectName("ModelDatabasePanelToggle")
             self.collapsed_btn.setAutoRaise(True)
-            self.collapsed_btn.setCursor(Qt.PointingHandCursor)
-            self.collapsed_btn.setArrowType(Qt.NoArrow)
+            self.collapsed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.collapsed_btn.setArrowType(Qt.ArrowType.NoArrow)
             self.collapsed_btn.setIcon(_model_panel_chevron_icon("left", 18))
-            self.collapsed_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            self.collapsed_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             self.collapsed_btn.setText("")
             self.collapsed_btn.setFixedSize(22, 22)
             self.collapsed_btn.clicked.connect(self.toggleRequested.emit)
-            rail_layout.addWidget(self.collapsed_btn, 0, Qt.AlignHCenter | Qt.AlignTop)
+            rail_layout.addWidget(self.collapsed_btn, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
             self.collapsed_title = _ModelDatabaseVerticalLabel(_rt("Banco"), self.collapsed_rail)
             self.collapsed_title.setObjectName("ModelDatabasePanelCollapsedTitle")
-            rail_layout.addWidget(self.collapsed_title, 0, Qt.AlignHCenter | Qt.AlignTop)
+            rail_layout.addWidget(self.collapsed_title, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
             rail_layout.addStretch(1)
             self.collapsed_rail.hide()
             layout.addWidget(self.collapsed_rail, 1)
@@ -309,13 +309,13 @@ if pyqtSignal is not None:
                 group_item = self.tree.topLevelItem(index)
                 if group_item is None:
                     continue
-                group_key = str(group_item.data(0, Qt.UserRole + 1) or "")
+                group_key = str(group_item.data(0, Qt.ItemDataRole.UserRole + 1) or "")
                 if not group_key or group_key not in self._group_objects:
                     continue
                 while group_item.childCount():
                     group_item.takeChild(0)
                 placeholder = QTreeWidgetItem([_rt("Abrir para carregar")])
-                placeholder.setData(0, Qt.UserRole, "__placeholder__")
+                placeholder.setData(0, Qt.ItemDataRole.UserRole, "__placeholder__")
                 placeholder.setForeground(0, QColor("#94A3B8"))
                 group_item.addChild(placeholder)
                 group_item.setExpanded(False)
@@ -407,16 +407,16 @@ if pyqtSignal is not None:
                     continue
                 group_name = str(getattr(group, "name", "") or _rt("(padrao)"))
                 group_item = QTreeWidgetItem([group_name])
-                group_item.setData(0, Qt.UserRole, None)
+                group_item.setData(0, Qt.ItemDataRole.UserRole, None)
                 group_key = str(len(self._group_objects))
-                group_item.setData(0, Qt.UserRole + 1, group_key)
+                group_item.setData(0, Qt.ItemDataRole.UserRole + 1, group_key)
                 group_item.setForeground(0, QColor("#111827"))
                 group_item.setIcon(0, svg_icon("Dataset.svg"))
                 group_item.setToolTip(0, _rt("{count} itens", count=len(objects)))
                 self.tree.addTopLevelItem(group_item)
                 self._group_objects[group_key] = objects
                 placeholder = QTreeWidgetItem([_rt("Carregar itens")])
-                placeholder.setData(0, Qt.UserRole, "__placeholder__")
+                placeholder.setData(0, Qt.ItemDataRole.UserRole, "__placeholder__")
                 placeholder.setForeground(0, QColor("#94A3B8"))
                 group_item.addChild(placeholder)
                 if group_name.strip().lower() == "base_cartografica":
@@ -433,13 +433,13 @@ if pyqtSignal is not None:
         def _materialize_group_item(self, group_item):
             if group_item is None:
                 return
-            group_key = str(group_item.data(0, Qt.UserRole + 1) or "")
+            group_key = str(group_item.data(0, Qt.ItemDataRole.UserRole + 1) or "")
             objects = list(self._group_objects.get(group_key, []) or [])
             if not objects:
                 return
             if group_item.childCount() == 1:
                 first_child = group_item.child(0)
-                if first_child is not None and first_child.data(0, Qt.UserRole) == "__placeholder__":
+                if first_child is not None and first_child.data(0, Qt.ItemDataRole.UserRole) == "__placeholder__":
                     group_item.takeChild(0)
                 else:
                     return
@@ -448,14 +448,14 @@ if pyqtSignal is not None:
             for database_object in objects:
                 label = self._object_label(database_object)
                 item = QTreeWidgetItem([label])
-                item.setData(0, Qt.UserRole, database_object)
+                item.setData(0, Qt.ItemDataRole.UserRole, database_object)
                 item.setForeground(0, QColor("#334155"))
                 item.setIcon(0, svg_icon("Table.svg"))
                 item.setToolTip(0, self._object_tooltip(database_object))
                 group_item.addChild(item)
 
         def _handle_item_activated(self, item, _column: int):
-            payload = item.data(0, Qt.UserRole) if item is not None else None
+            payload = item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
             if payload is not None:
                 self.objectActivated.emit(payload)
 

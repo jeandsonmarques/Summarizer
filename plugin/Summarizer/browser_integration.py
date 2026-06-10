@@ -66,7 +66,7 @@ def _network_data_item_capabilities():
         capability = Qgis.DataItemProviderCapability.NetworkSources
         return Qgis.DataItemProviderCapabilities(capability)
     except Exception:
-        return int(QgsDataProvider.Net)
+        return int(QgsDataProvider.DataCapability.Net)
 
 
 def _browser_no_capabilities():
@@ -251,7 +251,7 @@ class SummarizerRootItem(QgsDataCollectionItem):
 
     def _open_quick_postgres(self, parent: Optional[QWidget]):
         dialog = PostgresQuickConnectDialog(parent)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         payload = secure_connection_payload(dialog.connection_payload(), name=_rt("Summarizer"))
         if not payload:
@@ -356,7 +356,7 @@ class SummarizerConnectionItem(QgsDataCollectionItem):
             _rt("Remover conexão"),
             _rt("Remover '{name}' da lista?", name=self.meta.get("name") or fingerprint),
         )
-        if confirm == QMessageBox.Yes:
+        if confirm == QMessageBox.StandardButton.Yes:
             connection_registry.remove_connection(fingerprint)
 
     # ------------------------------------------------------------------ Helpers

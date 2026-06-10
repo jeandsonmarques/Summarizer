@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jeandson Marques
 
+from __future__ import annotations
+
 import os
 import re
 import tempfile
@@ -155,7 +157,7 @@ from .summary_view.summary_results_view import (
     show_summary_welcome as _summary_show_summary_welcome,
 )
 from .ui_main_dialog import Ui_SummarizerDialog
-from .utils.fonts import attach_ui_font_enforcer, ensure_ui_fonts_registered, harmonize_widget_fonts
+from .utils.fonts import _qfont_weight, attach_ui_font_enforcer, ensure_ui_fonts_registered, harmonize_widget_fonts
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets
 from .utils.i18n_runtime import tr_text as _rt_runtime
 from .utils.logging_utils import log_exception
@@ -355,7 +357,7 @@ class Summarizer:
         except Exception as exc:
             self._browser_provider = None
             message = f"Falha ao registrar nó Summarizer no Navegador: {exc}"
-            QgsMessageLog.logMessage(message, "Summarizer", Qgis.Critical)
+            QgsMessageLog.logMessage(message, "Summarizer", Qgis.MessageLevel.Critical)
             log_error(message)
 
     def unload(self):
@@ -484,7 +486,7 @@ class SummarizerDialog(QDialog):
         context = palette_context()
         base_font = QFont(context.get("font_family", "Inter"))
         base_font.setPixelSize(int(context.get("font_body_px", 13)))
-        base_font.setWeight(QFont.Normal)
+        base_font.setWeight(_qfont_weight("Normal", 50))
         self.setFont(base_font)
         self._font_enforcer = attach_ui_font_enforcer(self)
 
@@ -547,7 +549,7 @@ class SummarizerDialog(QDialog):
                 parent=self.ui.results_body,
                 host=self,
             )
-            self.pivot_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.pivot_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             layout.addWidget(self.pivot_widget)
             try:
                 self.pivot_widget.set_layer_combo(self.ui.layer_combo)
@@ -567,7 +569,7 @@ class SummarizerDialog(QDialog):
                 log_exception("falha opcional ignorada")
 
             self.summary_message_widget = QTextEdit(self.ui.results_body)
-            self.summary_message_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.summary_message_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             self.summary_message_widget.setReadOnly(True)
             self.summary_message_widget.setStyleSheet(
                 Template(
@@ -578,14 +580,14 @@ class SummarizerDialog(QDialog):
             layout.addWidget(self.summary_message_widget)
 
             self.table_view = InteractiveTable(self.ui.results_body)
-            self.table_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.table_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             layout.addWidget(self.table_view)
             self.table_view.setVisible(False)
         except Exception as exc:
             QgsMessageLog.logMessage(
                 f"Falha ao construir a aba de tabela dinamica: {exc}",
                 "Summarizer",
-                Qgis.Critical,
+                Qgis.MessageLevel.Critical,
             )
             self.pivot_widget = None
             self.summary_message_widget = None
@@ -623,12 +625,12 @@ class SummarizerDialog(QDialog):
     def _enable_native_window_controls(self):
         try:
             flags = self.windowFlags()
-            flags |= Qt.Window
-            flags |= Qt.WindowTitleHint
-            flags |= Qt.WindowSystemMenuHint
-            flags |= Qt.WindowMinimizeButtonHint
-            flags |= Qt.WindowMaximizeButtonHint
-            flags |= Qt.WindowCloseButtonHint
+            flags |= Qt.WindowType.Window
+            flags |= Qt.WindowType.WindowTitleHint
+            flags |= Qt.WindowType.WindowSystemMenuHint
+            flags |= Qt.WindowType.WindowMinimizeButtonHint
+            flags |= Qt.WindowType.WindowMaximizeButtonHint
+            flags |= Qt.WindowType.WindowCloseButtonHint
             self.setWindowFlags(flags)
         except Exception:
             log_exception("falha opcional ignorada")
@@ -752,7 +754,7 @@ class SummarizerDialog(QDialog):
         choice = self._current_locale_choice()
         try:
             btn.setIcon(svg_icon("Globe.svg"))
-            btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         except Exception:
             log_exception("falha opcional ignorada")
         btn.setText(self._language_button_text(choice))
@@ -791,7 +793,7 @@ class SummarizerDialog(QDialog):
         if btn is None:
             return
         menu = self._build_language_menu()
-        menu.exec_(btn.mapToGlobal(btn.rect().bottomLeft()))
+        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
 
     def _init_language_button(self):
         btn = getattr(self.ui, "language_btn", None)
@@ -823,7 +825,7 @@ class SummarizerDialog(QDialog):
         mode = self._current_theme_mode()
         try:
             btn.setIcon(svg_icon("Theme.svg"))
-            btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         except Exception:
             log_exception("falha opcional ignorada")
         btn.setText("")
@@ -854,7 +856,7 @@ class SummarizerDialog(QDialog):
         if btn is None:
             return
         menu = self._build_theme_menu()
-        menu.exec_(btn.mapToGlobal(btn.rect().bottomLeft()))
+        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
 
     def _init_theme_button(self):
         btn = getattr(self.ui, "theme_btn", None)
@@ -1095,7 +1097,9 @@ class SummarizerDialog(QDialog):
         try:
             combo.blockSignals(True)
             try:
-                combo.setCurrentLayer(None)
+                setter = getattr(combo, "setCurrentLayer", None) or getattr(combo, "setLayer", None)
+                if callable(setter):
+                    setter(None)
             except Exception:
                 log_exception("falha opcional ignorada")
             try:
@@ -1172,7 +1176,7 @@ class SummarizerDialog(QDialog):
             scroll = QScrollArea(self.ui.pageIntegracao)
             scroll.setObjectName("integrationScrollArea")
             scroll.setWidgetResizable(True)
-            scroll.setFrameShape(QScrollArea.NoFrame)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
             layout.addWidget(scroll, 1)
             self.integration_scroll = scroll
 
@@ -1246,8 +1250,8 @@ class SummarizerDialog(QDialog):
             dialog = DatabaseImportDialog(self.dlg, saved, preferred_driver=preferred_driver)
             dialog.raise_()
             dialog.activateWindow()
-            result = dialog.exec_()
-            if result != QDialog.Accepted:
+            result = dialog.exec()
+            if result != QDialog.DialogCode.Accepted:
                 self._refresh_database_sidebar_state()
                 return
             df, metadata, updated_connection, session_connection = dialog.result()
@@ -1445,7 +1449,7 @@ class SummarizerDialog(QDialog):
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageIntegracao)
         except Exception:
             log_exception("falha opcional ignorada")
-        panel = None if self._defer_page_build else self._ensure_integration_page()
+        panel = self._ensure_integration_page()
         try:
             self._apply_runtime_translations()
         except Exception:
@@ -1468,8 +1472,7 @@ class SummarizerDialog(QDialog):
             self.ui.stackedWidget.setCurrentWidget(self.ui.pageModel)
         except Exception:
             log_exception("falha opcional ignorada")
-        if not self._defer_page_build:
-            self._ensure_model_page()
+        self._ensure_model_page()
         try:
             self._apply_runtime_translations()
         except Exception:
@@ -1502,7 +1505,7 @@ class SummarizerDialog(QDialog):
     def open_get_data_dialog(self):
         dialog = GetDataDialog(self, self)
         _apply_i18n_widgets(dialog)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         datasets = dialog.results()
         if not datasets:
@@ -1718,7 +1721,7 @@ class SummarizerDialog(QDialog):
             QgsMessageLog.logMessage(
                 f"Falha ao adicionar camada PostGIS via iface.addVectorLayer: {exc}",
                 "Summarizer",
-                Qgis.Warning,
+                Qgis.MessageLevel.Warning,
             )
             return None
         if layer is None or not layer.isValid():
@@ -1768,7 +1771,7 @@ class SummarizerDialog(QDialog):
             ):
                 pk_query.bindValue(":schema", schema)
                 pk_query.bindValue(":table_name", table_name)
-                if pk_query.exec_() and pk_query.next():
+                if pk_query.exec() and pk_query.next():
                     result["key_column"] = str(pk_query.value(0) or "")
 
             geom_query = QSqlQuery(db)
@@ -1792,7 +1795,7 @@ class SummarizerDialog(QDialog):
                 geom_query.bindValue(":schema", schema)
                 geom_query.bindValue(":table_name", table_name)
                 geom_query.bindValue(":geometry_column", geometry_column)
-                if geom_query.exec_() and geom_query.next():
+                if geom_query.exec() and geom_query.next():
                     srid = str(geom_query.value(0) or "")
                     geometry_type = self._qgis_uri_geometry_type(str(geom_query.value(1) or ""))
                     if srid:
@@ -2012,7 +2015,7 @@ class SummarizerDialog(QDialog):
     def _postgres_layer_style_schemas(self, db) -> List[str]:
         schemas: List[str] = []
         query = QSqlQuery(db)
-        if query.exec_(
+        if query.exec(
             "SELECT n.nspname "
             "FROM pg_class c "
             "JOIN pg_namespace n ON n.oid = c.relnamespace "
@@ -2057,7 +2060,7 @@ class SummarizerDialog(QDialog):
         query.bindValue(":schema", table_schema)
         query.bindValue(":table_name", table_name)
         query.bindValue(":geometry_column", geometry_column)
-        if not query.exec_() or not query.next():
+        if not query.exec() or not query.next():
             return ""
         return str(query.value(0) or "").strip()
 
@@ -2189,7 +2192,7 @@ class SummarizerDialog(QDialog):
             QgsMessageLog.logMessage(
                 f"Falha ao salvar tabela temporária de integração: {exc}",
                 "Summarizer",
-                Qgis.Warning,
+                Qgis.MessageLevel.Warning,
             )
             return None
 
@@ -2206,7 +2209,7 @@ class SummarizerDialog(QDialog):
                 QgsMessageLog.logMessage(
                     f"Falha ao adicionar tabela de texto via iface.addVectorLayer: {exc}",
                     "Summarizer",
-                    Qgis.Warning,
+                    Qgis.MessageLevel.Warning,
                 )
                 iface_layer = None
         if iface_layer is not None and iface_layer.isValid():
@@ -2227,7 +2230,7 @@ class SummarizerDialog(QDialog):
             QgsMessageLog.logMessage(
                 f"Falha ao adicionar camada ao projeto: {exc}",
                 "Summarizer",
-                Qgis.Warning,
+                Qgis.MessageLevel.Warning,
             )
             return None
         try:
@@ -2530,7 +2533,7 @@ class SummarizerDialog(QDialog):
         names = [layer.name() or "Camada sem nome" for layer in layers]
         dialog = SlimLayerSelectionDialog("Selecionar camadas", names, parent=self)
         dialog.set_focus_on_search()
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         indices = dialog.selected_indices()
         return [layers[idx] for idx in indices]
@@ -2633,16 +2636,16 @@ class SummarizerDialog(QDialog):
                     error_message = ""
 
             is_success = False
-            if status == QgsVectorFileWriter.NoError:
+            if status == QgsVectorFileWriter.WriterError.NoError:
                 is_success = True
             elif hasattr(status, "value"):
                 try:
-                    is_success = status.value == QgsVectorFileWriter.NoError
+                    is_success = status.value == QgsVectorFileWriter.WriterError.NoError
                 except Exception:
                     is_success = False
             else:
                 try:
-                    is_success = int(status) == int(QgsVectorFileWriter.NoError)
+                    is_success = int(status) == int(QgsVectorFileWriter.WriterError.NoError)
                 except Exception:
                     is_success = False
 
@@ -2886,15 +2889,15 @@ class SummarizerDialog(QDialog):
         body.setWordWrap(True)
         layout.addWidget(body)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok, dialog)
-        ok_button = buttons.button(QDialogButtonBox.Ok)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok, dialog)
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
             ok_button.setObjectName("SlimPrimaryButton")
         buttons.accepted.connect(dialog.accept)
         layout.addWidget(buttons)
 
         _apply_i18n_widgets(dialog)
-        dialog.exec_()
+        dialog.exec()
 
 
 def _vector_layer_to_dataframe(layer) -> Optional[pd.DataFrame]:
@@ -2959,8 +2962,8 @@ class GetDataDialog(QDialog):
         db_layout.setSpacing(8)
         db_layout.addWidget(QLabel(_rt_runtime("Usar conexões salvas ou cadastrar nova.")))
         self.db_import_btn = QPushButton(_rt_runtime("Abrir importador de banco..."))
-        self.db_import_btn.setCursor(Qt.PointingHandCursor)
-        db_layout.addWidget(self.db_import_btn, 0, Qt.AlignLeft)
+        self.db_import_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        db_layout.addWidget(self.db_import_btn, 0, Qt.AlignmentFlag.AlignLeft)
         self.db_status = QLabel("")
         self.db_status.setProperty("role", "helper")
         db_layout.addWidget(self.db_status)
@@ -2968,12 +2971,12 @@ class GetDataDialog(QDialog):
         self.db_import_btn.clicked.connect(self._open_db_dialog)
         self.stack.addWidget(db_page)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         apply_walker_buttons(
-            primary=[buttons.button(QDialogButtonBox.Ok), self.db_import_btn],
-            secondary=[buttons.button(QDialogButtonBox.Cancel)],
+            primary=[buttons.button(QDialogButtonBox.StandardButton.Ok), self.db_import_btn],
+            secondary=[buttons.button(QDialogButtonBox.StandardButton.Cancel)],
         )
         layout.addWidget(buttons)
         self.setStyleSheet(WALKER_DIALOG_STYLE)
@@ -2993,7 +2996,7 @@ class GetDataDialog(QDialog):
         except Exception:
             saved = []
         dialog = DatabaseImportDialog(self, saved)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         df, metadata, connection_meta, session_connection = dialog.result()
         if df is None or df.empty:

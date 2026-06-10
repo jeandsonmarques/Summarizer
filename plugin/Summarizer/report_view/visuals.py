@@ -79,20 +79,20 @@ class _BaseChartRenderer(VisualRenderer):
         painter.save()
         painter.setFont(title_font)
         painter.setPen(QPen(theme.axis))
-        painter.drawText(rect.adjusted(8, 6, -8, 0), Qt.AlignLeft | Qt.AlignTop, definition.titulo)
+        painter.drawText(rect.adjusted(8, 6, -8, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, definition.titulo)
         painter.restore()
 
     def _draw_empty(self, painter: QPainter, rect: QRectF):
         painter.save()
         painter.setPen(QPen(QColor("#9E9E9E")))
-        painter.drawText(rect, Qt.AlignCenter, _rt("Sem dados para exibir"))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, _rt("Sem dados para exibir"))
         painter.restore()
 
 
 class ColumnChartRenderer(_BaseChartRenderer):
     def render(self, painter: QPainter, rect: QRectF, definition: VisualDefinition, theme: VisualTheme):
         painter.save()
-        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
         painter.fillRect(rect, theme.bg)
 
         margins = (50, 30, 20, 40)  # left, top, right, bottom
@@ -123,7 +123,7 @@ class ColumnChartRenderer(_BaseChartRenderer):
 
         # Bars
         bar_color = self._resolve_color(definition, theme, 0)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(bar_color)
         count = max(len(normalized), 1)
         bar_area = inner.width() / count
@@ -145,7 +145,7 @@ class ColumnChartRenderer(_BaseChartRenderer):
         for idx, cat in enumerate(definition.categorias):
             x = inner.left() + idx * bar_area
             text_rect = QRectF(x, inner.bottom() + 4, bar_area, label_rect_height)
-            painter.drawText(text_rect, Qt.AlignHCenter | Qt.AlignTop, str(cat))
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, str(cat))
 
         self._draw_title(painter, rect, definition, theme)
         painter.restore()
@@ -155,7 +155,7 @@ class ColumnChartRenderer(_BaseChartRenderer):
 class BarChartRenderer(_BaseChartRenderer):
     def render(self, painter: QPainter, rect: QRectF, definition: VisualDefinition, theme: VisualTheme):
         painter.save()
-        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
         painter.fillRect(rect, theme.bg)
 
         margins = (60, 30, 30, 30)  # left, top, right, bottom
@@ -183,7 +183,7 @@ class BarChartRenderer(_BaseChartRenderer):
         painter.drawLine(inner.bottomLeft(), inner.bottomRight())
 
         bar_color = self._resolve_color(definition, theme, 0)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(bar_color)
         count = max(len(normalized), 1)
         bar_area = inner.height() / count
@@ -202,7 +202,7 @@ class BarChartRenderer(_BaseChartRenderer):
         for idx, cat in enumerate(definition.categorias):
             y = inner.top() + idx * bar_area
             text_rect = QRectF(rect.left() + 4, y, margins[0] - 8, bar_area)
-            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, str(cat))
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, str(cat))
 
         self._draw_title(painter, rect, definition, theme)
         painter.restore()
@@ -212,7 +212,7 @@ class BarChartRenderer(_BaseChartRenderer):
 class LineChartRenderer(_BaseChartRenderer):
     def render(self, painter: QPainter, rect: QRectF, definition: VisualDefinition, theme: VisualTheme):
         painter.save()
-        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
         painter.fillRect(rect, theme.bg)
 
         margins = (50, 30, 20, 40)  # left, top, right, bottom
@@ -260,11 +260,11 @@ class LineChartRenderer(_BaseChartRenderer):
                 path.lineTo(pt)
             line_pen = QPen(self._resolve_color(definition, theme, 0), 2)
             painter.setPen(line_pen)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
 
             painter.setBrush(self._resolve_color(definition, theme, 0))
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             for pt in points:
                 painter.drawEllipse(pt, 3.5, 3.5)
 
@@ -275,7 +275,7 @@ class LineChartRenderer(_BaseChartRenderer):
         for idx, cat in enumerate(definition.categorias):
             x = inner.left() + step * idx
             text_rect = QRectF(x - step / 2, inner.bottom() + 4, step, label_rect_height)
-            painter.drawText(text_rect, Qt.AlignHCenter | Qt.AlignTop, str(cat))
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, str(cat))
 
         self._draw_title(painter, rect, definition, theme)
         painter.restore()
@@ -332,7 +332,7 @@ class SummarizerVisualWidget(QWidget):
             action.setData(color)
             actions.append(action)
         custom = menu.addAction(_rt("Personalizar..."))
-        chosen = menu.exec_(QCursor.pos())
+        chosen = menu.exec(QCursor.pos())
         if chosen is None:
             return
         color_value = chosen.data()
@@ -353,7 +353,7 @@ class SummarizerVisualWidget(QWidget):
     def contextMenuEvent(self, event):
         menu = apply_walker_menu(QMenu(self))
         color_action = menu.addAction(_rt("Cor da série..."))
-        chosen = menu.exec_(event.globalPos())
+        chosen = menu.exec(event.globalPos())
         if chosen == color_action:
             self._pick_series_color()
             event.accept()
@@ -371,7 +371,7 @@ class SummarizerVisualWidget(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
         rect = QRectF(self.rect())
         painter.fillRect(rect, self.theme.bg)
         self._bar_geometries = []
@@ -386,9 +386,9 @@ class SummarizerVisualWidget(QWidget):
                 elif result and isinstance(result[0][0], QPointF):
                     self._point_positions = result  # type: ignore
         if self._selected:
-            border_pen = QPen(QColor("#2D7FF9"), 1.4, Qt.DashLine)
+            border_pen = QPen(QColor("#2D7FF9"), 1.4, Qt.PenStyle.DashLine)
             painter.setPen(border_pen)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(rect.adjusted(1, 1, -1, -1))
 
     def _tooltip_for_value(self, idx: int, value: float) -> str:
@@ -420,7 +420,7 @@ class SummarizerVisualWidget(QWidget):
         super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and event.modifiers() & Qt.ControlModifier:
+        if event.button() == Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             pos = QPointF(event.pos())
             hit_idx = None
             for geom, idx, _value in self._bar_geometries:
@@ -445,11 +445,11 @@ class SummarizerVisualWidget(QWidget):
         target_size = size or self.size()
         width = max(int(target_size.width()), 1)
         height = max(int(target_size.height()), 1)
-        image = QImage(width, height, QImage.Format_ARGB32)
+        image = QImage(width, height, QImage.Format.Format_ARGB32)
         rect = QRectF(0, 0, width, height)
         image.fill(self.theme.bg)
         painter = QPainter(image)
-        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
         if self.renderer:
             self.renderer.render(painter, rect, self.definition, self.theme)
         painter.end()
