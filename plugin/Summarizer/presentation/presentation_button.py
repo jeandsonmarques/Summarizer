@@ -49,30 +49,6 @@ def create_presentation_button(parent: Optional[QWidget], controller) -> QToolBu
     button.setText(_rt("Apresentar"))
     button.setToolTip(_rt("Apresentar com mapa ao lado do dashboard"))
     button.setIconSize(QSize(15, 15))
-    button.setStyleSheet(
-        """
-        QToolButton#PresentationMapButton {
-            padding: 3px 7px;
-            border: 1px solid transparent;
-            border-radius: 6px;
-            background: transparent;
-            font-size: 12px;
-            min-height: 22px;
-        }
-        QToolButton#PresentationMapButton:hover {
-            background: rgba(17, 24, 39, 0.05);
-        }
-        QToolButton#PresentationMapButton:checked {
-            background: rgba(17, 24, 39, 0.08);
-            border-color: rgba(17, 24, 39, 0.18);
-            color: #111827;
-            font-weight: 400;
-        }
-        QToolButton#PresentationMapButton:checked:hover {
-            background: rgba(17, 24, 39, 0.12);
-        }
-        """
-    )
 
     icon = _theme_icon()
     if icon is not None:

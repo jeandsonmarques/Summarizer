@@ -397,6 +397,7 @@ def serialize_chart_visual_state(state: Optional[ChartVisualState]) -> Dict[str,
 
 def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisualState:
     payload = dict(data or {})
+    chart_type = str(payload.get("chart_type") or "bar").strip().lower() or "bar"
     try:
         raw_font_scale = payload.get("font_scale")
         font_scale = float(raw_font_scale if raw_font_scale not in {None, ""} else 0.88)
@@ -443,6 +444,9 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
         axis_label_size = int(payload.get("axis_label_size", 0) or 0)
     except Exception:
         axis_label_size = 0
+    axis_label_orientation = str(payload.get("axis_label_orientation") or "auto").strip().lower()
+    if axis_label_orientation not in {"auto", "horizontal", "diagonal", "vertical"}:
+        axis_label_orientation = "auto"
     try:
         decimal_places = int(payload.get("decimal_places", 2))
     except Exception:
@@ -463,9 +467,20 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
         value_size = int(payload.get("value_size", 0) or 0)
     except Exception:
         value_size = 0
+    try:
+        card_radius = int(payload.get("card_radius", 14) or 14)
+    except Exception:
+        card_radius = 14
     card_density = str(payload.get("card_density") or "normal").strip().lower()
     if card_density not in {"compact", "normal", "expanded"}:
         card_density = "normal"
+    default_card_style = "card" if chart_type == "card" else "metric"
+    card_style = str(payload.get("card_style") or default_card_style).strip().lower()
+    if card_style not in {"card", "metric"}:
+        card_style = default_card_style
+    default_card_accent = chart_type != "card"
+    default_card_footer = chart_type != "card"
+    default_card_sparkline = chart_type != "card"
     data_label_position = str(payload.get("data_label_position") or "outside").strip().lower()
     if data_label_position not in {"auto", "inside", "outside"}:
         data_label_position = "outside"
@@ -473,7 +488,7 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
     if display_units not in {"none", "auto", "thousand", "million"}:
         display_units = "none"
     return ChartVisualState(
-        chart_type=str(payload.get("chart_type") or "bar"),
+        chart_type=chart_type,
         palette=str(payload.get("palette") or "purple"),
         font_scale=font_scale,
         show_legend=bool(payload.get("show_legend")),
@@ -502,6 +517,7 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
         show_axis_labels=bool(payload.get("show_axis_labels", True)),
         axis_label_color=str(payload.get("axis_label_color") or "#4B5563"),
         axis_label_size=max(0, min(36, axis_label_size)),
+        axis_label_orientation=axis_label_orientation,
         show_zero_line=bool(payload.get("show_zero_line", True)),
         zero_line_color=str(payload.get("zero_line_color") or "#CBD5E1"),
         title_color=str(payload.get("title_color") or "#1F2937"),
@@ -525,8 +541,12 @@ def deserialize_chart_visual_state(data: Optional[Dict[str, Any]]) -> ChartVisua
         value_size=max(0, min(72, value_size)),
         value_align=str(payload.get("value_align") or "left"),
         card_density=card_density,
-        show_card_accent=bool(payload.get("show_card_accent", True)),
-        show_card_sparkline=bool(payload.get("show_card_sparkline", True)),
+        card_style=card_style,
+        card_radius=max(0, min(32, card_radius)),
+        show_card_accent=bool(payload.get("show_card_accent", default_card_accent)),
+        show_card_sparkline=bool(payload.get("show_card_sparkline", default_card_sparkline)),
+        show_card_label=bool(payload.get("show_card_label", True)),
+        show_card_footer=bool(payload.get("show_card_footer", default_card_footer)),
         alt_text=str(payload.get("alt_text") or ""),
     )
 

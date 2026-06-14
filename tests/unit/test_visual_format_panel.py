@@ -163,20 +163,36 @@ def test_visual_panel_change_updates_chart_visual_state():
         widget.visual_format_panel._controls["shadow_enabled"].set_checked_state(True)
         widget.visual_format_panel._controls["show_axis_labels"].set_checked_state(False)
         widget.visual_format_panel._set_combo_value(
+            widget.visual_format_panel._controls["axis_label_orientation"],
+            "diagonal",
+        )
+        widget.visual_format_panel._set_combo_value(
             widget.visual_format_panel._controls["display_units"],
             "thousand",
         )
+        widget.visual_format_panel._set_combo_value(
+            widget.visual_format_panel._controls["card_style"],
+            "card",
+        )
+        widget.visual_format_panel._controls["card_radius"].setValue(22)
+        widget.visual_format_panel._controls["show_card_label"].set_checked_state(False)
+        widget.visual_format_panel._controls["show_card_footer"].set_checked_state(False)
         widget.visual_format_panel._controls["bar_width_percent"].setValue(80)
         widget.visual_format_panel._controls["alt_text"].setText("Teste acessivel")
 
         selected = widget.dashboard_canvas.selected_item_widget()
         assert selected is not None
         assert selected.item.visual_state.show_border is True
-        assert selected.item.visual_state.border_radius == 14
+        assert selected.item.visual_state.border_radius == 0
         assert selected.item.visual_state.background_opacity == 76
         assert selected.item.visual_state.shadow_enabled is True
         assert selected.item.visual_state.show_axis_labels is False
+        assert selected.item.visual_state.axis_label_orientation == "diagonal"
         assert selected.item.visual_state.display_units == "thousand"
+        assert selected.item.visual_state.card_style == "card"
+        assert selected.item.visual_state.card_radius == 22
+        assert selected.item.visual_state.show_card_label is False
+        assert selected.item.visual_state.show_card_footer is False
         assert selected.item.visual_state.bar_width_percent == 80
         assert selected.item.visual_state.alt_text == "Teste acessivel"
     finally:

@@ -77,6 +77,8 @@ class _DashboardCanvasSurface(QWidget):
         painter.fillRect(self.rect(), self._canvas.resolved_background_color())
 
         outline_rect = self._canvas.page_outline_rect()
+        if bool(getattr(self._canvas, "_simple_canvas_mode", False)):
+            outline_rect = QRect()
         if outline_rect.isValid():
             outline = QColor("#334155" if _is_dark_theme() else "#111827")
             outline_pen = QPen(outline)
@@ -261,6 +263,7 @@ class DashboardCanvas(QWidget):
         self._grid_color = QColor("#FFFFFF")
         self._show_grid = False
         self._grid_opacity = 1.0
+        self._simple_canvas_mode = False
         self.interaction_manager = ModelInteractionManager(self)
         self.interaction_manager.filtersChanged.connect(self.filtersChanged.emit)
 
@@ -370,6 +373,8 @@ class DashboardCanvas(QWidget):
         self.setStyleSheet(style)
 
     def resolved_background_color(self) -> QColor:
+        if self._simple_canvas_mode:
+            return QColor("#FFFFFF")
         return _dark_aware_color(self._background_color, "#FFFFFF", "#0B1020")
 
     def resolved_grid_color(self) -> QColor:
@@ -790,6 +795,20 @@ class DashboardCanvas(QWidget):
     def is_edit_mode(self) -> bool:
         return bool(self._edit_mode)
 
+    def set_simple_canvas_mode(self, enabled: bool):
+        enabled = bool(enabled)
+        if self._simple_canvas_mode == enabled:
+            return
+        self._simple_canvas_mode = enabled
+        for widget in self._widgets.values():
+            if hasattr(widget, "set_simple_canvas_mode"):
+                widget.set_simple_canvas_mode(enabled)
+        self._apply_geometries()
+        self.surface.update()
+
+    def is_simple_canvas_mode(self) -> bool:
+        return bool(self._simple_canvas_mode)
+
     def set_canvas_style(
         self,
         *,
@@ -1017,6 +1036,8 @@ class DashboardCanvas(QWidget):
                 widget.refresh(item)
                 widget._dashboard_item_fingerprint = item_fingerprint
             widget.set_edit_mode(self._edit_mode)
+            if hasattr(widget, "set_simple_canvas_mode"):
+                widget.set_simple_canvas_mode(self._simple_canvas_mode)
             self.interaction_manager.register_chart(widget, item.binding)
         self.interaction_manager.set_chart_relations(self._chart_relations)
         self._sync_item_selection_highlights()
@@ -1078,7 +1099,7 @@ class DashboardCanvas(QWidget):
             max_right = max(max_right, preview.right() + right)
             max_bottom = max(max_bottom, preview.bottom() + bottom)
         outline = self.page_outline_rect()
-        if outline.isValid():
+        if outline.isValid() and not self._simple_canvas_mode:
             max_right = max(max_right, outline.right() + right)
             max_bottom = max(max_bottom, outline.bottom() + bottom)
         self.surface.setMinimumSize(QSize(max_right + left, max_bottom + top))

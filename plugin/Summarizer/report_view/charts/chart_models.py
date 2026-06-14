@@ -38,6 +38,7 @@ class ChartVisualState:
     show_axis_labels: bool = True
     axis_label_color: str = "#4B5563"
     axis_label_size: int = 0
+    axis_label_orientation: str = "auto"
     show_zero_line: bool = True
     zero_line_color: str = "#CBD5E1"
     title_color: str = "#1F2937"
@@ -61,6 +62,10 @@ class ChartVisualState:
     value_size: int = 0
     value_align: str = "left"
     card_density: str = "normal"
+    card_style: str = "card"
+    card_radius: int = 14
+    show_card_label: bool = True
+    show_card_footer: bool = True
     show_card_accent: bool = True
     show_card_sparkline: bool = True
     alt_text: str = ""

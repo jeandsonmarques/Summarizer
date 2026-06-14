@@ -100,6 +100,8 @@ class _DashboardConnectorOverlay(QWidget):
         super().paintEvent(event)
         if not bool(getattr(self._host, "_edit_mode", False)):
             return
+        if bool(getattr(self._host, "_simple_canvas_mode", False)):
+            return
         highlight_mode = str(getattr(self._host, "_highlight_mode", "idle") or "idle").strip().lower()
         if highlight_mode not in {"selected", "drag", "resize"}:
             return
@@ -844,6 +846,7 @@ class DashboardItemWidget(QFrame):
         self._applying_styles = False
         self._last_style_sheet = ""
         self._edit_mode_applied = False
+        self._simple_canvas_mode = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -1036,6 +1039,12 @@ class DashboardItemWidget(QFrame):
         if emit_changed:
             self.itemChanged.emit()
 
+    def _dashboard_visual_state(self, state: ChartVisualState) -> ChartVisualState:
+        normalized = copy.deepcopy(state or ChartVisualState())
+        normalized.border_radius = 0
+        normalized.bar_corner_style = "square"
+        return normalized
+
     def _sync_chart_identity(self):
         try:
             self.chart_widget.set_chart_identity(self._binding.to_dict())
@@ -1115,6 +1124,7 @@ class DashboardItemWidget(QFrame):
         self._binding = self._item.binding.normalized()
         self._sync_header_texts()
         self._sync_chart_identity()
+        self._item.visual_state = self._dashboard_visual_state(self._item.visual_state)
         self.chart_widget.set_payload(self._item.payload, empty_text="")
         self.chart_widget.chart_state = self._item.visual_state
         try:
@@ -1149,8 +1159,8 @@ class DashboardItemWidget(QFrame):
             return
         self._zoom_scale = normalized
 
-        card_margin = max(0, int(round(4 * normalized)))
-        card_spacing = max(0, int(round(3 * normalized)))
+        card_margin = max(0, int(round((5 if self._simple_canvas_mode else 4) * normalized)))
+        card_spacing = 0 if self._simple_canvas_mode else max(0, int(round(3 * normalized)))
         header_margin = max(0, int(round(4 * normalized)))
         header_spacing = max(1, int(round(10 * normalized)))
         button_side = max(8, int(round(28 * normalized)))
@@ -1204,9 +1214,10 @@ class DashboardItemWidget(QFrame):
 
     def _fallback_logical_chart_size(self) -> QSize:
         layout = self._item.layout.normalized()
+        vertical_chrome = 10 if self._simple_canvas_mode else 44
         return QSize(
             max(80, int(round(layout.width)) - 8),
-            max(60, int(round(layout.height)) - 44),
+            max(60, int(round(layout.height)) - vertical_chrome),
         )
 
     def _sync_logical_chart_render_size(self, allow_capture: bool = False):
@@ -1234,19 +1245,12 @@ class DashboardItemWidget(QFrame):
         if not self._edit_mode:
             self._link_active = False
             self._active_link_side = ""
-        self.drag_label.setVisible(self._edit_mode)
-        self.remove_btn.setVisible(self._edit_mode)
-        self.model_edit_btn.setVisible(self._edit_mode)
-        self.personalize_btn.setVisible(self._edit_mode)
-        self.link_command_btn.setVisible(self._edit_mode)
-        self.subtitle_label.setVisible(False)
-        self.footer_label.setVisible(False)
-        self._sync_title_visibility()
+        self._sync_chrome_visibility()
         self.title_label.setToolTip(_rt("Duplo clique para renomear") if self._edit_mode else "")
         if self._edit_mode:
             try:
-                margin = max(0, int(round(4 * self._zoom_scale)))
-                spacing = max(0, int(round(3 * self._zoom_scale)))
+                margin = max(0, int(round((4 if not self._simple_canvas_mode else 5) * self._zoom_scale)))
+                spacing = 0 if self._simple_canvas_mode else max(0, int(round(3 * self._zoom_scale)))
                 self.card.layout().setContentsMargins(margin, margin, margin, margin)
                 self.card.layout().setSpacing(spacing)
             except Exception:
@@ -1262,14 +1266,45 @@ class DashboardItemWidget(QFrame):
         self._apply_styles()
         self._sync_drop_overlay()
         try:
-            self._overlay.setVisible(self._edit_mode)
+            self._overlay.setVisible(self._edit_mode and not self._simple_canvas_mode)
             self._overlay.setGeometry(self.rect())
             self._overlay.raise_()
         except Exception:
             log_exception("falha opcional ignorada")
         self.update()
 
+    def set_simple_canvas_mode(self, enabled: bool):
+        enabled = bool(enabled)
+        if self._simple_canvas_mode == enabled:
+            return
+        self._simple_canvas_mode = enabled
+        self._sync_chrome_visibility()
+        self.set_zoom_scale(self._zoom_scale, force=True)
+        self._apply_styles()
+        try:
+            self._overlay.setVisible(self._edit_mode and not self._simple_canvas_mode)
+            self._overlay.setGeometry(self.rect())
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self._sync_drop_overlay()
+        self.update()
+
+    def _sync_chrome_visibility(self):
+        show_header = bool(self._edit_mode and not self._simple_canvas_mode)
+        self.header.setVisible(show_header)
+        self.drag_label.setVisible(show_header)
+        self.remove_btn.setVisible(show_header)
+        self.model_edit_btn.setVisible(show_header)
+        self.personalize_btn.setVisible(show_header)
+        self.link_command_btn.setVisible(show_header)
+        self.subtitle_label.setVisible(False)
+        self.footer_label.setVisible(False)
+        self._sync_title_visibility()
+
     def _sync_title_visibility(self):
+        if self._simple_canvas_mode:
+            self.title_label.setVisible(False)
+            return
         visual_state = getattr(self._item, "visual_state", None)
         show_title = bool(getattr(visual_state, "show_title", True))
         try:
@@ -1341,12 +1376,7 @@ class DashboardItemWidget(QFrame):
         label_color = str(getattr(visual_state, "label_color", "#64748B") or "#64748B")
         title_color = _dark_default(title_color, {"#1F2937": "#F8FAFC", "#111827": "#F8FAFC", "#0F172A": "#F8FAFC"})
         label_color = _dark_default(label_color, {"#64748B": "#CBD5E1", "#475569": "#CBD5E1", "#4B5563": "#CBD5E1"})
-        try:
-            border_radius = int(getattr(visual_state, "border_radius", 2) or 2)
-        except Exception:
-            border_radius = 2
-        if border_radius == 8:
-            border_radius = 2
+        border_radius = 0
         try:
             configured_title_size = int(getattr(visual_state, "title_size", 0) or 0)
         except Exception:
@@ -1355,7 +1385,7 @@ class DashboardItemWidget(QFrame):
             configured_label_size = int(getattr(visual_state, "label_size", 0) or 0)
         except Exception:
             configured_label_size = 0
-        border_radius = max(0, min(8, border_radius))
+        border_radius = 0
         title_size = configured_title_size if configured_title_size > 0 else max(5, min(36, int(round(13 * zoom))))
         label_size = configured_label_size if configured_label_size > 0 else max(4, min(30, int(round(11 * zoom))))
         if bool(getattr(visual_state, "show_border", False)):
@@ -1371,7 +1401,18 @@ class DashboardItemWidget(QFrame):
         link_hover = "#273449" if _is_dark_theme() else "#F3F4F6"
         card_border = f"{border_width}px solid {border}"
         header_border_rule = f"1px solid {header_border}"
-        if not self._edit_mode:
+        if self._simple_canvas_mode:
+            card_bg = "#FFFFFF"
+            border_radius = 0
+            header_bg = "transparent"
+            header_border_rule = "none"
+            if self._highlight_mode == "selected":
+                card_border = "1px solid #2563EB"
+            elif self._highlight_mode in {"drag", "resize"}:
+                card_border = "1px solid #60A5FA"
+            else:
+                card_border = "1px solid #E5E7EB"
+        elif not self._edit_mode:
             card_bg = "transparent"
             card_border = "none"
             header_bg = "transparent"
@@ -1423,7 +1464,7 @@ class DashboardItemWidget(QFrame):
                 color: {icon_color};
                 background: transparent;
                 border: none;
-                border-radius: {max(4, int(round(6 * zoom)))}px;
+                border-radius: 0px;
                 font-weight: 400;
             }}
             QToolButton#ModelDashboardRemoveButton:hover,
@@ -1439,7 +1480,7 @@ class DashboardItemWidget(QFrame):
                 color: {link_color};
                 background: transparent;
                 border: none;
-                border-radius: {max(6, int(round(8 * zoom)))}px;
+                border-radius: 0px;
                 font-size: {max(4, min(28, int(round(11 * zoom))))}px;
                 font-weight: 600;
             }}
@@ -1463,7 +1504,7 @@ class DashboardItemWidget(QFrame):
             QFrame#ModelVisualDropSlot {{
                 background: {"#172033" if _is_dark_theme() else "rgba(255, 255, 255, 235)"};
                 border: 1px dashed {"#475569" if _is_dark_theme() else "#D6DEE8"};
-                border-radius: {max(6, int(round(8 * zoom)))}px;
+                border-radius: 0px;
             }}
             QFrame#ModelVisualDropSlot[dropActive="true"] {{
                 background: {"#1F2A3D" if _is_dark_theme() else "#F8FBFF"};
@@ -1494,7 +1535,7 @@ class DashboardItemWidget(QFrame):
             except Exception:
                 return QPoint()
 
-    def _open_chart_model_menu(self):
+    def _open_chart_model_menu(self, global_pos: Optional[QPoint] = None):
         if not self._edit_mode:
             return
         menu = apply_walker_menu(QMenu(self))
@@ -1524,7 +1565,7 @@ class DashboardItemWidget(QFrame):
                 group_menu.addAction(action)
 
         before = copy.deepcopy(self.chart_widget.chart_state)
-        menu.exec(self._header_button_anchor(self.model_edit_btn))
+        menu.exec(global_pos if global_pos is not None else self._header_button_anchor(self.model_edit_btn))
         if before != self.chart_widget.chart_state:
             self._item.visual_state = copy.deepcopy(self.chart_widget.chart_state)
             self.itemChanged.emit()
@@ -1576,7 +1617,7 @@ class DashboardItemWidget(QFrame):
 
         grid_action = QAction(_rt("Mostrar grade"), menu, checkable=True)
         grid_action.setChecked(bool(self.chart_widget.chart_state.show_grid))
-        grid_action.setEnabled(str(self.chart_widget.chart_state.chart_type or "") in {"bar", "barh", "line", "area"})
+        grid_action.setEnabled(str(self.chart_widget.chart_state.chart_type or "") in {"bar", "barh", "line", "area", "column_clustered", "column_stacked", "bar100_stacked", "combo", "scatter", "waterfall", "funnel"})
         grid_action.triggered.connect(self.chart_widget._toggle_show_grid)
         menu.addAction(grid_action)
 
@@ -1645,7 +1686,7 @@ class DashboardItemWidget(QFrame):
         self.visualPanelRequested.emit(self.item_id)
 
     def _apply_visual_state_preview(self, state: ChartVisualState):
-        self._item.visual_state = copy.deepcopy(state)
+        self._item.visual_state = self._dashboard_visual_state(state)
         self.chart_widget.chart_state = self._item.visual_state
         self.chart_widget._ensure_visual_state_compatibility()
         self.chart_widget.refresh_visual_state()
@@ -1707,6 +1748,10 @@ class DashboardItemWidget(QFrame):
             return local_pos
 
     def _header_drag_rect(self) -> QRect:
+        if self._simple_canvas_mode:
+            margin = max(2, int(self._resize_margin) + 1)
+            top_band_height = max(18, min(34, int(round(self.height() * 0.12))))
+            return QRect(margin, margin, max(1, self.width() - margin * 2), top_band_height)
         return self.header.geometry()
 
     def _resize_mode_for_pos(self, pos: QPoint) -> str:
@@ -1897,6 +1942,54 @@ class DashboardItemWidget(QFrame):
                 return side
         return ""
 
+    def _chart_context_target_at_event(self, watched, event):
+        if watched is not self.chart_widget or not hasattr(self.chart_widget, "_interactive_target_at"):
+            return None
+        try:
+            return self.chart_widget._interactive_target_at(QPointF(self._event_local_pos(event)))
+        except Exception:
+            return None
+
+    def _open_dashboard_item_context_menu(self, watched, event) -> bool:
+        if not self._edit_mode:
+            return False
+        target = self._chart_context_target_at_event(watched, event)
+        if target is not None and str(target.get("target_type") or "") == "data_point":
+            return False
+
+        self.itemSelected.emit(self.item_id)
+        global_pos = self._event_global_pos(event)
+        menu = apply_walker_menu(QMenu(self))
+
+        edit_title_action = QAction(_rt("Editar titulo"), menu)
+        edit_title_action.triggered.connect(lambda checked=False: self._edit_title())
+        menu.addAction(edit_title_action)
+
+        type_action = QAction(_rt("Alterar tipo de grafico"), menu)
+        type_action.triggered.connect(lambda checked=False, pos=QPoint(global_pos): self._open_chart_model_menu(pos))
+        menu.addAction(type_action)
+
+        visual_action = QAction(_rt("Formatar visual"), menu)
+        visual_action.triggered.connect(lambda checked=False: self._request_visual_panel())
+        menu.addAction(visual_action)
+
+        relation_action = QAction(_rt("Criar relacao com outro grafico"), menu)
+        relation_action.triggered.connect(lambda checked=False: self.linkCommandRequested.emit(self.item_id))
+        menu.addAction(relation_action)
+
+        menu.addSeparator()
+
+        remove_action = QAction(_rt("Fechar grafico"), menu)
+        remove_action.triggered.connect(lambda checked=False: self.removeRequested.emit(self.item_id))
+        menu.addAction(remove_action)
+
+        menu.exec(global_pos)
+        try:
+            event.accept()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        return True
+
     def eventFilter(self, watched, event):
         if watched not in self._event_widgets:
             return super().eventFilter(watched, event)
@@ -1930,6 +2023,11 @@ class DashboardItemWidget(QFrame):
             return False
 
         if not self._edit_mode:
+            return super().eventFilter(watched, event)
+
+        if event_type == QEvent.Type.ContextMenu and self._simple_canvas_mode:
+            if self._open_dashboard_item_context_menu(watched, event):
+                return True
             return super().eventFilter(watched, event)
 
         position_event_types = {
@@ -1975,6 +2073,11 @@ class DashboardItemWidget(QFrame):
                 return True
             if watched is self.title_label:
                 return False
+            target = self._chart_context_target_at_event(watched, event)
+            is_data_point = target is not None and str(target.get("target_type") or "") == "data_point"
+            if self._simple_canvas_mode and watched is self.chart_widget and not is_data_point and self._header_drag_rect().contains(local_pos):
+                self._start_drag(global_pos)
+                return False
             if watched not in {self.chart_widget, self.title_label} and self._header_drag_rect().contains(local_pos):
                 self._start_drag(global_pos)
                 return True
@@ -1998,7 +2101,7 @@ class DashboardItemWidget(QFrame):
                 self._drag_candidate = False
                 self._header_pressed = False
                 self._set_hover_cursor(local_pos)
-                return True
+                return not (self._simple_canvas_mode and watched is self.chart_widget)
             return False
 
         return super().eventFilter(watched, event)
@@ -2044,6 +2147,7 @@ class DashboardItemWidget(QFrame):
         self._sync_logical_chart_render_size(allow_capture=True)
         self._sync_header_texts()
         try:
+            self._overlay.setVisible(self._edit_mode and not self._simple_canvas_mode)
             self._overlay.setGeometry(self.rect())
             self._overlay.raise_()
         except Exception:

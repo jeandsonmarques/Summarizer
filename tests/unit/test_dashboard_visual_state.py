@@ -33,6 +33,7 @@ def test_legacy_visual_state_gets_visual_config_defaults():
     assert state.show_axis_labels is True
     assert state.axis_label_color == "#4B5563"
     assert state.axis_label_size == 0
+    assert state.axis_label_orientation == "auto"
     assert state.show_zero_line is True
     assert state.zero_line_color == "#CBD5E1"
     assert state.show_title is True
@@ -48,8 +49,12 @@ def test_legacy_visual_state_gets_visual_config_defaults():
     assert state.value_size == 0
     assert state.value_align == "left"
     assert state.card_density == "normal"
-    assert state.show_card_accent is True
-    assert state.show_card_sparkline is True
+    assert state.card_style == "card"
+    assert state.card_radius == 14
+    assert state.show_card_label is True
+    assert state.show_card_footer is False
+    assert state.show_card_accent is False
+    assert state.show_card_sparkline is False
     assert state.alt_text == ""
 
 
@@ -69,6 +74,7 @@ def test_visual_config_round_trip_is_serialized_with_item_state():
             "show_axis_labels": False,
             "axis_label_color": "#111827",
             "axis_label_size": 12,
+            "axis_label_orientation": "diagonal",
             "show_zero_line": False,
             "zero_line_color": "#94A3B8",
             "show_title": False,
@@ -103,6 +109,10 @@ def test_visual_config_round_trip_is_serialized_with_item_state():
             "value_size": 28,
             "value_align": "center",
             "card_density": "compact",
+            "card_style": "metric",
+            "card_radius": 18,
+            "show_card_label": False,
+            "show_card_footer": False,
             "show_card_accent": False,
             "show_card_sparkline": False,
             "alt_text": "Grafico de teste",
@@ -123,6 +133,7 @@ def test_visual_config_round_trip_is_serialized_with_item_state():
     assert payload["show_axis_labels"] is False
     assert payload["axis_label_color"] == "#111827"
     assert payload["axis_label_size"] == 12
+    assert payload["axis_label_orientation"] == "diagonal"
     assert payload["show_zero_line"] is False
     assert payload["zero_line_color"] == "#94A3B8"
     assert payload["show_title"] is False
@@ -157,6 +168,10 @@ def test_visual_config_round_trip_is_serialized_with_item_state():
     assert payload["value_size"] == 28
     assert payload["value_align"] == "center"
     assert payload["card_density"] == "compact"
+    assert payload["card_style"] == "metric"
+    assert payload["card_radius"] == 18
+    assert payload["show_card_label"] is False
+    assert payload["show_card_footer"] is False
     assert payload["show_card_accent"] is False
     assert payload["show_card_sparkline"] is False
     assert payload["alt_text"] == "Grafico de teste"
@@ -175,6 +190,7 @@ def test_empty_visual_config_values_fall_back_safely():
             "grid_width": "",
             "grid_opacity": "",
             "axis_label_size": "",
+            "axis_label_orientation": "upside-down",
             "data_label_position": "left",
             "display_units": "billions",
             "bar_width_percent": "",
@@ -188,6 +204,8 @@ def test_empty_visual_config_values_fall_back_safely():
             "value_color": "",
             "value_size": "",
             "card_density": "wide",
+            "card_style": "poster",
+            "card_radius": "",
         }
     )
 
@@ -201,6 +219,7 @@ def test_empty_visual_config_values_fall_back_safely():
     assert state.grid_width == 1
     assert state.grid_opacity == 100
     assert state.axis_label_size == 0
+    assert state.axis_label_orientation == "auto"
     assert state.data_label_position == "outside"
     assert state.display_units == "none"
     assert state.bar_width_percent == 62
@@ -214,6 +233,8 @@ def test_empty_visual_config_values_fall_back_safely():
     assert state.value_color == "#111827"
     assert state.value_size == 0
     assert state.card_density == "normal"
+    assert state.card_style == "metric"
+    assert state.card_radius == 14
 
 
 def test_dashboard_chart_item_legacy_payload_loads_visual_defaults():

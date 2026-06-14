@@ -1214,9 +1214,20 @@ class VisualFormatPanel(QFrame):
         form = self._form_layout()
         self._controls["axis_label_color"] = _ColorButton("#4B5563", group)
         self._controls["axis_label_size"] = self._spin(0, 36, group)
+        orientation_combo = self._combo(
+            group,
+            [
+                ("Auto", "auto"),
+                ("Horizontal", "horizontal"),
+                ("Diagonal", "diagonal"),
+                ("Vertical", "vertical"),
+            ],
+        )
+        self._controls["axis_label_orientation"] = orientation_combo
         self._controls["zero_line_color"] = _ColorButton("#CBD5E1", group)
         form.addRow(_rt("Cor dos nomes"), self._controls["axis_label_color"])
         form.addRow(_rt("Tam. nomes"), self._controls["axis_label_size"])
+        form.addRow(_rt("Texto"), orientation_combo)
         form.addRow("", self._switch_row("Linha zero", "show_zero_line", group))
         form.addRow(_rt("Cor linha zero"), self._controls["zero_line_color"])
         group.body_layout.addLayout(form)
@@ -1431,6 +1442,14 @@ class VisualFormatPanel(QFrame):
     def _build_card_section(self):
         self.card_group = self._create_section("card", "Card/KPI", view="visual", expanded=False)
         form = self._form_layout()
+        style_combo = self._combo(
+            self.card_group,
+            [
+                ("Cartao", "card"),
+                ("Indicador", "metric"),
+            ],
+        )
+        self._controls["card_style"] = style_combo
         self._controls["value_color"] = _ColorButton("#111827", self.card_group)
         self._controls["value_size"] = self._spin(0, 72, self.card_group)
         value_align_combo = QComboBox(self.card_group)
@@ -1444,10 +1463,15 @@ class VisualFormatPanel(QFrame):
         self._controls["card_density"].addItem(_rt("Compacto"), "compact")
         self._controls["card_density"].addItem(_rt("Expandido"), "expanded")
         apply_walker_combo(self._controls["card_density"])
+        self._controls["card_radius"] = self._spin(0, 32, self.card_group)
+        form.addRow(_rt("Estilo"), style_combo)
         form.addRow(_rt("Cor do valor"), self._controls["value_color"])
         form.addRow(_rt("Tam. valor"), self._controls["value_size"])
         form.addRow(_rt("Alinhamento"), value_align_combo)
         form.addRow(_rt("Modo"), self._controls["card_density"])
+        form.addRow(_rt("Raio"), self._controls["card_radius"])
+        form.addRow("", self._switch_row("Rotulo", "show_card_label", self.card_group))
+        form.addRow("", self._switch_row("Rodape", "show_card_footer", self.card_group))
         form.addRow("", self._switch_row("Barra de destaque", "show_card_accent", self.card_group))
         form.addRow("", self._switch_row("Mini linha", "show_card_sparkline", self.card_group))
         self.card_group.body_layout.addLayout(form)
@@ -1579,6 +1603,7 @@ class VisualFormatPanel(QFrame):
             self._controls["show_axis_labels"].set_checked_state(bool(getattr(state, "show_axis_labels", True)), animated=False)
             self._controls["axis_label_color"].set_color(getattr(state, "axis_label_color", "#4B5563"))
             self._controls["axis_label_size"].setValue(int(getattr(state, "axis_label_size", 0) or 0))
+            self._set_combo_value(self._controls["axis_label_orientation"], getattr(state, "axis_label_orientation", "auto") or "auto")
             self._controls["show_zero_line"].set_checked_state(bool(getattr(state, "show_zero_line", True)), animated=False)
             self._controls["zero_line_color"].set_color(getattr(state, "zero_line_color", "#CBD5E1"))
             self._controls["show_title"].set_checked_state(bool(getattr(state, "show_title", True)), animated=False)
@@ -1622,6 +1647,10 @@ class VisualFormatPanel(QFrame):
             self._controls["value_size"].setValue(int(getattr(state, "value_size", 0) or 0))
             self._set_combo_value(self._controls["value_align"], getattr(state, "value_align", "left") or "left")
             self._set_combo_value(self._controls["card_density"], getattr(state, "card_density", "normal") or "normal")
+            self._set_combo_value(self._controls["card_style"], getattr(state, "card_style", "card") or "card")
+            self._controls["card_radius"].setValue(int(getattr(state, "card_radius", 14) or 14))
+            self._controls["show_card_label"].set_checked_state(bool(getattr(state, "show_card_label", True)), animated=False)
+            self._controls["show_card_footer"].set_checked_state(bool(getattr(state, "show_card_footer", True)), animated=False)
             self._controls["show_card_accent"].set_checked_state(bool(getattr(state, "show_card_accent", True)), animated=False)
             self._controls["show_card_sparkline"].set_checked_state(bool(getattr(state, "show_card_sparkline", True)), animated=False)
             self._controls["alt_text"].setText(str(getattr(state, "alt_text", "") or ""))
@@ -1650,6 +1679,7 @@ class VisualFormatPanel(QFrame):
         state.show_axis_labels = bool(self._controls["show_axis_labels"].isChecked())
         state.axis_label_color = self._controls["axis_label_color"].color()
         state.axis_label_size = int(self._controls["axis_label_size"].value())
+        state.axis_label_orientation = str(self._controls["axis_label_orientation"].currentData() or "auto")
         state.show_zero_line = bool(self._controls["show_zero_line"].isChecked())
         state.zero_line_color = self._controls["zero_line_color"].color()
         state.show_title = bool(self._controls["show_title"].isChecked())
@@ -1693,6 +1723,10 @@ class VisualFormatPanel(QFrame):
         state.value_size = int(self._controls["value_size"].value())
         state.value_align = str(self._controls["value_align"].currentData() or "left")
         state.card_density = str(self._controls["card_density"].currentData() or "normal")
+        state.card_style = str(self._controls["card_style"].currentData() or "card")
+        state.card_radius = int(self._controls["card_radius"].value())
+        state.show_card_label = bool(self._controls["show_card_label"].isChecked())
+        state.show_card_footer = bool(self._controls["show_card_footer"].isChecked())
         state.show_card_accent = bool(self._controls["show_card_accent"].isChecked())
         state.show_card_sparkline = bool(self._controls["show_card_sparkline"].isChecked())
         state.alt_text = self._controls["alt_text"].text().strip()
@@ -1710,7 +1744,7 @@ class VisualFormatPanel(QFrame):
 
     def _sync_axis_controls(self, *args):
         enabled = bool(self._controls["show_axis_labels"].isChecked())
-        for key in ("axis_label_color", "axis_label_size", "show_zero_line"):
+        for key in ("axis_label_color", "axis_label_size", "axis_label_orientation", "show_zero_line"):
             self._controls[key].setEnabled(enabled)
         self._controls["zero_line_color"].setEnabled(enabled and bool(self._controls["show_zero_line"].isChecked()))
 
@@ -1844,6 +1878,7 @@ class VisualFormatPanel(QFrame):
             "show_axis_labels",
             "axis_label_color",
             "axis_label_size",
+            "axis_label_orientation",
             "show_zero_line",
             "zero_line_color",
             "show_title",
@@ -1884,6 +1919,10 @@ class VisualFormatPanel(QFrame):
             "value_size",
             "value_align",
             "card_density",
+            "card_style",
+            "card_radius",
+            "show_card_label",
+            "show_card_footer",
             "show_card_accent",
             "show_card_sparkline",
             "alt_text",

@@ -476,6 +476,7 @@ class SummarizerDialog(QDialog):
         self._init_language_button()
         self._init_theme_button()
         self._init_presentation_button()
+        self._init_presentation_page_guard()
 
         # External integration state (not used in main dialog anymore)
         self.external_df = None
@@ -754,10 +755,10 @@ class SummarizerDialog(QDialog):
         choice = self._current_locale_choice()
         try:
             btn.setIcon(svg_icon("Globe.svg"))
-            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         except Exception:
             log_exception("falha opcional ignorada")
-        btn.setText(self._language_button_text(choice))
+        btn.setText("")
         btn.setToolTip(f"{_rt_runtime('Idioma')}: {self._language_label(choice)}")
 
     def _set_locale_choice(self, locale_code: str):
@@ -892,7 +893,7 @@ class SummarizerDialog(QDialog):
             if layout is not None and theme_btn is not None:
                 index = layout.indexOf(theme_btn)
                 if index >= 0:
-                    layout.insertWidget(index + 1, btn)
+                    layout.insertWidget(index, btn)
                 else:
                     layout.addWidget(btn)
             elif layout is not None:
@@ -906,6 +907,62 @@ class SummarizerDialog(QDialog):
             return
 
         self.presentation_map_btn = btn
+        self._sync_presentation_button_visibility()
+
+    def _init_presentation_page_guard(self):
+        stacked = getattr(self.ui, "stackedWidget", None)
+        if stacked is not None:
+            try:
+                stacked.currentChanged.connect(self._sync_presentation_button_visibility)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        self._sync_presentation_button_visibility()
+
+    def _presentation_page_allows_map(self) -> bool:
+        stacked = getattr(self.ui, "stackedWidget", None)
+        if stacked is None:
+            return False
+        try:
+            current_page = stacked.currentWidget()
+        except Exception:
+            return False
+        allowed_pages = (
+            getattr(self.ui, "pageResultados", None),
+            getattr(self.ui, "pageModel", None),
+        )
+        return any(current_page is page for page in allowed_pages if page is not None)
+
+    def _sync_presentation_button_visibility(self, *args):
+        allowed = self._presentation_page_allows_map()
+        controller = getattr(self, "presentation_controller", None)
+        btn = getattr(self, "presentation_map_btn", None)
+
+        if not allowed and controller is not None:
+            try:
+                if bool(getattr(controller, "is_active", lambda: False)()):
+                    controller.close()
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+        if btn is None:
+            return
+
+        try:
+            btn.setVisible(bool(allowed))
+            btn.setEnabled(bool(allowed))
+        except Exception:
+            log_exception("falha opcional ignorada")
+        if not allowed:
+            try:
+                btn.blockSignals(True)
+                btn.setChecked(False)
+            except Exception:
+                log_exception("falha opcional ignorada")
+            finally:
+                try:
+                    btn.blockSignals(False)
+                except Exception:
+                    pass
 
     def _mark_theme_mode(self, mode: str):
         normalized = self._normalize_theme_mode(mode)
@@ -1173,19 +1230,29 @@ class SummarizerDialog(QDialog):
             self._clear_layout_widgets(layout)
             self.ui.integration_placeholder = None
 
-            scroll = QScrollArea(self.ui.pageIntegracao)
-            scroll.setObjectName("integrationScrollArea")
-            scroll.setWidgetResizable(True)
-            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-            layout.addWidget(scroll, 1)
-            self.integration_scroll = scroll
-
             panel = IntegrationPanel(self, self.iface)
-            scroll.setWidget(panel)
+            layout.addWidget(panel, 1)
+            self.integration_scroll = None
             self.integration_panel = panel
-        except Exception:
+        except Exception as exc:
             self.integration_panel = None
-            log_exception("falha opcional ignorada")
+            log_exception("falha ao criar pagina de conexao", exc)
+            try:
+                layout = self._page_layout(self.ui.pageIntegracao, spacing=0)
+                self._clear_layout_widgets(layout)
+                fallback = QLabel(
+                    _rt_runtime(
+                        "Nao foi possivel abrir a pagina de conexao: {exc}",
+                        exc=f"{type(exc).__name__}: {exc}",
+                    ),
+                    self.ui.pageIntegracao,
+                )
+                fallback.setWordWrap(True)
+                fallback.setStyleSheet("color: #6B7280; padding: 24px;")
+                layout.addWidget(fallback, 1)
+                self.ui.integration_placeholder = fallback
+            except Exception:
+                log_exception("falha opcional ignorada")
         return self.integration_panel
 
     def _current_database_connection_meta(self) -> Dict:
@@ -1455,6 +1522,8 @@ class SummarizerDialog(QDialog):
         except Exception:
             log_exception("falha opcional ignorada")
         scroll = getattr(self, "integration_scroll", None)
+        if scroll is None and panel is not None:
+            scroll = getattr(panel, "page_scroll", None)
         if scroll is not None:
             try:
                 scroll.verticalScrollBar().setValue(0)

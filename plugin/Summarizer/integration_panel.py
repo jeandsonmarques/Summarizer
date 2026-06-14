@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Jeandson Marques
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from qgis.PyQt.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from qgis.PyQt.QtGui import QColor, QCursor, QIcon, QKeySequence, QPainter, QPen, QPixmap
+from qgis.PyQt.QtGui import QColor, QCursor, QFontMetrics, QIcon, QKeySequence, QPainter, QPen, QPixmap
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -41,6 +41,7 @@ from qgis.PyQt.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QShortcut,
+    QScrollArea,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
@@ -52,7 +53,6 @@ from qgis.core import QgsVectorLayer
 
 from .slim_dialogs import SlimDialogBase, SlimMessageDialog
 from .browser_integration import connection_registry
-from .palette import COLORS, DARK_COLORS
 from .utils.fonts import _qfont_weight, harmonize_widget_fonts, ui_font, ui_font_stack
 from .utils.i18n_runtime import apply_widget_translations as _apply_i18n_widgets, tr_text as _rt
 from .utils.resources import svg_icon
@@ -69,6 +69,21 @@ def _is_dark_theme() -> bool:
         return str(QSettings().value("Summarizer/uiTheme", "light") or "light").strip().lower() == "dark"
     except Exception:
         return False
+
+
+def _qt_member(owner, enum_name: str, member_name: str):
+    enum_owner = getattr(owner, enum_name, None)
+    if enum_owner is not None and hasattr(enum_owner, member_name):
+        return getattr(enum_owner, member_name)
+    return getattr(owner, member_name)
+
+
+def _qt_alignment(*member_names: str):
+    result = None
+    for member_name in member_names:
+        member = _qt_member(Qt, "AlignmentFlag", member_name)
+        result = member if result is None else result | member
+    return result
 
 
 try:  # pragma: no cover - handles platforms without QtSql
@@ -309,144 +324,211 @@ class ConnectorConfig:
     icon_name: str = ""
     icon_path: str = ""
     keywords: str = ""
+    list_category: str = "Geral"
+    status_text: str = "Disponível"
+    action_text: str = "Abrir"
 
 
-class ConnectorCard(QFrame):
-    """Clickable tile that mimics BI get data cards."""
+class _ElidedLabel(QLabel):
+    """QLabel with stable single-line ellipsis for responsive rows."""
+
+    def __init__(self, text: str = "", parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._full_text = ""
+        self.setWordWrap(False)
+        self.setSizePolicy(
+            _qt_member(QSizePolicy, "Policy", "Expanding"),
+            _qt_member(QSizePolicy, "Policy", "Preferred"),
+        )
+        self.setText(text)
+
+    def setText(self, text):  # noqa: N802 - Qt API name
+        self._full_text = "" if text is None else str(text)
+        self.setToolTip(self._full_text)
+        self._update_elided_text()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_elided_text()
+
+    def _update_elided_text(self):
+        if not hasattr(self, "_full_text"):
+            return
+        width = max(int(self.width()) - 2, 0)
+        if width <= 0:
+            QLabel.setText(self, self._full_text)
+            return
+        metrics = QFontMetrics(self.font())
+        QLabel.setText(
+            self,
+            metrics.elidedText(self._full_text, Qt.TextElideMode.ElideRight, width),
+        )
+
+
+class SourceConnectionItem(QFrame):
+    """Horizontal row used by the connection source list."""
 
     triggered = pyqtSignal(str)
 
-    def __init__(self, config: ConnectorConfig, parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        *,
+        key: str,
+        icon_path: str = "",
+        icon_name: str = "",
+        icon_text: str = "",
+        title: str,
+        subtitle: str,
+        category: str,
+        status: str,
+        action_text: str,
+        callback: Optional[Callable[[], None]] = None,
+        parent: Optional[QWidget] = None,
+    ):
         super().__init__(parent)
-        self.config = config
-        self.setObjectName(f"integrationCard_{config.key}")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setFixedSize(148, 102)
+        self.key = key
+        self.icon_path = icon_path
+        self.icon_name = icon_name
+        self.icon_text = icon_text
+        self.title = title
+        self.subtitle = subtitle
+        self.category = category
+        self.status = status
+        self.action_text = action_text
+        self._callback = callback
+
+        self.setObjectName(f"sourceConnection_{key}")
+        self.setProperty("role", "sourceRow")
+        self.setAttribute(_qt_member(Qt, "WidgetAttribute", "WA_StyledBackground"), True)
+        self.setCursor(_qt_member(Qt, "CursorShape", "PointingHandCursor"))
+        self.setFocusPolicy(_qt_member(Qt, "FocusPolicy", "StrongFocus"))
+        self.setMinimumHeight(68)
+        self.setMaximumHeight(76)
+        self.setSizePolicy(
+            _qt_member(QSizePolicy, "Policy", "Expanding"),
+            _qt_member(QSizePolicy, "Policy", "Fixed"),
+        )
 
         self._build_ui()
         self._apply_styles()
 
     def _build_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(8)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 14, 8)
+        layout.setSpacing(12)
 
         self.icon_label = QLabel(self)
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setProperty("role", "sourceIcon")
         self.icon_label.setFixedSize(40, 40)
-        layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.icon_label.setAlignment(_qt_alignment("AlignCenter"))
+        layout.addWidget(self.icon_label, 0, _qt_alignment("AlignVCenter"))
 
-        self.title_label = QLabel(self.config.title, self)
-        self.title_label.setWordWrap(True)
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        layout.addWidget(self.title_label)
+        text_host = QWidget(self)
+        text_host.setObjectName("sourceConnectionText")
+        text_host.setProperty("role", "sourceTextHost")
+        text_host.setAttribute(_qt_member(Qt, "WidgetAttribute", "WA_StyledBackground"), True)
+        text_host.setSizePolicy(
+            _qt_member(QSizePolicy, "Policy", "Expanding"),
+            _qt_member(QSizePolicy, "Policy", "Preferred"),
+        )
+        text_layout = QVBoxLayout(text_host)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(3)
 
-        self.caption_label = QLabel(self.config.caption, self)
-        self.caption_label.setWordWrap(True)
-        self.caption_label.setProperty("class", "cardCaption")
-        self.caption_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        layout.addWidget(self.caption_label)
+        self.title_label = _ElidedLabel(self.title, text_host)
+        self.title_label.setProperty("role", "sourceTitle")
+        self.title_label.setFont(ui_font(10, _qfont_weight("DemiBold", 63)))
+        text_layout.addWidget(self.title_label)
+
+        self.subtitle_label = _ElidedLabel(self.subtitle, text_host)
+        self.subtitle_label.setProperty("role", "sourceSubtitle")
+        self.subtitle_label.setFont(ui_font(9, _qfont_weight("Normal", 50)))
+        text_layout.addWidget(self.subtitle_label)
+
+        layout.addWidget(text_host, 1)
+
+        self.category_label = _ElidedLabel(self.category, self)
+        self.category_label.setProperty("role", "sourceMeta")
+        self.category_label.setAlignment(_qt_alignment("AlignVCenter", "AlignLeft"))
+        self.category_label.setMinimumWidth(128)
+        self.category_label.setMaximumWidth(170)
+        self.category_label.setFont(ui_font(10, _qfont_weight("Normal", 50)))
+        layout.addWidget(self.category_label, 0, _qt_alignment("AlignVCenter"))
+
+        self.status_label = _ElidedLabel(self.status, self)
+        self.status_label.setProperty("role", "sourceStatus")
+        self.status_label.setAlignment(_qt_alignment("AlignVCenter", "AlignLeft"))
+        self.status_label.setMinimumWidth(92)
+        self.status_label.setMaximumWidth(120)
+        self.status_label.setFont(ui_font(10, _qfont_weight("Normal", 50)))
+        layout.addWidget(self.status_label, 0, _qt_alignment("AlignVCenter"))
+
+        self.action_button = QPushButton(self.action_text, self)
+        self.action_button.setProperty("role", "sourceAction")
+        self.action_button.setCursor(_qt_member(Qt, "CursorShape", "PointingHandCursor"))
+        self.action_button.setMinimumSize(0, 0)
+        self.action_button.setFixedSize(118, 32)
+        self.action_button.setFont(ui_font(9, _qfont_weight("Normal", 50)))
+        self.action_button.clicked.connect(self._activate)
+        layout.addWidget(self.action_button, 0, _qt_alignment("AlignVCenter"))
 
     def _apply_styles(self):
-        colors = DARK_COLORS if _is_dark_theme() else COLORS
-        style_template = f"""
-            ConnectorCard {{
-                background-color: transparent;
-                border: none;
-            }}
-            QLabel {{
-                font-family: %s;
-                color: {colors["color_text_primary"]};
-            }}
-            QLabel[class="cardCaption"] {{
-                font-size: 8.6pt;
-                font-weight: 400;
-                color: {colors["color_text_secondary"]};
-            }}
-            """
-        self.setStyleSheet(style_template % ui_font_stack())
-
         self._apply_icon()
-        self.title_label.setFont(ui_font(10, _qfont_weight("DemiBold", 63)))
+        self.title_label.setText(_rt(self.title))
+        self.subtitle_label.setText(_rt(self.subtitle))
+        self.category_label.setText(_rt(self.category))
+        self.status_label.setText(_rt(self.status))
+        self.action_button.setText(_rt(self.action_text))
 
     def _apply_icon(self):
-        if self.config.icon_path and os.path.exists(self.config.icon_path):
-            icon = QIcon(self.config.icon_path)
-            if not icon.isNull():
-                self.icon_label.setPixmap(icon.pixmap(40, 40))
-                return
-        if self.config.icon_name:
-            icon = svg_icon(self.config.icon_name)
+        if self.icon_path and os.path.exists(self.icon_path):
+            icon = QIcon(self.icon_path)
             if not icon.isNull():
                 self.icon_label.setPixmap(icon.pixmap(QSize(40, 40)))
                 return
-        self.icon_label.setText(self.config.icon_text.upper()[:3])
-        self.icon_label.setFont(ui_font(12, _qfont_weight("Bold", 75)))
+        if self.icon_name:
+            icon = svg_icon(self.icon_name)
+            if not icon.isNull():
+                self.icon_label.setPixmap(icon.pixmap(QSize(40, 40)))
+                return
+        self.icon_label.setText(self.icon_text.upper()[:4])
+        self.icon_label.setFont(ui_font(10, _qfont_weight("Bold", 75)))
 
-    def enterEvent(self, event: QEvent):
-        super().enterEvent(event)
-
-    def leaveEvent(self, event: QEvent):
-        super().leaveEvent(event)
+    def _activate(self):
+        self.triggered.emit(self.key)
+        if callable(self._callback):
+            self._callback()
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.triggered.emit(self.config.key)
+        if event.button() == _qt_member(Qt, "MouseButton", "LeftButton"):
+            self._activate()
+            event.accept()
+            return
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
-            self.triggered.emit(self.config.key)
+        if event.key() in (
+            _qt_member(Qt, "Key", "Key_Return"),
+            _qt_member(Qt, "Key", "Key_Enter"),
+            _qt_member(Qt, "Key", "Key_Space"),
+        ):
+            self._activate()
             event.accept()
             return
         super().keyPressEvent(event)
 
-
-class ResponsiveGrid(QWidget):
-    """Responsive grid that ensures target number of columns according to width."""
-
-    BREAKPOINTS: Sequence[Tuple[int, int]] = (
-        (1160, 4),
-        (860, 3),
-        (640, 2),
-        (0, 1),
-    )
-
-    def __init__(self, parent: Optional[QWidget] = None):
-        super().__init__(parent)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self._layout = QGridLayout(self)
-        self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setHorizontalSpacing(12)
-        self._layout.setVerticalSpacing(18)
-        self._items: List[ConnectorCard] = []
-
-    def add_item(self, card: ConnectorCard):
-        self._items.append(card)
-        self._layout.addWidget(card, len(self._items) - 1, 0)
-        self._relayout()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._relayout()
+        self.sync_responsive_state()
 
-    def _relayout(self):
-        width = max(self.width(), self.parentWidget().width() if self.parentWidget() else 0, 1)
-        columns = 1
-        for breakpoint, cols in self.BREAKPOINTS:
-            if width >= breakpoint:
-                columns = cols
-                break
-
-        visible_cards = [card for card in self._items if card.isVisible()]
-        for idx, card in enumerate(visible_cards):
-            row = idx // columns
-            col = idx % columns
-            self._layout.addWidget(card, row, col, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
-
-        for col in range(columns):
-            self._layout.setColumnStretch(col, 0)
+    def sync_responsive_state(self):
+        width = int(self.width())
+        if width <= 0:
+            return
+        compact = width < 720
+        self.category_label.setVisible(not compact)
+        self.status_label.setVisible(not compact)
+        self.action_button.setFixedWidth(102 if width < 620 else 118)
 
 
 def _show_walker_modal_overlay(dialog: QDialog) -> Optional[QFrame]:
@@ -534,50 +616,96 @@ class IntegrationPanel(QWidget):
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self):
+        self.setObjectName("integrationPanelPage")
+        self.setAttribute(_qt_member(Qt, "WidgetAttribute", "WA_StyledBackground"), True)
+
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 24, 0, 24)
-        root.setSpacing(24)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        wrapper = QFrame(self)
-        wrapper.setObjectName("integrationWrapper")
-        wrapper.setProperty("card", True)
-        wrapper.setMaximumWidth(16777215)
-        wrapper.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        wrapper_layout = QVBoxLayout(wrapper)
-        wrapper_layout.setContentsMargins(28, 28, 28, 28)
-        wrapper_layout.setSpacing(20)
+        self.page_scroll = QScrollArea(self)
+        self.page_scroll.setObjectName("integrationPageScroll")
+        self.page_scroll.setWidgetResizable(True)
+        self.page_scroll.setFrameShape(_qt_member(QFrame, "Shape", "NoFrame"))
+        self.page_scroll.setHorizontalScrollBarPolicy(_qt_member(Qt, "ScrollBarPolicy", "ScrollBarAlwaysOff"))
 
-        header_layout = QVBoxLayout()
-        header_layout.setSpacing(6)
+        page = QWidget(self.page_scroll)
+        page.setObjectName("integrationPage")
+        page.setAttribute(_qt_member(Qt, "WidgetAttribute", "WA_StyledBackground"), True)
 
-        self.title_label = QLabel(_rt("Adicionar dados ao seu relatorio"), wrapper)
-        self.title_label.setProperty("cardTitle", True)
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(24, 24, 24, 24)
+        page_layout.setSpacing(20)
+
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(16)
+
+        header_text = QVBoxLayout()
+        header_text.setContentsMargins(0, 0, 0, 0)
+        header_text.setSpacing(5)
+
+        self.title_label = QLabel(_rt("Conexões"), page)
+        self.title_label.setProperty("role", "pageTitle")
+        self.title_label.setWordWrap(True)
         self.title_label.setFont(ui_font(18, _qfont_weight("DemiBold", 63)))
-        header_layout.addWidget(self.title_label)
+        header_text.addWidget(self.title_label)
 
-        wrapper_layout.addLayout(header_layout)
+        header_layout.addLayout(header_text, 1)
 
-        self.grid_widget = ResponsiveGrid(wrapper)
-        wrapper_layout.addWidget(self.grid_widget)
+        page_layout.addLayout(header_layout)
+
+        self.sources_frame = QFrame(page)
+        self.sources_frame.setObjectName("sourcesFrame")
+        self.sources_frame.setProperty("role", "sourcesSection")
+        self.sources_frame.setAttribute(_qt_member(Qt, "WidgetAttribute", "WA_StyledBackground"), True)
+        sources_layout = QVBoxLayout(self.sources_frame)
+        sources_layout.setContentsMargins(0, 0, 0, 0)
+        sources_layout.setSpacing(12)
+
+        sources_header = QHBoxLayout()
+        sources_header.setContentsMargins(0, 0, 0, 0)
+        sources_title = QLabel(_rt("Fontes"), self.sources_frame)
+        sources_title.setProperty("role", "sectionTitle")
+        sources_title.setFont(ui_font(13, _qfont_weight("DemiBold", 63)))
+        sources_header.addWidget(sources_title)
+        sources_header.addStretch(1)
+        sources_layout.addLayout(sources_header)
+
+        self.sources_list = QWidget(self.sources_frame)
+        self.sources_list.setObjectName("sourcesList")
+        self.source_rows_layout = QVBoxLayout(self.sources_list)
+        self.source_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.source_rows_layout.setSpacing(8)
+        sources_layout.addWidget(self.sources_list)
+
+        page_layout.addWidget(self.sources_frame)
 
         self._build_connectors()
-        recents_frame = QFrame(wrapper)
+
+        recents_frame = QFrame(page)
         recents_frame.setObjectName("recentsFrame")
-        recents_frame.setProperty("card", True)
+        recents_frame.setProperty("role", "sectionFrame")
+        recents_frame.setAttribute(_qt_member(Qt, "WidgetAttribute", "WA_StyledBackground"), True)
         recents_layout = QVBoxLayout(recents_frame)
         recents_layout.setContentsMargins(18, 18, 18, 18)
         recents_layout.setSpacing(12)
 
         recents_header = QHBoxLayout()
-        recents_header.setSpacing(6)
+        recents_header.setContentsMargins(0, 0, 0, 0)
+        recents_header.setSpacing(8)
         recents_title = QLabel(_rt("Recentes"), recents_frame)
-        recents_title.setProperty("cardTitle", True)
-        recents_title.setFont(ui_font(12, _qfont_weight("DemiBold", 63)))
+        recents_title.setProperty("role", "sectionTitle")
+        recents_title.setFont(ui_font(13, _qfont_weight("DemiBold", 63)))
         recents_header.addWidget(recents_title)
         recents_header.addStretch(1)
 
         self.clear_recent_btn = QPushButton(_rt("Limpar"), recents_frame)
         self.clear_recent_btn.setProperty("role", "recentClear")
+        self.clear_recent_btn.setCursor(_qt_member(Qt, "CursorShape", "PointingHandCursor"))
+        self.clear_recent_btn.setMinimumSize(0, 0)
+        self.clear_recent_btn.setFixedSize(88, 32)
+        self.clear_recent_btn.setFont(ui_font(9, _qfont_weight("Normal", 50)))
         self.clear_recent_btn.clicked.connect(self._clear_recents)
         recents_header.addWidget(self.clear_recent_btn)
 
@@ -585,118 +713,110 @@ class IntegrationPanel(QWidget):
 
         self.recents_list = QListWidget(recents_frame)
         self.recents_list.setAlternatingRowColors(False)
-        self.recents_list.setSpacing(6)
+        self.recents_list.setSpacing(8)
+        self.recents_list.setCursor(_qt_member(Qt, "CursorShape", "PointingHandCursor"))
+        self.recents_list.setHorizontalScrollBarPolicy(_qt_member(Qt, "ScrollBarPolicy", "ScrollBarAlwaysOff"))
         self.recents_list.itemActivated.connect(self._open_recent)
         recents_layout.addWidget(self.recents_list)
 
-        self.recents_placeholder = QLabel(_rt("Nenhuma conexao recente..."), recents_frame)
-        self.recents_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.recents_placeholder.setProperty("role", "helper")
+        self.recents_placeholder = QLabel(_rt("Nenhuma conexão recente..."), recents_frame)
+        self.recents_placeholder.setAlignment(_qt_alignment("AlignVCenter", "AlignLeft"))
+        self.recents_placeholder.setMinimumHeight(56)
+        self.recents_placeholder.setProperty("role", "emptyRecent")
         recents_layout.addWidget(self.recents_placeholder)
 
-        wrapper_layout.addWidget(recents_frame)
+        page_layout.addWidget(recents_frame)
+        page_layout.addStretch(1)
 
-        root.addWidget(wrapper, 1)
+        self.page_scroll.setWidget(page)
+        root.addWidget(self.page_scroll, 1)
 
-        colors = DARK_COLORS if _is_dark_theme() else COLORS
-        item_bg = "#172033" if _is_dark_theme() else "#F5F7FA"
-        item_hover = "#1F2A3D" if _is_dark_theme() else "#EEF2F6"
-        item_selected = "#24324A" if _is_dark_theme() else "#ECEFF3"
-        clear_bg = "#F8FAFC" if _is_dark_theme() else "#111827"
-        clear_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
-        clear_pressed = "#CBD5E1" if _is_dark_theme() else "#0B1220"
-        clear_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
-        style_template = """
-            QListWidget {
-                border: none;
-                background: transparent;
-                outline: none;
-                padding: 0px;
-                font-family: %s;
-                font-size: 9pt;
-            }
-            QListWidget::item {
-                padding: 8px 10px;
-                margin: 0px;
-                border: none;
-                border-radius: 10px;
-                background: __ITEM_BG__;
-                color: __ITEM_FG__;
-            }
-            QListWidget::item:selected {
-                background: __ITEM_SELECTED__;
-                border: none;
-                color: __ITEM_FG__;
-            }
-            QListWidget::item:hover {
-                background: __ITEM_HOVER__;
-            }
-            QPushButton[role="recentClear"] {
-                background: __CLEAR_BG__;
-                color: __CLEAR_FG__;
-                border: none;
-                border-radius: 8px;
-                min-width: 0px;
-                padding: 4px 10px;
-                font-family: %s;
-                font-size: 9pt;
-                font-weight: 600;
-            }
-            QPushButton[role="recentClear"]:hover {
-                background: __CLEAR_HOVER__;
-            }
-            QPushButton[role="recentClear"]:pressed {
-                background: __CLEAR_PRESSED__;
-            }
-            QPushButton[role="recentClear"]:disabled {
-                background: #D1D5DB;
-                color: #FFFFFF;
-            }
-            """
-        style = style_template % (ui_font_stack(), ui_font_stack())
-        style = (
-            style.replace("__ITEM_BG__", item_bg)
-            .replace("__ITEM_FG__", colors["color_text_primary"])
-            .replace("__ITEM_SELECTED__", item_selected)
-            .replace("__ITEM_HOVER__", item_hover)
-            .replace("__CLEAR_BG__", clear_bg)
-            .replace("__CLEAR_FG__", clear_fg)
-            .replace("__CLEAR_HOVER__", clear_hover)
-            .replace("__CLEAR_PRESSED__", clear_pressed)
-        )
-        self.setStyleSheet(style)
         self._apply_panel_styles()
         self._apply_runtime_i18n()
 
     def _apply_panel_styles(self):
-        colors = DARK_COLORS if _is_dark_theme() else COLORS
-        item_bg = "#172033" if _is_dark_theme() else "#F5F7FA"
-        item_hover = "#1F2A3D" if _is_dark_theme() else "#EEF2F6"
-        item_selected = "#24324A" if _is_dark_theme() else "#ECEFF3"
-        clear_bg = "#F8FAFC" if _is_dark_theme() else "#111827"
-        clear_hover = "#E2E8F0" if _is_dark_theme() else "#1F2937"
-        clear_pressed = "#CBD5E1" if _is_dark_theme() else "#0B1220"
-        clear_fg = "#0B1020" if _is_dark_theme() else "#FFFFFF"
         style_template = """
-            QFrame#integrationWrapper {
-                background: __PANEL_BG__;
-                border: 1px solid __PANEL_BORDER__;
-                border-radius: 12px;
+            QWidget#integrationPanelPage,
+            QWidget#integrationPage {
+                background: #f8fafc;
             }
-            QFrame#recentsFrame {
-                background: __PANEL_BG__;
-                border: 1px solid __PANEL_BORDER__;
-                border-radius: 10px;
+            QScrollArea#integrationPageScroll {
+                background: #f8fafc;
+                border: none;
             }
-            QLabel[cardTitle="true"] {
+            QScrollArea#integrationPageScroll > QWidget > QWidget {
+                background: #f8fafc;
+            }
+            QFrame[role="sourcesSection"] {
                 background: transparent;
                 border: none;
-                color: __ITEM_FG__;
             }
-            QLabel[role="helper"] {
+            QFrame[role="sectionFrame"] {
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+            }
+            QFrame[role="sourceRow"] {
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 6px;
+            }
+            QFrame[role="sourceRow"]:hover {
+                background: #f9fafb;
+            }
+            QLabel {
+                font-family: %s;
+            }
+            QLabel[role="pageTitle"] {
                 background: transparent;
                 border: none;
-                color: __HELPER_FG__;
+                color: #111827;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            QLabel[role="sectionTitle"] {
+                background: transparent;
+                border: none;
+                color: #111827;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            QLabel[role="sourceIcon"] {
+                background: transparent;
+                border: none;
+                color: #111827;
+            }
+            QWidget[role="sourceTextHost"] {
+                background: transparent;
+                border: none;
+            }
+            QLabel[role="sourceTitle"] {
+                background: transparent;
+                border: none;
+                color: #111827;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLabel[role="sourceSubtitle"] {
+                background: transparent;
+                border: none;
+                color: #6b7280;
+                font-size: 11px;
+            }
+            QLabel[role="sourceMeta"],
+            QLabel[role="sourceStatus"] {
+                background: transparent;
+                border: none;
+                color: #4b5563;
+                font-size: 11px;
+            }
+            QLabel[role="emptyRecent"] {
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 6px;
+                color: #6b7280;
+                padding: 0px 14px;
+                font-size: 12px;
             }
             QListWidget {
                 border: none;
@@ -704,199 +824,266 @@ class IntegrationPanel(QWidget):
                 outline: none;
                 padding: 0px;
                 font-family: %s;
-                font-size: 9pt;
+                font-size: 12px;
             }
             QListWidget::item {
-                padding: 8px 10px;
+                padding: 10px 14px;
                 margin: 0px;
-                border: none;
-                border-radius: 10px;
-                background: __ITEM_BG__;
-                color: __ITEM_FG__;
+                border: 1px solid #e5e7eb;
+                border-radius: 6px;
+                background: #ffffff;
+                color: #111827;
             }
             QListWidget::item:selected {
-                background: __ITEM_SELECTED__;
-                border: none;
-                color: __ITEM_FG__;
+                background: #f3f4f6;
+                border: 1px solid #d1d5db;
+                color: #111827;
             }
             QListWidget::item:hover {
-                background: __ITEM_HOVER__;
+                background: #f9fafb;
             }
+            QPushButton[role="sourceAction"],
             QPushButton[role="recentClear"] {
-                background: __CLEAR_BG__;
-                color: __CLEAR_FG__;
-                border: none;
-                border-radius: 8px;
-                min-width: 0px;
-                padding: 4px 10px;
+                background: #ffffff;
+                color: #111827;
+                border: 1px solid #d1d5db;
+                border-radius: 5px;
+                padding: 0px 14px;
                 font-family: %s;
-                font-size: 9pt;
-                font-weight: 600;
+                font-size: 12px;
+                font-weight: 400;
+                min-height: 30px;
+                max-height: 32px;
             }
+            QPushButton[role="sourceAction"]:hover,
             QPushButton[role="recentClear"]:hover {
-                background: __CLEAR_HOVER__;
+                background: #f3f4f6;
             }
+            QPushButton[role="sourceAction"]:pressed,
             QPushButton[role="recentClear"]:pressed {
-                background: __CLEAR_PRESSED__;
+                background: #e5e7eb;
             }
+            QPushButton[role="sourceAction"]:disabled,
             QPushButton[role="recentClear"]:disabled {
-                background: __CLEAR_DISABLED_BG__;
-                color: __CLEAR_DISABLED_FG__;
+                background: #f9fafb;
+                color: #9ca3af;
+                border-color: #e5e7eb;
             }
             """
-        style = style_template % (ui_font_stack(), ui_font_stack())
-        panel_bg = "#1F2937" if _is_dark_theme() else colors["color_surface"]
-        panel_border = "rgba(148, 163, 184, 0.22)" if _is_dark_theme() else colors["color_border"]
-        clear_disabled_bg = "#334155" if _is_dark_theme() else "#D1D5DB"
-        clear_disabled_fg = "#94A3B8" if _is_dark_theme() else "#FFFFFF"
-        style = (
-            style.replace("__ITEM_BG__", item_bg)
-            .replace("__ITEM_FG__", colors["color_text_primary"])
-            .replace("__HELPER_FG__", colors["color_text_secondary"])
-            .replace("__ITEM_SELECTED__", item_selected)
-            .replace("__ITEM_HOVER__", item_hover)
-            .replace("__CLEAR_BG__", clear_bg)
-            .replace("__CLEAR_FG__", clear_fg)
-            .replace("__CLEAR_HOVER__", clear_hover)
-            .replace("__CLEAR_PRESSED__", clear_pressed)
-            .replace("__PANEL_BG__", panel_bg)
-            .replace("__PANEL_BORDER__", panel_border)
-            .replace("__CLEAR_DISABLED_BG__", clear_disabled_bg)
-            .replace("__CLEAR_DISABLED_FG__", clear_disabled_fg)
+        style = style_template % (
+            ui_font_stack(),
+            ui_font_stack(),
+            ui_font_stack(),
         )
         self.setStyleSheet(style)
-        for card in getattr(self, "_cards", {}).values():
+        for row in getattr(self, "_rows", {}).values():
             try:
-                card._apply_styles()
+                row._apply_styles()
+                row.sync_responsive_state()
             except Exception:
                 log_exception("falha opcional ignorada")
 
     def _refresh_connector_layout(self):
-        if hasattr(self, "grid_widget") and self.grid_widget is not None:
-            self.grid_widget.updateGeometry()
-            self.grid_widget._relayout()
+        for row in getattr(self, "_rows", {}).values():
+            try:
+                row.sync_responsive_state()
+            except Exception:
+                log_exception("falha opcional ignorada")
+
+    def add_connection_row(
+        self,
+        *,
+        key: str,
+        icon_path: str,
+        icon_text: str,
+        title: str,
+        subtitle: str,
+        category: str,
+        status: str,
+        action_text: str,
+        callback: Callable[[], None],
+        icon_name: str = "",
+    ) -> SourceConnectionItem:
+        row = SourceConnectionItem(
+            key=key,
+            icon_path=icon_path,
+            icon_name=icon_name,
+            icon_text=icon_text,
+            title=title,
+            subtitle=subtitle,
+            category=category,
+            status=status,
+            action_text=action_text,
+            callback=callback,
+            parent=self.sources_list,
+        )
+        self.source_rows_layout.addWidget(row)
+        self._rows[key] = row
+        return row
 
     def _build_connectors(self):
         self._connectors: Dict[str, ConnectorConfig] = {}
-        self._cards: Dict[str, ConnectorCard] = {}
+        self._rows: Dict[str, SourceConnectionItem] = {}
+        self._cards: Dict[str, SourceConnectionItem] = {}
 
         def register(config: ConnectorConfig):
             self._connectors[config.key] = config
-            card = ConnectorCard(config, self.grid_widget)
-            card.triggered.connect(self._on_card_triggered)
-            self.grid_widget.add_item(card)
-            self._cards[config.key] = card
+            row = self.add_connection_row(
+                key=config.key,
+                icon_path=config.icon_path,
+                icon_name=config.icon_name,
+                icon_text=config.icon_text,
+                title=config.title,
+                subtitle=config.caption,
+                category=config.list_category,
+                status=config.status_text,
+                action_text=config.action_text,
+                callback=lambda key=config.key: self._on_card_triggered(key),
+            )
+            self._cards[config.key] = row
 
         register(
             ConnectorConfig(
                 key="excel",
                 title="Excel",
-                caption="Arquivos XLSX e XLS",
-                microcopy="",
+                caption="XLSX e XLS",
+                microcopy="Arquivos locais",
                 accent="#CDEFE0",
                 icon_text="X",
                 handler=self._handle_excel,
+                category="files",
                 description="Planilhas tabulares com uma ou várias abas.",
                 icon_path=os.path.join(_ICON_DIR, "source_excel.svg"),
                 keywords="excel xlsx xls planilha arquivo tabela",
+                list_category="Arquivos locais",
+                status_text="Disponível",
+                action_text="Abrir",
             )
         )
         register(
             ConnectorConfig(
                 key="postgresql",
                 title="PostgreSQL",
-                caption="Tabelas e views",
-                microcopy="",
+                caption="Tabelas",
+                microcopy="Banco de dados",
                 accent="#DCEBFF",
                 icon_text="PG",
                 handler=self._handle_postgresql_database,
+                category="database",
                 description="Servidor PostgreSQL muito comum em ambientes GIS e BI.",
                 icon_path=os.path.join(_ICON_DIR, "source_postgresql.svg"),
                 keywords="postgresql postgres servidor banco dados relacional",
+                list_category="Banco de dados",
+                status_text="Disponível",
+                action_text="Conectar",
             )
         )
         register(
             ConnectorConfig(
                 key="postgis",
                 title="PostGIS",
-                caption="Camadas e tabelas espaciais",
-                microcopy="",
+                caption="Camadas espaciais",
+                microcopy="Banco espacial",
                 accent="#DDF6E8",
                 icon_text="GIS",
                 handler=self._handle_postgis_database,
+                category="spatial",
                 description="Acesso a bases geoespaciais corporativas com PostgreSQL/PostGIS.",
-                icon_path=os.path.join(_ICON_DIR, "source_postgis.svg"),
+                icon_path=os.path.join(_ICON_DIR, "source_postgis.png"),
                 keywords="postgis espacial geometria servidor postgres qgis",
+                list_category="Banco espacial",
+                status_text="Disponível",
+                action_text="Conectar",
             )
         )
         register(
             ConnectorConfig(
                 key="sqlserver",
                 title="SQL Server",
-                caption="Dados corporativos",
-                microcopy="",
+                caption="Dados SQL",
+                microcopy="Banco corporativo",
                 accent="#E8EEFF",
                 icon_text="SQL",
                 handler=self._handle_sqlserver_database,
+                category="database",
                 description="Conector para ambientes SQL Server.",
                 icon_path=os.path.join(_ICON_DIR, "source_sqlserver.svg"),
                 keywords="sql server mssql servidor banco",
+                list_category="Banco corporativo",
+                status_text="Disponível",
+                action_text="Conectar",
             )
         )
         register(
             ConnectorConfig(
                 key="oracle",
                 title="Oracle",
-                caption="Ambientes corporativos",
-                microcopy="",
+                caption="Banco Oracle",
+                microcopy="Banco corporativo",
                 accent="#FFF0E7",
                 icon_text="ORA",
                 handler=self._handle_oracle_database,
+                category="database",
                 description="Conector para bases Oracle quando o driver QOCI estiver disponível.",
                 icon_path=os.path.join(_ICON_DIR, "source_oracle.svg"),
                 keywords="oracle servidor banco corporativo",
+                list_category="Banco corporativo",
+                status_text="Disponível",
+                action_text="Conectar",
             )
         )
         register(
             ConnectorConfig(
                 key="mysql",
                 title="MySQL",
-                caption="Aplicações e serviços",
-                microcopy="",
+                caption="Banco MySQL",
+                microcopy="Banco de dados",
                 accent="#EEF7FF",
                 icon_text="MY",
                 handler=self._handle_mysql_database,
+                category="database",
                 description="Conector para bases MySQL quando o driver QMYSQL estiver disponível.",
                 icon_path=os.path.join(_ICON_DIR, "source_mysql.svg"),
                 keywords="mysql mariadb servidor banco aplicacao",
+                list_category="Banco de dados",
+                status_text="Disponível",
+                action_text="Conectar",
             )
         )
         register(
             ConnectorConfig(
                 key="gsheets",
                 title="Google Sheets",
-                caption="Planilhas web públicas",
-                microcopy="",
+                caption="Planilhas web",
+                microcopy="Planilhas web",
                 accent="#F4FFF6",
                 icon_text="GS",
                 handler=self._handle_google_sheets,
+                category="web",
                 description="Ideal para tabelas compartilhadas por URL pública.",
                 icon_path=os.path.join(_ICON_DIR, "source_gsheets.svg"),
                 keywords="google sheets web nuvem url publica planilha",
+                list_category="Planilhas web",
+                status_text="Disponível",
+                action_text="Conectar",
             )
         )
         register(
             ConnectorConfig(
                 key="delimited",
                 title="CSV / TXT",
-                caption="Arquivos delimitados",
-                microcopy="",
+                caption="CSV e TXT",
+                microcopy="Arquivos delimitados",
                 accent="#FFF1D8",
                 icon_text="CSV",
                 handler=self._handle_delimited_file,
+                category="files",
                 description="Importe arquivos tabulares simples com pré-visualização.",
                 icon_path=os.path.join(_ICON_DIR, "source_csv.svg"),
                 keywords="csv txt delimitado separado virgula ponto e virgula texto",
+                list_category="Arquivos delimitados",
+                status_text="Disponível",
+                action_text="Abrir",
             )
         )
         register(
@@ -904,35 +1091,41 @@ class IntegrationPanel(QWidget):
                 key="geopackage",
                 title="GeoPackage",
                 caption="Camadas vetoriais",
-                microcopy="",
+                microcopy="Camadas vetoriais",
                 accent="#E8F6EC",
                 icon_text="GPKG",
                 handler=self._handle_geopackage,
+                category="spatial",
                 description="Abra dados vetoriais de um arquivo GeoPackage diretamente no plugin.",
                 icon_path=os.path.join(_ICON_DIR, "source_geopackage.svg"),
                 keywords="geopackage gpkg camada espacial geometria vetor qgis",
+                list_category="Camadas vetoriais",
+                status_text="Disponível",
+                action_text="Abrir",
             )
         )
         register(
             ConnectorConfig(
                 key="clipboard",
                 title="Área de transferência",
-                caption="Colar tabela copiada",
-                microcopy="",
+                caption="Dados copiados",
+                microcopy="Dados copiados",
                 accent="#F4ECFF",
                 icon_text="CLP",
                 handler=self._handle_clipboard,
+                category="quick",
                 description="Útil para colar rapidamente dados copiados de outras ferramentas.",
                 icon_path=os.path.join(_ICON_DIR, "source_clipboard.svg"),
                 keywords="clipboard colar copiar area de transferencia rapido",
+                list_category="Dados copiados",
+                status_text="Disponível",
+                action_text="Colar",
             )
         )
 
     def _register_shortcuts(self):
         shortcut_open = QShortcut(QKeySequence("Ctrl+O"), self)
         shortcut_open.activated.connect(self._handle_excel)
-        shortcut_refresh = QShortcut(QKeySequence("F5"), self)
-        shortcut_refresh.activated.connect(self._populate_recents)
 
     def refresh_recents(self):
         """Public helper to refresh the recent connections list."""
@@ -976,9 +1169,13 @@ class IntegrationPanel(QWidget):
             connector = item.get("connector", "-")
             ts = self._format_timestamp(item.get("timestamp"))
             qitem.setText(f"{title}\n{connector} • {ts}")
-            qitem.setData(Qt.ItemDataRole.UserRole, item)
+            qitem.setSizeHint(QSize(0, 64))
+            qitem.setData(_qt_member(Qt, "ItemDataRole", "UserRole"), item)
             self.recents_list.addItem(qitem)
 
+        visible_rows = min(max(len(self._recents), 1), 4)
+        self.recents_list.setMinimumHeight((visible_rows * 72) + 2)
+        self.recents_list.setMaximumHeight((min(len(self._recents), 8) * 72) + 2)
         self._apply_runtime_i18n()
 
     def _store_recent(self, descriptor: Dict):
@@ -998,7 +1195,7 @@ class IntegrationPanel(QWidget):
         self._populate_recents()
 
     def _open_recent(self, item: QListWidgetItem):
-        data = item.data(Qt.ItemDataRole.UserRole) or {}
+        data = item.data(_qt_member(Qt, "ItemDataRole", "UserRole")) or {}
         connector = data.get("connector")
         if connector == "Excel":
             path = data.get("source_path")

@@ -639,8 +639,25 @@ QStatusBar {
 }
 
 #headerBar QToolButton:hover {
-    background: ${color_brand_soft};
-    border-color: ${color_border};
+    background: rgba(17, 24, 39, 0.05);
+    border-color: rgba(17, 24, 39, 0.10);
+}
+
+#headerBar QToolButton:checked,
+#headerBar QToolButton:pressed {
+    background: rgba(17, 24, 39, 0.08);
+    border-color: rgba(17, 24, 39, 0.14);
+}
+
+QFrame#headerBar[themeMode="dark"] QToolButton:hover {
+    background: rgba(148, 163, 184, 0.14);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+
+QFrame#headerBar[themeMode="dark"] QToolButton:checked,
+QFrame#headerBar[themeMode="dark"] QToolButton:pressed {
+    background: rgba(148, 163, 184, 0.18);
+    border-color: rgba(148, 163, 184, 0.28);
 }
 
 /* Dark mode overlay -------------------------------------------------------- */
