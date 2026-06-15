@@ -148,6 +148,31 @@ def test_fields_toolbar_button_sits_next_to_format_visual_and_toggles_panel():
     assert "self._set_data_panel_collapsed(not bool(checked))" in model_source
 
 
+def test_remote_database_project_blocks_edit_mode_without_update_permission():
+    model_source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(encoding="utf-8")
+
+    assert '"can_edit": bool(getattr(record, "can_edit", False))' in model_source
+    assert "project.edit_mode = False" in model_source
+    assert "def _current_project_is_locked_database_project(self)" in model_source
+    assert "requested_enabled and self._current_project_is_locked_database_project()" in model_source
+    assert "Este painel veio do banco de dados" in model_source
+
+
+def test_remote_database_project_save_writes_back_to_database_before_local_save_dialog():
+    model_source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(encoding="utf-8")
+    save_body = model_source[model_source.index("def save_project") : model_source.index("def export_project")]
+
+    assert "if not save_as and self._current_project_should_save_to_remote_database():" in save_body
+    assert "self._save_current_project_to_remote_database()" in save_body
+    assert save_body.index("self._save_current_project_to_remote_database()") < save_body.index(
+        "QFileDialog.getSaveFileName"
+    )
+    assert "def _save_current_project_to_remote_database(self):" in save_body
+    assert "ModelRemoteProjectService(connection_meta).save_project_payload" in save_body
+    assert "row_id=row_id" in save_body
+    assert "Painel salvo no banco de dados." in save_body
+
+
 def test_clear_filters_button_floats_over_canvas_and_uses_squarer_corners():
     header_source = (ROOT / "plugin" / "Summarizer" / "model_view" / "model_header.py").read_text(
         encoding="utf-8"
@@ -234,18 +259,30 @@ def test_model_start_page_uses_walker_database_home_pattern():
     assert '"Dataset.svg"' in model_source
     assert '"card_sql.svg"' not in model_source
     assert '_rt("Recent Panels")' in model_source
+    assert '_rt("Database Panels")' in model_source
     assert "class _CurrentPageStackedWidget(QStackedWidget):" in model_source
     assert "self.body_stack = _CurrentPageStackedWidget(self)" in model_source
     assert "current.minimumSizeHint()" in model_source
     assert 'setObjectName("ModelRecentsScroll")' in model_source
+    assert 'setObjectName("ModelRemoteProjectsScroll")' in model_source
     assert "self.recents_scroll.setFixedHeight(_MODEL_RECENT_CARD_HEIGHT)" in model_source
+    assert "self.remote_projects_scroll.setFixedHeight(_MODEL_RECENT_CARD_HEIGHT)" in model_source
     assert "self.recents_card.setFixedHeight(_MODEL_RECENTS_SECTION_HEIGHT)" in model_source
+    assert "self.remote_projects_card.setVisible(False)" in model_source
     resize_body = model_source[
         model_source.index("def resizeEvent") : model_source.index("def _handle_canvas_changed")
     ]
     assert "QTimer.singleShot(0, self._refresh_recents)" not in resize_body
     assert 'columns != getattr(self, "_recents_columns", 0)' in resize_body
     assert "QGridLayout(self.recents_container)" in model_source
+    assert "QGridLayout(self.remote_projects_container)" in model_source
+    refresh_body = model_source[
+        model_source.index("def _refresh_recents") : model_source.index("def _refresh_ui_state")
+    ]
+    assert "local_recents = self.store.load_recents()" in refresh_body
+    assert 'remote_recents = list(getattr(self, "_remote_project_records", []) or [])' in refresh_body
+    assert "self.recents_container" in refresh_body
+    assert "self.remote_projects_container" in refresh_body
     assert "self.header.setVisible(has_project)" in model_source
     assert "return 4" in model_source
     assert "def _recent_display_timestamp" in model_source
@@ -279,10 +316,16 @@ def test_model_import_dataset_opens_walker_database_dialog_directly():
     assert "QMenu(self)" in menu_method
     assert 'menu.setObjectName("ModelDatabaseMenu")' in menu_method
     assert "connected_database_drivers" in menu_method
+    assert '_rt("Importar painel .pbsdash...")' in menu_method
+    assert '"__upload_pbsdash__"' in menu_method
+    assert '_rt("Atualizar paineis do banco")' in menu_method
+    assert '"__refresh_remote_projects__"' in menu_method
     assert "action.setIcon(self._database_connected_icon())" in menu_method
     for driver in ("PostgreSQL", "PostGIS", "SQL Server", "Oracle", "MySQL"):
         assert f'"{driver}"' in menu_method
-    assert 'self._open_model_import_dataset(str(chosen.data() or "PostgreSQL"))' in menu_method
+    assert "self._import_model_project_file_to_database()" in menu_method
+    assert "self._force_refresh_remote_project_records()" in menu_method
+    assert "self._open_model_import_dataset(action_data)" in menu_method
 
     import_method = model_source[
         model_source.index("def _open_model_import_dataset") : model_source.index(

@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from qgis.PyQt.QtCore import QRect, QRectF, QSize, Qt, QTimer
+from qgis.PyQt.QtCore import QObject, QRect, QRectF, QSize, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QColor, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette, QPixmap
 from qgis.PyQt.QtWidgets import (
     QDialog,
@@ -16,6 +16,7 @@ from qgis.PyQt.QtWidgets import (
     QFrame,
     QLabel,
     QMenu,
+    QInputDialog,
     QPushButton,
     QScrollArea,
     QShortcut,
@@ -86,6 +87,14 @@ from .model_view.model_project_controller import (
     project_snapshot_payload,
     snapshot_signature,
     snapshot_state,
+)
+from .model_view.model_remote_projects import (
+    DEFAULT_REMOTE_PROJECT_TABLE,
+    ModelRemoteProjectService,
+    RemoteProjectRecord,
+    RemoteProjectScanResult,
+    connection_key as remote_project_connection_key,
+    normalize_remote_project_table_target,
 )
 from .model_view.model_toolbar import (
     toolbar_visuals_should_be_visible,
@@ -171,6 +180,23 @@ class _CurrentPageStackedWidget(QStackedWidget):
         return super().minimumSizeHint()
 
 
+class _ModelRemoteProjectsWorker(QObject):
+    finished = pyqtSignal(object)
+
+    def __init__(self, connection_meta: Dict, connection_key: str):
+        super().__init__()
+        self._connection_meta = dict(connection_meta or {})
+        self._connection_key = str(connection_key or "")
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            result = ModelRemoteProjectService(self._connection_meta).load_recent_projects()
+        except Exception as exc:  # pragma: no cover - worker boundary
+            result = RemoteProjectScanResult([], False, str(exc or ""))
+        self.finished.emit((self._connection_key, result))
+
+
 class ModelTab(QWidget):
 
     def __init__(self, parent=None):
@@ -212,6 +238,13 @@ class ModelTab(QWidget):
         self._toolbar_visuals_sync_retries = 0
         self._recents_refresh_pending = False
         self._recents_columns = 0
+        self._remote_project_records: List[RemoteProjectRecord] = []
+        self._remote_project_loaded_key = ""
+        self._remote_project_requested_key = ""
+        self._remote_project_pending_meta: Dict = {}
+        self._current_remote_project_connection_meta: Dict = {}
+        self._remote_project_thread: Optional[QThread] = None
+        self._remote_project_worker: Optional[_ModelRemoteProjectsWorker] = None
         self._builder_selected_item_id: str = ""
         self._builder_field_catalog: Dict[str, List[Dict[str, str]]] = {}
         self._builder_visual_specs = visual_type_specs()
@@ -307,6 +340,55 @@ class ModelTab(QWidget):
         recents_layout.addWidget(self.recents_scroll)
 
         empty_layout.addWidget(self.recents_card, 0, Qt.AlignTop)
+
+        self.remote_projects_card = QFrame(self.empty_page)
+        self.remote_projects_card.setObjectName("ModelRemoteProjectsCard")
+        self.remote_projects_card.setAttribute(Qt.WA_StyledBackground, True)
+        self.remote_projects_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        remote_projects_layout = QVBoxLayout(self.remote_projects_card)
+        remote_projects_layout.setContentsMargins(0, 0, 0, 0)
+        remote_projects_layout.setSpacing(16)
+
+        remote_projects_header = QHBoxLayout()
+        remote_projects_header.setContentsMargins(0, 0, 0, 0)
+        remote_projects_header.setSpacing(7)
+        self.remote_projects_icon = QLabel("", self.remote_projects_card)
+        self.remote_projects_icon.setObjectName("ModelRemoteProjectsIcon")
+        self.remote_projects_icon.setFixedSize(18, 18)
+        self.remote_projects_icon.setPixmap(_model_tinted_svg_icon("Dataset.svg", 18).pixmap(18, 18))
+        self.remote_projects_icon.setAlignment(Qt.AlignCenter)
+        remote_projects_header.addWidget(self.remote_projects_icon, 0, Qt.AlignVCenter)
+        remote_projects_title = QLabel(_rt("Database Panels"))
+        remote_projects_title.setObjectName("ModelRemoteProjectsTitle")
+        remote_projects_header.addWidget(remote_projects_title, 0, Qt.AlignVCenter)
+        remote_projects_header.addStretch(1)
+        remote_projects_layout.addLayout(remote_projects_header)
+
+        self.remote_projects_placeholder = QLabel(_rt("No database panels found."))
+        self.remote_projects_placeholder.setObjectName("ModelRemoteProjectsPlaceholder")
+        self.remote_projects_placeholder.setWordWrap(True)
+        remote_projects_layout.addWidget(self.remote_projects_placeholder)
+
+        self.remote_projects_scroll = QScrollArea(self.remote_projects_card)
+        self.remote_projects_scroll.setObjectName("ModelRemoteProjectsScroll")
+        self.remote_projects_scroll.setWidgetResizable(True)
+        self.remote_projects_scroll.setFrameShape(QFrame.NoFrame)
+        self.remote_projects_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.remote_projects_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.remote_projects_scroll.setFixedHeight(_MODEL_RECENT_CARD_HEIGHT)
+        self.remote_projects_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        self.remote_projects_container = QWidget(self.remote_projects_scroll)
+        self.remote_projects_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.remote_projects_layout = QGridLayout(self.remote_projects_container)
+        self.remote_projects_layout.setContentsMargins(0, 0, 0, 0)
+        self.remote_projects_layout.setHorizontalSpacing(_MODEL_RECENT_CARD_GAP)
+        self.remote_projects_layout.setVerticalSpacing(_MODEL_RECENT_ROW_GAP)
+        self.remote_projects_scroll.setWidget(self.remote_projects_container)
+        remote_projects_layout.addWidget(self.remote_projects_scroll)
+
+        self.remote_projects_card.setVisible(False)
+        empty_layout.addWidget(self.remote_projects_card, 0, Qt.AlignTop)
         empty_layout.addStretch(1)
 
         self.canvas_page = QWidget(self.body_stack)
@@ -589,7 +671,8 @@ class ModelTab(QWidget):
                 background: transparent;
             }
             QLabel#ModelHint,
-            QLabel#ModelRecentsPlaceholder {
+            QLabel#ModelRecentsPlaceholder,
+            QLabel#ModelRemoteProjectsPlaceholder {
                 color: #6B7280;
                 font-size: 12px;
             }
@@ -602,14 +685,18 @@ class ModelTab(QWidget):
                 color: #374151;
                 font-size: 12px;
             }
-            QFrame#ModelRecentsCard {
+            QFrame#ModelRecentsCard,
+            QFrame#ModelRemoteProjectsCard {
                 background: #FFFFFF;
                 border: none;
                 border-radius: 0px;
             }
             QScrollArea#ModelRecentsScroll,
+            QScrollArea#ModelRemoteProjectsScroll,
             QScrollArea#ModelRecentsScroll > QWidget,
-            QScrollArea#ModelRecentsScroll > QWidget > QWidget {
+            QScrollArea#ModelRemoteProjectsScroll > QWidget,
+            QScrollArea#ModelRecentsScroll > QWidget > QWidget,
+            QScrollArea#ModelRemoteProjectsScroll > QWidget > QWidget {
                 background: transparent;
                 border: none;
             }
@@ -1132,12 +1219,14 @@ class ModelTab(QWidget):
                 background: #FFFFFF;
                 border-color: rgba(17, 24, 39, 0.12);
             }
-            QLabel#ModelRecentsTitle {
+            QLabel#ModelRecentsTitle,
+            QLabel#ModelRemoteProjectsTitle {
                 color: #111827;
                 font-size: 18px;
                 font-weight: 600;
             }
-            QLabel#ModelRecentsClockIcon {
+            QLabel#ModelRecentsClockIcon,
+            QLabel#ModelRemoteProjectsIcon {
                 color: #6B7280;
                 font-size: 22px;
                 font-weight: 400;
@@ -1340,6 +1429,7 @@ class ModelTab(QWidget):
             }
             QFrame#ModelToolbarStrip,
             QFrame#ModelRecentsCard,
+            QFrame#ModelRemoteProjectsCard,
             QFrame#ModelFooterBar,
             QFrame#ModelActionCard,
             QFrame#ModelRecentCard,
@@ -1355,12 +1445,14 @@ class ModelTab(QWidget):
             QLabel#ModelModeStateLabel,
             QLabel#ModelFiltersLabel,
             QLabel#ModelActionCardTitle,
+            QLabel#ModelRemoteProjectsTitle,
             QLabel#ModelRecentCardTitle,
             QLabel#ModelPageStripTabTitle[selected="true"] {
                 color: #F8FAFC;
             }
             QLabel#ModelHint,
             QLabel#ModelRecentsPlaceholder,
+            QLabel#ModelRemoteProjectsPlaceholder,
             QLabel#ModelActionCardText,
             QLabel#ModelRecentCardText,
             QLabel#ModelPageStripTabTitle,
@@ -3692,6 +3784,7 @@ class ModelTab(QWidget):
 
     def _open_model_database_menu(self):
         self._refresh_model_database_status()
+        connection_meta = self._current_model_database_connection_meta()
         connected_drivers = set()
         try:
             from .integration_panel import connected_database_drivers
@@ -3722,6 +3815,13 @@ class ModelTab(QWidget):
             }
             """
         )
+        upload_action = menu.addAction(_rt("Importar painel .pbsdash..."))
+        upload_action.setData("__upload_pbsdash__")
+        upload_action.setEnabled(bool(connection_meta))
+        refresh_action = menu.addAction(_rt("Atualizar paineis do banco"))
+        refresh_action.setData("__refresh_remote_projects__")
+        refresh_action.setEnabled(bool(connection_meta))
+        menu.addSeparator()
         for driver in ("PostgreSQL", "PostGIS", "SQL Server", "Oracle", "MySQL"):
             action = menu.addAction(driver)
             action.setData(driver)
@@ -3733,7 +3833,14 @@ class ModelTab(QWidget):
         chosen = menu.exec_(point)
         if chosen is None:
             return
-        self._open_model_import_dataset(str(chosen.data() or "PostgreSQL"))
+        action_data = str(chosen.data() or "PostgreSQL")
+        if action_data == "__upload_pbsdash__":
+            self._import_model_project_file_to_database()
+            return
+        if action_data == "__refresh_remote_projects__":
+            self._force_refresh_remote_project_records()
+            return
+        self._open_model_import_dataset(action_data)
 
     def _refresh_model_database_status(self):
         connection_meta = self._current_model_database_connection_meta()
@@ -3758,6 +3865,7 @@ class ModelTab(QWidget):
                     panel.clear()
             except Exception:
                 log_exception("falha opcional ignorada")
+        self._refresh_remote_project_records(connection_meta)
 
     def _current_model_database_connection_meta(self) -> Dict:
         try:
@@ -3770,6 +3878,213 @@ class ModelTab(QWidget):
         except Exception:
             log_exception("falha opcional ignorada")
         return {}
+
+    def _default_remote_project_table_target(self, connection_meta: Dict) -> str:
+        schema = str((connection_meta or {}).get("schema") or "public").strip() or "public"
+        return f"{schema}.{DEFAULT_REMOTE_PROJECT_TABLE}"
+
+    def _force_refresh_remote_project_records(self):
+        connection_meta = self._current_model_database_connection_meta()
+        if not connection_meta:
+            slim_message(self, _rt("Model"), _rt("Conecte um banco de dados antes de atualizar os paineis remotos."))
+            return
+        self._remote_project_loaded_key = ""
+        self._remote_project_requested_key = ""
+        self._remote_project_records = []
+        if self.current_project is None:
+            self._refresh_recents()
+        self._refresh_remote_project_records(connection_meta)
+
+    def _import_model_project_file_to_database(self):
+        connection_meta = self._current_model_database_connection_meta()
+        if not connection_meta:
+            slim_message(self, _rt("Model"), _rt("Conecte um banco de dados antes de importar o painel."))
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            _rt("Importar painel para o banco"),
+            self.store.default_directory(),
+            f"Summarizer Dashboard (*{PROJECT_EXTENSION});;JSON (*.json)",
+        )
+        if not path:
+            return
+        target_text, accepted = QInputDialog.getText(
+            self,
+            _rt("Tabela destino"),
+            _rt("Informe esquema.tabela para armazenar os paineis:"),
+            text=self._default_remote_project_table_target(connection_meta),
+        )
+        if not accepted:
+            return
+        schema, table = normalize_remote_project_table_target(
+            target_text,
+            default_schema=str(connection_meta.get("schema") or "public"),
+        )
+        try:
+            record = ModelRemoteProjectService(connection_meta).save_project_file(path, schema=schema, table=table)
+        except Exception as exc:
+            slim_message(self, _rt("Model"), _rt("Nao foi possivel importar o painel para o banco: {error}", error=exc))
+            return
+
+        existing = [
+            item
+            for item in list(getattr(self, "_remote_project_records", []) or [])
+            if getattr(item, "source_id", "") != getattr(record, "source_id", "")
+        ]
+        self._remote_project_records = [record] + existing
+        self._remote_project_loaded_key = remote_project_connection_key(connection_meta)
+        self._remote_project_requested_key = ""
+        if self.current_project is None:
+            self._refresh_recents()
+        slim_message(
+            self,
+            _rt("Model"),
+            _rt("Painel importado para {schema}.{table}.", schema=schema, table=table),
+        )
+
+    def _refresh_remote_project_records(self, connection_meta: Dict):
+        key = remote_project_connection_key(connection_meta)
+        if not key:
+            if self._remote_project_records:
+                self._remote_project_records = []
+                if self.current_project is None:
+                    self._refresh_recents()
+            self._remote_project_loaded_key = ""
+            self._remote_project_requested_key = ""
+            self._remote_project_pending_meta = {}
+            return
+        if key in {self._remote_project_loaded_key, self._remote_project_requested_key}:
+            return
+        if self._remote_project_thread is not None:
+            self._remote_project_pending_meta = dict(connection_meta or {})
+            return
+        self._remote_project_records = []
+        self._remote_project_requested_key = key
+        self._remote_project_pending_meta = {}
+        if self.current_project is None:
+            self._refresh_recents()
+
+        thread = QThread(self)
+        worker = _ModelRemoteProjectsWorker(connection_meta, key)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._handle_remote_project_scan_result)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_remote_project_worker)
+        self._remote_project_thread = thread
+        self._remote_project_worker = worker
+        thread.start()
+
+    def _handle_remote_project_scan_result(self, payload):
+        try:
+            key, result = payload
+        except Exception:
+            key, result = "", RemoteProjectScanResult([], False, "")
+        if key != self._remote_project_requested_key:
+            return
+        self._remote_project_loaded_key = key
+        self._remote_project_requested_key = ""
+        try:
+            self._remote_project_records = list(getattr(result, "records", []) or [])
+        except Exception:
+            self._remote_project_records = []
+        if self.current_project is None:
+            self._refresh_recents()
+
+    def _clear_remote_project_worker(self):
+        self._remote_project_thread = None
+        self._remote_project_worker = None
+        pending = dict(getattr(self, "_remote_project_pending_meta", {}) or {})
+        self._remote_project_pending_meta = {}
+        if pending:
+            self._refresh_remote_project_records(pending)
+
+    def open_remote_project(self, record: RemoteProjectRecord):
+        payload = dict(getattr(record, "payload", {}) or {})
+        if not payload:
+            slim_message(self, _rt("Model"), _rt("Nao foi possivel abrir o painel remoto."))
+            return
+        try:
+            project = DashboardProject.from_dict(payload)
+        except Exception as exc:
+            slim_message(self, _rt("Model"), _rt("Nao foi possivel abrir o painel remoto: {error}", error=exc))
+            return
+        source_meta = dict(project.source_meta or {})
+        source_meta["remote_project"] = {
+            "source": "database",
+            "connection": str(getattr(record, "connection_label", "") or ""),
+            "schema": str(getattr(record, "schema", "") or ""),
+            "table": str(getattr(record, "table", "") or ""),
+            "row_id": str(getattr(record, "row_id", "") or ""),
+            "can_edit": bool(getattr(record, "can_edit", False)),
+        }
+        if not bool(getattr(record, "can_edit", False)):
+            project.edit_mode = False
+        project.source_meta = self._normalize_project_source_meta(source_meta)
+        project = self._normalize_loaded_project(project)
+        self._reset_model_side_panels_collapsed()
+        self.current_project = project
+        self.current_path = ""
+        self._current_remote_project_connection_meta = dict(
+            getattr(record, "connection_meta", {}) or self._current_model_database_connection_meta()
+        )
+        self._dirty = False
+        self._selected_page_id = ""
+        self._rebuild_page_stack(project.active_page_id or (project.pages[0].page_id if project.pages else ""))
+        self.edit_mode_btn.blockSignals(True)
+        try:
+            self.edit_mode_btn.setChecked(bool(project.edit_mode))
+        finally:
+            self.edit_mode_btn.blockSignals(False)
+        self.set_edit_mode(bool(project.edit_mode))
+        self._apply_canvas_style_to_pages(self._project_canvas_style(), persist=False, mark_dirty=False, record_history=False)
+        self._refresh_builder_layers()
+        self._reset_history()
+        self._refresh_ui_state()
+
+    def _current_remote_project_meta(self) -> Dict[str, object]:
+        if self.current_project is None:
+            return {}
+        source_meta = getattr(self.current_project, "source_meta", {}) or {}
+        if not isinstance(source_meta, dict):
+            return {}
+        remote_meta = source_meta.get("remote_project")
+        if not isinstance(remote_meta, dict):
+            return {}
+        return dict(remote_meta)
+
+    def _current_project_is_locked_database_project(self) -> bool:
+        remote_meta = self._current_remote_project_meta()
+        if not remote_meta:
+            return False
+        if str(remote_meta.get("source") or "").strip().lower() != "database":
+            return False
+        if self.current_path:
+            return False
+        return not bool(remote_meta.get("can_edit"))
+
+    def _remote_project_permission_target(self) -> str:
+        remote_meta = self._current_remote_project_meta()
+        schema = str(remote_meta.get("schema") or "").strip()
+        table = str(remote_meta.get("table") or "").strip()
+        if schema and table:
+            return f"{schema}.{table}"
+        if table:
+            return table
+        return str(remote_meta.get("connection") or "").strip() or _rt("banco de dados")
+
+    def _show_remote_edit_blocked_message(self):
+        target = self._remote_project_permission_target()
+        slim_message(
+            self,
+            _rt("Model"),
+            _rt(
+                "Este painel veio do banco de dados e seu usuario nao tem permissao de edicao em {target}.",
+                target=target,
+            ),
+        )
 
     def _handle_model_database_object_activated(self, database_object):
         if database_object is None:
@@ -3952,6 +4267,7 @@ class ModelTab(QWidget):
                     return
         self.current_project = None
         self.current_path = ""
+        self._current_remote_project_connection_meta = {}
         self._dirty = False
         self._selected_page_id = ""
         self._suspend_canvas_events = True
@@ -3974,6 +4290,7 @@ class ModelTab(QWidget):
             pages=[page],
             active_page_id=page.page_id,
         )
+        self._current_remote_project_connection_meta = {}
         self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
         self.current_project.source_meta = self._normalize_project_source_meta(
             {"canvas_style": self._default_canvas_style()}
@@ -4007,6 +4324,7 @@ class ModelTab(QWidget):
         self._reset_model_side_panels_collapsed()
         self.current_project = project
         self.current_path = self.store.normalize_path(path)
+        self._current_remote_project_connection_meta = {}
         self._dirty = False
         self._selected_page_id = ""
         self._rebuild_page_stack(project.active_page_id or (project.pages[0].page_id if project.pages else ""))
@@ -4033,6 +4351,9 @@ class ModelTab(QWidget):
         active_widget = self._active_page_widget()
         if active_widget is not None:
             self._sync_project_from_pages(active_widget.page_id)
+        if not save_as and self._current_project_should_save_to_remote_database():
+            self._save_current_project_to_remote_database()
+            return
         target_path = self.current_path
         if save_as or not target_path:
             suggested_name = (self.current_project.name or _rt("painel")).strip().replace(" ", "_")
@@ -4047,6 +4368,7 @@ class ModelTab(QWidget):
             return
         try:
             self.current_path = self.store.save_project(target_path, self.current_project)
+            self._current_remote_project_connection_meta = {}
         except Exception as exc:
             slim_message(self, _rt("Model"), _rt("Nao foi possivel salvar o painel: {error}", error=exc))
             return
@@ -4055,6 +4377,93 @@ class ModelTab(QWidget):
         self._refresh_recents()
         self._update_undo_redo_buttons()
         self._refresh_ui_state()
+
+    def _current_project_should_save_to_remote_database(self) -> bool:
+        if self.current_project is None or self.current_path:
+            return False
+        if not bool(self.edit_mode_btn.isChecked()):
+            return False
+        remote_meta = self._current_remote_project_meta()
+        if str(remote_meta.get("source") or "").strip().lower() != "database":
+            return False
+        if not bool(remote_meta.get("can_edit")):
+            return False
+        return bool(str(remote_meta.get("schema") or "").strip() and str(remote_meta.get("table") or "").strip())
+
+    def _remote_project_connection_meta_for_save(self) -> Dict:
+        connection_meta = dict(getattr(self, "_current_remote_project_connection_meta", {}) or {})
+        if connection_meta:
+            return connection_meta
+        return self._current_model_database_connection_meta()
+
+    def _replace_remote_project_record(self, record: RemoteProjectRecord):
+        schema = str(getattr(record, "schema", "") or "")
+        table = str(getattr(record, "table", "") or "")
+        row_id = str(getattr(record, "row_id", "") or "")
+        source_id = str(getattr(record, "source_id", "") or "")
+        updated = []
+        for item in list(getattr(self, "_remote_project_records", []) or []):
+            same_source = source_id and str(getattr(item, "source_id", "") or "") == source_id
+            same_row = (
+                row_id
+                and str(getattr(item, "schema", "") or "") == schema
+                and str(getattr(item, "table", "") or "") == table
+                and str(getattr(item, "row_id", "") or "") == row_id
+            )
+            if same_source or same_row:
+                continue
+            updated.append(item)
+        self._remote_project_records = [record] + updated
+
+    def _save_current_project_to_remote_database(self):
+        if self.current_project is None:
+            return
+        remote_meta = self._current_remote_project_meta()
+        schema = str(remote_meta.get("schema") or "").strip()
+        table = str(remote_meta.get("table") or "").strip()
+        row_id = str(remote_meta.get("row_id") or "").strip()
+        connection_meta = self._remote_project_connection_meta_for_save()
+        if not connection_meta:
+            slim_message(self, _rt("Model"), _rt("Nao foi possivel salvar no banco: conexao indisponivel."))
+            return
+        if not schema or not table:
+            slim_message(self, _rt("Model"), _rt("Nao foi possivel salvar no banco: tabela do painel indisponivel."))
+            return
+        try:
+            self.current_project.edit_mode = bool(self.edit_mode_btn.isChecked())
+            payload = self.current_project.to_dict()
+            record = ModelRemoteProjectService(connection_meta).save_project_payload(
+                payload,
+                schema=schema,
+                table=table,
+                row_id=row_id,
+            )
+        except Exception as exc:
+            slim_message(self, _rt("Model"), _rt("Nao foi possivel salvar o painel no banco: {error}", error=exc))
+            return
+
+        source_meta = dict(self.current_project.source_meta or {})
+        remote_meta = dict(source_meta.get("remote_project") or {})
+        remote_meta.update(
+            {
+                "source": "database",
+                "connection": str(getattr(record, "connection_label", "") or remote_meta.get("connection") or ""),
+                "schema": str(getattr(record, "schema", "") or schema),
+                "table": str(getattr(record, "table", "") or table),
+                "row_id": str(getattr(record, "row_id", "") or row_id),
+                "can_edit": bool(getattr(record, "can_edit", False)),
+            }
+        )
+        source_meta["remote_project"] = remote_meta
+        self.current_project.source_meta = self._normalize_project_source_meta(source_meta)
+        self._current_remote_project_connection_meta = dict(connection_meta or {})
+        self._replace_remote_project_record(record)
+        self._remote_project_loaded_key = remote_project_connection_key(connection_meta)
+        self._dirty = False
+        self._history_current = self._snapshot_state()
+        self._update_undo_redo_buttons()
+        self._refresh_ui_state()
+        slim_message(self, _rt("Model"), _rt("Painel salvo no banco de dados."))
 
     def export_project(self):
         active_canvas = self._active_canvas()
@@ -4336,7 +4745,12 @@ class ModelTab(QWidget):
         self._set_visual_panel_open(bool(checked), focus=bool(checked))
 
     def set_edit_mode(self, enabled: bool):
-        enabled = bool(enabled)
+        requested_enabled = bool(enabled)
+        if requested_enabled and self._current_project_is_locked_database_project():
+            enabled = False
+            self._show_remote_edit_blocked_message()
+        else:
+            enabled = requested_enabled
         for widget in self._page_widgets_in_order():
             try:
                 widget.set_edit_mode(enabled)
@@ -4607,6 +5021,7 @@ class ModelTab(QWidget):
         candidates = []
         for widget in (
             getattr(self, "recents_scroll", None),
+            getattr(self, "remote_projects_scroll", None),
             getattr(self, "model_home_actions", None),
             getattr(self, "empty_page", None),
         ):
@@ -4669,6 +5084,36 @@ class ModelTab(QWidget):
         except Exception:
             return str(path or "")
 
+    def _remote_project_description(self, record: RemoteProjectRecord) -> str:
+        parts = []
+        source = str(getattr(record, "connection_label", "") or "").strip()
+        schema = str(getattr(record, "schema", "") or "").strip()
+        table = str(getattr(record, "table", "") or "").strip()
+        table_label = f"{schema}.{table}" if schema and table else table
+        if source:
+            parts.append(source)
+        if table_label:
+            parts.append(table_label)
+        timestamp = self._remote_project_timestamp(record)
+        if timestamp:
+            parts.append(timestamp)
+        return " - ".join(parts)
+
+    def _remote_project_timestamp(self, record: RemoteProjectRecord) -> str:
+        raw_value = str(getattr(record, "updated_at", "") or "").strip()
+        if not raw_value:
+            return ""
+        try:
+            parsed = datetime.fromisoformat(raw_value)
+        except Exception:
+            parsed = None
+        if parsed is None:
+            return raw_value
+        try:
+            return parsed.strftime("%d/%m/%Y, %H:%M:%S")
+        except Exception:
+            return raw_value
+
     def _refresh_recents(self):
         while self.recents_layout.count():
             item = self.recents_layout.takeAt(0)
@@ -4676,13 +5121,14 @@ class ModelTab(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        recents = self.store.load_recents()
-        if not recents:
+        local_recents = self.store.load_recents()
+        if not local_recents:
             self.recents_placeholder.setVisible(True)
             self.recents_scroll.setVisible(False)
             self.recents_container.setFixedHeight(0)
             self.recents_card.setFixedHeight(58)
-            self._recents_columns = 0
+            self._recents_columns = self._recent_columns_for_width(self._available_recents_width())
+            self._refresh_remote_project_cards()
             return
 
         self.recents_placeholder.setVisible(False)
@@ -4692,8 +5138,8 @@ class ModelTab(QWidget):
         self.recents_card.setFixedHeight(_MODEL_RECENTS_SECTION_HEIGHT)
         columns = self._recent_columns_for_width(self._available_recents_width())
         self._recents_columns = columns
-        rows = max(1, (len(recents) + columns - 1) // columns)
-        for index, recent in enumerate(recents):
+        rows = max(1, (len(local_recents) + columns - 1) // columns)
+        for index, recent in enumerate(local_recents):
             path = str(recent.get("path") or "")
             name = str(os.path.splitext(os.path.basename(path))[0] or recent.get("name") or "")
             card = _ModelRecentCard(
@@ -4711,6 +5157,55 @@ class ModelTab(QWidget):
         self.recents_container.setFixedHeight(cards_height)
         try:
             self.recents_scroll.verticalScrollBar().setValue(0)
+        except Exception:
+            log_exception("falha opcional ignorada")
+        self._refresh_remote_project_cards()
+
+    def _refresh_remote_project_cards(self):
+        remote_layout = getattr(self, "remote_projects_layout", None)
+        if remote_layout is None:
+            return
+        while remote_layout.count():
+            item = remote_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        remote_recents = list(getattr(self, "_remote_project_records", []) or [])
+        remote_card = getattr(self, "remote_projects_card", None)
+        if not remote_recents:
+            if remote_card is not None:
+                remote_card.setVisible(False)
+                remote_card.setFixedHeight(0)
+            self.remote_projects_container.setFixedHeight(0)
+            return
+
+        if remote_card is not None:
+            remote_card.setVisible(True)
+        self.remote_projects_placeholder.setVisible(False)
+        self.remote_projects_scroll.setVisible(True)
+        self.remote_projects_container.setVisible(True)
+        self.remote_projects_scroll.setFixedHeight(_MODEL_RECENT_CARD_HEIGHT)
+        columns = self._recent_columns_for_width(self._available_recents_width())
+        rows = max(1, (len(remote_recents) + columns - 1) // columns)
+        for index, record in enumerate(remote_recents):
+            card = _ModelRecentCard(
+                str(getattr(record, "name", "") or _rt("Painel remoto")),
+                self._remote_project_description(record),
+                self.remote_projects_container,
+            )
+            card.clicked.connect(lambda selected_record=record: self.open_remote_project(selected_record))
+            row = index // columns
+            column = index % columns
+            remote_layout.addWidget(card, row, column, Qt.AlignLeft | Qt.AlignTop)
+        for column in range(columns):
+            remote_layout.setColumnStretch(column, 0)
+        cards_height = rows * _MODEL_RECENT_CARD_HEIGHT + max(0, rows - 1) * _MODEL_RECENT_ROW_GAP
+        self.remote_projects_container.setFixedHeight(cards_height)
+        section_height = 28 + 16 + min(_MODEL_RECENT_CARD_HEIGHT, cards_height)
+        self.remote_projects_card.setFixedHeight(section_height)
+        try:
+            self.remote_projects_scroll.verticalScrollBar().setValue(0)
         except Exception:
             log_exception("falha opcional ignorada")
 

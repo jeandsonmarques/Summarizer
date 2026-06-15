@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.7
+
+- Added database-backed Model panels discovered from PostgreSQL/PostGIS connections.
+- Added `.pbsdash` import into PostgreSQL tables from the Model database menu.
+- Restricted Model edit mode for database panels to users with PostgreSQL `UPDATE` permission on the panel table.
+- Saved editable database panels directly back to PostgreSQL instead of prompting for a local file.
+- Kept compatibility with QGIS 3.34 to 3.99.
+
 ## 0.5.6
 
 - First stable QGIS 3.x release.
