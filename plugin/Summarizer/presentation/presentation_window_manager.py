@@ -102,14 +102,14 @@ class PresentationWindowManager(QObject):
             try:
                 canvas.setParent(self._map_panel)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             panel_layout.addWidget(canvas)
 
         self._map_panel.setVisible(True)
         try:
             canvas.show()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return True
 
     def detach_embedded_map_canvas(self):
@@ -124,7 +124,7 @@ class PresentationWindowManager(QObject):
             panel.setParent(None)
             panel.deleteLater()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def detach_embedded_canvas_only(self):
         canvas = self._embedded_canvas
@@ -134,7 +134,7 @@ class PresentationWindowManager(QObject):
         try:
             canvas.setParent(None)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def configure_map_toolbar(self, actions):
         toolbar = self._map_toolbar
@@ -148,6 +148,7 @@ class PresentationWindowManager(QObject):
             try:
                 toolbar.addAction(action)
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         return True
 
@@ -165,7 +166,7 @@ class PresentationWindowManager(QObject):
             try:
                 layout.removeWidget(content)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 layout.insertWidget(self._content_insert_index, splitter, 1)
             except Exception:
@@ -212,7 +213,7 @@ class PresentationWindowManager(QObject):
             if not any(splitter.sizes()):
                 splitter.setSizes([1, 1])
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _restore_content_layout(self, map_panel):
         splitter = self._splitter
@@ -227,15 +228,15 @@ class PresentationWindowManager(QObject):
             try:
                 content.setParent(None)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 map_panel.setParent(None)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 layout.removeWidget(splitter)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             try:
                 layout.insertWidget(index, content, 1)
             except Exception:
@@ -244,7 +245,7 @@ class PresentationWindowManager(QObject):
                 splitter.setParent(None)
                 splitter.deleteLater()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         else:
             self._remove_widget_from_parent_layout(map_panel)
 
@@ -323,7 +324,7 @@ class PresentationWindowManager(QObject):
             layout.removeWidget(widget)
             layout.invalidate()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _central_frame(self):
         ui = getattr(self.plugin_window, "ui", None)
@@ -374,7 +375,7 @@ class PresentationWindowManager(QObject):
             if hasattr(window, "showNormal"):
                 window.showNormal()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         if geometry is not None:
             try:

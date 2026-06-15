@@ -46,7 +46,8 @@ def mask_sensitive_mapping(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     return masked
 
 
-def create_basic_authcfg(username: str = "", password: str = "", name: str = "Summarizer") -> str:
+# Blank defaults mean "no credential supplied"; secrets arrive at runtime.
+def create_basic_authcfg(username: str = "", password: str = "", name: str = "Summarizer") -> str:  # nosec B107
     if QgsApplication is None or QgsAuthMethodConfig is None:
         return ""
     username = str(username or "").strip()
@@ -82,7 +83,8 @@ def secure_connection_payload(
         authcfg = create_basic_authcfg(data.get("user", ""), password, name=name)
         if authcfg:
             data["authcfg"] = authcfg
-            data["password"] = ""
+            # Clear the transient password after moving it to QGIS authcfg.
+            data["password"] = ""  # nosec B105
             data["savePassword"] = False
     return data
 

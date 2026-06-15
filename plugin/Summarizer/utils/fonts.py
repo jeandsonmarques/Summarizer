@@ -82,6 +82,7 @@ def harmonize_widget_fonts(root: Optional[QObject]) -> None:
         try:
             widget.setFont(harmonize_font_family(widget.font()))
         except Exception:
+            log_exception("falha opcional ignorada")
             continue
 
 

@@ -1547,6 +1547,7 @@ class DashboardCanvas(QWidget):
                 if widget.geometry().contains(local_pos):
                     return False
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         try:
             global_pos = event.globalPos()

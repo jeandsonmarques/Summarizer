@@ -7,6 +7,8 @@ from qgis.PyQt.QtCore import QEasingCurve, QPropertyAnimation, QRectF, Qt, pyqtP
 from qgis.PyQt.QtGui import QColor, QPainter, QPen
 from qgis.PyQt.QtWidgets import QWidget
 
+from ..utils.logging_utils import log_exception
+
 
 def _is_dark_theme() -> bool:
     from qgis.PyQt.QtCore import QSettings
@@ -114,7 +116,7 @@ class PivotSwitch(QWidget):
         try:
             painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         inset = 2.0 if self._pressed else 1.0
         track_rect = QRectF(

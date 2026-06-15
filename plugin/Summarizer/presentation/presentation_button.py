@@ -10,6 +10,7 @@ from qgis.PyQt.QtCore import QSize, Qt
 from qgis.PyQt.QtWidgets import QToolButton, QWidget
 
 from ..utils.i18n_runtime import tr_text as _rt
+from ..utils.logging_utils import log_exception
 from ..utils.resources import svg_icon
 
 
@@ -28,7 +29,7 @@ def _theme_icon():
         if icon is not None and not icon.isNull():
             return icon
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
     for icon_name in _ICON_CANDIDATES:
         try:
             icon = QgsApplication.getThemeIcon(icon_name)
@@ -86,7 +87,7 @@ def create_presentation_button(parent: Optional[QWidget], controller) -> QToolBu
         try:
             button.setChecked(bool(getattr(controller, "is_active", lambda: False)()))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     return button
 
@@ -101,4 +102,4 @@ def _sync_checked_state(button: QToolButton, checked: bool):
         try:
             button.blockSignals(False)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")

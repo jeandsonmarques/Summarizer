@@ -4,8 +4,13 @@
 
 - Added database-backed Model panels discovered from PostgreSQL/PostGIS connections.
 - Added `.pbsdash` import into PostgreSQL tables from the Model database menu.
-- Restricted Model edit mode for database panels to users with PostgreSQL `UPDATE` permission on the panel table.
-- Saved editable database panels directly back to PostgreSQL instead of prompting for a local file.
+- Restricted Model edit mode to users with PostgreSQL `UPDATE` permission on the panel table.
+- Separated new-panel insertion from existing-panel updates.
+- Removed persistence of full local file paths.
+- Restricted automatic panel discovery to Summarizer-related database tables.
+- Improved remote database worker shutdown.
+- Saved editable database panels directly back to PostgreSQL.
+- Hardened PostgreSQL panel persistence with release validation and security cleanup.
 - Kept compatibility with QGIS 3.34 to 3.99.
 
 ## 0.5.6
@@ -13,7 +18,6 @@
 - First stable QGIS 3.x release.
 - Removed experimental plugin status.
 - Kept compatibility with QGIS 3.34 to 3.99.
-- Kept QGIS 4 compatibility not declared.
 - No breaking workflow changes.
 
 ## [0.5.5] - 2026-06-03

@@ -113,7 +113,7 @@ def normalize_hex_color(value: object, fallback: str) -> str:
                 if color.isValid():
                     return color.name().upper()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         return candidate
     fallback_candidate = _normalize_color_text(fallback)
     if fallback_candidate:
@@ -123,7 +123,7 @@ def normalize_hex_color(value: object, fallback: str) -> str:
                 if color.isValid():
                     return color.name().upper()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         return fallback_candidate
     if QColor is not None:
         try:
@@ -131,7 +131,7 @@ def normalize_hex_color(value: object, fallback: str) -> str:
             if color.isValid():
                 return color.name().upper()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
     return "#FFFFFF"
 
 

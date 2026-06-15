@@ -2024,6 +2024,7 @@ class PivotTableWidget(QWidget):
                     numeric_values.append(numeric_value)
                     numeric_count += 1
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
 
         if numeric_values:

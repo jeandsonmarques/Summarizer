@@ -1296,7 +1296,7 @@ class DashboardItemWidget(QFrame):
                     margins = header_layout.contentsMargins()
                     reserved += int(margins.left() + margins.right())
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             available = max(80, header_width - reserved)
             title_width = max(60, int(available * 0.64))
             subtitle_width = max(40, available - title_width)

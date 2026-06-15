@@ -11,6 +11,7 @@ from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.PyQt.QtWidgets import QListWidgetItem
 
 from .utils.fonts import ui_font
+from .utils.logging_utils import log_exception
 
 
 _FIELD_SVG_TEMPLATES = {
@@ -60,7 +61,7 @@ def field_kind_from_field_def(field_def: Any) -> str:
         if bool(field_def.isNumeric()):
             return "numeric"
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
     type_name = str(getattr(field_def, "typeName", lambda: "")() or "").strip().lower()
     if any(token in type_name for token in ("date", "time")):
         return "date"

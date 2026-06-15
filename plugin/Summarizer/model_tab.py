@@ -136,6 +136,7 @@ _MODEL_RECENT_CARD_GAP = 16
 _MODEL_RECENT_ROW_GAP = 18
 _MODEL_RECENTS_SECTION_HEIGHT = 28 + 16 + _MODEL_RECENT_CARD_HEIGHT
 _MODEL_DEFAULT_FONT_SCALE = 0.88
+_REMOTE_PROJECT_THREADS_IN_FLIGHT = []
 
 
 class _ModelVerticalPanelLabel(QLabel):
@@ -187,14 +188,39 @@ class _ModelRemoteProjectsWorker(QObject):
         super().__init__()
         self._connection_meta = dict(connection_meta or {})
         self._connection_key = str(connection_key or "")
+        self._cancel_requested = False
+
+    def cancel(self):
+        self._cancel_requested = True
+
+    def _is_interruption_requested(self) -> bool:
+        thread = QThread.currentThread()
+        return bool(self._cancel_requested or (thread is not None and thread.isInterruptionRequested()))
 
     @pyqtSlot()
     def run(self):
         try:
-            result = ModelRemoteProjectService(self._connection_meta).load_recent_projects()
+            service = ModelRemoteProjectService(
+                self._connection_meta,
+                cancel_requested=self._is_interruption_requested,
+            )
+            result = service.load_recent_projects()
         except Exception as exc:  # pragma: no cover - worker boundary
             result = RemoteProjectScanResult([], False, str(exc or ""))
-        self.finished.emit((self._connection_key, result))
+        self.finished.emit((self._connection_key, result, self._is_interruption_requested()))
+
+
+def _retain_remote_project_thread(thread, worker):
+    entry = (thread, worker)
+    _REMOTE_PROJECT_THREADS_IN_FLIGHT.append(entry)
+
+    def _release():
+        try:
+            _REMOTE_PROJECT_THREADS_IN_FLIGHT.remove(entry)
+        except ValueError:
+            pass
+
+    thread.finished.connect(_release)
 
 
 class ModelTab(QWidget):
@@ -243,6 +269,7 @@ class ModelTab(QWidget):
         self._remote_project_requested_key = ""
         self._remote_project_pending_meta: Dict = {}
         self._current_remote_project_connection_meta: Dict = {}
+        self._remote_project_shutting_down = False
         self._remote_project_thread: Optional[QThread] = None
         self._remote_project_worker: Optional[_ModelRemoteProjectsWorker] = None
         self._builder_selected_item_id: str = ""
@@ -3269,6 +3296,7 @@ class ModelTab(QWidget):
                 if candidate.page_id == key:
                     return candidate
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         return None
 
@@ -3516,6 +3544,7 @@ class ModelTab(QWidget):
             try:
                 pages.append(widget.page_state())
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         if not pages:
             pages = [DashboardPage(title=self._page_display_title(1)).normalized()]
@@ -3943,6 +3972,8 @@ class ModelTab(QWidget):
         )
 
     def _refresh_remote_project_records(self, connection_meta: Dict):
+        if getattr(self, "_remote_project_shutting_down", False):
+            return
         key = remote_project_connection_key(connection_meta)
         if not key:
             if self._remote_project_records:
@@ -3964,9 +3995,10 @@ class ModelTab(QWidget):
         if self.current_project is None:
             self._refresh_recents()
 
-        thread = QThread(self)
+        thread = QThread()
         worker = _ModelRemoteProjectsWorker(connection_meta, key)
         worker.moveToThread(thread)
+        _retain_remote_project_thread(thread, worker)
         thread.started.connect(worker.run)
         worker.finished.connect(self._handle_remote_project_scan_result)
         worker.finished.connect(thread.quit)
@@ -3979,9 +4011,11 @@ class ModelTab(QWidget):
 
     def _handle_remote_project_scan_result(self, payload):
         try:
-            key, result = payload
+            key, result, canceled = payload
         except Exception:
-            key, result = "", RemoteProjectScanResult([], False, "")
+            key, result, canceled = "", RemoteProjectScanResult([], False, ""), False
+        if canceled or getattr(self, "_remote_project_shutting_down", False):
+            return
         if key != self._remote_project_requested_key:
             return
         self._remote_project_loaded_key = key
@@ -3998,8 +4032,53 @@ class ModelTab(QWidget):
         self._remote_project_worker = None
         pending = dict(getattr(self, "_remote_project_pending_meta", {}) or {})
         self._remote_project_pending_meta = {}
+        if getattr(self, "_remote_project_shutting_down", False):
+            return
         if pending:
             self._refresh_remote_project_records(pending)
+
+    def _stop_remote_project_worker(self, wait_ms: int = 750) -> bool:
+        thread = getattr(self, "_remote_project_thread", None)
+        worker = getattr(self, "_remote_project_worker", None)
+        self._remote_project_pending_meta = {}
+        if worker is not None:
+            try:
+                worker.cancel()
+            except Exception:
+                log_exception("falha opcional ignorada")
+            try:
+                worker.finished.disconnect(self._handle_remote_project_scan_result)
+            except Exception:
+                log_exception("falha opcional ignorada")
+        if thread is None:
+            self._remote_project_worker = None
+            return True
+        try:
+            thread.requestInterruption()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
+            thread.quit()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        finished = True
+        try:
+            if thread.isRunning():
+                finished = bool(thread.wait(max(0, int(wait_ms or 0))))
+        except Exception:
+            finished = False
+        if finished:
+            self._remote_project_thread = None
+            self._remote_project_worker = None
+        return finished
+
+    def cleanup(self):
+        self._remote_project_shutting_down = True
+        self._stop_remote_project_worker(wait_ms=750)
+
+    def closeEvent(self, event):
+        self.cleanup()
+        super().closeEvent(event)
 
     def open_remote_project(self, record: RemoteProjectRecord):
         payload = dict(getattr(record, "payload", {}) or {})
@@ -4018,6 +4097,7 @@ class ModelTab(QWidget):
             "schema": str(getattr(record, "schema", "") or ""),
             "table": str(getattr(record, "table", "") or ""),
             "row_id": str(getattr(record, "row_id", "") or ""),
+            "source_file": str(getattr(record, "source_file", "") or ""),
             "can_edit": bool(getattr(record, "can_edit", False)),
         }
         if not bool(getattr(record, "can_edit", False)):
@@ -4422,6 +4502,7 @@ class ModelTab(QWidget):
         schema = str(remote_meta.get("schema") or "").strip()
         table = str(remote_meta.get("table") or "").strip()
         row_id = str(remote_meta.get("row_id") or "").strip()
+        source_file = str(remote_meta.get("source_file") or "").strip()
         connection_meta = self._remote_project_connection_meta_for_save()
         if not connection_meta:
             slim_message(self, _rt("Model"), _rt("Nao foi possivel salvar no banco: conexao indisponivel."))
@@ -4436,6 +4517,7 @@ class ModelTab(QWidget):
                 payload,
                 schema=schema,
                 table=table,
+                source_file=source_file,
                 row_id=row_id,
             )
         except Exception as exc:
@@ -4451,6 +4533,7 @@ class ModelTab(QWidget):
                 "schema": str(getattr(record, "schema", "") or schema),
                 "table": str(getattr(record, "table", "") or table),
                 "row_id": str(getattr(record, "row_id", "") or row_id),
+                "source_file": str(getattr(record, "source_file", "") or source_file),
                 "can_edit": bool(getattr(record, "can_edit", False)),
             }
         )
@@ -4755,6 +4838,7 @@ class ModelTab(QWidget):
             try:
                 widget.set_edit_mode(enabled)
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         self.create_chart_btn.setVisible(enabled and self.current_project is not None)
         self.format_visual_btn.setVisible(enabled and self.current_project is not None)
@@ -5038,13 +5122,13 @@ class ModelTab(QWidget):
             if viewport is not None and int(viewport.width()) > 0:
                 candidates.append(int(viewport.width()))
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         width = max(candidates or [0])
         try:
             if width == int(self.empty_page.width() or 0) and width > 56:
                 width -= 56
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return max(0, width)
 
     def _recent_columns_for_width(self, width: int) -> int:

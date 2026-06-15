@@ -8,6 +8,8 @@ import re
 from datetime import datetime
 from typing import Any, Mapping
 
+from ..utils.logging_utils import log_exception
+
 try:
     from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
 except Exception:  # pragma: no cover - unit tests run outside QGIS
@@ -18,7 +20,7 @@ try:
     if QMessageBox is not None:
         QMessageBox = WalkerMessageBox
 except Exception:  # pragma: no cover - unit tests run outside QGIS
-    pass
+    log_exception("falha opcional ignorada")
 try:
     from ..utils.i18n_runtime import tr_text as _rt
 except Exception:  # pragma: no cover

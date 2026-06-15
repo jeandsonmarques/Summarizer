@@ -361,6 +361,10 @@ class Summarizer:
     def unload(self):
         try:
             if self.dlg is not None:
+                model_tab = getattr(self.dlg, "model_tab", None)
+                cleanup = getattr(model_tab, "cleanup", None)
+                if callable(cleanup):
+                    cleanup()
                 self.dlg.close()
                 self.dlg.deleteLater()
         except Exception:
@@ -635,6 +639,12 @@ class SummarizerDialog(QDialog):
 
     def closeEvent(self, event):
         try:
+            cleanup = getattr(getattr(self, "model_tab", None), "cleanup", None)
+            if callable(cleanup):
+                cleanup()
+        except Exception:
+            log_exception("falha opcional ignorada")
+        try:
             if hasattr(self, "presentation_controller") and self.presentation_controller:
                 self.presentation_controller.cleanup()
         except Exception:
@@ -900,7 +910,7 @@ class SummarizerDialog(QDialog):
             try:
                 btn.setParent(None)
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return
 
         self.presentation_map_btn = btn
@@ -918,6 +928,7 @@ class SummarizerDialog(QDialog):
                 widget.style().unpolish(widget)
                 widget.style().polish(widget)
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
 
     def _refresh_theme_aware_children(self):
@@ -2123,7 +2134,7 @@ class SummarizerDialog(QDialog):
             try:
                 layer.triggerRepaint()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             return True
         except Exception:
             log_exception("falha opcional ignorada")
@@ -2152,6 +2163,7 @@ class SummarizerDialog(QDialog):
             try:
                 error_obj = getter()
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
             if error_obj is None:
                 continue

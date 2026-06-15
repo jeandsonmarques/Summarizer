@@ -78,6 +78,7 @@ class DashboardProjectStore:
                 page.zoom = float(normalized_page.zoom or 1.0)
                 page.filters = dict(normalized_page.filters or {})
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         for item in list(project.items or []):
             try:
@@ -86,6 +87,7 @@ class DashboardProjectStore:
                     binding.chart_id = item.item_id
                 item.binding = binding
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         self.settings.setValue(LAST_DIR_SETTINGS_KEY, os.path.dirname(final_path))
         self.record_recent_project(final_path, project.name)

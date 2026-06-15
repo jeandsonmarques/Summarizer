@@ -240,6 +240,7 @@ class ModelInteractionManager(QObject):
                 if safe_id is not None:
                     feature_ids.append(safe_id)
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         field = str(normalized.get("field") or binding.dimension_field or "").strip()
         semantic_field_key = self._semantic_key(
@@ -361,6 +362,7 @@ class ModelInteractionManager(QObject):
                 except Exception:
                     log_exception("falha opcional ignorada")
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         self._emit_filters_changed()
 

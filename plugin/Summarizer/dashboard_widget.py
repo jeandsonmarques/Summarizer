@@ -804,7 +804,7 @@ class DashboardWidget(QWidget):
             try:
                 panel._apply_panel_styles()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
 
     # ------------------------------------------------------------------ Public API
     def set_pivot_data(
@@ -919,6 +919,7 @@ class DashboardWidget(QWidget):
                     try:
                         normalized = int(feature_id)
                     except Exception:
+                        log_exception("falha opcional ignorada")
                         continue
                     if normalized in seen:
                         continue
@@ -1001,6 +1002,7 @@ class DashboardWidget(QWidget):
             try:
                 chart.refresh_animation_configuration()
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
 
     def _update_subtitle(self):
@@ -1532,6 +1534,7 @@ class DashboardWidget(QWidget):
                     try:
                         seen_ids.add(int(feature_id))
                     except Exception:
+                        log_exception("falha opcional ignorada")
                         continue
             filtered_parts.append(part)
 
@@ -1679,6 +1682,7 @@ class DashboardWidget(QWidget):
             try:
                 feature_ids.append(int(feature_id))
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
 
         if feature_ids and "_feature_id" in self.current_source_df.columns:
@@ -1739,6 +1743,7 @@ class DashboardWidget(QWidget):
                 try:
                     normalized = int(feature_id)
                 except Exception:
+                    log_exception("falha opcional ignorada")
                     continue
                 if normalized in seen:
                     continue
