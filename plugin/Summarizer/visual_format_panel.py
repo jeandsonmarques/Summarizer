@@ -30,6 +30,7 @@ from .dashboard_item_widget import VisualPropertiesDialog
 from .report_view.charts import ChartVisualState
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
+from .utils.logging_utils import log_exception
 from .walker_color_dialog import walker_get_color
 from .walker_dialogs import apply_walker_combo
 
@@ -232,7 +233,7 @@ class _Switch(QWidget):
         try:
             painter.setRenderHint(QPainter.HighQualityAntialiasing, True)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         inset = 2.0 if self._pressed else 1.0
         track_rect = QRectF(inset, inset, float(max(1, self.width() - inset * 2)), float(max(1, self.height() - inset * 2)))
         radius = track_rect.height() / 2.0
@@ -442,7 +443,7 @@ class _PanelSection(QFrame):
         try:
             self.header_switch.toggled.disconnect()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         if callback is not None:
             self.header_switch.toggled.connect(callback)
 
@@ -500,6 +501,7 @@ class VisualFormatPanel(QFrame):
                 elif isinstance(widget, QLabel):
                     widget.setFont(self._panel_font(_PANEL_FONT_HELPER_PX))
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
 
     def _refresh_widget_palette(self):
@@ -519,6 +521,7 @@ class VisualFormatPanel(QFrame):
                 widget.style().unpolish(widget)
                 widget.style().polish(widget)
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
 
     def _apply_panel_styles(self):
@@ -545,7 +548,7 @@ class VisualFormatPanel(QFrame):
                     f"background: {_panel_color('surface')}; background-color: {_panel_color('surface')};"
                 )
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
         if hasattr(self, "form_host"):
             self.form_host.setStyleSheet(
                 f"QWidget#VisualPanelFormHost {{ background: {_panel_color('surface')}; background-color: {_panel_color('surface')}; }}"
@@ -1769,7 +1772,7 @@ class VisualFormatPanel(QFrame):
         try:
             canvas._apply_geometries()
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _find_canvas_host(self, item_widget):
         widget = item_widget.parentWidget() if item_widget is not None else None

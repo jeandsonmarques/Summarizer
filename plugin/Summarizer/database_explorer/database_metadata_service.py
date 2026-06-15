@@ -17,6 +17,7 @@ except Exception:  # pragma: no cover
     QSqlQuery = None
 
 from ..utils.i18n_runtime import tr_text as _rt
+from ..utils.logging_utils import log_exception
 from .database_models import DatabaseConnectionSnapshot, DatabaseGroup, DatabaseObject
 
 
@@ -117,7 +118,7 @@ class DatabaseMetadataService:
             try:
                 db.close()
             except Exception:
-                pass
+                log_exception("falha opcional ignorada")
             db = None
             QSqlDatabase.removeDatabase(conn_name)
 
@@ -275,7 +276,8 @@ class DatabaseMetadataService:
     def _public_connection_meta(self) -> Dict:
         public = dict(self.connection_meta)
         if "password" in public:
-            public["password"] = ""
+            # This clears a copied password before UI exposure; it is not a secret.
+            public["password"] = ""  # nosec B105
         return public
 
     def _can_embed_object_uri(self) -> bool:
@@ -337,7 +339,7 @@ class DatabaseMetadataService:
                             if table_uri:
                                 return table_uri
                         except Exception:
-                            pass
+                            log_exception("falha opcional ignorada")
         uri.setDataSource(
             schema,
             table_name,

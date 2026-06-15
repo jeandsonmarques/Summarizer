@@ -1123,7 +1123,7 @@ class ReportChartWidget(QWidget):
                 try:
                     self._matrix_scrollbar.blockSignals(False)
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             self._layout_matrix_scrollbar()
         transition = "entry"
         if previous_payload is not None and payload is not None:
@@ -2357,6 +2357,7 @@ class ReportChartWidget(QWidget):
                 if rect is not None and rect.contains(point):
                     return target
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         return None
 
@@ -2507,7 +2508,7 @@ class ReportChartWidget(QWidget):
                 try:
                     scrollbar.blockSignals(False)
                 except Exception:
-                    pass
+                    log_exception("falha opcional ignorada")
             scrollbar.hide()
             return 0
 

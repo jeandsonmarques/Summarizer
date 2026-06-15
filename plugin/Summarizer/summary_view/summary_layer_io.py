@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
 
+from ..utils.logging_utils import log_exception as _log_exception
+
 try:
     from qgis.core import (
         Qgis,
@@ -72,7 +74,7 @@ def variant_type_for_series(series: pd.Series):
         if ptypes.is_datetime64_any_dtype(series):
             return QVariant.DateTime
     except Exception:
-        pass
+        _log_exception("falha opcional ignorada")
     return QVariant.String
 
 
@@ -155,6 +157,10 @@ def build_geometry_lookup(layer, id_series: pd.Series, log_exception=None):
             try:
                 candidate_ids.append(int(str(raw)))
             except Exception:
+                if log_exception is not None:
+                    log_exception("falha opcional ignorada")
+                else:
+                    _log_exception("falha opcional ignorada")
                 continue
     if not candidate_ids:
         return {}
@@ -317,6 +323,10 @@ def create_layer_from_dataframe(
             try:
                 feature.setGeometry(geometry)
             except Exception:
+                if log_exception is not None:
+                    log_exception("falha opcional ignorada")
+                else:
+                    _log_exception("falha opcional ignorada")
                 continue
         attrs = []
         for column in display_columns:

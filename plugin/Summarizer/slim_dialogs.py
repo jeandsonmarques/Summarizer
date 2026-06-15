@@ -28,6 +28,7 @@ from qgis.PyQt.QtWidgets import (
 
 from .utils.fonts import attach_ui_font_enforcer, harmonize_widget_fonts, ui_font
 from .utils.i18n_runtime import tr_text as _rt
+from .utils.logging_utils import log_exception
 from .utils.window_theme import apply_windows_title_bar_theme
 from .walker_dialogs import (
     WALKER_DIALOG_STYLE,
@@ -883,6 +884,7 @@ class SlimChoiceDialog(SlimPopoverDialog):
                 if parsed_mask & int(button):
                     result.append(int(button))
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         if not result:
             result = [int(QMessageBox.Ok)]

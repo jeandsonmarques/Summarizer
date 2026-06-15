@@ -220,6 +220,7 @@ class PresentationMapController(QObject):
             try:
                 method()
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
         return True
 
@@ -334,6 +335,7 @@ class PresentationMapController(QObject):
             try:
                 method()
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
 
     def _configure_embedded_toolbar(self, canvas):
@@ -357,7 +359,7 @@ class PresentationMapController(QObject):
         try:
             action.triggered.connect(callback)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
         return action
 
     def _theme_icon(self, icon_name: str):
@@ -387,6 +389,7 @@ class PresentationMapController(QObject):
                     canvas.refresh()
                     return
                 except Exception:
+                    log_exception("falha opcional ignorada")
                     continue
 
     def _zoom_to_current_selection(self):
@@ -413,6 +416,7 @@ class PresentationMapController(QObject):
                     if selected_count() > 0:
                         yield layer
                 except Exception:
+                    log_exception("falha opcional ignorada")
                     continue
 
     def _show_map_options_menu(self):
@@ -427,7 +431,7 @@ class PresentationMapController(QObject):
         try:
             menu.exec_(self.plugin_window.cursor().pos())
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     def _canvas_matches_title(self, canvas: Any) -> bool:
         if canvas is None:
@@ -447,6 +451,7 @@ class PresentationMapController(QObject):
                 try:
                     value = getter()
                 except Exception:
+                    log_exception("falha opcional ignorada")
                     continue
                 text = str(value or "").strip()
                 if text:
@@ -462,6 +467,7 @@ class PresentationMapController(QObject):
                 try:
                     setter(str(title or ""))
                 except Exception:
+                    log_exception("falha opcional ignorada")
                     continue
 
     def _clear_tracking(self):

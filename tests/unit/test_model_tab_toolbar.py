@@ -154,13 +154,18 @@ def test_remote_database_project_blocks_edit_mode_without_update_permission():
     assert '"can_edit": bool(getattr(record, "can_edit", False))' in model_source
     assert "project.edit_mode = False" in model_source
     assert "def _current_project_is_locked_database_project(self)" in model_source
-    assert "requested_enabled and self._current_project_is_locked_database_project()" in model_source
+    assert (
+        "requested_enabled and self._current_project_is_locked_database_project()"
+        in model_source
+    )
     assert "Este painel veio do banco de dados" in model_source
 
 
 def test_remote_database_project_save_writes_back_to_database_before_local_save_dialog():
     model_source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(encoding="utf-8")
-    save_body = model_source[model_source.index("def save_project") : model_source.index("def export_project")]
+    save_body = model_source[
+        model_source.index("def save_project"): model_source.index("def export_project")
+    ]
 
     assert "if not save_as and self._current_project_should_save_to_remote_database():" in save_body
     assert "self._save_current_project_to_remote_database()" in save_body
@@ -171,6 +176,24 @@ def test_remote_database_project_save_writes_back_to_database_before_local_save_
     assert "ModelRemoteProjectService(connection_meta).save_project_payload" in save_body
     assert "row_id=row_id" in save_body
     assert "Painel salvo no banco de dados." in save_body
+
+
+def test_remote_project_worker_shutdown_cancels_thread_before_widget_close():
+    model_source = (ROOT / "plugin" / "Summarizer" / "model_tab.py").read_text(encoding="utf-8")
+    dialog_source = (ROOT / "plugin" / "Summarizer" / "data_summarizer.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "_remote_project_shutting_down = False" in model_source
+    assert "def cancel(self):" in model_source
+    assert "thread.requestInterruption()" in model_source
+    assert "worker.finished.disconnect(self._handle_remote_project_scan_result)" in model_source
+    assert "thread.wait(max(0, int(wait_ms or 0)))" in model_source
+    assert "def cleanup(self):" in model_source
+    assert "def closeEvent(self, event):" in model_source
+    assert "_REMOTE_PROJECT_THREADS_IN_FLIGHT" in model_source
+    assert 'getattr(model_tab, "cleanup", None)' in dialog_source
+    assert 'getattr(getattr(self, "model_tab", None), "cleanup", None)' in dialog_source
 
 
 def test_clear_filters_button_floats_over_canvas_and_uses_squarer_corners():
@@ -270,17 +293,20 @@ def test_model_start_page_uses_walker_database_home_pattern():
     assert "self.recents_card.setFixedHeight(_MODEL_RECENTS_SECTION_HEIGHT)" in model_source
     assert "self.remote_projects_card.setVisible(False)" in model_source
     resize_body = model_source[
-        model_source.index("def resizeEvent") : model_source.index("def _handle_canvas_changed")
+        model_source.index("def resizeEvent"): model_source.index("def _handle_canvas_changed")
     ]
     assert "QTimer.singleShot(0, self._refresh_recents)" not in resize_body
     assert 'columns != getattr(self, "_recents_columns", 0)' in resize_body
     assert "QGridLayout(self.recents_container)" in model_source
     assert "QGridLayout(self.remote_projects_container)" in model_source
     refresh_body = model_source[
-        model_source.index("def _refresh_recents") : model_source.index("def _refresh_ui_state")
+        model_source.index("def _refresh_recents"): model_source.index("def _refresh_ui_state")
     ]
     assert "local_recents = self.store.load_recents()" in refresh_body
-    assert 'remote_recents = list(getattr(self, "_remote_project_records", []) or [])' in refresh_body
+    assert (
+        'remote_recents = list(getattr(self, "_remote_project_records", []) or [])'
+        in refresh_body
+    )
     assert "self.recents_container" in refresh_body
     assert "self.remote_projects_container" in refresh_body
     assert "self.header.setVisible(has_project)" in model_source
@@ -309,7 +335,7 @@ def test_model_import_dataset_opens_walker_database_dialog_directly():
 
     assert "def _open_model_database_menu(self):" in model_source
     menu_method = model_source[
-        model_source.index("def _open_model_database_menu") : model_source.index(
+        model_source.index("def _open_model_database_menu"): model_source.index(
             "def _open_model_import_dataset"
         )
     ]
@@ -328,7 +354,7 @@ def test_model_import_dataset_opens_walker_database_dialog_directly():
     assert "self._open_model_import_dataset(action_data)" in menu_method
 
     import_method = model_source[
-        model_source.index("def _open_model_import_dataset") : model_source.index(
+        model_source.index("def _open_model_import_dataset"): model_source.index(
             "def close_project", model_source.index("def _open_model_import_dataset")
         )
     ]

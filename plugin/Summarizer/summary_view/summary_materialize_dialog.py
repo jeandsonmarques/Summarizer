@@ -7,6 +7,8 @@ import os
 import re
 from typing import Optional
 
+from ..utils.logging_utils import log_exception
+
 try:
     from qgis.core import QgsProject, QgsVectorLayer
     from qgis.PyQt.QtCore import QSettings
@@ -28,7 +30,7 @@ try:
     if QMessageBox is not None:
         QMessageBox = WalkerMessageBox
 except Exception:  # pragma: no cover - unit tests run outside QGIS
-    pass
+    log_exception("falha opcional ignorada")
 
 MATERIALIZE_BASE_NAME_DEFAULT = "resultado"
 MATERIALIZE_TABLE_LABEL = "Tabela (somente atributos)"
@@ -236,7 +238,7 @@ def materialize_dataframe_dialog(
             if exported_layer and exported_layer.isValid():
                 QgsProject.instance().addMapLayer(exported_layer)
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
         final_message = f"Arquivo GeoPackage salvo em:\n{path}{fallback_note}"
         QMessageBox.information(

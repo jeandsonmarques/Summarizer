@@ -332,7 +332,7 @@ def walker_dialog_flags():
     try:
         flags |= Qt.NoDropShadowWindowHint
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
     return flags
 
 
@@ -397,7 +397,7 @@ def apply_walker_dialog(widget: QWidget) -> None:
     try:
         widget.setAttribute(Qt.WA_StyledBackground, True)
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
     harmonize_widget_fonts(widget)
     try:
         for combo in widget.findChildren(QComboBox):

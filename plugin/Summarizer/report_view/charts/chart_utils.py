@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Sequence
 
+from ...utils.logging_utils import log_exception
 from .chart_styles import MAX_LABELS, TYPE_LABELS
 
 
@@ -44,6 +45,7 @@ def value_scale_bounds(values: List[Any]) -> tuple[float, float]:
         try:
             numeric_values.append(float(raw_value))
         except Exception:
+            log_exception("falha opcional ignorada")
             continue
     if not numeric_values:
         return 0.0, 1.0
@@ -174,6 +176,7 @@ def _normalize_feature_ids(value: Any) -> List[int]:
         try:
             normalized.append(int(item))
         except Exception:
+            log_exception("falha opcional ignorada")
             continue
     return normalized
 

@@ -1304,6 +1304,7 @@ def _repair_mojibake(text: str) -> str:
             if repaired:
                 return repaired
         except Exception:
+            log_exception("falha opcional ignorada")
             continue
     return source
 
@@ -1620,6 +1621,7 @@ def apply_widget_translations(root: QWidget, locale_code: str = ""):
             try:
                 _apply(child)
             except Exception:
+                log_exception("falha opcional ignorada")
                 continue
     except Exception:
         log_exception("falha opcional ignorada")

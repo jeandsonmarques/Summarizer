@@ -161,7 +161,8 @@ def _forget_connected_database_params(params: Dict):
     _CONNECTED_DATABASE_TABLES.pop(key, None)
 
 
-def _open_database_connection(params: Dict, owner_token: object = "auto") -> Tuple[bool, object]:
+# "auto" is a non-secret connection-owner label, not a password.
+def _open_database_connection(params: Dict, owner_token: object = "auto") -> Tuple[bool, object]:  # nosec B107
     if QSqlDatabase is None:
         return False, _rt("QtSql nÃ£o estÃ¡ disponÃ­vel nesta instalaÃ§Ã£o.")
 
@@ -268,7 +269,8 @@ def auto_connect_saved_databases(saved_connections: Optional[Sequence[Dict]] = N
             continue
         if not params.get("password") and not connection.get("authcfg"):
             continue
-        ok, db_or_error = _open_database_connection(params, owner_token="auto")
+        # "auto" is a non-secret connection-owner label, not a password.
+        ok, db_or_error = _open_database_connection(params, owner_token="auto")  # nosec B106
         if not ok:
             continue
         db = db_or_error
@@ -488,7 +490,7 @@ def _walker_database_dialog_flags():
     try:
         flags |= Qt.NoDropShadowWindowHint
     except Exception:
-        pass
+        log_exception("falha opcional ignorada")
     return flags
 
 

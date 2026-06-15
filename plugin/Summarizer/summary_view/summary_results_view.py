@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from ..utils.logging_utils import log_exception
+
 try:
     from ..result_style import apply_result_style
 except Exception:  # pragma: no cover - fallback for non-QGIS test environments
@@ -92,7 +94,7 @@ def show_summary_welcome(
                 set_results_view("pivot")
             return True
         except Exception:
-            pass
+            log_exception("falha opcional ignorada")
 
     return show_results_message(
         summary_message_widget,
